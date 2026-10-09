@@ -40,7 +40,7 @@ export function createTaskEventHub({ connect, onUpdate, onInvalidate = () => {} 
         onInvalidate(id);
         refresh();
       }
-      for (const name of ['task_created','task_updated','stage_timing','draft_ready']) source.addEventListener(name, event => receive(event));
+      for (const name of ['task_created','task_updated','stage_timing','draft_ready','partial_section_ready']) source.addEventListener(name, event => receive(event));
       for (const name of ['task_terminal','task_missing']) source.addEventListener(name, event => receive(event, true));
       source.onerror = close;
     }

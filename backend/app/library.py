@@ -151,7 +151,8 @@ def _connect() -> tuple[sqlite3.Connection, bool]:
 
 def index_task(record: TaskRecord) -> bool:
     """Best-effort indexing; task JSON remains the source of truth if SQLite is unavailable."""
-    note = _read_text(record.note_path)
+    # Incomplete generated batches must not become search or assistant evidence.
+    note = "" if Path(record.note_path).name == "draft.partial.md" else _read_text(record.note_path)
     transcript = _read_text(record.transcript_path)
     source = _safe_url(record.page_url)
     content = "\n".join(part for part in (record.title, source, note, transcript) if part)

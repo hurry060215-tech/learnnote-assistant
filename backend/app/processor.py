@@ -21,6 +21,7 @@ from .subtitle_notes import finish_transcript_note
 from .summary_outcome import has_generated_summary, safe_summary_text
 from .note_document import normalize_note_markdown
 from .pipeline_progress import record_stage_duration, start_pipeline_attempt, write_progressive_draft
+from .progressive_sections import partial_section_callback
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -171,7 +172,7 @@ PLAYER_DANMAKU_COMMENT_SIGNATURES = (
 )
 
 
-def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_check=None):
+def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_check=None, section_callback=None):
     try:
         parameters = list(inspect.signature(summary_fn).parameters.values())
         supports_cache = any(
@@ -188,13 +189,11 @@ def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_ch
         kwargs["vision_cache_dir"] = cache_dir
     if cancel_check is not None and ("cancel_check" in parameter_names or accepts_kwargs):
         kwargs["cancel_check"] = cancel_check
-    try:
-        return summary_fn(*args, **kwargs)
-    except TypeError as exc:
-        message = str(exc)
-        if kwargs and "unexpected keyword argument" in message and any(name in message for name in kwargs):
-            return summary_fn(*args)
-        raise
+    if section_callback is not None and ("section_callback" in parameter_names or accepts_kwargs):
+        kwargs["section_callback"] = section_callback
+    # Adapt before execution. Retrying an internal TypeError could dispatch the
+    # same already-completed provider work twice.
+    return summary_fn(*args, **kwargs)
 
 
 def remember_reusable_media(task_id: str, path: Path) -> bool:
@@ -1305,11 +1304,12 @@ def _process_video_file(
             else:
                 result = _summarize_with_optional_cache(
                     summarize_with_diagnostics, *args, cache_dir=work_dir / "vision_cache",
-                    cancel_check=lambda: bool(get_task(task_id).cancel_requested))
+                    cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                    section_callback=partial_section_callback(task_id, transcript))
             if not has_generated_summary(result[1]):
                 summary_status = "failed"
             return result
-        except SummarizationCancelled:
+        except (SummarizationCancelled, TaskCancelled):
             summary_status = "cancelled"
             _check_cancel(task_id)
             raise

@@ -2130,7 +2130,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2204,7 +2204,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize),
                 patch("app.processor.extract_audio", side_effect=fake_extract_audio),
                 patch("app.processor.transcribe_audio", side_effect=fake_transcribe),
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary),
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary),
             ):
                 process_current_page_task(task.id, request)
 
@@ -2337,7 +2337,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2407,7 +2407,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2475,7 +2475,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.transcript_from_subtitle", side_effect=fake_transcript_from_subtitle), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
