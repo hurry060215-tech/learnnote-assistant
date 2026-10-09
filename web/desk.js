@@ -1716,6 +1716,7 @@ const workspaceTools = installTools({
   refresh,
   notice,
   guard,
+  showHome,
   startReview,
   openEvidence,
   reloadAnnotations: () => loadAnnotations(state.epoch).catch(failure),

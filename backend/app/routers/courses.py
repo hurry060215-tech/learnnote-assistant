@@ -1,8 +1,10 @@
-from typing import Literal
-from fastapi import APIRouter, HTTPException, Query
+import sqlite3
+from typing import Annotated, Literal
+from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field, ConfigDict
 
 from ..courses import list_courses, get_course, save_course, delete_course, compare_course
+from ..course_deletion import preview_course_deletion, delete_reviewed_course
 from ..playlists import preview_playlist
 from ..course_episodes import course_episodes, prepare_course_episode, bind_course_episode
 
@@ -69,13 +71,43 @@ def api_save_course(course_id: str, request: CourseRequest):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@course_router.delete("/{course_id}")
-def api_delete_course(course_id: str):
+class CourseDeletionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: Literal["delete_course"]
+    revision: int = Field(ge=1)
+    snapshot: str = Field(pattern=r"^[a-f0-9]{64}$")
+    task_ids: list[Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]] = Field(default_factory=list, max_length=200)
+
+
+@course_router.get("/{course_id}/deletion-preview")
+def api_course_deletion_preview(course_id: str):
     try:
+        return preview_course_deletion(course_id)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=409, detail={"code": "course_unavailable", "message": "课程或来源暂不可用，请刷新后重试。"}) from exc
+
+
+@course_router.delete("/{course_id}")
+def api_delete_course(course_id: str, request: CourseDeletionRequest | None = Body(default=None)):
+    try:
+        if request is not None:
+            return delete_reviewed_course(course_id, revision=request.revision, snapshot=request.snapshot, task_ids=request.task_ids)
+        # Compatibility for collection-only callers: never infer child removal.
         delete_course(course_id)
         return {"deleted": True, "sources_deleted": False}
-    except (ValueError, OSError) as exc:
+    except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc
+    except ValueError as exc:
+        code = "course_unavailable"
+        if str(exc) == "course_deletion_changed_reload_required":
+            code = "course_deletion_changed_reload_required"
+        elif str(exc) == "course_deletion_ineligible_task":
+            code = "course_deletion_ineligible_task"
+        elif str(exc) == "invalid_course_id":
+            code = "invalid_course_id"
+        raise HTTPException(status_code=409, detail={"code": code, "message": "课程、任务状态或引用已变化，未执行删除。请重新查看删除范围后确认。"}) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=409, detail={"code": "course_cleanup_failed", "message": "课程清理未完成，请刷新后重试。"}) from exc
 
 
 @course_router.get("/{course_id}/compare")

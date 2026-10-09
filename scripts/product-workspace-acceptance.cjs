@@ -6,7 +6,8 @@ const fs = require("fs");
     out = process.argv[3] || "build/product-ui";
   fs.mkdirSync(out, { recursive: true });
   const b = await chromium.launch({ channel: "msedge", headless: true });
-  const p = await b.newPage({ viewport: { width: 1440, height: 960 } });
+  const context = await b.newContext({ viewport: { width: 1440, height: 960 } });
+  const p = await context.newPage();
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
   try {
@@ -119,6 +120,8 @@ const fs = require("fs");
       ),
     );
     await p.screenshot({ path: `${out}/assistant-mobile.png` });
+    const courseDeletion = await require("./course-deletion-acceptance.cjs")(p.context(), base, out);
+    const courseMediaReuse = await require("./course-media-reuse-acceptance.cjs")(p.context(), base, out);
     assert.deepEqual(errors, []);
     fs.writeFileSync(
       `${out}/result.json`,
@@ -132,6 +135,8 @@ const fs = require("fs");
           save_answer: true,
           outline: true,
           mobile: true,
+          course_deletion: courseDeletion,
+          course_media_reuse: courseMediaReuse,
           errors,
         },
         null,
