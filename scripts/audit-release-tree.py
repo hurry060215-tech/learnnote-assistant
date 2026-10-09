@@ -60,6 +60,8 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk-layout.js"),
     Path("_internal/web/desk-chat-stream.js"),
     Path("_internal/web/desk-progress.js"),
+    Path("_internal/web/desk-events.js"),
+    Path("_internal/web/reader-progress.js"),
     Path("_internal/web/desk-connections.js"),
     Path("_internal/web/desk-drafts.js"),
     Path("_internal/web/desk-summary-versions.js"),

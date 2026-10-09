@@ -10,6 +10,7 @@ on:
       - "backend/app/**"
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
+      - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
@@ -23,6 +24,7 @@ on:
       - "extension/**"
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
+      - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
@@ -74,6 +76,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Video layout and panel resize gate failed" }
             node scripts/reader-workflow-acceptance.cjs http://127.0.0.1:8765 build/reader-ui
             if ($LASTEXITCODE -ne 0) { throw "Reader timeline and navigation gate failed" }
+            node scripts/progressive-sections-acceptance.cjs http://127.0.0.1:8765 build/progressive-sections-ui
+            if ($LASTEXITCODE -ne 0) { throw "Progressive generated-section reader gate failed" }
             node scripts/material-batch-acceptance.cjs http://127.0.0.1:8765 build/material-batch-ui
             if ($LASTEXITCODE -ne 0) { throw "Local material batch import gate failed" }
             node scripts/workspace-ux-acceptance.cjs http://127.0.0.1:8765 build/workspace-ux
@@ -157,6 +161,7 @@ jobs:
             build/workspace-recovery
             build/core-output
             build/reader-ui
+            build/progressive-sections-ui
             build/material-batch-ui
             build/product-ui
             build/unified-ui

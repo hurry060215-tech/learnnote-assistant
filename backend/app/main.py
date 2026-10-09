@@ -2199,14 +2199,16 @@ def task_artifact_status(task: TaskRecord) -> dict[str, object]:
     transcript = exists(task.transcript_path)
     note = exists(task.note_path)
     visual = exists(task.visual_index_path) or bool(task.visual_windows)
-    draft = bool(task.summary_source == "transcript-draft" or (task.checkpoint == "transcript_ready" and transcript and not note))
+    partial_draft = Path(task.note_path).name == "draft.partial.md"
+    draft = bool(task.summary_source in {"transcript-draft", "partial-draft"} or partial_draft or (task.checkpoint == "transcript_ready" and transcript and not note))
     return {
         "checkpoint": task.checkpoint,
         "draft_available": draft,
+        "partial_draft_available": partial_draft and note,
         "transcript_ready": transcript,
         "visual_index_ready": visual,
         "note_ready": note,
-        "final": task.status == "success" and note,
+        "final": task.status == "success" and note and not draft,
         "failure_phase": task.failed_phase if task.status == "failed" else "",
         "summary_source": task.summary_source,
         "recovery": "retry_summary" if transcript and not note else "resume_or_retry" if task.status in {"failed", "cancelled"} else "",
@@ -2823,7 +2825,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         note = read_note(task.id)
     except Exception:
         note = ""
-    if note.strip():
+    if note.strip() and Path(task.note_path).name != "draft.partial.md":
         citations.extend(_note_evidence_chunks(note, source_id=task.id))
 
     try:

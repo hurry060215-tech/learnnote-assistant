@@ -1282,6 +1282,7 @@ def summarize_with_llm(
     events: list[dict] | None = None,
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
 ) -> tuple[str, str] | None:
     options = resolve_model_options(options)
     api_key = _model_key(options)
@@ -1323,9 +1324,8 @@ def summarize_with_llm(
         failed_batches = 0
         batches = _grid_batches(grids, options.vision_batch_size)
 
-        def run_vision_batch(index: int, batch: list[VisionGridEntry]):
-            check_cancel()
-            text_prompt = (
+        def batch_prompt(index: int, batch: list[VisionGridEntry]) -> str:
+            return (
                 "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
                 "请先做局部图文总结，不要写完整总笔记。\n"
                 "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
@@ -1334,7 +1334,19 @@ def summarize_with_llm(
                 f"{page_context_prompt}\n"
                 f"{_grid_window_prompt(transcript, batch)}"
             )
-            cache_key = _vision_cache_key(model, base_url, text_prompt, batch)
+        # Use the same request identities as the durable cache, so resumed drafts
+        # cannot mix batches from a different source, prompt, model, or endpoint.
+        prompts, cache_keys = [], []
+        for index, batch in enumerate(batches, 1):
+            check_cancel()
+            prompt = batch_prompt(index, batch)
+            prompts.append(prompt)
+            cache_keys.append(_vision_cache_key(model, base_url, prompt, batch))
+        generation_revision = hashlib.sha256("".join(cache_keys).encode()).hexdigest()
+
+        def run_vision_batch(index: int, batch: list[VisionGridEntry]):
+            check_cancel()
+            text_prompt, cache_key = prompts[index - 1], cache_keys[index - 1]
             cached = _read_vision_cache(vision_cache_dir, cache_key)
             if cached.strip():
                 return index, cached.strip(), None, True, 0
@@ -1371,10 +1383,23 @@ def summarize_with_llm(
 
         concurrency = 1 if options.low_resource_mode else max(1, min(options.vision_concurrency, len(batches) or 1))
         results = []
+
+        def accept_result(result) -> None:
+            check_cancel()
+            results.append(result)
+            index, partial, error, _cache_hit, _duration_ms = result
+            if section_callback is not None and partial and error is None:
+                section_callback({
+                    "generation_revision": generation_revision,
+                    "source_windows": [{"index": original_index, "start": grid.start, "end": grid.end}
+                                       for original_index, grid in batches[index - 1]],
+                    "markdown": partial,
+                })
+
         if concurrency == 1:
             for index, batch in enumerate(batches, start=1):
                 check_cancel()
-                results.append(run_vision_batch(index, batch))
+                accept_result(run_vision_batch(index, batch))
         else:
             executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="learnnote-vision")
             pending_batches = iter(enumerate(batches, start=1))
@@ -1401,11 +1426,12 @@ def summarize_with_llm(
                     for future in done:
                         index = futures.pop(future)
                         try:
-                            results.append(future.result())
+                            result = future.result()
                         except SummarizationCancelled:
                             raise
                         except Exception as exc:
-                            results.append((index, "", exc, False, 0))
+                            result = (index, "", exc, False, 0)
+                        accept_result(result)
                         submit_one()
             except Exception:
                 for future in futures:
@@ -1598,6 +1624,7 @@ def summarize_with_diagnostics(
     page_context: str = "",
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
 ) -> tuple[str, str, str]:
     note, source, warning, _events = summarize_with_diagnostics_audit(
         title,
@@ -1608,6 +1635,7 @@ def summarize_with_diagnostics(
         page_context,
         vision_cache_dir=vision_cache_dir,
         cancel_check=cancel_check,
+        section_callback=section_callback,
     )
     return note, source, warning
 
@@ -1621,6 +1649,7 @@ def summarize_with_diagnostics_audit(
     page_context: str = "",
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
     options = resolve_model_options(options)
@@ -1643,6 +1672,7 @@ def summarize_with_diagnostics_audit(
         events,
         vision_cache_dir=vision_cache_dir,
         cancel_check=cancel_check,
+        section_callback=section_callback,
     )
     if generated:
         note, source = generated

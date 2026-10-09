@@ -137,7 +137,7 @@ export function timelineHtml(
 ) {
   const artifacts = task.artifact_status || {};
   const checkpoint = artifacts.checkpoint || task.checkpoint;
-  const artifactHint = artifacts.draft_available ? " · 字幕草稿已保留" : artifacts.transcript_ready ? " · 字幕已就绪" : "";
+  const artifactHint = artifacts.draft_available ? (artifacts.partial_draft_available ? " · 图文章节草稿可读" : " · 字幕草稿已保留") : artifacts.transcript_ready ? " · 字幕已就绪" : "";
   const failureHint = artifacts.failure_phase ? ` · 失败阶段：${phaseName(artifacts.failure_phase)}` : "";
   return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
     task,
@@ -150,6 +150,8 @@ export function timelineHtml(
     .join("")}</ol></details>`;
 }
 export function taskExplanation(task) {
+  if (task.status === "failed" && task.artifact_status?.partial_draft_available)
+    return "完整总结尚未完成；已生成的图文章节仍以草稿保留，可先阅读或核对字幕，再重试。";
   if (task.options?.content_mode === "subtitles")
     return task.status === "success"
       ? "已有字幕已保存，可以阅读或导出。本次未下载视频、转写音频或调用模型。"
@@ -186,6 +188,7 @@ export function eventLogHtml(events) {
     pipeline_attempt_started: "开始本次处理",
     stage_timing: "步骤结束",
     draft_ready: "字幕草稿可读",
+    partial_section_ready: "图文章节草稿可读",
     summary_retry_requested: "重新生成总结",
     task_created: "接收来源",
     task_started: "开始处理",

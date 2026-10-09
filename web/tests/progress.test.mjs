@@ -97,6 +97,12 @@ test("model fallback is explicitly reported as missing summary", () => {
     "stopped",
   );
 });
+test("failed merge preserves the completed generated-section draft explanation", () => {
+  const task = { status: "failed", summary_source: "local-template", error_code: "summary_unavailable",
+    artifact_status: { draft_available: true, partial_draft_available: true } };
+  assert.match(taskExplanation(task), /已生成的图文章节仍以草稿保留/);
+  assert.match(eventLogHtml([{ event: "partial_section_ready", timestamp: "2026-10-09T00:00:00Z" }]), /图文章节草稿可读/);
+});
 test("log text is escaped and duration formatting handles long steps", () => {
   assert(
     !eventLogHtml([

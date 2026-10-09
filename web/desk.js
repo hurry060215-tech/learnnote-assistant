@@ -438,6 +438,7 @@ function renderNote() {
   });
   const excerptOnly =
     state.selected.summary_source === "local-template" &&
+    !state.selected.artifact_status?.partial_draft_available &&
     !state.edition?.edited;
   const heading =
     state.text.trim().startsWith("# ") && !excerptOnly
