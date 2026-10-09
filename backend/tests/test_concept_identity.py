@@ -280,14 +280,28 @@ class ConceptIdentityTests(unittest.TestCase):
         changed = deepcopy(previous)
         changed["events"][0]["request"]["label"] = "Replacement path contents"
         replacement.write_text(json.dumps(changed), encoding="utf-8")
-        fstat = os.fstat
+        fstat, open_file = os.fstat, Path.open
+        target, opened = current, []
+
+        def open_logical_path(path, *args, **kwargs):
+            selected = target if path == current else path
+            opened.append(selected)
+            return open_file(selected, *args, **kwargs)
+
         def replace_after_stat(descriptor):
+            nonlocal target
             info = fstat(descriptor)
-            replacement.replace(current)
+            # Change what a subsequent path open resolves to. Both files and
+            # descriptors are real, without renaming an open file on Windows.
+            target = replacement
             return info
-        with patch("app.concept_identity.os.fstat", side_effect=replace_after_stat):
+
+        with patch.object(Path, "open", open_logical_path), patch("app.concept_identity.os.fstat", side_effect=replace_after_stat):
             self.assertEqual(read_history(self.course["id"]), previous)
-        self.assertEqual(read_history(self.course["id"]), changed)
+            self.assertEqual(read_history(self.course["id"]), changed)
+        self.assertEqual(opened, [current, replacement])
+        self.assertEqual(json.loads(current.read_bytes()), previous)
+        self.assertEqual(json.loads(replacement.read_bytes()), changed)
 
     def test_history_read_bounds_growth_after_size_check_and_rejects_nonfiles(self):
         current = self.root / "concept-identities" / f"{self.course['id']}.json"
