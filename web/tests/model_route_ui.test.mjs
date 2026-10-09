@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const settings = fs.readFileSync(path.join(root, "web", "desk-settings.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "web", "desk.css"), "utf8");
 const tools = fs.readFileSync(path.join(root, "web", "desk-tools.js"), "utf8");
+const graph = fs.readFileSync(path.join(root, "web", "course-graph-snapshot.js"), "utf8");
 const desk = fs.readFileSync(path.join(root, "web", "desk.js"), "utf8");
 const batch = fs.readFileSync(path.join(root, "web", "material-batch.js"), "utf8");
 
@@ -88,7 +89,8 @@ test("route settings render capability uncertainty and ignore late old responses
 
 test("course comparison keeps a visual relationship view and an evidence list", () => {
   assert.match(tools, /function relationshipGraph\(result\)/);
-  assert.match(tools, /relationship-graph/);
+  assert.match(tools, /relationshipGraph as snapshotRelationshipGraph/);
+  assert.match(graph, /relationship-graph/);
   assert.match(tools, /evidence_ids/);
   assert.match(tools, /关系列表/);
 });

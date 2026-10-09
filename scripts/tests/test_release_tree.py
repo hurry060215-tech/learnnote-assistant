@@ -116,16 +116,18 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertEqual(["_internal/web/personal-anchors.js"], result["missing_bundled"])
 
-    def test_missing_course_concept_module_fails(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            self.populate_extension(root)
-            self.populate_legal_files(root)
-            self.populate_bundled_files(root)
-            (root / "_internal/web/course-concepts.js").unlink()
-            result = MODULE.audit_release_tree(root)
-            self.assertFalse(result["passed"])
-            self.assertEqual(["_internal/web/course-concepts.js"], result["missing_bundled"])
+    def test_missing_course_graph_modules_fail(self):
+        for filename in ("course-concepts.js", "course-graph-snapshot.js"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                relative = Path("_internal/web") / filename
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
 
     def test_missing_progressive_reader_modules_fail(self):
         for filename in ("desk-events.js", "reader-progress.js"):

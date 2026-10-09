@@ -119,12 +119,13 @@ def assignments(history: dict, term: str) -> dict:
     return result
 
 
-def term_scope(evidence: list[dict], term: str) -> dict:
-    return {item["evidence_id"]: evidence_fingerprint(item) for item in evidence if term in str(item.get("text") or "").casefold()}
+def term_scope(evidence: list[dict], term: str, *, fingerprints: dict | None = None) -> dict:
+    return {item["evidence_id"]: (fingerprints[item["evidence_id"]] if fingerprints is not None else evidence_fingerprint(item))
+            for item in evidence if term in str(item.get("text") or "").casefold()}
 
 
-def identity_groups(history: dict, evidence: list[dict], term: str) -> dict:
-    scope = term_scope(evidence, term)
+def identity_groups(history: dict, evidence: list[dict], term: str, *, fingerprints: dict | None = None) -> dict:
+    scope = term_scope(evidence, term, fingerprints=fingerprints)
     chosen = assignments(history, term)
     groups = {}
     for evidence_id in dict.fromkeys([*scope, *chosen]):
@@ -136,9 +137,9 @@ def identity_groups(history: dict, evidence: list[dict], term: str) -> dict:
     return {"term": term, "scope_revision": _digest(scope), "groups": list(groups.values())}
 
 
-def identity_key(item: dict, chosen: dict) -> str | None:
+def identity_key(item: dict, chosen: dict, *, fingerprint: str | None = None) -> str | None:
     selected = chosen.get(item["evidence_id"])
-    if selected and selected["fingerprint"] != evidence_fingerprint(item):
+    if selected and selected["fingerprint"] != (fingerprint if fingerprint is not None else evidence_fingerprint(item)):
         return None
     return selected["id"] if selected else UNASSIGNED
 

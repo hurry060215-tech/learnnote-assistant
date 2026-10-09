@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import math
 import threading
 from uuid import uuid4
 
@@ -12,7 +11,8 @@ from .knowledge import answer_from_evidence, evidence_by_ids, evidence_ids_for_t
 from .library import get_material, task_material_source_uri
 from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
-from .concept_identity import read_history, assignments, identity_groups, identity_key, edit_identity
+from .concept_identity import read_history, edit_identity
+from .course_comparison import build_comparison, is_canonical_evidence
 
 _lock = threading.RLock()
 
@@ -89,11 +89,11 @@ def delete_course(course_id: str) -> None:
         clear_course_episode_links(course_id)
 
 
-def _evidence_sources(course: dict) -> list[dict]:
+def _evidence_sources(course: dict, *, read_only=False) -> list[dict]:
     if not any(source["kind"] == "url" for source in course["sources"]):
         return course["sources"]
     from .course_episodes import course_episodes
-    episodes = {item["position"]: item for item in course_episodes(course)}
+    episodes = {item["position"]: item for item in course_episodes(course, read_only=read_only)}
     return [{"kind":"task", "id":episodes[index]["task_id"], "title":source["title"]}
             if source["kind"] == "url" and episodes.get(index, {}).get("task_id") else source
             for index, source in enumerate(course["sources"])]
@@ -112,8 +112,7 @@ def course_evidence(course_id: str) -> list[dict]:
     ids = list(sources_by_id)
     for start in range(0, len(ids), 500):
         for item in evidence_by_ids(ids[start:start + 500], limit=500):
-            metadata = item.get("metadata") or {}
-            if item.get("source_type") == "community" or item.get("locator") in {"note", "generated-note"} or metadata.get("kind") in {"note", "community", "generated-note", "review-draft", "transcript-draft"} or metadata.get("review_required") or metadata.get("evidence_quality") == "review_required":
+            if not is_canonical_evidence(item):
                 continue
             evidence_id = str(item.get("evidence_id") or "")
             if evidence_id not in sources_by_id:
@@ -167,65 +166,8 @@ def ask_course(course_id: str, question: str, revision: int, limit: int = 6, mod
 
 
 def compare_course(course_id: str, query: str, *, source_id: str = "", source_kind: str = "", start: float | None = None, end: float | None = None) -> dict:
-    if source_kind not in {"", "task", "material"} or any(value is not None and (not math.isfinite(value) or value < 0) for value in (start, end)) or (start is not None and end is not None and end < start):
-        raise ValueError("invalid_comparison_filter")
-    terms = list(dict.fromkeys(term.casefold() for term in query.split() if term.strip()))[:8]
-    history = read_history(course_id)
-    evidence = course_evidence(course_id)
-    chosen = {term: assignments(history, term) for term in terms}
-    matches = []
-    groups: dict[str, dict] = {}
-    for item in evidence:
-        source = item["course_source"]
-        filter_kind = "task" if item.get("task_id") else source["kind"]
-        if (source_id and source["id"] != source_id) or (source_kind and filter_kind != source_kind):
-            continue
-        if start is not None or end is not None:
-            metadata = item.get("metadata") or {}
-            located = re.match(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s$", str(item.get("locator") or ""))
-            left, right = metadata.get("start"), metadata.get("end")
-            if left is None or right is None:
-                if not located:
-                    continue
-                left, right = map(float, located.groups())
-            try:
-                left, right = float(left), float(right)
-            except (TypeError, ValueError):
-                continue
-            if not math.isfinite(left) or not math.isfinite(right) or (start is not None and right < start) or (end is not None and left > end):
-                continue
-        text = str(item.get("text") or "")
-        hits = [term for term in terms if term in text.casefold()]
-        if not hits:
-            continue
-        match_offset = min(text.casefold().find(term) for term in hits)
-        excerpt = text[max(0, match_offset - 80):match_offset + 440]
-        source = item["course_source"]
-        key = f"{source['kind']}:{source['id']}"
-        groups.setdefault(key, {"id": key, "title": source["title"], "evidence_ids": [], "terms": [], "term_evidence": {}})
-        groups[key]["evidence_ids"].append(item["evidence_id"])
-        groups[key]["terms"] = sorted(set(groups[key]["terms"] + hits))
-        for term in hits:
-            identity = identity_key(item, chosen[term])
-            if identity is not None:
-                groups[key]["term_evidence"].setdefault((term, identity), item["evidence_id"])
-        matches.append({"evidence_id": item["evidence_id"], "title": source["title"], "locator": item["locator"], "excerpt": excerpt, "matched_terms": hits, "source": source})
-    nodes = list(groups.values())[:40]
-    edges = []
-    for index, left in enumerate(nodes):
-        for right in nodes[index + 1:]:
-            for term, identity in sorted(set(left["term_evidence"]) & set(right["term_evidence"])):
-                ids = [left["term_evidence"][(term, identity)], right["term_evidence"][(term, identity)]]
-                if len(set(ids)) == 2:
-                    edges.append({"from": left["id"], "to": right["id"], "kind": "keyword_cooccurrence", "terms": [term], "identity_group": identity, "evidence_ids": ids})
-    # Every displayed relation carries the real titles/locators even when the
-    # separate excerpt page was truncated. Internal tuple keys stay private.
-    citations = {item["evidence_id"]: item for item in matches}
-    for edge in edges:
-        edge["citations"] = [citations[key] for key in edge["evidence_ids"]]
-    for node in nodes:
-        node.pop("term_evidence", None)
-    return {"mode": "local_cited_comparison", "query": query, "matches": matches[:100], "total_matches": len(matches), "nodes": nodes, "edges": edges[:100], "inference": False, "identity_revision": len(history["events"]), "concepts": [identity_groups(history, evidence, term) for term in terms], "filters": {"source_id": source_id, "source_kind": source_kind, "start": start, "end": end}, "warning": "共同关键词不代表同义、因果或观点一致。含义分组仅是你的整理选择，请核对各自原文。"}
+    return build_comparison(course_evidence(course_id), read_history(course_id), query,
+                            source_id=source_id, source_kind=source_kind, start=start, end=end)
 
 
 def edit_course_identity(course_id: str, request_id: str, request: dict) -> dict:

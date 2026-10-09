@@ -44,6 +44,11 @@ MODULE_SIZE_LIMITS = {
     "web/personal-notes.js": 300,
     "web/courses.js": 500,
     "backend/app/courses.py": 400,
+    "backend/app/course_comparison.py": 140,
+    "backend/app/course_graph_export.py": 190,
+    "backend/app/graph_snapshot.py": 320,
+    "backend/app/routers/graph_snapshot.py": 90,
+    "web/course-graph-snapshot.js": 380,
     "backend/app/local_ocr.py": 250,
     "backend/app/task_queue.py": 400,
     "backend/app/upload_limits.py": 250,
@@ -61,6 +66,8 @@ LEGACY_DEFERRED_EDGES = {
     ("app.task_queue", "app.range_learning"): "Dispatch a recovered range intent",
 }
 PURE_MODULE_DEPENDENCIES = {
+    "course_comparison": {"concept_identity"},
+    "graph_snapshot": {"concept_identity", "course_comparison"},
     "media_source_context": {"models", "media_kinds", "media_candidate_ranking", "media_url_parsing"},
     "media_url_parsing": set(),
     "media_manifests": set(),
