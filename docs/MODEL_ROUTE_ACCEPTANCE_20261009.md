@@ -61,12 +61,17 @@ fallback behavior are unchanged.
   UI tests cover stale responses and LF/CRLF rendering. Route inspection never
   constructs a provider client, starts a probe, downloads a model or submits
   a task.
-- Windows Edge visual verification is pending. The bounded
-  `scripts/model-route-visual-acceptance.cjs` is wired into the existing Windows
-  visual gate. It fulfills assets and APIs from local synthetic fixtures and
-  rejects every remote request, model probe/download and task submission. Run:
-  `node scripts/model-route-visual-acceptance.cjs http://127.0.0.1:8765 build/model-route-ui`.
-  Inspect its report and screenshots before claiming browser acceptance.
+- Actual Windows Edge verification passed at PR #272 head
+  `cd77f7c9e17037551e9f7b4c422aa949ee26d78c`, tree
+  `196aea65f5b33aab610998da0312c6fadf5e8d3a`. All six workflow groups passed;
+  detailed CodeQL reported zero new alerts and no unresolved review threads.
+  [Visual run 37940598805](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37940598805)
+  produced settings, text, visual and subtitle screenshots. All four original
+  images were inspected; submission controls and disclosure were present.
+  The report records no unexpected requests or page errors. Its APIs and assets
+  are synthetic local fixtures, not live-provider or native-installation tests.
+  Official artifact 11620249095 was verified against ZIP SHA256
+  `3642c01860eb735a6e02c161c61e7299464105682b0cb173afca49f40043f7b6`.
 - No live provider or source-site requests, real credentials, private media or
   measured billing/latency experiments were used. Real inference quality and
   evidence-based cost/time ranges remain outside the proven scope of this patch;
