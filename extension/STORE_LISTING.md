@@ -47,9 +47,10 @@ Unknown provider diagnostics retain their original wording.
 - English support: [HELP.en.md](HELP.en.md)
 - 简体中文帮助：[HELP.zh-CN.md](HELP.zh-CN.md)
 
-The bilingual runtime and support text are prepared. Matching English/Chinese
-store screenshots and the 390/768/desktop visual acceptance matrix are still
-pending; do not claim the store-asset acceptance criterion has passed. See the
+The bilingual runtime and support text are prepared. Windows CI has rendered
+18 Chinese/English viewport/zoom conditions and generated four candidate store
+screenshots. The images remain unreviewed and only temporarily retained as CI
+artifacts, so the approved store-asset criterion is still pending. See the
 [localization acceptance checklist](../docs/EXTENSION_LOCALIZATION.md).
 
 ## Support and policy URLs

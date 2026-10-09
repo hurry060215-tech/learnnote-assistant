@@ -18,6 +18,7 @@ export function installTools(ctx) {
   let generation = 0,
     course = null,
     courses = [],
+    courseEpisodes = [],
     proposals = [],
     batchRunning = false,
     cleanupPolicy = null,
@@ -83,6 +84,7 @@ export function installTools(ctx) {
       }),
     });
     course = result.course;
+    courseEpisodes = result.episodes || [];
     window.LearnNoteDialogs?.markSaved(dialog);
     return course;
   }
@@ -112,16 +114,23 @@ export function installTools(ctx) {
     const result = await api(`/api/courses/${id}`);
     if (token !== generation) return;
     course = result.course;
+    courseEpisodes = result.episodes || [];
     courseView();
+  }
+  function episodeLabel(source, position) {
+    const episode = courseEpisodes.find(item => item.position === position);
+    if (!episode) return source.kind === "url" ? "待整理链接" : source.kind === "task" ? "视频笔记" : "学习资料";
+    const label = { pending:"待提交", queued:"排队中", running:"处理中", success:"已完成", failed:"处理失败", cancelled:"已取消", interrupted:"等待恢复", source_missing:"任务已移除，可重新提交", identity_conflict:"来源冲突，请核对" }[episode.status] || episode.status;
+    return `${label}${episode.checkpoint ? ` · ${episode.checkpoint}` : ""}${episode.resource_budget_mb ? ` · 预算 ${episode.resource_budget_mb} MB` : ""}`;
   }
   function courseView() {
     show(
       course.title,
-      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${s.kind === "url" ? "待整理链接" : s.kind === "task" ? "视频笔记" : "学习资料"}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
+      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
     backAction = listCourses;
   }
-  async function studySettings(courseId = "") {
+  async function studySettings(courseId = "", taskId = "") {
     const token = show("复习与计划", '<p class="muted">正在读取…</p>');
     await api("/api/study/plan/initialize", {
       method: "POST",
@@ -132,12 +141,19 @@ export function installTools(ctx) {
     const [plan, history, dashboard] = await Promise.all([
       api("/api/study/plan"),
       api("/api/study/reviews?limit=20"),
-      api("/api/study/dashboard?limit=12&course_id=" + encodeURIComponent(courseId)),
+      api("/api/study/dashboard?limit=12&course_id=" + encodeURIComponent(courseId) + "&task_id=" + encodeURIComponent(taskId)),
     ]);
     if (token !== generation) return;
     const p = plan.plan;
     $("toolBody").innerHTML =
-      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="${p.paused ? "resume-study" : "start-review"}" data-course-id="${esc(courseId)}">${p.paused ? "继续计划" : "开始复习"}</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停学习记录、提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+      `<div class="study-overview"><p><span>当前到期</span><strong>${dashboard.today?.due_count ?? 0}</strong></p><p><span>今日已复习</span><strong>${dashboard.today?.reviewed_count ?? 0}</strong></p><p><span>每日目标</span><strong>${p.daily_target}</strong></p></div><div class="tool-actions"><button class="primary" data-action="${p.paused ? "resume-study" : "start-review"}" data-course-id="${esc(courseId)}" data-task-id="${esc(taskId)}">${p.paused ? "继续计划" : "开始复习"}</button></div><details class="study-plan"><summary>调整每日目标与时区</summary><form id="planForm"><label for="dailyTarget">每日目标</label><input id="dailyTarget" type="number" min="1" max="200" value="${p.daily_target}"><label for="studyTimezone">复习时区</label><input id="studyTimezone" value="${esc(p.timezone)}" required><label class="check"><input id="studyPaused" type="checkbox" ${p.paused ? "checked" : ""}>暂停学习记录、提醒与评分</label><button class="primary">保存计划</button></form></details><div class="tool-actions">${links([["导出学习记录", "/api/study/export"]])}</div><details><summary>最近评分记录</summary><div>${history.reviews.map((r) => `<p class="record">${esc(r.reviewed_at || r.created_at || "")} · 评分 ${esc(r.rating)}</p>`).join("") || '<p class="muted">还没有评分记录。</p>'}</div></details><details><summary>修复旧版复习调度</summary><p class="muted">根据完整评分历史重新计算计划，并在本地保存原调度备份。</p><button data-action="rebuild-study">按历史重建</button></details>`;
+    const videoLabel=document.createElement("label");videoLabel.htmlFor="studyVideoFilter";videoLabel.textContent="视频范围";
+    const videoFilter=document.createElement("select");videoFilter.id="studyVideoFilter";
+    videoFilter.append(Object.assign(document.createElement("option"),{value:"",textContent:"全部视频与资料"}));
+    for(const source of state.items.filter(item=>item.kind === "task"))videoFilter.append(Object.assign(document.createElement("option"),{value:source.id,textContent:source.title}));
+    videoFilter.value=taskId;videoFilter.onchange=()=>studySettings(courseId,videoFilter.value).catch(error=>status(error.message));
+    const scopeHint=document.createElement("p");scopeHint.className="muted";scopeHint.textContent="到期和题目使用所选范围；每日目标与活动统计仍覆盖全部本地资料。";
+    $("toolBody").append(videoLabel,videoFilter,scopeHint);
     const recentActivity = (dashboard.progress?.activity || []).reduce((sum, day) => ({
       reading: sum.reading + Number(day.reading_count || 0),
       answer: sum.answer + Number(day.answer_count || 0),
@@ -180,7 +196,7 @@ export function installTools(ctx) {
         const result = await api("/api/study/backup/restore", { method: "POST", body: JSON.stringify(payload) });
         const merge = result.merge || {};
         status(`已恢复 ${merge.restored_reviews || 0} 条评分、${merge.restored_annotations || 0} 条批注和 ${merge.restored_editions || 0} 份修改。`);
-        await studySettings(courseId);
+        await studySettings(courseId,taskId);
       } catch (error) { status(error.message || "备份无效或无法恢复。"); }
       finally { backupFile.value = ""; }
     };
@@ -191,7 +207,7 @@ export function installTools(ctx) {
     deleteStudy.onclick = async () => {
       if (!confirm("永久删除全部卡片、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
       deleteStudy.disabled = true;
-      try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId); }
+      try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId,taskId); }
       catch (error) { status(error.message); deleteStudy.disabled = false; }
     };
     backupPanel.append(deleteStudy);
@@ -284,33 +300,203 @@ export function installTools(ctx) {
   function exports() {
     const s = current();
     const exportBase = s.kind === "task" ? `/api/tasks/${s.id}/exports` : `/api/library/materials/${s.id}/exports`;
-    show("统一导出", `<p class="muted">笔记和学习资料共享同一份结构化正文。预览会使用个人补充、出处、时间点、图片与练习的当前选择。</p><div class="unified-export-grid"><label>格式<select id="unifiedExportFormat"><option value="html">HTML（离线预览）</option><option value="docx">Word</option><option value="pdf">PDF</option></select></label><label>字体<select id="unifiedExportFont"><option>Microsoft YaHei</option><option>Noto Sans SC</option><option>SimSun</option><option>Arial</option></select></label><label>字号<input id="unifiedExportSize" type="number" min="8" max="36" step="0.5" value="10.5"></label><label>行距<input id="unifiedExportLeading" type="number" min="1" max="3" step="0.1" value="1.6"></label><label>方向<select id="unifiedExportOrientation"><option value="portrait">纵向</option><option value="landscape">横向</option></select></label></div><div class="unified-export-options"><label class="check"><input id="exportIncludeNote" type="checkbox" checked>笔记正文</label><label class="check"><input id="exportAnnotations" type="checkbox" checked>个人补充</label><label class="check"><input id="exportSourceLink" type="checkbox" checked>来源链接</label><label class="check"><input id="exportTimestamps" type="checkbox" checked>时间点</label><label class="check"><input id="exportImages" type="checkbox" checked>图片</label><label class="check"><input id="exportToc" type="checkbox">目录</label><label class="check"><input id="exportTranscript" type="checkbox">完整字幕</label><label class="check"><input id="exportPractice" type="checkbox">学习空间练习</label></div><div class="unified-export-actions"><button id="previewUnifiedExport" class="primary">更新预览</button><button id="downloadUnifiedExport">导出文件</button></div><p id="unifiedExportStatus" class="muted" role="status"></p><iframe id="unifiedExportPreview" title="导出预览"></iframe>`);
+    const token = show("统一导出", `<p class="muted">笔记和学习资料共享同一份结构化正文。预览会使用个人补充、出处、时间点、图片与练习的当前选择。</p><div class="unified-export-grid"><label>格式<select id="unifiedExportFormat"><option value="html">HTML（离线预览）</option><option value="docx">Word</option><option value="pdf">PDF</option></select></label><label>字体<select id="unifiedExportFont"><option>Microsoft YaHei</option><option>Noto Sans SC</option><option>SimSun</option><option>Arial</option></select></label><label>字号<input id="unifiedExportSize" type="number" min="8" max="36" step="0.5" value="10.5"></label><label>行距<input id="unifiedExportLeading" type="number" min="1" max="3" step="0.1" value="1.6"></label><label>方向<select id="unifiedExportOrientation"><option value="portrait">纵向</option><option value="landscape">横向</option></select></label></div><div class="unified-export-options"><label class="check"><input id="exportIncludeNote" type="checkbox" checked>笔记正文</label><label class="check"><input id="exportAnnotations" type="checkbox" checked>个人补充</label><label class="check"><input id="exportSourceLink" type="checkbox" checked>来源链接</label><label class="check"><input id="exportTimestamps" type="checkbox" checked>时间点</label><label class="check"><input id="exportImages" type="checkbox" checked>图片</label><label class="check"><input id="exportToc" type="checkbox">目录</label><label class="check"><input id="exportTranscript" type="checkbox">完整字幕</label><label class="check"><input id="exportPractice" type="checkbox">学习空间练习</label><label class="check"><input id="exportDiagnostics" type="checkbox">脱敏诊断（Sanitized diagnostics）</label></div><div class="unified-export-actions"><button id="previewUnifiedExport" class="primary">更新预览</button><button id="downloadUnifiedExport">导出文件</button></div><p id="unifiedExportStatus" class="muted" role="status"></p><iframe id="unifiedExportPreview" title="导出预览"></iframe>`);
     dialog.dataset.sourceId = s.id;
     dialog.dataset.sourceKind = s.kind;
     const formatGrid = $("unifiedExportFormat")?.closest(".unified-export-grid");
     const presetBar = document.createElement("div"); presetBar.className = "unified-export-presets";
-    presetBar.innerHTML = '<label>导出预设<select id="unifiedExportPreset"><option value="">不使用预设</option></select></label><label>预设名称<input id="unifiedExportPresetName" maxlength="80" placeholder="例如：打印讲义"></label><button type="button" id="saveUnifiedExportPreset">保存当前排版</button><button type="button" id="deleteUnifiedExportPreset">删除预设</button>';
+    presetBar.innerHTML = '<label>导出预设<select id="unifiedExportPreset"><option value="">不使用预设</option></select></label><label>预设名称<input id="unifiedExportPresetName" maxlength="80" placeholder="例如：打印讲义"></label><button type="button" id="saveUnifiedExportPreset">保存当前排版</button><button type="button" id="deleteUnifiedExportPreset" disabled>删除预设</button>';
     formatGrid?.before(presetBar);
     const spacing = document.createElement("div"); spacing.className = "unified-export-spacing";
     spacing.innerHTML = '<label>段前距（pt）<input id="unifiedExportBefore" type="number" min="0" max="60" step="1" value="0"></label><label>段后距（pt）<input id="unifiedExportAfter" type="number" min="0" max="60" step="1" value="7"></label><label>上边距（mm）<input id="unifiedExportTop" type="number" min="5" max="50" step="1" value="18"></label><label>下边距（mm）<input id="unifiedExportBottom" type="number" min="5" max="50" step="1" value="18"></label><label>左边距（mm）<input id="unifiedExportLeft" type="number" min="5" max="50" step="1" value="18"></label><label>右边距（mm）<input id="unifiedExportRight" type="number" min="5" max="50" step="1" value="18"></label>';
     formatGrid?.after(spacing);
-    const collect = () => ({ format: $("unifiedExportFormat").value, options: { include_note: $("exportIncludeNote").checked, include_annotations: $("exportAnnotations").checked, include_source_link: $("exportSourceLink").checked, include_timestamps: $("exportTimestamps").checked, include_images: $("exportImages").checked, include_toc: $("exportToc").checked, include_transcript: $("exportTranscript").checked, include_practice: $("exportPractice").checked, font_family: $("unifiedExportFont").value, font_size: Number($("unifiedExportSize").value), line_height: Number($("unifiedExportLeading").value), paragraph_before: Number($("unifiedExportBefore").value), paragraph_after: Number($("unifiedExportAfter").value), margin_top: Number($("unifiedExportTop").value), margin_bottom: Number($("unifiedExportBottom").value), margin_left: Number($("unifiedExportLeft").value), margin_right: Number($("unifiedExportRight").value), orientation: $("unifiedExportOrientation").value } });
-    const setOptions = (options = {}) => { const values = { unifiedExportFont: options.font_family, unifiedExportSize: options.font_size, unifiedExportLeading: options.line_height, unifiedExportBefore: options.paragraph_before, unifiedExportAfter: options.paragraph_after, unifiedExportTop: options.margin_top, unifiedExportBottom: options.margin_bottom, unifiedExportLeft: options.margin_left, unifiedExportRight: options.margin_right, unifiedExportOrientation: options.orientation }; Object.entries(values).forEach(([id, value]) => { if (value !== undefined && $(id)) $(id).value = value; }); const checks = { exportIncludeNote: "include_note", exportAnnotations: "include_annotations", exportSourceLink: "include_source_link", exportTimestamps: "include_timestamps", exportImages: "include_images", exportToc: "include_toc", exportTranscript: "include_transcript", exportPractice: "include_practice" }; Object.entries(checks).forEach(([id, key]) => { if (options[key] !== undefined && $(id)) $(id).checked = Boolean(options[key]); }); };
     const presetSelect = $("unifiedExportPreset");
-    api("/api/study/export-presets").then(result => { for (const item of result.presets || []) { const option = document.createElement("option"); option.value = item.name; option.textContent = item.name; option.dataset.options = JSON.stringify(item.options || {}); presetSelect?.append(option); } }).catch(() => {});
-    api("/api/study/export-fonts").then(result => { const select = $("unifiedExportFont"); if (!select) return; const fonts = (result.fonts || []).filter(item => item.available); if (!fonts.length) return; select.replaceChildren(...fonts.map(item => Object.assign(document.createElement("option"), { value: item.name, textContent: item.name }))); }).catch(() => {});
-    presetSelect?.addEventListener("change", () => { const selected = presetSelect.selectedOptions?.[0]; if (selected?.dataset.options) setOptions(JSON.parse(selected.dataset.options)); });
-    $("saveUnifiedExportPreset")?.addEventListener("click", async () => { const name = $("unifiedExportPresetName")?.value.trim(); if (!name) { statusText("请先填写预设名称。"); return; } try { await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(collect()) }); statusText(`已保存导出预设“${name}”。`); } catch (error) { statusText(error.message); } });
-    $("deleteUnifiedExportPreset")?.addEventListener("click", async () => { const name = presetSelect?.value; if (!name) { statusText("请先选择要删除的预设。"); return; } try { await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "DELETE" }); [...(presetSelect?.options || [])].find(option => option.value === name)?.remove(); statusText(`已删除导出预设“${name}”。`); } catch (error) { statusText(error.message); } });
-    const statusText = (message) => { const node = $("unifiedExportStatus"); if (node) node.textContent = message; };
+    const downloadButton = $("downloadUnifiedExport");
+    const statusNode = $("unifiedExportStatus");
+    const previewFrame = $("unifiedExportPreview");
+    let selectedTemplate = "print", previewSequence = 0, statusSequence = 0, downloading = false;
+    const changedPresets = new Set();
+    const active = () => token === generation && dialog.open &&
+      state.selected?.id === s.id && state.selected?.kind === s.kind;
+    const statusText = (message) => { if (active()) statusNode.textContent = message; };
+    const warningText = (warnings = []) => {
+      const messages = {
+        non_bmp_symbols_rendered_as_unicode_names: "PDF 中的部分表情与特殊符号已替换为可读名称，以免显示为空白。",
+        docx_toc_page_numbers_require_field_update: "Word 目录页码需要在打开文件后右键目录，选择“更新域/更新整个目录”。",
+        unrecognized_math_commands_preserved_as_source: "少量公式命令已保留原文，请核对。",
+        requested_docx_font_unavailable_using_host_fallback: "所选 Word 字体未安装，将使用打开文件设备上的替代字体；排版可能变化。",
+        emoji_font_unavailable_using_host_fallback: "表情字体未安装，将使用打开文件设备上的替代字体。",
+        requested_pdf_font_unavailable_using_cjk_fallback: "所选 PDF 字体未安装，已使用中文替代字体；排版可能变化。",
+        embedded_system_cjk_font_unavailable_using_pdf_cid_fallback: "未找到可嵌入的中文字体，PDF 已使用兼容字体；请检查中文显示。",
+        embedded_html_font_unavailable_using_system_fallback: "离线 HTML 字体无法嵌入，将使用设备上的替代字体。",
+      };
+      return [...new Set(warnings.map(code => String(code).trim()).filter(Boolean))]
+        .map(code => messages[code] || `导出提示：${code}`).join(" ");
+    };
+    const collect = () => ({
+      format: $("unifiedExportFormat").value,
+      options: {
+        template: selectedTemplate,
+        include_note: $("exportIncludeNote").checked,
+        include_annotations: $("exportAnnotations").checked,
+        include_source_link: $("exportSourceLink").checked,
+        include_timestamps: $("exportTimestamps").checked,
+        include_images: $("exportImages").checked,
+        include_toc: $("exportToc").checked,
+        include_transcript: $("exportTranscript").checked,
+        include_practice: $("exportPractice").checked,
+        include_diagnostics: $("exportDiagnostics").checked,
+        font_family: $("unifiedExportFont").value,
+        font_size: Number($("unifiedExportSize").value),
+        line_height: Number($("unifiedExportLeading").value),
+        paragraph_before: Number($("unifiedExportBefore").value),
+        paragraph_after: Number($("unifiedExportAfter").value),
+        margin_top: Number($("unifiedExportTop").value),
+        margin_bottom: Number($("unifiedExportBottom").value),
+        margin_left: Number($("unifiedExportLeft").value),
+        margin_right: Number($("unifiedExportRight").value),
+        orientation: $("unifiedExportOrientation").value,
+      },
+    });
+    const ensureFont = (name) => {
+      const select = $("unifiedExportFont");
+      if (name && ![...select.options].some(option => option.value === name)) {
+        select.append(Object.assign(document.createElement("option"), { value: name, textContent: name }));
+      }
+    };
+    const setOptions = (options = {}) => {
+      selectedTemplate = ["print", "academic", "compact"].includes(options.template) ? options.template : "print";
+      ensureFont(options.font_family);
+      const values = {
+        unifiedExportFont: options.font_family, unifiedExportSize: options.font_size,
+        unifiedExportLeading: options.line_height, unifiedExportBefore: options.paragraph_before,
+        unifiedExportAfter: options.paragraph_after, unifiedExportTop: options.margin_top,
+        unifiedExportBottom: options.margin_bottom, unifiedExportLeft: options.margin_left,
+        unifiedExportRight: options.margin_right, unifiedExportOrientation: options.orientation,
+      };
+      Object.entries(values).forEach(([id, value]) => { if (value !== undefined) $(id).value = value; });
+      const checks = {
+        exportIncludeNote: "include_note", exportAnnotations: "include_annotations",
+        exportSourceLink: "include_source_link", exportTimestamps: "include_timestamps",
+        exportImages: "include_images", exportToc: "include_toc",
+        exportTranscript: "include_transcript", exportPractice: "include_practice",
+        exportDiagnostics: "include_diagnostics",
+      };
+      Object.entries(checks).forEach(([id, key]) => { $(id).checked = Boolean(options[key]); });
+    };
+    const updateDelete = () => {
+      const selected = presetSelect.selectedOptions[0];
+      $("deleteUnifiedExportPreset").disabled = !selected?.dataset.name || selected.dataset.readOnly === "true";
+    };
+    const upsertPreset = (item, builtIn = false) => {
+      const value = `${builtIn ? "builtin" : "user"}:${builtIn ? item.id : item.name}`;
+      let option = [...presetSelect.options].find(option => option.value === value);
+      if (!option) { option = document.createElement("option"); presetSelect.append(option); }
+      option.value = value;
+      option.textContent = builtIn ? `${item.name}（内置）` : item.name;
+      option.dataset.name = item.name;
+      option.dataset.readOnly = String(builtIn || item.read_only === true);
+      option.dataset.options = JSON.stringify(item.options || {});
+      return option;
+    };
+    api("/api/study/export-presets").then(result => {
+      if (!active()) return;
+      for (const item of result.built_in_presets || []) upsertPreset(item, true);
+      for (const item of result.presets || []) if (!changedPresets.has(item.name)) upsertPreset(item);
+      updateDelete();
+    }).catch(() => {});
+    api("/api/study/export-fonts").then(result => {
+      if (!active()) return;
+      // Keep a preset's chosen font even when this host lacks it. Export warnings
+      // explain fallback rather than silently changing the saved preference.
+      for (const item of result.fonts || []) if (item.available) ensureFont(item.name);
+    }).catch(() => {});
+    presetSelect.addEventListener("change", () => {
+      const selected = presetSelect.selectedOptions[0];
+      if (selected?.dataset.options) setOptions(JSON.parse(selected.dataset.options));
+      else selectedTemplate = "print";
+      updateDelete();
+    });
+    $("saveUnifiedExportPreset").addEventListener("click", async (event) => {
+      if (!active() || event.currentTarget.disabled) return;
+      const name = $("unifiedExportPresetName").value.trim();
+      if (!name) { statusText("请先填写预设名称。"); return; }
+      const button = event.currentTarget, settings = collect(), statusToken = ++statusSequence;
+      button.disabled = true;
+      try {
+        const result = await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(settings) });
+        if (!active()) return;
+        const item = { name: result.name || name, options: result.options || settings.options };
+        changedPresets.add(item.name);
+        presetSelect.value = upsertPreset(item).value;
+        setOptions(item.options);
+        updateDelete();
+        if (statusToken === statusSequence) statusText(`已保存导出预设“${item.name}”。`);
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally { if (active()) button.disabled = false; }
+    });
+    $("deleteUnifiedExportPreset").addEventListener("click", async (event) => {
+      if (!active() || event.currentTarget.disabled) return;
+      const selected = presetSelect.selectedOptions[0];
+      if (!selected?.dataset.name || selected.dataset.readOnly === "true") {
+        statusText("内置预设只读，不能删除；可另存为个人预设。");
+        return;
+      }
+      const name = selected.dataset.name, statusToken = ++statusSequence, button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await api(`/api/study/export-presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+        if (!active()) return;
+        changedPresets.add(name);
+        const wasSelected = presetSelect.value === selected.value;
+        selected.remove();
+        if (wasSelected) { presetSelect.value = ""; selectedTemplate = "print"; }
+        if (statusToken === statusSequence) statusText(`已删除导出预设“${name}”。`);
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally { if (active()) updateDelete(); }
+    });
     const preview = async () => {
-      const status = $("unifiedExportStatus"); status.textContent = "正在整理预览…";
-      try { const result = await api(`${exportBase}/preview`, { method: "POST", body: JSON.stringify(collect()) }); $("unifiedExportPreview").srcdoc = result.html; status.textContent = result.warnings?.length ? `预览已生成：${result.warnings.join("、")}` : "预览已更新；HTML 可离线打开。"; } catch (error) { status.textContent = error.message; }
+      if (!active()) return;
+      const sequence = ++previewSequence, statusToken = ++statusSequence;
+      statusText("正在整理预览…");
+      try {
+        const result = await api(`${exportBase}/preview`, { method: "POST", body: JSON.stringify(collect()) });
+        if (!active() || sequence !== previewSequence) return;
+        previewFrame.srcdoc = result.html;
+        if (statusToken === statusSequence) statusText(result.warnings?.length ? `预览已生成。${warningText(result.warnings)}` : "预览已更新；HTML 可离线打开。");
+      } catch (error) {
+        if (sequence === previewSequence && statusToken === statusSequence) statusText(error.message);
+      }
     };
     $("previewUnifiedExport").onclick = preview;
-    $("downloadUnifiedExport").onclick = async () => {
-      const settings = collect(), status = $("unifiedExportStatus"); status.textContent = "正在生成文件…";
-      try { const response = await fetch(`${exportBase}/${settings.format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }); if (!response.ok) throw new Error((await response.text()) || "导出失败"); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${s.title || "笔记"}.${settings.format === "html" ? "html" : settings.format}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); status.textContent = "文件已生成。"; } catch (error) { status.textContent = error.message; }
+    downloadButton.onclick = async () => {
+      if (!active() || downloading) return;
+      const settings = collect(), statusToken = ++statusSequence;
+      downloading = true;
+      downloadButton.disabled = true;
+      statusText("正在生成文件…");
+      try {
+        const response = await fetch(`${exportBase}/${settings.format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
+        if (!active()) return;
+        if (!response.ok) throw new Error((await response.text()) || "导出失败");
+        const blob = await response.blob();
+        if (!active()) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${s.title || "笔记"}.${settings.format}`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const warnings = warningText((response.headers.get("X-LearnNote-Export-Warning") || "").split(","));
+        if (statusToken === statusSequence) statusText(warnings ? `文件已生成。${warnings}` : "文件已生成。");
+      } catch (error) {
+        if (statusToken === statusSequence) statusText(error.message);
+      } finally {
+        downloading = false;
+        if (active()) downloadButton.disabled = false;
+      }
     };
     preview();
   }
@@ -418,71 +604,27 @@ export function installTools(ctx) {
   async function batch() {
     if (batchRunning) return;
     if (course.paused) throw new Error("请先继续课程。");
-    const urls = course.sources.filter((s) => s.kind === "url");
-    if (!urls.length) {
-      status("没有待整理链接。");
-      return;
-    }
-    if (
-      !confirm(
-        `将提交前 ${Math.min(24, urls.length)} 个链接，并使用当前模型设置。继续？`,
-      )
-    )
-      return;
+    const snapshot = await api(`/api/courses/${course.id}`);
+    const pending = (snapshot.episodes || []).filter(item => item.source_kind === "url" && !item.task_id && item.status !== "identity_conflict").slice(0, 24);
+    if (!pending.length) { status("没有待提交分集；失败或中断的分集可单独恢复。"); return; }
+    if (!confirm(`将提交 ${pending.length} 个分集，字幕优先且不分析画面。每集使用当前资源预算；重复点击会复用已有任务。继续？`)) return;
     batchRunning = true;
-    const id = course.id;
+    const id = course.id, allowedIds = new Set(pending.map(item=>item.episode_id));
     try {
-      for (const source of urls.slice(0, 24)) {
-        const fresh = (await api(`/api/courses/${id}`)).course;
-        if (fresh.paused) {
-          status("课程已暂停，剩余链接未提交。");
-          break;
-        }
-        const index = fresh.sources.findIndex(
-          (s) => s.kind === "url" && s.url === source.url,
-        );
-        if (index < 0) continue;
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(id + ":" + source.url),
-        );
-        const handoff =
-          "course-" +
-          [...new Uint8Array(digest)]
-            .map((x) => x.toString(16).padStart(2, "0"))
-            .join("")
-            .slice(0, 40);
-        const task = await api("/api/tasks/from-current-page", {
-          method: "POST",
-          body: JSON.stringify({
-            page_url: source.url,
-            title: source.title,
-            handoff_id: handoff,
-            options: { ...options(), content_mode: "text", visual_understanding: false },
-          }),
-        });
-        fresh.sources[index] = {
-          kind: "task",
-          id: task.task_id,
-          title: source.title,
-        };
-        const saved = await api(`/api/courses/${id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            title: fresh.title,
-            sources: fresh.sources,
-            paused: fresh.paused,
-            revision: fresh.revision,
-          }),
-        });
-        if (course?.id === id) course = saved.course;
-        if (dialog.open && generation) status("已提交：" + source.title);
+      for (let submitted=0;submitted<pending.length;submitted++) {
+        const fresh = await api(`/api/courses/${id}`);
+        if (fresh.course.paused) { status("课程已暂停，剩余分集未提交。"); break; }
+        const candidate=(fresh.episodes || []).find(item=>allowedIds.has(item.episode_id)&&!item.task_id&&item.status!=="identity_conflict");
+        if(!candidate)break;
+        const { episode } = await api(`/api/courses/${id}/episodes/${candidate.episode_id}/prepare`, { method:"POST" });
+        if (episode.task_id) continue;
+        const task = await api("/api/tasks/from-current-page", { method:"POST", body:JSON.stringify({ page_url:episode.url, title:episode.title, handoff_id:episode.handoff_id, options:{ ...options(), content_mode:"text", visual_understanding:false } }) });
+        await api(`/api/courses/${id}/episodes/${candidate.episode_id}/bind`, { method:"POST", body:JSON.stringify({task_id:task.task_id}) });
+        status("已提交：" + episode.title);
       }
       await refresh();
-      if (course?.id === id && dialog.open) courseView();
-    } finally {
-      batchRunning = false;
-    }
+      if (course?.id === id && dialog.open) await openCourse(id);
+    } finally { batchRunning = false; }
   }
   async function community() {
     const s = current(),
@@ -618,14 +760,15 @@ export function installTools(ctx) {
     },
     batch,
     "course-review": () => studySettings(course.id),
+    "refresh-course": () => openCourse(course.id),
     "resume-study": async (button) => {
       const { plan } = await api("/api/study/plan");
       await api("/api/study/plan", { method: "PUT", body: JSON.stringify({ title: plan.title, daily_target: plan.daily_target, timezone: plan.timezone, paused: false }) });
-      await studySettings(button.dataset.courseId || "");
+      await studySettings(button.dataset.courseId || "",button.dataset.taskId || "");
     },
     "start-review": async (button) => {
       dialog.close();
-      await ctx.startReview(button.dataset.courseId || "");
+      await ctx.startReview(button.dataset.courseId || "",button.dataset.taskId || "");
     },
     "range-position": () => {
       $("rangeStart").value = Math.floor($("player").currentTime || 0);
@@ -772,16 +915,23 @@ export function installTools(ctx) {
         await saveCourse({ ...course, sources });
         courseView();
       });
+    else if (b.dataset.retryEpisode)
+      run(b, async () => {
+        if (!confirm("从此分集已有媒体和检查点恢复？使用当前模型设置，不创建重复分集。")) return;
+        const { episode } = await api(`/api/courses/${course.id}/episodes/${b.dataset.retryEpisode}/prepare`, { method:"POST" });
+        if (!episode.retryable || !episode.task_id) { await openCourse(course.id); return; }
+        await api(episode.resume_endpoint, { method:"POST", body:JSON.stringify(options()) });
+        await openCourse(course.id);
+        await refresh();
+      });
     else if (b.dataset.openSource !== undefined)
       run(b, async () => {
         const source = course.sources[Number(b.dataset.openSource)];
-        if (source.kind === "url") {
-          status("点击“整理待处理链接”开始生成笔记。");
-          return;
-        }
-        const item = state.items.find(
-          (i) => i.id === source.id && i.kind === source.kind,
-        );
+        const episode = courseEpisodes.find(item => item.position === Number(b.dataset.openSource));
+        const sourceId = source.kind === "url" ? episode?.task_id : source.id;
+        const sourceKind = source.kind === "url" ? "task" : source.kind;
+        if (!sourceId) { status("点击“整理待处理链接”开始生成笔记。"); return; }
+        const item = state.items.find(i => i.id === sourceId && i.kind === sourceKind);
         if (!item) throw new Error("来源已被删除或不在当前资料库。");
         dialog.close();
         await openItem(item);

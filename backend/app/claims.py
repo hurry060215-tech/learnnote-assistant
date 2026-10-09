@@ -97,7 +97,9 @@ def _claim_spans(markdown: str) -> list[tuple[str, int, int]]:
             value = line
             for marker in _REVIEW_MARKERS.values():
                 value = value.replace(marker, " " * len(marker))
-            if not value.lstrip().startswith(("#", ">", "|", "http://", "https://")):
+            metadata_line = re.match(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:来源|source)[:：]\s*https?://", value, re.I)
+            study_action = re.match(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:回看目标|复习动作)[:：]", value)
+            if not metadata_line and not study_action and not value.lstrip().startswith(("#", ">", "|", "http://", "https://")):
                 for match in _SENTENCE_RE.finditer(value):
                     raw = match.group(0)
                     prefix = re.match(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?", raw).end()

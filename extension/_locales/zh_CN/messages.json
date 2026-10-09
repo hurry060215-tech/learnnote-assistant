@@ -787,5 +787,35 @@
   },
   "service_service_detail": {
     "message": "服务返回的原始信息：{detail}"
+  },
+  "range_mode_label": {
+    "message": "学习范围"
+  },
+  "range_whole": {
+    "message": "完整视频"
+  },
+  "range_current_5": {
+    "message": "当前位置起 5 分钟"
+  },
+  "range_current_15": {
+    "message": "当前位置起 15 分钟"
+  },
+  "range_current_30": {
+    "message": "当前位置起 30 分钟"
+  },
+  "range_current_chapter": {
+    "message": "当前章节（需要原始章节线索）"
+  },
+  "range_custom": {
+    "message": "自定义起止时间"
+  },
+  "range_position_unavailable": {
+    "message": "当前位置不可用或已到片尾，请播放视频后重试。"
+  },
+  "range_chapter_unavailable": {
+    "message": "当前片段没有可靠的原始章节线索，请选择时间窗口或自定义范围。"
+  },
+  "range_selected_bounds": {
+    "message": "已选择 {start}–{end} 秒；发送时重新核对当前位置和视频身份。"
   }
 }

@@ -84,12 +84,24 @@ def delete_course(course_id: str) -> None:
     # Removing a collection is not authorization to delete its source files.
     with _lock:
         _path(course_id).unlink()
+        from .course_episodes import clear_course_episode_links
+        clear_course_episode_links(course_id)
+
+
+def _evidence_sources(course: dict) -> list[dict]:
+    if not any(source["kind"] == "url" for source in course["sources"]):
+        return course["sources"]
+    from .course_episodes import course_episodes
+    episodes = {item["position"]: item for item in course_episodes(course)}
+    return [{"kind":"task", "id":episodes[index]["task_id"], "title":source["title"]}
+            if source["kind"] == "url" and episodes.get(index, {}).get("task_id") else source
+            for index, source in enumerate(course["sources"])]
 
 
 def course_evidence(course_id: str) -> list[dict]:
     evidence = []
     seen_ids: set[str] = set()
-    for source in get_course(course_id)["sources"]:
+    for source in _evidence_sources(get_course(course_id)):
         try:
             items = evidence_for_task(source["id"], limit=500) if source["kind"] == "task" else material_anchors(source["id"], 1000) if source["kind"] == "material" else []
         except (ValueError, FileNotFoundError):
@@ -107,7 +119,7 @@ def course_evidence(course_id: str) -> list[dict]:
 
 def course_evidence_ids(course_id: str) -> set[str]:
     ids: set[str] = set()
-    for source in get_course(course_id)["sources"]:
+    for source in _evidence_sources(get_course(course_id)):
         try:
             if source["kind"] == "task":
                 ids.update(evidence_ids_for_task(source["id"]))

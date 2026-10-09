@@ -17,6 +17,7 @@ $files = @(
   "capture-classification.js",
   "capture-ranking.js",
   "content.js",
+  "content-study-evidence.js",
   "page_hook.js",
   "sidepanel.html",
   "sidepanel.css",

@@ -111,7 +111,7 @@ function subtitleSrt(cues) {
 function setProcessingMode(mode = "study", persist = true) {
   if (sending) return;
   const nextMode = ["quick", "study", "deep"].includes(mode) ? mode : "study";
-  if (nextMode !== selectedProcessingMode && currentTaskId) resetSourceState();
+  if (nextMode !== selectedProcessingMode && currentTaskId) resetSourceState(true);
   selectedProcessingMode = nextMode;
   document.querySelectorAll?.("[data-processing-mode]").forEach(button => {
     const active = button.dataset.processingMode === selectedProcessingMode;
@@ -490,7 +490,11 @@ function sameSourceIdentity(left, right) {
   return Boolean(left.canonical_page_url || right.canonical_page_url || leftVideoId || rightVideoId || leftSrc || rightSrc);
 }
 
-function resetSourceState() {
+function resetSourceState(keepRange = false) {
+  if (!keepRange) {
+    for (const id of ["learningRangeStart","learningRangeEnd"]) { const field=document.querySelector("#"+id); if(field)field.value=""; }
+    const mode=document.querySelector("#learningRangeMode"); if(mode)mode.value="whole";
+  }
   stopQuickPolling();
   preflightReport = null;
   preflightIdentity = null;
@@ -530,11 +534,12 @@ function hasFreshPreflight(identity = displayedIdentity) {
   );
 }
 
-function handoffId(identity = displayedIdentity) {
+function handoffId(identity = displayedIdentity, range = {}) {
   const sourceKey = sourceContinuityKey(identity);
-  if (activeHandoff?.sourceKey === sourceKey) return activeHandoff.id;
-  const id = `ln-${fnv1a(sourceKey)}-${Date.now().toString(36)}`;
-  activeHandoff = { sourceKey, id };
+  const rangeKey = JSON.stringify({start:range.start ?? null,end:range.end ?? null});
+  if (activeHandoff?.sourceKey === sourceKey && activeHandoff.rangeKey === rangeKey) return activeHandoff.id;
+  const id = `ln-${fnv1a(sourceKey + rangeKey)}-${Date.now().toString(36)}`;
+  activeHandoff = { sourceKey, rangeKey, id };
   return id;
 }
 
@@ -899,16 +904,39 @@ function pageSwitchMessage() {
   return t("ui_the_page_or_video_changed_old_preflight_results_were_discarded");
 }
 
-function learningRange() {
-  const startValue = document.querySelector("#learningRangeStart")?.value || "";
-  const endValue = document.querySelector("#learningRangeEnd")?.value || "";
-  if (!startValue && !endValue) return {};
-  const start = Number(startValue || 0);
-  const end = Number(endValue);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
-    throw new Error(t("ui_invalid_range_the_end_time_must_be_greater_than_the_start_time"));
+function learningRange(context = currentContext) {
+  const mode = document.querySelector("#learningRangeMode")?.value || "custom";
+  const duration = Number(context?.page?.active_video?.duration || 0), current = Number(context?.page?.active_video?.current_time);
+  if (/^current(5|15|30)$/.test(mode)) {
+    if (!Number.isFinite(current) || current < 0 || (duration > 0 && current >= duration)) throw new Error(t("range_position_unavailable"));
+    return { start:current, end:Math.min(duration || Infinity,current+Number(mode.slice(7))*60) };
   }
-  return { start, end };
+  if (mode === "chapter") {
+    const chapter = (context?.page?.chapters || []).filter(item => Number.isFinite(Number(item.start)) && Number.isFinite(Number(item.end)) && Number(item.start) >= 0 && Number(item.end) > Number(item.start) && Number(item.start) <= current && current < Number(item.end) && (!duration || Number(item.end) <= duration+0.1)).sort((a,b)=>Number(b.start)-Number(a.start))[0];
+    if (!chapter) throw new Error(t("range_chapter_unavailable"));
+    return {start:Number(chapter.start),end:Number(chapter.end)};
+  }
+  const startValue=document.querySelector("#learningRangeStart")?.value || "", endValue=document.querySelector("#learningRangeEnd")?.value || "";
+  if (!startValue && !endValue) return {};
+  const start=Number(startValue || 0), end=Number(endValue || duration);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || (duration > 0 && end > duration)) throw new Error(t("ui_invalid_range_the_end_time_must_be_greater_than_the_start_time"));
+  return {start,end};
+}
+
+async function updateLearningRangeMode() {
+  resetSourceState(true);
+  const mode=document.querySelector("#learningRangeMode")?.value || "whole";
+  const hint=document.querySelector("#learningChapterHint"), status=document.querySelector("#learningRangeStatus"), start=document.querySelector("#learningRangeStart"), end=document.querySelector("#learningRangeEnd");
+  if(mode === "whole") { if(start)start.value="";if(end)end.value="";if(hint)hint.textContent="";return; }
+  if(mode === "custom")return;
+  const expected=displayedIdentity;
+  try {
+    const fresh=await collectContext(true);
+    if(!fresh || !sameSourceIdentity(expected,buildSourceIdentity(fresh)))throw new Error(pageSwitchMessage());
+    const range=learningRange(fresh);
+    if(start)start.value=String(range.start);if(end)end.value=String(range.end);
+    if(hint)hint.textContent=t("range_selected_bounds",{start:range.start,end:range.end});if(status)status.textContent="";
+  } catch(error) {if(status)status.textContent=productMessage(error.message);}
 }
 
 function sitePermissionPattern(pageUrl = "") {
@@ -1108,6 +1136,7 @@ async function sendToClient(modeOverride = "") {
       return false;
     }
 
+    selectedRange = learningRange(fresh);
     const quick = requestedMode !== "deep" && hasReliableBrowserSubtitles(fresh);
     currentTaskContentMode = selectedOptions.content_mode;
     if (quick) {
@@ -1123,7 +1152,7 @@ async function sendToClient(modeOverride = "") {
         page: fresh.page,
         resources: [],
         sourceIdentity: freshIdentity,
-        handoffId: handoffId(freshIdentity),
+        handoffId: handoffId(freshIdentity, selectedRange),
         defer: false,
         mode: "subtitle_only",
         learning_range: selectedRange,
@@ -1153,8 +1182,8 @@ async function sendToClient(modeOverride = "") {
 
     currentTaskMode = "video";
     const videoHandoffId = requestedMode === "deep" && activeHandoff?.sourceKey === sourceContinuityKey(freshIdentity)
-      ? (activeHandoff = null, handoffId(freshIdentity))
-      : handoffId(freshIdentity);
+      ? (activeHandoff = null, handoffId(freshIdentity, selectedRange))
+      : handoffId(freshIdentity, selectedRange);
     setProgress(76, t("ui_sending_the_video_source_to_the_client"));
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
@@ -1425,8 +1454,13 @@ function bindEvents() {
 }
 
 function bindProductActions(){
+  document.querySelector("#learningRangeMode")?.addEventListener?.("change",updateLearningRangeMode);
+  for(const id of ["learningRangeStart","learningRangeEnd"])document.querySelector("#"+id)?.addEventListener?.("input",()=>{const mode=document.querySelector("#learningRangeMode");if(mode)mode.value="custom";resetSourceState(true);});
   const rangeEndButton = document.querySelector("#useCurrentPositionAsRangeEnd");
-  rangeEndButton?.addEventListener?.("click", () => {
+  rangeEndButton?.addEventListener?.("click", async () => {
+    const expected=displayedIdentity,fresh=await collectContext(true);
+    if(!fresh || !sameSourceIdentity(expected,buildSourceIdentity(fresh)))return;
+    const mode=document.querySelector("#learningRangeMode");if(mode)mode.value="custom";
     const current = Number(currentContext?.page?.active_video?.current_time || 0);
     const status = document.querySelector("#learningRangeStatus");
     if (!Number.isFinite(current) || current <= 0) {
@@ -1478,6 +1512,8 @@ globalThis.__learnnoteSidepanel = {
   hasFreshPreflight,
   handoffId,
   integrityEvidence,
+  learningRange,
+  updateLearningRangeMode,
   collectContext,
   runPreflight,
   sendToClient,

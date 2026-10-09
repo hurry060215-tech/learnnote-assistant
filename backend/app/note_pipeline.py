@@ -10,6 +10,7 @@ from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
 from .claims import build_claim_evidence_map, mark_claims_for_review
+from .transcript_quality import preserve_transcript_review_draft
 
 
 def finish_note_task(
@@ -36,6 +37,9 @@ def finish_note_task(
     check_cancel: Callable,
     mark_checkpoint: Callable,
 ) -> None:
+    if preserve_transcript_review_draft(task_id, title, transcript,
+            task_dir=task_dir, write_json=write_json, update_task=update_task):
+        return
     media_duration = integrity.duration
     if asr_error and not has_visual_summary_evidence(frames, media_duration):
         update_task(

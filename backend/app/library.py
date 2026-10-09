@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
-from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence
+from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
 
 
@@ -200,13 +200,10 @@ def index_task(record: TaskRecord) -> bool:
         if indexed:
             # Keep the task directory as the source of truth while exposing a
             # citation-ready projection for local retrieval.
-            remove_task_evidence(record.id)
-            if note:
-                add_evidence(record_to_evidence(record, note, "note"))
+            evidence = [record_to_evidence(record, note, "note")] if note else []
             if transcript:
-                transcript_items = transcript_evidence(record, transcript)
-                for item in transcript_items:
-                    add_evidence(item)
+                evidence.extend(transcript_evidence(record, transcript))
+            replace_task_evidence(record.id, evidence)
         return indexed
     except (OSError, sqlite3.Error):
         return False

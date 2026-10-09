@@ -8,7 +8,8 @@ import {
   normalizeBackendUrl,
   safeArchivePath,
   sanitizeVaultSegment,
-  taskFolderPath
+  taskFolderPath,
+  taskFolderCandidates
 } from "../src/core.mjs";
 
 test("backend URL only accepts the local LearnNote service", () => {
@@ -21,6 +22,27 @@ test("vault paths are stable and remove unsafe characters", () => {
   assert.equal(sanitizeVaultSegment('课程: 01 / 入门?'), "课程 01 入门");
   assert.equal(taskFolderPath("LearnNote/课程", "A/B", "abc"), "LearnNote/课程/A B--abc");
   assert.equal(taskFolderPath("../LearnNote/./课程", "A/B", "abc"), "LearnNote/课程/A B--abc");
+});
+
+test("Unicode names keep complete NFC codepoints and byte-safe folder segments", () => {
+  const name = "a".repeat(89) + "🧭";
+  assert.equal(sanitizeVaultSegment(name), name);
+  assert.ok(sanitizeVaultSegment(name).isWellFormed());
+  assert.equal(sanitizeVaultSegment("cafe\u0301"), "café");
+  for (const value of ["中文".repeat(100), "日本語🧭".repeat(100), "🧭".repeat(100)]) {
+    assert.ok(Buffer.byteLength(sanitizeVaultSegment(value), "utf8") <= 180);
+    const folder = taskFolderPath("LearnNote", value, "abc123def456").split("/").at(-1);
+    assert.ok(folder.isWellFormed()); assert.ok(Buffer.byteLength(folder, "utf8") <= 240);
+    assert.ok(folder.endsWith("--abc123def456"));
+  }
+});
+
+test("NFC paths keep identity and existing legacy note lookup without traversal", () => {
+  assert.equal(sanitizeVaultSegment(" /:*? "), "LearnNote");
+  assert.equal(taskFolderPath("../LearnNote/./课程", "cafe\u0301", "one"), "LearnNote/课程/café--one");
+  assert.notEqual(taskFolderPath("LearnNote", "café", "one"), taskFolderPath("LearnNote", "café", "two"));
+  assert.deepEqual(taskFolderCandidates("LearnNote", "cafe\u0301", "one"), ["LearnNote/café--one", "LearnNote/cafe\u0301--one"]);
+  assert.equal(safeArchivePath("中文/../secret.md"), "");
 });
 
 test("archive traversal paths are rejected", () => {

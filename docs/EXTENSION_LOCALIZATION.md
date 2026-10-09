@@ -53,25 +53,26 @@ Both support documents are present: [English](../extension/HELP.en.md) and
 [简体中文](../extension/HELP.zh-CN.md). Both listing descriptions are in
 [STORE_LISTING.md](../extension/STORE_LISTING.md).
 
-The screenshot and visual-review acceptance items are **not complete**. No new
-browser screenshot or 390/768/desktop overflow result was produced in the current
-cloud task: its supported localhost browser route was blocked. Node DOM stubs do
-not prove pixel layout. Do not use this document as store-submission approval.
+### Actual rendered checkpoint
 
-Before closing #144 or publishing the updated listing, capture real extension
-screenshots with synthetic, non-private course material in each browser locale:
+At commit `fd8491747ff555c1ac8c7e92dcaad0c09762d0e8`, Windows Edge rendered the
+shipped panel and its actual controller/styles in both locales. The extension
+runner reported **18 passed conditions and four generated store candidates**:
+390/768/1440 target widths × 90/100/200% effective viewport/device scale × two
+languages. It exercised loading, connected, localized error and result states,
+with additional offline/incompatible checks at 390/100%. User content stayed
+original. Chrome APIs and local-service responses were synthetic; the UI was real.
 
-| Capture | English caption | 简体中文说明 |
-| --- | --- | --- |
-| Connected panel | Current source and processing choices | 当前来源与整理方式 |
-| Original transcript | Search and revisit the original video | 搜索原文并回到视频 |
-| Permissions | Site authorization and local data flow | 站点授权与本机数据流 |
-| Failure/recovery | Clear local-client recovery steps | 清楚的本机连接恢复步骤 |
+Evidence: [workflow run 37802466976](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37802466976),
+[artifact 11560713522](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37802466976/artifacts/11560713522).
+The extension stage passed; the whole workflow subsequently failed on a separate
+default-reader 390/200% overflow. See [reproduction conditions](EXTENSION_LOCALE_VISUAL_CI.md).
 
-For **each locale**, inspect widths 390, 768, and 1440 pixels (or a recorded
-actual desktop width), expanded source/options/permission sections, long page
-and model names, keyboard focus, loading/offline/incompatible/error states, and
-200% text. Record `scrollWidth <= clientWidth` for the panel, not only its parent
-page, and inspect clipped labels and controls visually. Store screenshots with
-locale and width in the filename; the expected files are intentionally not
-represented as existing until captured.
+**Issue #144 remains open.** The PNGs have not been manually inspected and are
+not persistently archived as approved store assets. The available CI artifact
+has 14-day retention; its image bytes could not be read in this cloud task
+(HTTP 403), and that boundary was respected. Generated screenshots and automated
+layout assertions are evidence of rendering, not visual/store-submission approval.
+Native extension installation and browser permission prompts were not tested.
+No artifact transfer workaround, new permission or store upload is part of this
+patch. Matching reviewed, durable bilingual assets remain a separate prerequisite.

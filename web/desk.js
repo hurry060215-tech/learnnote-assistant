@@ -1,3 +1,5 @@
+import { mountQueueControls } from "/web/queue-controls.js";
+import { renderEditionStable } from "/web/reader-progress.js";
 import {
   installConnections,
   loadModelConnection,
@@ -374,6 +376,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
   $("breadcrumb").textContent = item.title;
   $("regenerate").hidden = item.kind !== "task" || item.status !== "success";
   $("document").innerHTML = '<p class="muted">正在打开…</p>';
+  delete $("document").dataset.readerSource;
   $("annotationList").replaceChildren();
   $("annotationText").value = "";
   state.annotationEditingId = "";
@@ -407,7 +410,8 @@ async function loadEdition(epoch) {
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
-  renderNote();
+  renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
+    `${edition.revision}:${selected.summary_source || ""}`, renderNote);
 }
 function renderNote() {
   // Keep the edition hash alongside the rendered document so annotations and
@@ -590,6 +594,7 @@ function renderStatus(reload = true) {
       ? priorProgress.open
       : t.status !== "success";
   panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  mountQueueControls(panel, t, api, refresh);
   if (t.claim_evidence?.path) {
     const details = document.createElement("details");
     details.className = "claim-evidence-details";
@@ -1479,7 +1484,7 @@ async function drawReview() {
     } catch { /* Review remains usable if only the preview request fails. */ }
   }
 }
-async function startReview(courseId = "") {
+async function startReview(courseId = "", taskId = "") {
   $("reviewDialog").showModal();
   $("reviewContent").textContent = "正在读取…";
   try {
@@ -1495,7 +1500,7 @@ async function startReview(courseId = "") {
       return;
     }
     state.cards = (
-      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}`)
+      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`)
     ).cards;
     drawReview();
   } catch (error) {

@@ -1,3 +1,43 @@
+// Pure helpers load before this classic UI orchestration script.
+var {
+  escapeHtml,
+  semverParts,
+  isNewerVersion,
+  compactUrl,
+  isUnreadableTitle,
+  hostFromUrl,
+  fmt,
+  seekTimeValue,
+  seekTimeButton,
+  frameTimestampText,
+  fmtBytes,
+  contentDispositionFilename,
+  contentDispositionHint,
+  safeHeaderNames,
+  requestHeaderNames,
+  attemptHeaderNames,
+  requestBodySummary,
+  mseAppendEvidence,
+  hasRangeRequestHeader,
+  compactIdList,
+} = globalThis.LearnNoteTaskFormat;
+var {
+  llmAuditFlags,
+  summaryDiagnosticText,
+  drmSignalText,
+  activeVideoText,
+  sourceText,
+  mediaKindText,
+  playerLibrarySourceText,
+  resourceSourceText,
+  taskResolvedTargetText,
+  playbackText,
+  transcriberLabel,
+  asrOptionText,
+  transcriptSourceText,
+  optionText,
+} = globalThis.LearnNoteTaskDisplay;
+
 const DEFAULT_BACKEND_ORIGIN = "http://127.0.0.1:8765";
 
 function normalizeApiBase(value) {
@@ -600,10 +640,6 @@ const els = {
   releaseNotesFixes: document.querySelector("#releaseNotesFixes")
 };
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
-}
-
 function normalizeCustomNoteProfile(value) {
   if (!value || typeof value !== "object") return null;
   const name = String(value.name || "").trim().slice(0, 80);
@@ -1148,21 +1184,6 @@ async function loadDesktopReleaseNotes(autoOpen = false) {
   }
 }
 
-function semverParts(value) {
-  const match = String(value || "").match(/^(\d+)\.(\d+)\.(\d+)$/);
-  return match ? match.slice(1).map(Number) : null;
-}
-
-function isNewerVersion(latest, current) {
-  const left = semverParts(latest);
-  const right = semverParts(current);
-  if (!left || !right) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) return left[index] > right[index];
-  }
-  return false;
-}
-
 async function checkDesktopUpdate() {
   const api = desktopApi();
   if (!api || !els.checkUpdateButton) return;
@@ -1474,39 +1495,6 @@ function handleTaskStatusTransitions(nextTasks) {
   }
 }
 
-function compactUrl(value, limit = 88) {
-  const text = String(value || "").trim();
-  if (!text || text.length <= limit) return text;
-  const head = Math.max(24, Math.floor(limit * 0.42));
-  const tail = Math.max(24, limit - head - 3);
-  return `${text.slice(0, head)}...${text.slice(-tail)}`;
-}
-
-function isUnreadableTitle(value) {
-  const text = String(value || "").trim();
-  if (!text) return true;
-  const compact = text.replace(/\s+/g, "");
-  if (!compact) return true;
-  if (/^[?？\uFFFD]+$/.test(compact)) return true;
-  if (compact.length >= 4) {
-    const suspectCount = (compact.match(/[?？\uFFFD]/g) || []).length;
-    if (suspectCount / compact.length >= 0.65) return true;
-  }
-  return false;
-}
-
-function hostFromUrl(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  try {
-    const parsed = new URL(text);
-    return parsed.hostname || "";
-  } catch {
-    const match = /^https?:\/\/([^/?#]+)/i.exec(text);
-    return match ? match[1] : "";
-  }
-}
-
 function displayTaskTitle(task, fallback = "未命名任务") {
   const raw = String(task?.title || "").trim();
   if (!isUnreadableTitle(raw)) return raw;
@@ -1753,20 +1741,6 @@ function noteOutline(markdown, limit = 12) {
   return globalThis.LearnNoteMarkdown?.noteOutline?.(markdown, limit) || "";
 }
 
-function fmt(sec) {
-  sec = Math.max(0, Math.floor(sec || 0));
-  return `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
-}
-
-function seekTimeValue(seconds) {
-  const value = Math.max(0, Number(seconds || 0));
-  return Number.isFinite(value) ? value.toFixed(3) : "0.000";
-}
-
-function seekTimeButton(seconds, className = "time-seek") {
-  return `<button type="button" class="${escapeHtml(className)}" data-media-seek-time="${seekTimeValue(seconds)}" title="跳到 ${escapeHtml(fmt(seconds))}"><time>${escapeHtml(fmt(seconds))}</time></button>`;
-}
-
 function seekLearningVideo(seconds, sourceElement = null) {
   const value = Math.max(0, Number(seconds || 0));
   if (!Number.isFinite(value)) return false;
@@ -1781,146 +1755,6 @@ function seekLearningVideo(seconds, sourceElement = null) {
   video.classList?.add("media-seek-active");
   setTimeout(() => video.classList?.remove("media-seek-active"), 1400);
   return true;
-}
-
-function frameTimestampText(window, limit = 4) {
-  const values = (window?.frame_timestamps || []).slice(0, limit).map(value => fmt(value));
-  if (!values.length) return "";
-  const suffix = (window.frame_timestamps || []).length > values.length ? "..." : "";
-  return `${values.join(" / ")}${suffix}`;
-}
-
-function fmtBytes(bytes) {
-  const value = Number(bytes || 0);
-  if (!value) return "";
-  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
-  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${value} B`;
-}
-
-function contentDispositionFilename(value = "") {
-  let filename = "";
-  for (const part of String(value || "").split(";")) {
-    const [rawKey, ...rest] = part.trim().split("=");
-    if (!rawKey || !rest.length) continue;
-    const key = rawKey.toLowerCase();
-    let raw = rest.join("=").trim().replace(/^"|"$/g, "");
-    if (key === "filename*") {
-      const marker = raw.indexOf("''");
-      raw = marker >= 0 ? raw.slice(marker + 2) : raw;
-      try {
-        filename = decodeURIComponent(raw);
-      } catch {
-        filename = raw;
-      }
-      break;
-    }
-    if (key === "filename" && raw) {
-      try {
-        filename = decodeURIComponent(raw);
-      } catch {
-        filename = raw;
-      }
-    }
-  }
-  return filename.split(/[\\/]/).pop() || "";
-}
-
-function contentDispositionHint(value = "") {
-  const filename = contentDispositionFilename(value);
-  return filename ? `filename ${filename}` : "";
-}
-
-function requestHeaderNames(resource) {
-  return safeHeaderNames(Object.keys(resource?.request_headers || {})) || "-";
-}
-
-function safeHeaderNames(names) {
-  return (names || [])
-    .map(name => String(name || "").trim())
-    .filter(name => !/cookie|authorization/i.test(name))
-    .sort()
-    .join(", ");
-}
-
-function attemptHeaderNames(attempt) {
-  return safeHeaderNames(attempt?.request_header_names) || "-";
-}
-
-function requestBodySummary(resource) {
-  const body = resource?.request_body || {};
-  const content = String(body.content || "");
-  if (!content) return "";
-  const method = String(resource.method || "POST").toUpperCase();
-  const type = String(body.type || "body");
-  if (content === "<redacted>") return `${method} ${type} body 已捕获`;
-  return `${method} ${type} body ${fmtBytes(content.length) || `${content.length} B`}`;
-}
-
-function mseAppendEvidence(resource) {
-  if (!resource?.mse_append_count && !resource?.mse_append_magic && !resource?.mse_append_total_bytes) return "";
-  return [
-    resource.mse_append_count ? `MSE append ${resource.mse_append_count}x` : "MSE append",
-    resource.mse_append_magic || "",
-    fmtBytes(resource.mse_append_total_bytes),
-    resource.mse_append_mime || "",
-    resource.mse_append_detected_kind ? `detected ${resource.mse_append_detected_kind}` : ""
-  ].filter(Boolean).join(" ");
-}
-
-function hasRangeRequestHeader(resource) {
-  return Object.keys(resource?.request_headers || {}).some(name => String(name).toLowerCase() === "range");
-}
-
-function compactIdList(values, limit = 3) {
-  const ids = (values || []).map(value => String(value || "").trim()).filter(Boolean);
-  if (!ids.length) return "";
-  const suffix = ids.length > limit ? ` 等 ${ids.length} 个` : "";
-  return `${ids.slice(0, limit).join(", ")}${suffix}`;
-}
-
-function llmAuditFlags(diag = {}) {
-  const flags = [];
-  if (diag.vision_failed_batch_count) flags.push(`视觉批次失败 ${diag.vision_failed_batch_count}`);
-  if (diag.vision_model_rejected_image) flags.push("模型拒绝图片输入");
-  if (diag.llm_event_count) flags.push(`LLM 事件 ${diag.llm_event_count}`);
-  const lastFailure = diag.llm_last_failure || {};
-  if (lastFailure.stage || lastFailure.code) {
-    flags.push(`最后失败 ${lastFailure.stage || "llm"}/${lastFailure.code || "unknown"}`);
-  }
-  return flags;
-}
-
-function summaryDiagnosticText(task) {
-  const diag = task?.summary_diagnostics || {};
-  if (!Object.keys(diag).length) return "-";
-  const visionGridCount = diag.vision_grid_count ?? diag.frame_grid_count ?? 0;
-  const sentImages = diag.vision_image_count ?? 0;
-  const omittedCount = Number(diag.omitted_frame_grid_count || 0);
-  const missingImages = diag.all_sent_grids_had_images === false || diag.all_grids_had_images === false;
-  const missingWindowIds = compactIdList(diag.missing_vision_image_window_ids);
-  const omittedWindowIds = compactIdList(diag.omitted_vision_window_ids);
-  return [
-    diag.used_vision_llm ? "已使用视觉 LLM" : diag.used_text_llm ? "已使用文本 LLM" : diag.used_local_template ? "本地模板" : "",
-    `模型 ${diag.llm_model || task.summary_source || "-"}`,
-    diag.llm_provider ? `Provider ${diag.llm_provider}` : "",
-    diag.llm_base_host ? `Base ${diag.llm_base_host}` : "",
-    diag.llm_failure_code ? `LLM 失败 ${diag.llm_failure_stage || "unknown"}/${diag.llm_failure_code}` : "",
-    diag.llm_failure_reason ? `原因 ${diag.llm_failure_reason}` : "",
-    `视觉窗口 ${diag.visual_window_count ?? 0}`,
-    `画面网格 ${diag.frame_grid_count ?? 0}`,
-    `\u9001\u5165\u89c6\u89c9 ${sentImages}/${visionGridCount}`,
-    omittedCount > 0 ? `\u8d85\u9650\u7701\u7565 ${omittedCount}` : "",
-    missingWindowIds ? `缺图 ${missingWindowIds}` : "",
-    omittedWindowIds ? `省略窗口 ${omittedWindowIds}` : "",
-    missingImages ? "\u5b58\u5728\u7f3a\u5931\u56fe\u7247" : "",
-    ...llmAuditFlags(diag),
-    diag.used_page_text_fallback ? `页面文本 ${diag.page_text_char_count ?? 0} 字` : "",
-    diag.used_page_text_fallback ? `浏览器字幕 ${diag.browser_subtitle_count ?? 0} 条` : "",
-    diag.used_page_text_fallback ? `合并文本 ${diag.combined_text_char_count ?? 0} 字` : "",
-    diag.summary_warning || ""
-  ].filter(Boolean).join(" · ");
 }
 
 function currentPageTasks() {
@@ -2858,27 +2692,6 @@ function renderSourceWorkflow() {
   lastSourceWorkflowHtml = html;
 }
 
-function drmSignalText(signals = []) {
-  const parts = [];
-  const keySystems = [...new Set(signals.map(item => item.key_system).filter(Boolean))];
-  const initTypes = [...new Set(signals.map(item => item.init_data_type).filter(Boolean))];
-  if (keySystems.length) parts.push(`key system：${keySystems.slice(0, 3).join(", ")}`);
-  if (initTypes.length) parts.push(`init data：${initTypes.slice(0, 3).join(", ")}`);
-  return parts.join(" · ");
-}
-
-function activeVideoText(active) {
-  if (!active?.src) return "-";
-  return [
-    active.paused ? "暂停" : "播放中",
-    `${fmt(active.current_time || 0)} / ${fmt(active.duration || 0)}`,
-    `${active.width || 0}x${active.height || 0}`,
-    active.frame_id !== null && active.frame_id !== undefined ? `frame ${active.frame_id}` : "",
-    active.drm_detected ? "DRM/EME" : "",
-    active.src
-  ].filter(Boolean).join(" · ");
-}
-
 function statusText(task) {
   if (taskAwaitingConfirmation(task)) return "等待确认";
   if (task.status === "success") return "已完成";
@@ -2913,69 +2726,6 @@ function taskElapsedText(task = {}) {
   return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 
-function sourceText(task) {
-  if (task.mode === "subtitle_only") return "字幕速记";
-  if (task.mode === "download_only") return "当前页下载";
-  if (task.mode === "rerun_from_media") return "复用本地视频";
-  if (task.source_type === "local") return "本地视频";
-  if (task.source_type === "page_text") return "页面文本";
-  return task.selected_resource ? `直取 · ${mediaKindText(task.selected_resource.kind) || "媒体"}` : "页面解析";
-}
-
-function mediaKindText(kind = "") {
-  return ({
-    hls: "HLS",
-    dash: "DASH",
-    video: "视频",
-    audio: "音频",
-    subtitle: "字幕",
-    fragment: "分片",
-    blob: "Blob"
-  })[String(kind || "").toLowerCase()] || kind || "";
-}
-
-function playerLibrarySourceText(resource) {
-  if (resource?.source !== "pageHookPlayer") return "";
-  const label = String(resource.label || "");
-  const libraries = [
-    [/hls\.js/i, "hls.js"],
-    [/dash\.js/i, "dash.js"],
-    [/shaka/i, "shaka"],
-    [/video\.js/i, "video.js"],
-    [/DPlayer/i, "DPlayer"],
-    [/ArtPlayer/i, "ArtPlayer"],
-    [/\bxgplayer\b|XGPlayer/i, "xgplayer"],
-    [/Aliplayer/i, "Aliplayer"],
-    [/TcPlayer/i, "TcPlayer"],
-    [/jwplayer/i, "jwplayer"]
-  ];
-  const match = libraries.find(([pattern]) => pattern.test(label));
-  if (match) return `${match[1]} 已加载`;
-  return "播放器已加载";
-}
-
-function resourceSourceText(resource) {
-  const playerSource = playerLibrarySourceText(resource);
-  if (playerSource) return `${playerSource}源地址`;
-  if (resource?.source === "manifest-guess") return "同目录 manifest 猜测";
-  if (resource?.source === "inferred-manifest") return "分片路径回推 manifest";
-  if (resource?.source === "webRequestResolved") return "最终媒体地址";
-  if (resource?.source === "webRequest") return "浏览器请求";
-  if (resource?.source === "iframeHint") return "iframe 内播放器线索";
-  if (resource?.source === "scriptHint") return "页面脚本线索";
-  if (resource?.source === "domHint") return "页面元素线索";
-  if (resource?.source === "locationHint") return "页面 URL 线索";
-  if (String(resource?.source || "").startsWith("pageHook")) return "页面接口";
-  return resource?.source || "";
-}
-
-function taskResolvedTargetText(task, limit = 92) {
-  const selected = task?.selected_resource || {};
-  const target = selected.resolved_url || "";
-  if (!target || target === selected.url) return "";
-  return compactUrl(target, limit);
-}
-
 function directResponseResolvedFact(resource = {}, limit = 86) {
   const target = String(resource?.resolved_url || "").trim();
   if (!target || target === resource?.url) return "";
@@ -2985,22 +2735,6 @@ function directResponseResolvedFact(resource = {}, limit = 86) {
   const looksLikePlaybackApi = /(?:^|[/?&=._-])(api|play|player|stream|video|media|vod|quality|definition|rendition|profile|track)(?:[/?&=._-]|$)/i.test(url);
   const resolvedByResponse = source === "direct-response" || isTextResponseMime(responseType) || looksLikePlaybackApi;
   return resolvedByResponse ? `播放接口解析: ${compactUrl(target, limit)}` : "";
-}
-
-function playbackText(match) {
-  return ({
-    "exact-src": "当前 src",
-    "source-element": "当前 source",
-    "same-frame": "同播放器 frame",
-    "blob-same-frame": "blob 播放同 frame",
-    "blob-source": "Blob/MSE 来源映射",
-    "range-near-playhead": "播放进度附近 Range 请求",
-    "manifest-near-playhead": "播放进度附近 Manifest 请求",
-    "resolved-final-url": "跳转后的真实媒体",
-    "recent-media-request": "最近播放请求",
-    "same-site-request": "同站请求",
-    "inferred-from-fragment": "分片推断"
-  })[match] || match || "";
 }
 
 const PIPELINE_STEPS = [
@@ -3668,44 +3402,6 @@ function stageRail(task) {
     </div>`;
   }
   return `<div class="stage-rail">${PIPELINE_STEPS.map(step => `<span class="${stepState(task, step)}">${step.label}</span>`).join("")}</div>`;
-}
-
-function transcriberLabel(value) {
-  return ({
-    "faster-whisper": "本地 faster-whisper",
-    "openai-compatible": "OpenAI-compatible ASR",
-    "openai-compatible-asr": "OpenAI-compatible ASR",
-    openai: "OpenAI ASR",
-    groq: "Groq ASR",
-    "groq-asr": "Groq ASR"
-  })[String(value || "faster-whisper").toLowerCase()] || String(value || "ASR");
-}
-
-function asrOptionText(options = {}) {
-  return `${transcriberLabel(options.transcriber)} · ${options.whisper_model || "small"}`;
-}
-
-function transcriptSourceText(source) {
-  return ({
-    "browser-subtitle": "浏览器字幕",
-    "page-subtitle": "页面字幕",
-    "embedded-subtitle": "视频内嵌字幕",
-    "faster-whisper": "本地 faster-whisper",
-    "openai-compatible-asr": "OpenAI-compatible ASR",
-    "groq-asr": "Groq ASR"
-  })[String(source || "").toLowerCase()] || source || "转写";
-}
-
-function optionText(task) {
-  const options = task.options || {};
-  return [
-    options.frame_interval ? `${options.frame_interval} 秒切片` : "",
-    options.grid_columns && options.grid_rows ? `${options.grid_columns}x${options.grid_rows} 画面网格` : "",
-    asrOptionText(options),
-    options.note_style ? `风格 ${options.note_style}` : "",
-    options.note_template ? `格式 ${options.note_template}` : "",
-    options.visual_understanding === false ? "未开启视觉理解" : "视觉理解"
-  ].filter(Boolean).join(" · ");
 }
 
 function mediaKind(url) {

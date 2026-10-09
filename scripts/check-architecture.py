@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from architecture_graph import dependency_cycles, python_import_edges
+from javascript_graph import javascript_violations
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/main.py": 4800,
     "backend/app/downloader.py": 2800,
     "backend/app/processor.py": 1450,
-    "web/app.js": 9950,
+    "web/app.js": 9650,
     "web/styles.css": 12920,
     "backend/app/media_url_parsing.py": 270,
     "backend/app/media_json_discovery.py": 440,
@@ -31,8 +32,11 @@ MODULE_SIZE_LIMITS = {
     "extension/page_hook.js": 2850,
     "extension/background.js": 2500,
     "extension/content.js": 2200,
+    "extension/content-study-evidence.js": 110,
     "extension/capture-classification.js": 290,
     "extension/capture-ranking.js": 320,
+    "web/task-format.js": 210,
+    "web/task-display.js": 225,
     "web/learning.js": 600,
     "web/personal-notes.js": 300,
     "web/courses.js": 500,
@@ -92,7 +96,7 @@ EXTRACTED_BACKEND_MODULES = (
     "media_discovery", "media_manifests", "qa_evidence", "qa_history",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
-EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
+EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
 
 
 def aggregate_size_violations() -> list[str]:
@@ -130,12 +134,12 @@ def module_size_violations() -> list[str]:
 
 
 def main() -> int:
-    violations = import_violations() + module_size_violations() + aggregate_size_violations()
+    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS) + module_size_violations() + aggregate_size_violations()
     if violations:
         print("Architecture boundary violations:")
         print("\n".join(violations))
         return 1
-    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, all-import cycle graph, and {len(MODULE_SIZE_LIMITS)} size guards checked")
+    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, Python/JavaScript cycle graphs, classic load order, and {len(MODULE_SIZE_LIMITS)} size guards checked")
     return 0
 
 

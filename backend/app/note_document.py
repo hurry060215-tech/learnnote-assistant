@@ -94,6 +94,9 @@ def _is_plain_paragraph(lines: list[str], prose_flags: list[bool]) -> bool:
             or _is_list_or_quote_or_rule(line)
             or stripped.startswith(("|", "<"))
             or "`" in line
+            or "$" in line
+            or r"\(" in line
+            or r"\[" in line
             or "[" in line
             or "]" in line
             or "  " == line[-2:]

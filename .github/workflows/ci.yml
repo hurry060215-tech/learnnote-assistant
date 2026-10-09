@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -90,7 +92,7 @@ jobs:
       - name: Extension and web checks
         shell: pwsh
         run: |
-          @("extension/background.js", "extension/content.js", "extension/page_hook.js", "extension/sidepanel.js", "web/app.js") | ForEach-Object {
+          @("extension/background.js", "extension/content.js", "extension/content-study-evidence.js", "extension/page_hook.js", "extension/sidepanel.js", "web/app.js") | ForEach-Object {
             node --check $_
             if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $_" }
           }

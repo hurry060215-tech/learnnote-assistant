@@ -74,6 +74,7 @@ from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_mode
 
 from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 from .routers.support import router as support_router
+from .routers.queue import router as queue_router
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -103,6 +104,7 @@ app.include_router(course_router)
 app.include_router(learning_space_router)
 app.include_router(range_router)
 app.include_router(support_router)
+app.include_router(queue_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -3308,7 +3310,14 @@ def _same_handoff_source(task: TaskRecord, source_identity, source_url: str) -> 
     existing_id = str(task.source_identity.platform_id or "")
     incoming_id = str(source_identity.platform_id or "")
     if existing_id and incoming_id:
-        return task.source_identity.platform == source_identity.platform and existing_id == incoming_id
+        if task.source_identity.platform != source_identity.platform or existing_id != incoming_id:
+            return False
+        if source_identity.platform == "bilibili":
+            try:
+                return int(dict(parse_qsl(urlsplit(task.page_url).query)).get("p", "1")) == int(dict(parse_qsl(urlsplit(source_url).query)).get("p", "1"))
+            except (TypeError, ValueError):
+                return False
+        return True
     return _handoff_page_key(task.page_url) == _handoff_page_key(source_url)
 
 
@@ -3339,7 +3348,7 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     with _deferred_handoffs_lock:
         existing = _existing_handoff_task(request.handoff_id)
         if existing:
-            if not _same_handoff_source(existing, source_identity, source.url) or existing.mode != request.mode:
+            if not _same_handoff_source(existing, source_identity, source.url) or existing.mode != request.mode or existing.learning_range != request.learning_range:
                 raise HTTPException(
                     status_code=409,
                     detail={"code": "handoff_id_conflict", "message": "This handoff id belongs to a different source."},

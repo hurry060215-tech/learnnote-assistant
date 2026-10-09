@@ -266,7 +266,17 @@
     "service_network_failed": "无法连接本地服务。请打开 LearnNote 后重试。",
     "service_request_aborted": "请求已取消或超时，请重试。",
     "service_extension_reloaded": "扩展已重新加载。请关闭并重新打开侧栏。",
-    "service_service_detail": "服务返回的原始信息：{detail}"
+    "service_service_detail": "服务返回的原始信息：{detail}",
+    "range_mode_label": "学习范围",
+    "range_whole": "完整视频",
+    "range_current_5": "当前位置起 5 分钟",
+    "range_current_15": "当前位置起 15 分钟",
+    "range_current_30": "当前位置起 30 分钟",
+    "range_current_chapter": "当前章节（需要原始章节线索）",
+    "range_custom": "自定义起止时间",
+    "range_position_unavailable": "当前位置不可用或已到片尾，请播放视频后重试。",
+    "range_chapter_unavailable": "当前片段没有可靠的原始章节线索，请选择时间窗口或自定义范围。",
+    "range_selected_bounds": "已选择 {start}–{end} 秒；发送时重新核对当前位置和视频身份。"
   },
   "en": {
     "extensionName": "LearnNote Current Video Assistant",
@@ -531,7 +541,17 @@
     "service_network_failed": "Cannot reach the local service. Open LearnNote and try again.",
     "service_request_aborted": "The request was cancelled or timed out. Try again.",
     "service_extension_reloaded": "The extension was reloaded. Close and reopen the side panel.",
-    "service_service_detail": "Original service message: {detail}"
+    "service_service_detail": "Original service message: {detail}",
+    "range_mode_label": "Study range",
+    "range_whole": "Whole video",
+    "range_current_5": "5 minutes from current position",
+    "range_current_15": "15 minutes from current position",
+    "range_current_30": "30 minutes from current position",
+    "range_current_chapter": "Current chapter (requires source chapter data)",
+    "range_custom": "Custom start and end",
+    "range_position_unavailable": "The current position is unavailable or at the end. Play the video and try again.",
+    "range_chapter_unavailable": "No reliable source chapter covers this position. Choose a time window or custom range.",
+    "range_selected_bounds": "Selected {start}–{end} seconds. Position and video identity are rechecked when sending."
   }
 }/* END CATALOGS */;
   function locale() {
