@@ -1040,6 +1040,11 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def task_material_source_uri(record: TaskRecord) -> str:
+    """Stable, sanitized source identity shared by video aliases and readers."""
+    return _safe_url(record.page_url) or f"local://tasks/{record.id}"
+
+
 def register_task_material(record: TaskRecord) -> dict[str, object]:
     media_path = Path(record.media_path or record.source_media_path) if (record.media_path or record.source_media_path) else None
     digest = str(record.source_identity.media_sha256 or "").strip()
@@ -1062,7 +1067,7 @@ def register_task_material(record: TaskRecord) -> dict[str, object]:
     evidence_ids = [str(item.get("evidence_id") or "") for item in anchors if item.get("evidence_id")]
     material_id = uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
-    source_uri = _safe_url(record.page_url) or f"local://tasks/{record.id}"
+    source_uri = task_material_source_uri(record)
     filename = media_path.name if media_path else ""
     status = "ready" if record.status == "success" else ("failed" if record.status == "failed" else "processing")
     metadata = {

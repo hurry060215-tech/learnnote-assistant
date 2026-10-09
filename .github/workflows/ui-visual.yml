@@ -10,6 +10,7 @@ on:
       - "backend/app/**"
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
+      - "scripts/course-question-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
@@ -21,6 +22,7 @@ on:
       - "extension/**"
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
+      - "scripts/course-question-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
 
 permissions:
@@ -104,6 +106,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
             node scripts/evidence-source-acceptance.cjs http://127.0.0.1:8765 build/evidence-source-ui
             if ($LASTEXITCODE -ne 0) { throw "Evidence source and frame navigation failed" }
+            node scripts/course-question-acceptance.cjs http://127.0.0.1:8765 build/course-question-ui
+            if ($LASTEXITCODE -ne 0) { throw "Course question scope and navigation failed" }
             node scripts/pdf-ocr-acceptance.cjs http://127.0.0.1:8765 build/pdf-ocr-ui
             if ($LASTEXITCODE -ne 0) { throw "Scanned PDF OCR confidence and recovery failed" }
             node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui
@@ -138,5 +142,6 @@ jobs:
             build/extension-locales
             build/study-product-ui
             build/evidence-source-ui
+            build/course-question-ui
           if-no-files-found: warn
           retention-days: 14

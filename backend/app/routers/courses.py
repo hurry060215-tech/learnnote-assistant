@@ -2,7 +2,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, ConfigDict
 
-from ..courses import list_courses, get_course, save_course, delete_course, compare_course
+from ..courses import list_courses, get_course, save_course, delete_course, compare_course, ask_course
 from ..playlists import preview_playlist
 from ..course_episodes import course_episodes, prepare_course_episode, bind_course_episode
 
@@ -84,6 +84,27 @@ def api_compare_course(course_id: str, q: str = Query(min_length=1, max_length=2
         return compare_course(course_id, q, source_id=source_id, source_kind=source_kind, start=start, end=end)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc
+
+
+class CourseQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    question: str = Field(min_length=1, max_length=2000)
+    revision: int = Field(ge=1)
+    limit: int = Field(default=6, ge=1, le=50)
+    mode: Literal["lexical", "embedding", "semantic", "local-embedding"] = "lexical"
+
+
+@course_router.post("/{course_id}/ask")
+def api_ask_course(course_id: str, request: CourseQuestion):
+    try:
+        return ask_course(course_id, request.question, request.revision, request.limit, request.mode)
+    except (ValueError, OSError) as exc:
+        stale = str(exc) == "course_changed_reload_required"
+        raise HTTPException(status_code=409 if stale else 404, detail={"code": "course_changed_reload_required" if stale else "course_unavailable", "message": "课程已改变，请重新打开课程后再提问。" if stale else "课程不存在或已删除，请重新选择课程。"}) from exc
+    except RuntimeError as exc:
+        if str(exc) == "local_embedding_unavailable":
+            raise HTTPException(status_code=409, detail={"code": "local_embedding_unavailable", "message": "可选本地 embedding 或缓存模型不可用，请使用本地关键词检索。"}) from exc
+        raise
 
 
 class EpisodeBinding(BaseModel):
