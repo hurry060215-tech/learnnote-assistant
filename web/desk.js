@@ -17,6 +17,7 @@ import { createSourceWindowView, renderMaterialSource, highlightMaterialSource }
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
+import { installMaterialBatch } from "/web/desk-material-batch.js";
 import {
   api,
   escapeHtml as esc,
@@ -1124,76 +1125,38 @@ function create() {
   updateContentMode();
   if (!$("createDialog").open) $("createDialog").showModal();
   window.dispatchEvent(new CustomEvent("learnnote:create"));
+  materialBatch.open();
 }
 $("newNote").onclick = create;
 $("welcomeNew").onclick = create;
 for (const button of document.querySelectorAll("[data-close]"))
   button.onclick = () => button.closest("dialog").close();
 function updateCreateInputPresentation() {
-  const file = $("file").files?.[0];
-  const isDocument =
-    state.input === "file" && file && /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
-  const hideVideoOptions =
-    state.input === "browser" || (state.input === "file" && (!file || isDocument));
+  const files = materialBatch.items;
+  const hasVideo = files.some(item => item.kind === "task");
+  const hideVideoOptions = state.input === "browser" || (state.input === "file" && !hasVideo);
   $("contentModeChoices").hidden = hideVideoOptions;
   $("contentModeExplanation").hidden = hideVideoOptions;
   $("generationOptions").hidden = hideVideoOptions;
-  const needsFile = state.input === "file" && !file;
-  $("createSubmit").disabled = needsFile;
-  if (needsFile) {
-    $("createSubmit").textContent = "先选择文件";
-  } else if (isDocument) {
-    $("createSubmit").textContent = "导入并阅读资料";
-  } else {
+  $("materialEncodingChoice").hidden = !files.some(item => /\.(md|markdown|txt|html?)$/i.test(item.file.name));
+  if (state.input !== "file") {
     updateContentMode();
+    $("createSubmit").disabled = state.busy;
   }
+  materialBatch.render();
 }
-let materialPreviewGeneration = 0, materialPreview = null;
-async function previewSelectedFile() {
-  const generation = ++materialPreviewGeneration;
-  const file = $("file").files?.[0];
-  let panel = $("selectedFilePreview");
-  if (!panel) {
-    panel = document.createElement("p"); panel.id = "selectedFilePreview";
-    panel.className = "muted"; panel.setAttribute("role", "status");
-    $("fileInput").append(panel);
-  }
-  panel.textContent = "";
-  materialPreview = null;
-  if (!file) return;
-  const size = (bytes) => `${(Number(bytes) / 1024 / 1024).toFixed(2)} MB`;
-  panel.textContent = `${file.name} · ${size(file.size)} · 正在本地预检…`;
-  const isDocument = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
-  if (!isDocument) {
-    panel.textContent = `${file.name} · ${size(file.size)} · 本地视频，优先字幕；转写和模型路线使用当前设置。至少需要 ${size(file.size)} 上传空间，解码缓存另计。`;
-    const video = document.createElement("video"), url = URL.createObjectURL(file);
-    let timeout;
-    const finish = () => { clearTimeout(timeout); video.onloadedmetadata = null; video.onerror = null; URL.revokeObjectURL(url); video.removeAttribute("src"); video.load(); };
-    timeout = setTimeout(finish, 10000);
-    video.preload = "metadata";
-    video.onloadedmetadata = () => { if (generation === materialPreviewGeneration && Number.isFinite(video.duration)) panel.textContent += ` 时长 ${timestamp(video.duration)}。`; finish(); };
-    video.onerror = finish;
-    video.src = url;
-    return;
-  }
-  materialPreview = { file, encoding: $("materialEncoding").value || "", ready: false };
-  $("createSubmit").disabled = true;
-  try {
-    const data = new FormData(); data.append("file", file); data.append("encoding", $("materialEncoding").value || "");
-    const result = await api("/api/library/materials/preview", { method: "POST", body: data });
-    if (generation !== materialPreviewGeneration) return;
-    panel.textContent = `${result.filename} · ${size(result.byte_size)}${result.page_count ? ` · ${result.page_count} 页` : ""} · 预计本地空间 ${size(result.estimated_storage_bytes)}（可选 OCR 另计）。${result.ocr_required ? "扫描 PDF：导入后可选择本地 OCR，识别结果需核验。" : "本地提取文字，不发送给模型。"}`;
-    materialPreview.ready = true;
-    $("createSubmit").disabled = false;
-  } catch (error) {
-    if (generation !== materialPreviewGeneration) return;
-    panel.textContent = error.message;
-    $("createSubmit").disabled = true;
-  }
-}
-$("file").addEventListener("change", updateCreateInputPresentation);
+const materialBatch = installMaterialBatch({ state, options, updatePresentation: updateCreateInputPresentation, refresh,
+  openResult: async ({ kind, result }) => {
+    const id = result.task_id || result.material?.material_id;
+    const item = state.items.find(item => item.id === id && item.kind === kind)
+      || { ...(kind === "material" ? result.material : result.task), id, kind };
+    if (id) await openItem(item);
+  },
+});
 for (const button of document.querySelectorAll("[data-input]"))
   button.onclick = () => {
+    if (state.busy) return;
+    if (state.input === "file" && button.dataset.input !== "file") materialBatch.pause();
     state.input = button.dataset.input;
     for (const el of document.querySelectorAll("[data-input]"))
       el.setAttribute("aria-pressed", String(el === button));
@@ -1203,18 +1166,10 @@ for (const button of document.querySelectorAll("[data-input]"))
     updateCreateInputPresentation();
     $("createStatus").textContent = "";
   };
-function updateMaterialEncodingChoice() {
-  const file = $("file").files?.[0];
-  const isMaterial = Boolean(file && /\.(md|markdown|txt|html?)$/i.test(file.name));
-  $("materialEncodingChoice").hidden = !isMaterial;
-  if (!isMaterial) $("materialEncoding").value = "";
-}
-$("file").addEventListener("change", updateMaterialEncodingChoice);
-$("file").addEventListener("change", () => previewSelectedFile().catch(failure));
-$("materialEncoding").addEventListener("change", () => previewSelectedFile().catch(failure));
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
+  if (state.input === "file") { await materialBatch.submit(); return; }
   state.busy = true;
   $("createSubmit").disabled = true;
   $("createStatus").textContent = "正在提交，请稍候…";
@@ -1230,28 +1185,6 @@ $("createForm").onsubmit = async (e) => {
           options: options(),
         }),
       });
-    } else {
-      const file = $("file").files[0];
-      if (!file) throw new Error("请先选择文件。");
-      const data = new FormData();
-      data.append("file", file);
-      kind = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name) ? "material" : "task";
-      const requestedEncoding = kind === "material" ? String($("materialEncoding").value || "") : "";
-      if (kind === "material") {
-        if (!materialPreview?.ready || materialPreview.file !== file || materialPreview.encoding !== requestedEncoding) throw new Error("请等待所选文件预检完成；预检失败时请调整文件或编码。");
-        data.append("encoding", requestedEncoding);
-      }
-      if (kind === "task") data.append("options", JSON.stringify(options()));
-      result = await api(
-        kind === "task"
-          ? "/api/tasks/from-local"
-          : "/api/library/materials/import",
-        { method: "POST", body: data },
-      );
-      const metadata = result?.material?.metadata || {};
-      if (kind === "material" && result?.material?.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
-        throw new Error(`这份资料已经导入，当前版本按 ${metadata.encoding || "未知编码"} 解码；本次没有覆盖原资料。`);
-      }
     }
     await refresh();
     const id = result.task_id || result.material?.material_id;
@@ -1263,11 +1196,6 @@ $("createForm").onsubmit = async (e) => {
     $("createDialog").close();
     if (item) await openItem(item);
     $("url").value = "";
-    $("file").value = "";
-    materialPreview = null;
-    if ($("selectedFilePreview")) $("selectedFilePreview").textContent = "";
-    $("materialEncoding").value = "";
-    updateMaterialEncodingChoice();
     $("createStatus").textContent = "";
   } catch (error) {
     $("createStatus").textContent = error.message;

@@ -571,6 +571,7 @@ dialog footer {
 .file-drop small {
   display: block;
 }
+.material-batch ol { display: grid; gap: 8px; margin: 12px 0; padding-left: 24px; max-height: 280px; overflow: auto; overflow-wrap: anywhere; }
 .material-encoding-choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 .material-encoding-choice span { display: grid; gap: 3px; }
 .material-encoding-choice small { color: var(--muted); }
