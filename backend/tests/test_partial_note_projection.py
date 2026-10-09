@@ -130,6 +130,31 @@ class PartialNoteProjectionTests(unittest.TestCase):
             api_partial_note("../foreign")
         self.assertEqual(failure.exception.status_code, 404)
 
+    def test_missing_task_404_never_exposes_internal_path_or_exception_chain(self):
+        from app.routers.notes import api_partial_note
+        from fastapi import HTTPException
+        import traceback
+
+        private_path = "/synthetic/private/task-owner/transcript.json"
+        private_message = "Synthetic private storage diagnostic"
+        with patch("app.routers.notes.read_partial_note",
+                   side_effect=FileNotFoundError(2, private_message, private_path)):
+            response = self.client.get(f"/api/tasks/{self.task.id}/partial-note")
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json(), {"detail": "Task not found"})
+            with self.assertRaises(HTTPException) as failure:
+                api_partial_note(self.task.id)
+
+        error = failure.exception
+        self.assertEqual(error.status_code, 404)
+        self.assertEqual(error.detail, "Task not found")
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
+        public_error = "".join(traceback.format_exception(error))
+        for private_value in (private_path, private_message):
+            self.assertNotIn(private_value, response.text)
+            self.assertNotIn(private_value, public_error)
+
     def test_missing_draft_and_inactive_pointer_are_unavailable(self):
         for changes in ({"note_path": ""}, {"note_path": str(self.work / "draft.md")},
                         {"note_path": str(self.work / "note.md")}, {"status": "queued"},

@@ -27,8 +27,9 @@ def api_partial_note(task_id: str) -> dict:
     """Read an unverified current-attempt projection; never run the pipeline."""
     try:
         return read_partial_note(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Task not found") from exc
+    except FileNotFoundError:
+        pass
+    raise HTTPException(status_code=404, detail="Task not found")
 
 
 @notes_router.get("/{task_id}/ocr")
