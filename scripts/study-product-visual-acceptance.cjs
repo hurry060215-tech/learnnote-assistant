@@ -32,6 +32,14 @@ async function main(){
     await api(`/api/study/cards/${cards[1].card_id}/review`,{method:"POST",data:{rating:1,idempotency_key:`visual-${marker}`}});
     await api("/api/study/plan",{method:"PUT",data:{title:"Synthetic local review",daily_target:3,paused:false,timezone:"Asia/Shanghai"}});
     await page.goto(base);await page.locator(`[data-id="${material.material_id}"][data-kind="material"]`).first().click();await page.locator("#document").getByText(/Learning rate controls/).waitFor();
+    await page.locator("#moreTools").click();
+    const rebuildReply=page.waitForResponse(response=>response.request().method()==="POST"&&response.url().endsWith(`/api/library/materials/${material.material_id}/rebuild`));
+    await page.locator('[data-action="rebuild-material"]').click();assert.equal((await rebuildReply).status(),200);
+    await page.getByText(/已从本机原文件恢复 .* 条出处；现有引用 ID 保留。/).waitFor();
+    const repaired=(await api(`/api/library/materials/${material.material_id}`)).material;
+    assert.deepEqual(repaired.evidence_ids,material.evidence_ids);assert(repaired.metadata.reindexed_at);
+    assert.deepEqual((await api(`/api/library/materials/${material.material_id}/anchors`)).anchors.map(item=>item.evidence_id),anchors.map(item=>item.evidence_id));
+    report.material_rebuild={same_ids:true,anchor_count:repaired.anchor_count,reader_reopened:true};
     const openStudio=async()=>{
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
       await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();
@@ -50,6 +58,12 @@ async function main(){
     await page.setViewportSize({width:1440,height:900});await cdp.send("Emulation.clearDeviceMetricsOverride");await page.evaluate(()=>document.body.classList.remove("dark"));await openStudio();
     await page.locator('[data-action="start-review"]').focus();await page.keyboard.press("Enter");await page.locator("#reviewReflection").waitFor();
     await page.locator("#reviewReflection").fill("My own explanation stays local.");await page.locator("#recordReflection").focus();await page.keyboard.press("Enter");await page.locator("#answer").waitFor({state:"visible"});
+    await page.locator(`#reviewSources [data-evidence="${evidence.evidence_id}"]`).click();
+    const sourceTarget=page.locator(`#sourceContent [data-evidence-id="${evidence.evidence_id}"]`);
+    await sourceTarget.waitFor({state:"visible"});assert.match(await sourceTarget.innerText(),/Learning rate controls/);
+    assert.match(await page.locator("#sourceContent").innerText(),/学习原文第 60 段/);
+    await page.locator("#closeSource").click();await openStudio();await page.locator('[data-action="start-review"]').click();await page.locator("#skipReflection").click();
+    report.document_source={exact_evidence_id:true,complete_original_retained:true};
     await page.locator("#editReviewCard").click();await page.locator("#reviewCardFront").fill(`Edited ${marker}`);await page.locator("#reviewCardBack").fill("My original correction 保持原文");await page.locator("#reviewCardForm button").click();await page.locator("#reviewContent h3").getByText(`Edited ${marker}`,{exact:true}).waitFor();
     const edited=(await api("/api/study/cards?limit=500")).cards.find(item=>item.front===`Edited ${marker}`);assert(edited);assert.deepEqual(edited.source_evidence_ids,[evidence.evidence_id]);
     await page.locator("#skipReflection").click();const deletion=page.waitForResponse(response=>response.request().method()==="DELETE"&&response.url().includes(`/api/study/cards/${edited.card_id}`));await page.locator("#deleteReviewCard").click();assert.equal((await deletion).status(),200);assert(!(await api("/api/study/cards?limit=500")).cards.some(item=>item.card_id===edited.card_id));

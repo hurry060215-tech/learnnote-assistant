@@ -12,6 +12,7 @@ import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { createTranscriptWindow } from "/web/transcript-window.js";
 import { evidenceAnchor } from "/web/evidence-anchor.js";
+import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
@@ -26,6 +27,7 @@ const $ = (id) => document.getElementById(id);
 let renderedCues = [],
   activeCueIndex = -1,
   sourceCueRender = null,
+  sourceWindowRender = null,
   sourceCueCleanup = null;
 const state = {
   items: [],
@@ -361,6 +363,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
+  $("inlineSourceView").hidden = true;
   state.selected = item;
   api("/api/study/activity", {
     method: "POST",
@@ -649,21 +652,7 @@ function renderStatus(reload = true) {
                   notice("这份文档不在当前资料库中，无法打开出处。");
                   return;
                 }
-                await openItem(material).catch(failure);
-                const locator = String(candidate.locator || "");
-                const page = /page\s+(\d+)/i.exec(locator)?.[1];
-                const excerpt = String(candidate.text || "").replace(/\s+/g, " ").trim().slice(0, 80);
-                const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
-                const blocks = Array.from(document.querySelectorAll("#document h1, #document h2, #document h3, #document p, #document li, #document blockquote, #document pre, #document td, #document th"));
-                const target = (page && blocks.find((block) => normalize(block.textContent).includes(`[第 ${page} 页]`))) ||
-                  (excerpt.length >= 16 && blocks.find((block) => normalize(block.textContent).includes(excerpt)));
-                document.querySelectorAll("#document .source-evidence-target").forEach((block) => block.classList.remove("source-evidence-target"));
-                if (target) {
-                  target.classList.add("source-evidence-target");
-                  target.scrollIntoView({ block: "center", behavior: "instant" });
-                } else {
-                  notice(`已打开文档，但无法精确高亮 ${locator || "该出处"}。`);
-                }
+                await openEvidenceSource(material, undefined, { evidenceId: candidate.evidence_id }).catch(failure);
               };
               item.append(locate);
               continue;
@@ -673,7 +662,7 @@ function renderStatus(reload = true) {
             const locate = document.createElement("button");
             locate.type = "button";
             locate.textContent = "定位 " + candidate.locator;
-            locate.onclick = () => openSource(Number(match[1]), t).catch(failure);
+            locate.onclick = () => openEvidenceSource(t, Number(match[1]), { windowId: candidate.window_id || "" }).catch(failure);
             item.append(locate);
           }
           list.append(item);
@@ -727,10 +716,14 @@ function closeSource() {
   sourceCueCleanup?.();
   sourceCueCleanup = null;
   sourceCueRender = null;
+  sourceWindowRender = null;
+  if ($("sourceWindow")) { $("sourceWindow").replaceChildren(); $("sourceWindow").hidden = true; }
   delete $("sourcePanel").dataset.sourceKey;
 }
 
+let inlineSourceRequest = 0;
 async function openInlineSource(seconds, sourceOverride = null, endSeconds = undefined) {
+  const request = ++inlineSourceRequest;
   let source = sourceOverride || state.selected;
   if (!source) return;
   if (!state.selected || source.id !== state.selected.id || source.kind !== state.selected.kind) {
@@ -740,8 +733,11 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
       return;
     }
     await openItem(item, { remember: true, check: false });
+    if (request !== inlineSourceRequest || state.selected?.id !== item.id || state.selected?.kind !== item.kind) return;
     source = state.selected;
   }
+  const epoch = state.epoch;
+  const current = () => request === inlineSourceRequest && epoch === state.epoch;
   const view = $("inlineSourceView"), content = $("inlineSourceContent"), meta = $("inlineSourceMeta");
   state.summaryScrollY = window.scrollY;
   view.hidden = false;
@@ -751,6 +747,7 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
   try {
     if (source.kind === "material") {
       const data = await api(`/api/library/materials/${encodeURIComponent(source.id)}/content`);
+      if (!current()) return;
       meta.textContent = `${source.title} · 文档原文`;
       for (const paragraph of String(data.text || "").split(/\n{2,}/).filter(Boolean)) {
         const node = document.createElement("p");
@@ -759,6 +756,7 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
       }
     } else {
       const data = await api(`/api/tasks/${encodeURIComponent(source.id)}/transcript`);
+      if (!current()) return;
       const cues = (data.segments || []).filter((cue) => String(cue.text || "").trim());
       let matched = false;
       for (const cue of cues) {
@@ -789,17 +787,18 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
     }
     view.scrollIntoView({ block: "start", behavior: "instant" });
   } catch (error) {
-    meta.textContent = error.message || "原文暂时无法读取。";
+    if (current()) meta.textContent = error.message || "原文暂时无法读取。";
   }
 }
 
 $("backToSummary").onclick = () => {
+  inlineSourceRequest++;
   $("inlineSourceView").hidden = true;
   $("document").hidden = false;
   window.scrollTo({ top: Number(state.summaryScrollY || 0), behavior: "instant" });
 };
 
-async function openSource(seconds, sourceOverride = null) {
+async function openSource(seconds, sourceOverride = null, target = {}) {
   const s = sourceOverride || state.selected;
   if (!s) return;
   const panel = $("sourcePanel"),
@@ -809,6 +808,10 @@ async function openSource(seconds, sourceOverride = null) {
   panel.hidden = false;
   document.body.classList.add("source-open");
   const seek = () => {
+    sourceWindowRender?.(seconds ?? Number(player.currentTime || 0), target.windowId || "");
+    if (s.kind === "material" && target.evidenceId && !highlightMaterialSource($("sourceContent"), target.evidenceId)) {
+      notice("保存的出处索引缺失，无法精确定位；可从笔记工具重建资料索引。");
+    }
     const remote = $("onlinePlayer");
     if (remote && !remote.hidden && (seconds !== undefined || !remote.getAttribute("src"))) {
       remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0), Number(s.learning_range?.start || 0));
@@ -843,6 +846,13 @@ async function openSource(seconds, sourceOverride = null) {
   sourceCueCleanup?.();
   sourceCueCleanup = null;
   sourceCueRender = null;
+  sourceWindowRender = null;
+  let windowContainer = $("sourceWindow");
+  if (!windowContainer) {
+    windowContainer = document.createElement("section"); windowContainer.id = "sourceWindow";
+    (transcript || $("sourceContent")).before(windowContainer);
+  }
+  windowContainer.replaceChildren(); windowContainer.hidden = true;
   delete panel.dataset.sourceKey;
   panel.dataset.contentMode = "loading";
   renderedCues = [];
@@ -874,17 +884,20 @@ async function openSource(seconds, sourceOverride = null) {
   }
   try {
     if (s.kind === "material") {
-      const data = await api(`/api/library/materials/${s.id}/content`);
+      const [data, anchored] = await Promise.all([api(`/api/library/materials/${s.id}/content`), api(`/api/library/materials/${s.id}/anchors?limit=1000`)]);
       if (epoch !== state.epoch || request !== sourceRequest) return;
-      $("sourceContent").textContent = data.text;
+      renderMaterialSource($("sourceContent"), data.text, anchored.anchors || []);
       panel.dataset.sourceKey = sourceKey;
       panel.dataset.contentMode = "transcript";
       transcript.querySelector("summary").textContent = "查看资料原文";
+      seek();
       return;
     }
     const data = await api(`/api/tasks/${s.id}/transcript`);
     if (epoch !== state.epoch || request !== sourceRequest) return;
     const cues = data.segments || [];
+    sourceWindowRender = createSourceWindowView({ container: windowContainer, source: s, asset: taskAsset, timestamp,
+      onSeek: time => openSource(time, s).catch(failure) });
     sourceCueRender = null;
     if (cues.length > 160) {
       const content = $("sourceContent");
@@ -940,6 +953,7 @@ async function openSource(seconds, sourceOverride = null) {
 }
 $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
+  if ($("sourcePanel").dataset.contentMode === "transcript") sourceWindowRender?.(time);
   if (sourceCueRender && $("followTranscript")?.checked) sourceCueRender(time);
   const index = renderedCues.findLastIndex(
     (c) => Number(c.dataset.time) <= time,
@@ -1396,21 +1410,20 @@ $("theme").onclick = () => {
   const dark = document.body.classList.toggle("dark");
   localStorage.setItem("learnnote.desk.theme", dark ? "dark" : "light");
 };
+let evidenceRequest = 0;
+async function openEvidenceSource(source, seconds, target = {}, request = ++evidenceRequest) {
+  await openItem(source);
+  if (request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
+  await openSource(seconds, source, target);
+}
 async function openEvidence(evidenceId) {
+  const request = ++evidenceRequest;
   const epoch = state.epoch;
   const result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`);
-  if (epoch !== state.epoch) return;
+  if (epoch !== state.epoch || request !== evidenceRequest) return;
   const anchor = evidenceAnchor(result.evidence, state.items);
   if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
-  await openItem(anchor.source);
-  if (state.selected?.kind !== anchor.source.kind || state.selected?.id !== anchor.source.id) return;
-  await openSource(anchor.start, anchor.source);
-  if (anchor.source.kind === "material") {
-    const excerpt = document.createElement("p");
-    excerpt.className = "source-excerpt";
-    excerpt.textContent = `${anchor.locator} · ${result.evidence.text || ""}`;
-    $("sourceContent").prepend(excerpt);
-  }
+  await openEvidenceSource(anchor.source, anchor.start, { evidenceId, windowId: result.evidence.metadata?.window_id || "" }, request);
 }
 
 async function drawReview() {

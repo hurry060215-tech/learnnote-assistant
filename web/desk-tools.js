@@ -234,7 +234,8 @@ export function installTools(ctx) {
           source.textContent = "查看依据";
           source.onclick = async () => {
             dialog.close();
-            await ctx.openEvidence(mistake.source_evidence_ids[0]);
+            try { await ctx.openEvidence(mistake.source_evidence_ids[0]); }
+            catch (error) { notice(error.message || "引用出处暂不可用。"); }
           };
           item.append(source);
         }
@@ -599,6 +600,12 @@ export function installTools(ctx) {
       ocrButton.textContent = "准备扫描 PDF 的本地 OCR";
       $("toolBody").querySelector(".tool-menu")?.append(ocrButton);
     }
+    if (s.kind === "material" && !s.linked_task_id) {
+      const rebuildButton = document.createElement("button");
+      rebuildButton.dataset.action = "rebuild-material";
+      rebuildButton.textContent = "从本机原文件重建出处索引";
+      $("toolBody").querySelector(".tool-menu")?.append(rebuildButton);
+    }
     backAction = null;
   }
   async function batch() {
@@ -738,6 +745,17 @@ export function installTools(ctx) {
     },
 
     "run-material-ocr": ocrMaterial,
+    "rebuild-material": async () => {
+      const selected = current();
+      const token = generation;
+      const result = await api(`/api/library/materials/${encodeURIComponent(selected.id)}/rebuild`, { method: "POST" });
+      await refresh();
+      if (token !== generation || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind) return;
+      await openItem({ ...selected, ...result.material, id: selected.id, kind: "material" });
+      if (token !== generation || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind) return;
+      notice(`已从本机原文件恢复 ${result.material.anchor_count} 条出处；现有引用 ID 保留。`);
+      more();
+    },
     regenerate: () => {
       dialog.close();
       $("regenerate").click();

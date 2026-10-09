@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import sqlite3
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -26,6 +27,7 @@ from ..library import (
     material_content,
     material_source_path,
     redecode_document_material,
+    rebuild_document_material,
     rebuild_index,
     register_task_material,
     restore_library,
@@ -211,6 +213,25 @@ def api_library_material_redecode(material_id: str, payload: dict | None = Body(
             "material_anchor_limit_exceeded": "解码结果包含过多段落，当前资料未改变。",
         }
         raise HTTPException(status_code=status, detail={"code": code, "message": messages.get(code, "资料重解码失败，当前内容未改变。")}) from exc
+
+
+@library_router.post("/materials/{material_id}/rebuild")
+def api_library_material_rebuild(material_id: str) -> dict:
+    try:
+        return {"ok": True, "material": rebuild_document_material(material_id)}
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        code = str(exc) if isinstance(exc, ValueError) and str(exc).startswith("material_") else "material_rebuild_failed"
+        messages = {
+            "material_source_missing": "本机原始文件缺失，无法重建；现有资料未改变。",
+            "material_source_integrity_mismatch": "原始文件校验失败，未覆盖当前资料。",
+            "material_rebuild_ocr_cache_invalid": "本地 OCR 缓存缺失或校验失败，请重新运行本地 OCR。",
+            "material_rebuild_revision_changed": "原文解析结果与保存的版本不同，未覆盖现有引用。",
+            "material_rebuild_identity_invalid": "资料引用身份不一致，未覆盖现有索引。",
+            "material_rebuild_changed_reload_required": "资料已被另一项操作修改，请刷新后再试。",
+            "material_rebuild_requires_document": "视频资料请从原视频任务恢复。",
+        }
+        raise HTTPException(status_code=404 if code == "material_not_found" else 422,
+                            detail={"code": code, "message": messages.get(code, "资料索引未能重建，现有记录未改变。")}) from exc
 
 
 @library_router.get("/materials/{material_id}/anchors")

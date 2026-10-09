@@ -15,7 +15,7 @@ assert.match(product, /openInlineSource\?\.\(typeof citation\.start === "number"
 assert.doesNotMatch(product, /b\.after\(p\)/);
 assert.match(product, /globalItems\.map\(\(item\) => \(\{ item, source: null \}\)\)/);
 assert.match(product, /sourceItems\.map\(\(item\) => \(\{ item, source: s \}\)\)/);
-assert.match(workspace, /async function openSource\(seconds, sourceOverride = null\)/);
+assert.match(workspace, /async function openSource\(seconds, sourceOverride = null(?:, target = \{\})?\)/);
 assert.match(workspace, /cues\.length > 160/);
 assert.match(workspace, /createTranscriptWindow/);
 const transcriptWindow = readFileSync(new URL("../transcript-window.js", import.meta.url), "utf8");

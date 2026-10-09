@@ -110,6 +110,12 @@ def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(_db_path(), timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
+    ensure_evidence_schema(connection)
+    return connection
+
+
+def ensure_evidence_schema(connection: sqlite3.Connection) -> None:
+    """Initialize the rebuildable evidence projection on an existing connection."""
     connection.executescript(
         """
         CREATE TABLE IF NOT EXISTS source_evidence (
@@ -135,7 +141,6 @@ def _connect() -> sqlite3.Connection:
         )
     except sqlite3.OperationalError:
         pass
-    return connection
 
 
 def _fts_available(connection: sqlite3.Connection) -> bool:

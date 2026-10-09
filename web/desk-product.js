@@ -730,6 +730,7 @@ export function installProductWorkspace(ctx) {
     await openSource();
     if (state.selected?.id !== s.id) return;
     $("sourcePanel").dataset.contentMode = "frames";
+    if ($("sourceWindow")) $("sourceWindow").hidden = true;
     if ($("sourceTranscript")) $("sourceTranscript").open = true;
     $("sourceContent").innerHTML =
       (s.frame_grids || [])
