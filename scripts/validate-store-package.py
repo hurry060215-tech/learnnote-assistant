@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 
-REQUIRED = {"manifest.json", "background.js", "capture-classification.js", "capture-ranking.js", "content.js", "content-study-evidence.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "i18n.js", "INSTALL.txt", "_locales/zh_CN/messages.json", "_locales/en/messages.json"}
+REQUIRED = {"manifest.json", "background.js", "capture-classification.js", "capture-ranking.js", "content.js", "content-study-evidence.js", "page_hook.js", "sidepanel.html", "sidepanel.css", "sidepanel.js", "sidepanel-progress.js", "i18n.js", "INSTALL.txt", "_locales/zh_CN/messages.json", "_locales/en/messages.json"}
 SECRET_RE = re.compile(r"(?:sk-[A-Za-z0-9]{20,}|BEGIN (?:RSA|OPENSSH|EC) PRIVATE KEY|Bearer\s+[A-Za-z0-9._-]{24,}|(?:api[_-]?key|password)\s*[:=]\s*['\"]?(?:sk-|[A-Za-z0-9]{32,}))", re.I)
 
 

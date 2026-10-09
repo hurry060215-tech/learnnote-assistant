@@ -11,6 +11,7 @@ on:
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
+      - "scripts/sidepanel-progressive-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-concepts-acceptance.cjs"
@@ -26,6 +27,7 @@ on:
       - "scripts/*visual*.cjs"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
+      - "scripts/sidepanel-progressive-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-concepts-acceptance.cjs"
@@ -86,6 +88,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
             node scripts/ui-readability-acceptance.cjs http://127.0.0.1:8765 build/readability-ui
             if ($LASTEXITCODE -ne 0) { throw "Reading typography and navigation gate failed" }
+            node scripts/sidepanel-progressive-acceptance.cjs build/sidepanel-progressive-ui
+            if ($LASTEXITCODE -ne 0) { throw "Sidepanel progressive reading gate failed" }
             node scripts/captions-panel-acceptance.cjs
             if ($LASTEXITCODE -ne 0) { throw "Caption fast-path panel gate failed" }
             node scripts/model-catalog-acceptance.cjs http://127.0.0.1:8765
@@ -166,6 +170,7 @@ jobs:
             build/core-output
             build/reader-ui
             build/progressive-sections-ui
+            build/sidepanel-progressive-ui
             build/material-batch-ui
             build/product-ui
             build/unified-ui

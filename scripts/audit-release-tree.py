@@ -17,7 +17,7 @@ REQUIRED_EXTENSION_FILES = {
     "page_hook.js",
     "sidepanel.html",
     "sidepanel.css",
-    "sidepanel.js",
+    "sidepanel.js", "sidepanel-progress.js",
     "i18n.js",
     "INSTALL.txt",
 }

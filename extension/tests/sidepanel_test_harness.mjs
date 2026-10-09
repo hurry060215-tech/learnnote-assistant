@@ -30,6 +30,9 @@ function element() {
     value: "",
     children: [],
     appendChild(child) { this.children.push(child); },
+    replaceChildren(...children) { this.children = children; },
+    getBoundingClientRect() { return { top: 0, bottom: 100 }; },
+    scrollTop: 0,
     addEventListener(type, callback) { listeners.set(type, callback); },
     dispatch(type, event = {}) { return listeners.get(type)?.({ preventDefault() {}, target: this, ...event }); },
     setAttribute(name, value) { attributes.set(name, String(value)); },
@@ -44,7 +47,8 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
     "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#modeDescription", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton", "#quickResultStatus",
-    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel",
+    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel", "#quickTranscriptPanel", "#quickResultCard",
+    "#progressiveCard", "#progressiveStatus", "#progressiveSections", "#progressiveRetry",
     "#modelReadiness", "#modelReadinessText", "#configureModelButton"
   ];
   const elements = new Map(selectors.map(selector => [selector, element()]));
@@ -76,6 +80,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   const permissionRequests = [];
   let sitePermissionGranted = permissions.granted ?? true;
   const documentStub = {
+    addEventListener() {}, removeEventListener() {},
     createElement() { return element(); },
     querySelector(selector) { return elements.get(selector) || null; },
     querySelectorAll(selector) { return selector === "[data-client-view]" ? clientLinks : []; }
@@ -172,6 +177,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   };
   vm.createContext(context);
   vm.runInContext(await readFile(new URL("../i18n.js", import.meta.url), "utf8"), context);
+  vm.runInContext(await readFile(new URL("../sidepanel-progress.js", import.meta.url), "utf8"), context);
   const code = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   vm.runInContext(code, context);
   await new Promise(resolve => setTimeout(resolve, 20));

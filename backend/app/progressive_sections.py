@@ -5,8 +5,6 @@ vision cache or completed text requests. Source artifacts and published notes st
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from pathlib import Path
 
@@ -18,35 +16,8 @@ from .reading_notes import source_block_entries, stamp
 from .storage import atomic_write_text, get_task, read_json, task_dir, update_task, write_json
 from .summary_outcome import safe_summary_text
 from .text_cleanup import TextDecodingError, canonicalize_unicode_text, redact_sensitive_url_values
-from .text_chunk_sections import text_chunk_source, valid_text_chunk
-
-
-def _revision(value) -> str:
-    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-
-
-def _valid_section(item: object, source_revision: str, text_blocks: list) -> bool:
-    if not isinstance(item, dict) or item.get("status") != "evidence_pending" or item.get("verified") is not False:
-        return False
-    if item.get("summary_generated") is not True or not isinstance(item.get("markdown"), str):
-        return False
-    if item.get("revision") != _revision(item["markdown"]):
-        return False
-    if item.get("kind") == "text_chunk":
-        return valid_text_chunk(item, text_blocks, source_revision)
-    if item.get("kind") != "vision_batch":
-        return False
-    if any(type(item.get(key)) not in (int, float) for key in ("start", "end")):
-        return False
-    windows = item.get("source_windows")
-    if not isinstance(windows, list) or not windows or any(not isinstance(window, dict)
-            or any(type(window.get(key)) not in (int, float) or not math.isfinite(window[key]) for key in ("start", "end"))
-            or window["start"] < 0 or window["end"] < window["start"] for window in windows):
-        return False
-    expected_id = "vision-" + _revision([source_revision, [[w["start"], w["end"]] for w in windows]])[:24]
-    return (item.get("id") == expected_id and item.get("revision") == _revision(item["markdown"])
-            and item.get("start") == min(w["start"] for w in windows)
-            and item.get("end") == max(w["end"] for w in windows))
+from .text_chunk_sections import text_chunk_source
+from .partial_note_projection import partial_revision as _revision, valid_partial_section as _valid_section, prepare_legacy_partial, preserve_previous_partial
 
 
 def partial_section_callback(task_id: str, transcript):
@@ -117,13 +88,27 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         return  # Never overwrite an unknown future schema.
     if type(version) is not int or version != 1:
         previous = {}
-    compatible = (previous.get("source_revision") == source_revision
-                  and previous.get("generation_revision") == payload["generation_revision"])
     saved = previous.get("sections")
-    saved = [item for item in saved if _valid_section(item, source_revision, text_blocks)] if isinstance(saved, list) else []
-    sections = {item["id"]: item for item in saved} if compatible else {}
+    try:
+        valid_saved = [item for item in saved if _valid_section(item, source_revision, text_blocks)] if isinstance(saved, list) else []
+        intact = (bool(valid_saved) and len(valid_saved) == len(saved) and len({item["id"] for item in valid_saved}) == len(saved)
+                  and previous.get("status") == "draft" and previous.get("verified") is False
+                  and previous.get("revision") == _revision({key: value for key, value in previous.items() if key != "revision"}))
+    except (ValueError, TypeError, OverflowError, RuntimeError):
+        valid_saved, intact = [], False
+    compatible = (intact and previous.get("source_revision") == source_revision
+                  and previous.get("generation_revision") == payload["generation_revision"]
+                  and previous.get("attempt_id") == attempt_id)
+    try:
+        if not previous.get("attempt_id"):
+            compatible = prepare_legacy_partial(root, previous, attempt_id, source_revision, payload["generation_revision"], text_blocks)
+        elif not compatible:
+            preserve_previous_partial(root)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return  # Never replace previous chapters when preservation failed.
+    sections = {item["id"]: item for item in valid_saved} if compatible else {}
     sections[section_id] = section
-    document = {"schema_version": 1, "status": "draft", "verified": False,
+    document = {"schema_version": 1, "status": "draft", "verified": False, "attempt_id": attempt_id,
                 "source_revision": source_revision, "generation_revision": payload["generation_revision"],
                 "sections": sorted(sections.values(), key=lambda item: (item.get("block_index", item.get("start", 0)), item.get("end", 0), item["id"]))}
     document["revision"] = _revision(document)

@@ -158,8 +158,8 @@ def hardcoded_extension_copy(source):
     findings = []
     for value, offset, kind in javascript_literals(source):
         visible = re.sub(r"<[^>]*(?:>|$)", "", value) if kind == "template" else value
-        # CSS class lists and one intentionally internal exception are not UI.
-        if value in {"secondary-button compact-button", "extension API unavailable"}:
+        # CSS classes, strict-mode directives and one internal exception are not UI.
+        if value in {"secondary-button compact-button", "extension API unavailable", "use strict"}:
             continue
         prose = re.search(r"[\u4e00-\u9fff]|[A-Za-z]+\s+[A-Za-z]+", visible)
         before = source[max(0, offset - 90):offset]
@@ -188,7 +188,7 @@ def extension_audit():
     manifest = json.loads(EXTENSION_MANIFEST.read_text(encoding="utf-8"))
     catalogs = {locale: json.loads(path.read_text(encoding="utf-8")) for locale, path in EXTENSION_LOCALES.items()}
     html = (ROOT / "extension" / "sidepanel.html").read_text(encoding="utf-8")
-    script = (ROOT / "extension" / "sidepanel.js").read_text(encoding="utf-8")
+    script = "\n".join((ROOT / "extension" / name).read_text(encoding="utf-8") for name in ("sidepanel.js", "sidepanel-progress.js"))
     runtime = (ROOT / "extension" / "i18n.js").read_text(encoding="utf-8")
     markup = ExtensionMarkupAudit()
     markup.feed(html)

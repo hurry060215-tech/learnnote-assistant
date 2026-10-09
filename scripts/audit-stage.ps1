@@ -115,9 +115,10 @@ if (Test-Any @("extension/manifest.json", "extension/tests/manifest_*.test.mjs")
   Invoke-Step "Extension manifest permissions" { node extension\tests\manifest_permissions.test.mjs }
 }
 
-if (Test-Any @("extension/sidepanel.js", "extension/sidepanel.css", "extension/sidepanel.html", "extension/tests/sidepanel_*.test.mjs")) {
+if (Test-Any @("extension/sidepanel.js", "extension/sidepanel-progress.js", "extension/sidepanel.css", "extension/sidepanel.html", "extension/tests/sidepanel_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Side Panel syntax" { node --check extension\sidepanel.js }
+  Invoke-Step "Side Panel progressive reader syntax" { node --check extension\sidepanel-progress.js }
   foreach ($test in @(Get-ChildItem extension\tests\sidepanel_*.test.mjs | Sort-Object Name)) {
     Invoke-Step $test.FullName { node $test.FullName }
   }

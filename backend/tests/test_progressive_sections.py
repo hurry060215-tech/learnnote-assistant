@@ -366,12 +366,22 @@ class ProgressiveSectionTests(unittest.TestCase):
         self.assertEqual(result[1], "local-template")
         self.assertEqual(len(calls), 4)
         before = self.events()
-        # All three complete batches survive a new attempt; only merge retries.
-        start_pipeline_attempt(self.task.id)
+        # All three complete batches are replayed from cache; only merge calls
+        # the provider again. Replayed drafts now attest the current attempt.
+        attempt = start_pipeline_attempt(self.task.id)
         result = self.run_provider(completion)
         self.assertEqual(len(calls), 5)
         self.assertEqual(len([e for e in result[3] if e["stage"] == "vision_cache"]), 3)
-        self.assertEqual(self.events(), before)
+        after = self.events()
+        self.assertEqual(after[:len(before)], before)
+        self.assertEqual(len(after) - len(before), 3)
+        self.assertEqual(self.sections()["attempt_id"], attempt)
+        self.assertEqual(after[-1][1]["details"]["revision"], self.sections()["revision"])
+        self.assertTrue({event["details"]["revision"] for _, event in before}.isdisjoint(
+            event["details"]["revision"] for _, event in after[len(before):]))
+        self.run_provider(completion)
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(self.events(), after)  # Same-attempt replay stays idempotent.
 
     def test_concurrent_completion_is_published_before_next_dispatch_and_cancel_stops_more(self):
         ready = threading.Event()
