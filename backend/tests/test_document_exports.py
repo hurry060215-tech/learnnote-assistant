@@ -169,7 +169,7 @@ class DocumentExportTests(unittest.TestCase):
         self.assertNotIn("---", payload["markdown"])
         self.assertIn("Findings", payload["markdown"])
 
-    def test_non_bmp_symbols_have_a_word_font_and_readable_pdf_fallback(self):
+    def test_non_bmp_symbols_retain_word_and_pdf_unicode(self):
         note = normalize_note_markdown(self.task.title, "## Compass\n\nThe navigation symbol is 🧭. [00:10]").markdown
         docx = build_docx_export(self.task, note)
         with ZipFile(BytesIO(docx.content)) as package:
@@ -179,8 +179,8 @@ class DocumentExportTests(unittest.TestCase):
 
         pdf = build_pdf_export(self.task, note)
         extracted = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages)
-        self.assertIn("[compass]", extracted)
-        self.assertIn("non_bmp_symbols_rendered_as_unicode_names", pdf.warnings)
+        self.assertIn("🧭", extracted)
+        self.assertNotIn("non_bmp_symbols_rendered_as_unicode_names", pdf.warnings)
 
     def test_generated_notes_retain_review_notice_in_word_pdf_and_shared_structure(self):
         task = self.task.model_copy(update={'summary_source':'text-llm'})

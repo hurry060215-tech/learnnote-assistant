@@ -37,6 +37,9 @@ REQUIRED_ROOT_FILES = {
     "THIRD_PARTY_NOTICES.md",
 }
 REQUIRED_BUNDLED_FILES = {
+    Path("_internal/backend/app/fonts/noto-emoji/NotoEmoji.ttf"),
+    Path("_internal/backend/app/fonts/noto-emoji/OFL.txt"),
+    Path("_internal/backend/app/fonts/noto-emoji/README.md"),
     Path("_internal/web/release-notes.json"),
     Path("_internal/web/index.html"),
     Path("_internal/web/desk.css"),
