@@ -122,14 +122,43 @@ class ProgressiveSectionTests(unittest.TestCase):
 
     def test_each_changed_section_updates_reader_revision_without_replay_churn(self):
         callback = partial_section_callback(self.task.id, self.transcript)
-        with patch("app.storage.now_iso", return_value="2026-10-09T01:00:00+00:00"):
-            callback(self.payload(0))
-        with patch("app.storage.now_iso", return_value="2026-10-09T01:00:01+00:00"):
-            callback(self.payload(10))
-        self.assertEqual(get_task(self.task.id).updated_at, "2026-10-09T01:00:01+00:00")
-        with patch("app.storage.now_iso", return_value="2026-10-09T01:00:02+00:00"):
-            callback(self.payload(10))
-        self.assertEqual(get_task(self.task.id).updated_at, "2026-10-09T01:00:01+00:00")
+        real_write_text = Path.write_text
+        def windows_write_text(path, text, *args, **kwargs):
+            kwargs.setdefault("newline", "\r\n")
+            return real_write_text(path, text, *args, **kwargs)
+        # Exercise the real atomic writer with Windows text-mode translation,
+        # including on Linux; os.linesep alone does not change that translation.
+        with patch.object(Path, "write_text", new=windows_write_text):
+            with patch("app.storage.now_iso", return_value="2026-10-09T01:00:00+00:00"):
+                callback(self.payload(0))
+            self.assertIn(b"\r\n", (self.work / "draft.partial.md").read_bytes())
+            with patch("app.storage.now_iso", return_value="2026-10-09T01:00:01+00:00"):
+                callback(self.payload(10))
+            self.assertEqual(get_task(self.task.id).updated_at, "2026-10-09T01:00:01+00:00")
+            with patch("app.storage.now_iso", return_value="2026-10-09T01:00:02+00:00"):
+                callback(self.payload(10))
+            self.assertEqual(get_task(self.task.id).updated_at, "2026-10-09T01:00:01+00:00")
+
+    def test_lf_and_crlf_projection_replay_preserves_bytes_and_reader_revision(self):
+        callback = partial_section_callback(self.task.id, self.transcript)
+        callback(self.payload())
+        target = self.work / "draft.partial.md"
+        canonical = target.read_text(encoding="utf-8")
+        task_bytes = (self.work / "task.json").read_bytes()
+        events = (self.work / "events.jsonl").read_bytes()
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                # Reproduce Windows text-mode storage on every test platform.
+                stored = canonical.replace("\n", newline).encode("utf-8")
+                target.write_bytes(stored)
+                with patch("app.storage.now_iso", return_value="2099-01-01T00:00:00+00:00"):
+                    callback(self.payload())
+                self.assertEqual((self.work / "task.json").read_bytes(), task_bytes)
+                self.assertEqual((self.work / "events.jsonl").read_bytes(), events)
+                self.assertEqual(target.read_bytes(), stored)
+                self.assertEqual(read_task_note(self.task.id), canonical)
+                self.assertEqual((self.work / "draft.md").read_bytes(), self.draft_bytes)
+                self.assertEqual(self.transcript_path.read_bytes(), self.source_bytes)
 
     def test_boolean_saved_bounds_are_not_reused_as_numeric_source_positions(self):
         callback = partial_section_callback(self.task.id, self.transcript)
@@ -267,17 +296,25 @@ class ProgressiveSectionTests(unittest.TestCase):
 
     def test_additive_artifacts_can_roll_back_to_retained_source_draft_without_data_loss(self):
         from app.models import TaskRecord
-        partial_section_callback(self.task.id, self.transcript)(self.payload())
-        saved = (self.work / "draft.partial.md").read_bytes()
-        current = TaskRecord.model_validate_json((self.work / "task.json").read_bytes())
-        self.assertEqual(current.summary_source, "partial-draft")
-        # Before using an older release, point incomplete tasks back at the
-        # retained source draft. Neither generated nor source bytes are deleted.
-        update_task(self.task.id, note_path=str(self.work / "draft.md"), summary_source="transcript-draft")
-        self.assertEqual(read_task_note(self.task.id).encode(), self.draft_bytes)
-        self.assertEqual((self.work / "draft.partial.md").read_bytes(), saved)
-        self.assertEqual(self.transcript_path.read_bytes(), self.source_bytes)
-        self.assertEqual(search_library("DistinctiveUnverifiedDraft"), [])
+        canonical = self.draft_bytes.decode("utf-8").replace("\r\n", "\n")
+        draft = self.work / "draft.md"
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                original = canonical.replace("\n", newline).encode("utf-8")
+                draft.write_bytes(original)
+                partial_section_callback(self.task.id, self.transcript)(self.payload())
+                saved = (self.work / "draft.partial.md").read_bytes()
+                current = TaskRecord.model_validate_json((self.work / "task.json").read_bytes())
+                self.assertEqual(current.summary_source, "partial-draft")
+                self.assertEqual(draft.read_bytes(), original)
+                # Pointer-only rollback retains raw bytes; the ordinary public
+                # reader intentionally returns canonical LF text under #150.
+                update_task(self.task.id, note_path=str(draft), summary_source="transcript-draft")
+                self.assertEqual(read_task_note(self.task.id), canonical)
+                self.assertEqual(draft.read_bytes(), original)
+                self.assertEqual((self.work / "draft.partial.md").read_bytes(), saved)
+                self.assertEqual(self.transcript_path.read_bytes(), self.source_bytes)
+                self.assertEqual(search_library("DistinctiveUnverifiedDraft"), [])
 
     def test_invalid_text_is_not_exposed_and_cancellation_keeps_prior_draft(self):
         callback = partial_section_callback(self.task.id, self.transcript)

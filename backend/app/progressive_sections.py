@@ -122,8 +122,14 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         lines.extend(["#" + first, "", "> 草稿 · 证据补充中 · 未完成最终校验", "", body.strip(), ""])
     target = root / "draft.partial.md"
     rendered = "\n".join(lines)
-    projection_changed = not target.is_file() or target.read_bytes() != rendered.encode("utf-8")
-    atomic_write_text(target, rendered)
+    try:
+        # Compare text with universal newlines: Windows text-mode writes use
+        # CRLF, but an unchanged replay must preserve stored bytes and revision.
+        projection_changed = target.read_text(encoding="utf-8") != rendered
+    except (FileNotFoundError, UnicodeDecodeError):
+        projection_changed = True
+    if projection_changed:
+        atomic_write_text(target, rendered)
     check_cancel(task_id)
     current = get_task(task_id)
     note = Path(current.note_path) if current.note_path else None
