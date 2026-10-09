@@ -18,6 +18,7 @@ import unicodedata
 from typing import Any, Iterable
 
 from .markdown_structure import prose_text, structural_lines
+from .text_corruption import has_high_confidence_corruption
 
 
 DOCUMENT_SCHEMA_VERSION = 2
@@ -31,16 +32,6 @@ _TIMESTAMP_RE = re.compile(
     r"(?:\s*(?:-|–|—|~|至)\s*(?P<end>(?:\d{1,2}:)?\d{1,2}:\d{2}))?(?!\d)"
 )
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_MOJIBAKE_MARKERS = (
-    "�",
-    "锟斤拷",
-    "浣犲ソ",
-    "瀛︿",
-    "閫",
-    "â€™",
-    "ï»¿",
-)
-_UTF8_MOJIBAKE_RE = re.compile(r"(?:Ã[\u0080-\u00bf]|Â(?:[\u0080-\u00bf]|\s)|â(?:€|™|œ|“|”|…)|ðŸ)")
 _INTERNAL_PROMPT_RE = re.compile(
     r"system prompt|developer message|ignore (?:the )?(?:previous|above) instructions|"
     r"do not reveal (?:the )?prompt|内部提示|系统提示|开发者指令|不要输出(?:json|markdown)",
@@ -346,12 +337,7 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     _, content_lines = _split_frontmatter(text.splitlines())
     prose = prose_text("\n".join(content_lines))
-    mojibake_score = sum(
-        prose.count(marker) * (10 if marker == "�" else 4)
-        for marker in _MOJIBAKE_MARKERS
-    )
-    mojibake_score += len(_UTF8_MOJIBAKE_RE.findall(prose)) * 2
-    if mojibake_score >= 4:
+    if has_high_confidence_corruption("\n".join(content_lines)):
         issues.append({
             "code": "mojibake_detected",
             "severity": "error",

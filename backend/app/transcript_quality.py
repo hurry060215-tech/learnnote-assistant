@@ -6,17 +6,20 @@ from typing import Callable
 
 from .models import TranscriptResult
 from .storage import atomic_write_text
-from .text_cleanup import TEXT_NORMALIZATION_VERSION, mojibake_score, redact_sensitive_url_values
+from .text_cleanup import TEXT_NORMALIZATION_VERSION, redact_sensitive_url_values
+from .text_corruption import corruption_prose, has_high_confidence_corruption
 
 
 def transcript_quality_report(transcript: TranscriptResult) -> dict:
     text = "\n".join(segment.text for segment in transcript.segments) if transcript.segments else transcript.full_text
     replacements, markers = text.count("\ufffd"), text.count("【识别不清】")
-    needs_review = bool(replacements or markers or mojibake_score(text) >= 4)
+    prose = corruption_prose(text)
+    uncertain_prose = bool(prose.count("\ufffd") or prose.count("【识别不清】"))
+    needs_review = bool(uncertain_prose or has_high_confidence_corruption(text))
     local_asr = transcript.source == "faster-whisper"
     return {"schema_version": 1, "status": "review_required" if needs_review else "ready",
         "review_required": needs_review, "source_kind": "local_asr" if local_asr else "transcript",
-        "issue_kind": "asr_character_uncertainty" if local_asr and (replacements or markers) else "unicode_corruption" if needs_review else "none",
+        "issue_kind": "asr_character_uncertainty" if local_asr and uncertain_prose else "unicode_corruption" if needs_review else "none",
         "replacement_character_count": replacements, "uncertain_marker_count": markers,
         "normalization_version": TEXT_NORMALIZATION_VERSION, "encoding_repaired": False,
         "formal_note_allowed": not needs_review}
