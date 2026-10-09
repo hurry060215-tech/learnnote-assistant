@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const code = source.slice(source.indexOf("  const deletionReason ="), source.indexOf("  async function studySettings("));
 const cancelAction = source.match(/"cancel-delete-course": (.+),\n/)[1];
 const deferred = () => { let resolve, reject; const promise = new Promise((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
