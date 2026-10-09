@@ -68,11 +68,25 @@ Evidence: [workflow run 37802466976](https://github.com/hurry060215-tech/learnno
 The extension stage passed; the whole workflow subsequently failed on a separate
 default-reader 390/200% overflow. See [reproduction conditions](EXTENSION_LOCALE_VISUAL_CI.md).
 
-**Issue #144 remains open.** The PNGs have not been manually inspected and are
-not persistently archived as approved store assets. The available CI artifact
-has 14-day retention; its image bytes could not be read in this cloud task
-(HTTP 403), and that boundary was respected. Generated screenshots and automated
-layout assertions are evidence of rendering, not visual/store-submission approval.
-Native extension installation and browser permission prompts were not tested.
-No artifact transfer workaround, new permission or store upload is part of this
-patch. Matching reviewed, durable bilingual assets remain a separate prerequisite.
+### Store asset acceptance remains pending
+
+Four later candidates from source `e46d224967c42649de1680bb4acafc8aef17694d`
+were inspected and rejected as store material: the app header/course context was
+cropped away and the images showed regression-only placeholder content.
+[Run 37938043910](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37938043910)
+and [artifact 11620640482](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37938043910/artifacts/11620640482)
+contain that evidence. The extension stage passed; a later unrelated concept
+fixture failed. The source SHA is GitHub's test merge commit.
+
+Dedicated store scenes now use one representative synthetic course in both UI
+languages. Four 1280×800 compositions show separately labeled, complete source
+and result views, with visible demo disclosure and original captures/hashes for
+review. The existing layout/error/original-content matrix remains unchanged.
+See [reproduction details](EXTENSION_LOCALE_VISUAL_CI.md) and the
+[review/archive checklist](../extension/store-assets/README.md).
+
+**Issue #144 remains open until the replacement images are rendered, visually
+reviewed and persistently archived.** Offline fixture tests and generated image
+hashes are not visual approval. Native extension installation and browser
+permission prompts are separate, untested boundaries. Store upload is not a
+dependency of this localization issue, and no upload is part of these scenes.
