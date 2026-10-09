@@ -25,14 +25,14 @@ MODULE_SIZE_LIMITS = {
     "web/app.js": 9650,
     "web/styles.css": 12262,
     "backend/app/media_source_context.py": 300,
-    "backend/app/media_url_parsing.py": 270,
+    "backend/app/media_url_parsing.py": 290,
     "backend/app/media_json_discovery.py": 440,
     "backend/app/media_discovery.py": 320,
     "backend/app/media_manifests.py": 150,
     "backend/app/qa_evidence.py": 400,
     "backend/app/qa_history.py": 130,
     "backend/app/task_archives.py": 140,
-    "extension/page_hook.js": 2850,
+    "extension/page_hook.js": 2855,
     "extension/background.js": 2500,
     "extension/content.js": 2200,
     "extension/content-study-evidence.js": 110,
@@ -95,7 +95,8 @@ def import_violations(app_root: Path = APP) -> list[str]:
 
 
 # Keep the complete, explicitly listed extraction group bounded alongside its entry points.
-EXTRACTED_BACKEND_BUDGET = 9250
+# #269 adds strict credential-origin parsing after the unchanged #143 extraction.
+EXTRACTED_BACKEND_BUDGET = 9300
 EXTRACTED_BACKEND_MODULES = (
     "main", "downloader", "media_source_context", "media_url_parsing", "media_json_discovery",
     "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives",

@@ -133,7 +133,6 @@
     "User-Agent": "primary agent",
     "Referer": "https://player.example.test/referer",
     "Accept": "video/*",
-    "Authorization": "Bearer synthetic",
     "Origin": "https://course.example.test"
   },
   "context_input_unchanged": true,

@@ -12,30 +12,22 @@ from urllib.parse import urljoin, urlparse, urlunparse
 import requests
 
 from .downloader_policy import UnsafeMediaTarget
+from .media_url_parsing import _url_origin, same_http_origin
 
 
 def _safe_header_value(value: object) -> str:
     return " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
 
 
-def _url_origin(url: str) -> tuple[str, str, int] | None:
-    try:
-        parsed = urlparse(url or "")
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
-            return None
-        if parsed.username is not None or parsed.password is not None:
-            return None
-        host = parsed.hostname.rstrip(".").lower()
-        if "%" in host:
-            return None
-        try:
-            host = ipaddress.ip_address(host).compressed
-        except ValueError:
-            host = host.encode("idna").decode("ascii")
-        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
-    except (UnicodeError, ValueError):
-        return None
-    return parsed.scheme.lower(), host, port
+class _OriginScopedSession(requests.Session):
+    def should_strip_auth(self, old_url: str, new_url: str) -> bool:
+        return not same_http_origin(old_url, new_url)
+
+
+def request_media(method: str, url: str, **kwargs) -> requests.Response:
+    """Keep browser Authorization within one origin, including HTTPS upgrades."""
+    with _OriginScopedSession() as session:
+        return session.request(method, url, **kwargs)
 
 
 def _trusted_page_for_target(target_url: str, *page_urls: str) -> str:
@@ -195,4 +187,4 @@ def open_validated_media_response(
             response_wrapper.close()
 
 
-__all__ = ["_trusted_page_for_target", "open_validated_media_response"]
+__all__ = ["_trusted_page_for_target", "open_validated_media_response", "request_media"]

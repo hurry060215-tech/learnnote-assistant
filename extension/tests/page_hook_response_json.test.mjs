@@ -200,7 +200,7 @@ assert.equal(hls.headers["content-type"], "application/json");
 assert.equal(hls.headers["content-length"], "4096");
 assert.equal(hls.request_headers.Accept, "application/json");
 assert.equal(hls.request_headers["Content-Type"], "application/x-www-form-urlencoded");
-assert.equal(hls.request_headers.Authorization, "Bearer fetch-token");
+assert.equal(hls.request_headers.Authorization, undefined);
 assert.equal(hls.request_headers["User-Agent"], "Chrome Lesson UA");
 assert.equal(hls.request_headers["Sec-Fetch-Dest"], "empty");
 assert.equal(hls.request_headers["Sec-Fetch-Mode"], "cors");
@@ -220,6 +220,7 @@ assert.ok(dtokenVideo, "expected Chaoxing-style dtoken field with video context 
 assert.equal(dtokenVideo.kind, "video");
 assert.equal(dtokenVideo.mime, "video/mp4");
 assert.equal(dtokenVideo.request_headers.Cookie, undefined);
+assert.equal(dtokenVideo.request_headers.Authorization, "Bearer fetch-token");
 
 assert.ok(pathVideo, "expected Chaoxing-style path field with video context to expose extensionless video endpoint");
 assert.equal(pathVideo.kind, "video");

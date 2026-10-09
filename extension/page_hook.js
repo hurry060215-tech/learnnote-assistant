@@ -636,6 +636,24 @@
     }
   }
 
+  function requestHeadersForUrl(resource = {}, url = "") {
+    const headers = { ...(resource.request_headers || {}) };
+    const origins = [resource.url, url].map(value => {
+      try {
+        if (!/^https?:\/\/[^/?#\\\s@]+(?:[/?#]|$)/i.test(value || "") || /[\u0000-\u0020\\]/.test(value)) return "";
+        return new URL(value).origin;
+      } catch {
+        return "";
+      }
+    });
+    if (!origins[0] || origins[0] !== origins[1]) {
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() === "authorization") delete headers[name];
+      }
+    }
+    return headers;
+  }
+
   function fetchResponseMeta(response, url = "", requestHeaders = {}, method = "", requestBody = {}) {
     const headers = safeResponseHeaders(name => response.headers?.get?.(name) || "");
     return {
@@ -645,7 +663,7 @@
       content_length: numericHeader(headers, "content-length"),
       initiator: response.url || url || "",
       headers,
-      request_headers: requestHeaders,
+      request_headers: requestHeadersForUrl({ url, request_headers: requestHeaders }, response.url || url),
       request_body: requestBody,
       page_url: currentPageUrl(),
       page_identity: currentPageIdentity()
@@ -669,7 +687,7 @@
     }
   }
 
-  function xhrResponseMeta(xhr, url = "") {
+  function xhrResponseMeta(xhr, url = "", request = {}) {
     const headers = safeResponseHeaders(name => xhr.getResponseHeader?.(name) || "");
     return {
       request_type: "xmlhttprequest",
@@ -678,7 +696,7 @@
       content_length: numericHeader(headers, "content-length"),
       initiator: xhr.responseURL || url || "",
       headers,
-      request_headers: xhr.__learnNoteRequestHeaders || {},
+      request_headers: requestHeadersForUrl(request, xhr.responseURL || url),
       request_body: xhr.__learnNoteRequestBody || {},
       page_url: xhr.__learnNotePageUrl || currentPageUrl(),
       page_identity: xhr.__learnNotePageIdentity || currentPageIdentity()
@@ -695,7 +713,7 @@
       content_length: item.content_length ?? meta.content_length ?? null,
       initiator: item.initiator || meta.initiator || "",
       headers: { ...(item.headers || {}), ...(meta.headers || {}) },
-      request_headers: { ...(item.request_headers || {}), ...(meta.request_headers || {}) },
+      request_headers: { ...(item.request_headers || {}), ...requestHeadersForUrl({ url: meta.initiator, request_headers: meta.request_headers }, item.url) },
       request_body: { ...(item.request_body || {}), ...(meta.request_body || {}) },
       page_url: item.page_url || meta.page_url || currentPageUrl(),
       page_identity: item.page_identity || meta.page_identity || currentPageIdentity()
@@ -2207,12 +2225,14 @@
 
   function requestUrl(input) {
     try {
-      if (typeof input === "string") return input;
-      if (input && typeof input.url === "string") return input.url;
+      if (typeof input !== "string") return typeof input?.url === "string" ? input.url : "";
+      if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return input;
+      const base = document.baseURI || currentPageUrl();
+      if (!/^https?:\/\/[^/?#\\\s@]+(?:[/?#]|$)/i.test(base) || /[\u0000-\u0020\\]/.test(base + input)) return "";
+      return new URL(input, base).href;
     } catch {
       return "";
     }
-    return "";
   }
 
   function responseSourceUrl(response, fallbackUrl = "") {
@@ -2226,11 +2246,11 @@
     return applyResponseMeta(blobMeta(sourceUrl, mime, source, label), meta);
   }
 
-  function inspectCacheResponse(response, request, label, pageMeta = {}) {
+  function inspectCacheResponse(response, request, label, pageMeta = {}, source = { url: requestUrl(request), headers: normalizeRequestHeaderMap(request?.headers) }) {
     if (!response || typeof response !== "object") return;
-    const url = response.url || requestUrl(request);
+    const url = response.url || source.url;
     const mime = response.headers?.get?.("content-type") || "";
-    const meta = fetchResponseMeta(response, url, normalizeRequestHeaderMap(request?.headers));
+    const meta = fetchResponseMeta(response, source.url, source.headers);
     Object.assign(meta, pageMeta);
     rememberResponseMeta(response, meta);
     emit([applyResponseMeta({ url: responseSourceUrl(response, url), source: "pageHookCache", label, mime }, meta)]);
@@ -2256,11 +2276,13 @@
       const requestPageUrl = currentPageUrl();
       const requestPageIdentity = currentPageIdentity();
       const method = fetchRequestMethod(args[0], args[1] || {});
-      const requestBody = await fetchRequestBodyFromInput(method, args[0], args[1] || {});
+      const requestBody = fetchRequestBodyFromInput(method, args[0], args[1] || {});
+      const requestHeaders = fetchRequestHeaders(args[0], args[1] || {});
+      const sourceUrl = requestUrl(args[0]);
       const response = await originalFetch.apply(this, args);
-      const url = response.url || requestUrl(args[0]);
+      const url = response.url || sourceUrl;
       const mime = response.headers?.get?.("content-type") || "";
-      const meta = fetchResponseMeta(response, url, fetchRequestHeaders(args[0], args[1] || {}), method, requestBody);
+      const meta = fetchResponseMeta(response, sourceUrl, requestHeaders, method, await requestBody);
       meta.page_url = requestPageUrl;
       meta.page_identity = requestPageIdentity;
       rememberResponseMeta(response, meta);
@@ -2415,9 +2437,10 @@
       const originalMatch = cache.match;
       cache.match = async function (request, ...rest) {
         const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
+        const source = { url: requestUrl(request), headers: normalizeRequestHeaderMap(request?.headers) };
         const response = await originalMatch.call(this, request, ...rest);
         try {
-          inspectCacheResponse(response, request, "cache match", pageMeta);
+          inspectCacheResponse(response, request, "cache match", pageMeta, source);
         } catch {
           // Cache reads must stay transparent.
         }
@@ -2428,9 +2451,10 @@
       const originalMatchAll = cache.matchAll;
       cache.matchAll = async function (request, ...rest) {
         const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
+        const source = { url: requestUrl(request), headers: normalizeRequestHeaderMap(request?.headers) };
         const responses = await originalMatchAll.call(this, request, ...rest);
         try {
-          for (const response of responses || []) inspectCacheResponse(response, request, "cache matchAll", pageMeta);
+          for (const response of responses || []) inspectCacheResponse(response, request, "cache matchAll", pageMeta, source);
         } catch {
           // Cache reads must stay transparent.
         }
@@ -2485,9 +2509,10 @@
     const originalCachesMatch = window.caches.match;
     window.caches.match = async function (request, ...rest) {
       const pageMeta = { page_url: currentPageUrl(), page_identity: currentPageIdentity() };
+      const source = { url: requestUrl(request), headers: normalizeRequestHeaderMap(request?.headers) };
       const response = await originalCachesMatch.call(this, request, ...rest);
       try {
-        inspectCacheResponse(response, request, "cache storage match", pageMeta);
+        inspectCacheResponse(response, request, "cache storage match", pageMeta, source);
       } catch {
         // CacheStorage reads must stay transparent.
       }
@@ -2685,7 +2710,7 @@
     const originalSend = XMLHttpRequest.prototype.send;
     const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-      this.__learnNoteUrl = url;
+      this.__learnNoteUrl = requestUrl(url);
       this.__learnNoteMethod = method;
       this.__learnNotePageUrl = currentPageUrl();
       this.__learnNotePageIdentity = currentPageIdentity();
@@ -2709,10 +2734,11 @@
       } catch {
         this.__learnNoteRequestBody = {};
       }
+      const request = { url: this.__learnNoteUrl, request_headers: { ...(this.__learnNoteRequestHeaders || {}) } };
       this.addEventListener("loadend", () => {
-        const url = this.responseURL || this.__learnNoteUrl || "";
+        const url = this.responseURL || request.url || "";
         const mime = this.getResponseHeader?.("content-type") || "";
-        const meta = xhrResponseMeta(this, url);
+        const meta = xhrResponseMeta(this, url, request);
         emit([applyResponseMeta({ url, source: "pageHookRequest", label: "xhr", mime }, meta)]);
         if (typeof Blob !== "undefined" && this.response instanceof Blob) {
           rememberBlobObject(this.response, applyResponseMeta(blobMeta(url, this.response.type || mime, "pageHookBlob", "xhr blob source"), meta));

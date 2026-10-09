@@ -15,7 +15,7 @@ from .media_candidate_ranking import (
     score_candidate,
     should_guess_sibling_manifest_with_blob_boundary,
 )
-from .media_url_parsing import _is_http_url, _media_endpoint_hint
+from .media_url_parsing import _is_http_url, _media_endpoint_hint, same_http_origin
 
 
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
@@ -52,7 +52,6 @@ YTDLP_HTTP_HEADER_ORDER = (
     "Sec-Fetch-Mode",
     "Sec-Fetch-Site",
     "X-Requested-With",
-    "Authorization",
 )
 
 
@@ -127,7 +126,7 @@ def _safe_header_value(value: object) -> str:
     return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
 
 
-def browser_request_headers_for_candidate(candidate: ResourceCandidate | None) -> dict[str, str]:
+def browser_request_headers_for_candidate(candidate: ResourceCandidate | None, target_url: str | None = None) -> dict[str, str]:
     headers: dict[str, str] = {}
     for name, value in (candidate.request_headers if candidate else {}).items():
         lower = str(name).lower()
@@ -137,10 +136,13 @@ def browser_request_headers_for_candidate(candidate: ResourceCandidate | None) -
         cleaned = _safe_header_value(value)
         if cleaned:
             headers[canonical] = cleaned
+    if candidate and not same_http_origin(candidate.url, candidate.url if target_url is None else target_url):
+        headers.pop("Authorization", None)
     return headers
 
 
 def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCandidate]) -> dict[str, str]:
+    # Extractor headers also reach secondary hosts, so omit browser credentials.
     headers: dict[str, str] = {}
     ordered = sorted(
         resources,

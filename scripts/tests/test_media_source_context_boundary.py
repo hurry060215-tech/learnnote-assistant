@@ -23,7 +23,7 @@ class MediaSourceContextBoundaryTests(unittest.TestCase):
         self.assertLessEqual(architecture.MODULE_SIZE_LIMITS["backend/app/downloader.py"], 2520)
         self.assertLessEqual(architecture.MODULE_SIZE_LIMITS["backend/app/media_source_context.py"], 300)
         self.assertIn("media_source_context", architecture.EXTRACTED_BACKEND_MODULES)
-        self.assertLessEqual(architecture.EXTRACTED_BACKEND_BUDGET, 9250)
+        self.assertLessEqual(architecture.EXTRACTED_BACKEND_BUDGET, 9300)
 
     def test_source_context_rejects_deferred_transport_and_storage_imports(self):
         with tempfile.TemporaryDirectory() as temporary:
