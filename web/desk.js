@@ -1347,6 +1347,11 @@ $("theme").onclick = () => {
   const dark = document.body.classList.toggle("dark");
   localStorage.setItem("learnnote.desk.theme", dark ? "dark" : "light");
 };
+let reviewSession = 0, reviewRender = 0, reviewQuiz = null;
+$("reviewDialog").addEventListener("close", () => {
+  if ($("reviewDialog").open) return; // A queued close event may follow a newer open.
+  reviewSession++; reviewRender++; reviewQuiz?.dispose(); reviewQuiz = null;
+});
 let evidenceRequest = 0;
 async function openEvidenceSource(source, seconds, target = {}, request = ++evidenceRequest) {
   await openItem(source);
@@ -1364,130 +1369,123 @@ async function openEvidence(evidenceId) {
 }
 
 async function drawReview() {
-  const card = state.cards[0];
+  const card = state.cards[0], session = reviewSession, render = ++reviewRender;
+  reviewQuiz?.dispose(); reviewQuiz = null;
+  const current = () => session === reviewSession && render === reviewRender && $("reviewDialog").open && state.cards[0]?.card_id === card?.card_id;
   $("reviewContent").innerHTML = card
-    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div><div class="tool-actions"><button id="editReviewCard">修改问题与答案</button><button id="deleteReviewCard" class="danger">永久删除卡片</button></div><div id="reviewCardEditor"></div></div>`
+    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3 hidden>${esc(card.front)}</h3><div id="reviewQuiz"></div><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><p class="muted">记忆自评只调整 FSRS 复习时间，不计客观答对。</p><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div><div class="tool-actions"><button id="editReviewCard">修改问题与答案</button><button id="deleteReviewCard" class="danger">永久删除卡片</button></div><div id="reviewCardEditor"></div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
-  if (card) {
-    const revealAnswer = () => {
-      $("answer").hidden = false;
-      $("reveal").hidden = true;
-      $("recordReflection").hidden = true;
-      $("skipReflection").hidden = true;
-      $("reviewReflection").hidden = true;
-    };
-    $("editReviewCard").onclick = () => {
-      $("reviewCardEditor").innerHTML = `<form id="reviewCardForm"><label for="reviewCardFront">问题</label><textarea id="reviewCardFront" required maxlength="1000">${esc(card.front)}</textarea><label for="reviewCardBack">答案</label><textarea id="reviewCardBack" required maxlength="4000">${esc(card.back)}</textarea><p class="muted">个人修改会保留原始出处和复习记录；请先核对依据。</p><button class="primary">保存修改</button></form>`;
-      $("reviewCardForm").onsubmit = async (event) => {
-        event.preventDefault();
-        const submit = event.submitter; if (submit) submit.disabled = true;
-        try {
-          const result = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/content`, { method: "PUT", body: JSON.stringify({ front: $("reviewCardFront").value, back: $("reviewCardBack").value }) });
-          if (state.cards[0]?.card_id !== card.card_id) return;
-          state.cards[0] = result.card;
-          await drawReview();
-        } catch (error) { failure(error); if (submit) submit.disabled = false; }
-      };
-      $("reviewCardFront").focus();
-    };
-    $("deleteReviewCard").onclick = async () => {
-      if (!confirm("永久删除这张卡片及其评分和自评记录？原始资料不会删除。")) return;
-      $("deleteReviewCard").disabled = true;
+  if (!card) return;
+  const quiz = globalThis.LearnNoteQuiz.mount({
+    container: $("reviewQuiz"), cardId: card.card_id, request: api, isCurrent: current,
+    onQuestionState: active => { if (current()) $("reviewContent").querySelector("h3").hidden = active; },
+    onSource: id => { $("reviewDialog").close(); openEvidence(id).catch(failure); },
+  });
+  reviewQuiz = quiz;
+  const revealAnswer = () => {
+    if (!current()) return;
+    quiz.reveal();
+    $("answer").hidden = false;
+    $("reveal").hidden = true;
+    $("recordReflection").hidden = true;
+    $("skipReflection").hidden = true;
+    $("reviewReflection").hidden = true;
+  };
+  $("editReviewCard").onclick = () => {
+    $("reviewCardEditor").innerHTML = `<form id="reviewCardForm"><label for="reviewCardFront">问题</label><textarea id="reviewCardFront" required maxlength="1000">${esc(card.front)}</textarea><label for="reviewCardBack">答案</label><textarea id="reviewCardBack" required maxlength="4000">${esc(card.back)}</textarea><p class="muted">个人修改会保留原始出处和复习记录；旧填空保留作答时的题目。修改后会重新检查证据。</p><button class="primary">保存修改</button></form>`;
+    $("reviewCardForm").onsubmit = async event => {
+      event.preventDefault();
+      const submit = event.submitter; if (submit?.disabled) return; if (submit) submit.disabled = true;
       try {
-        await api(`/api/study/cards/${encodeURIComponent(card.card_id)}?confirm=delete_card`, { method: "DELETE" });
-        state.cards = state.cards.filter(item => item.card_id !== card.card_id);
-        await drawReview();
-      } catch (error) { failure(error); if ($("deleteReviewCard")) $("deleteReviewCard").disabled = false; }
+        const result = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/content`, { method: "PUT", body: JSON.stringify({front: $("reviewCardFront").value, back: $("reviewCardBack").value})});
+        if (!current()) return;
+        state.cards[0] = result.card; await drawReview();
+      } catch (error) { if (current()) { failure(error); if (submit) submit.disabled = false; } }
     };
-    $("reveal").onclick = revealAnswer;
-    $("recordReflection").onclick = async () => {
-      if (!$("reviewReflection").value.trim()) {
-        $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。";
-        return;
-      }
-      $("recordReflection").disabled = true;
-      $("skipReflection").disabled = true;
-      try {
-        await api("/api/study/activity", { method: "POST", body: JSON.stringify({ kind: "self_assessment", source_id: `card:${card.card_id}` }) });
-        $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。";
-        revealAnswer();
-      } catch (error) {
-        $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
-        $("recordReflection").disabled = false;
-        $("skipReflection").disabled = false;
-      }
-    };
-    $("skipReflection").onclick = revealAnswer;
-    $("reviewSources").innerHTML = (card.source_evidence_ids || [])
-      .map((id) => `<button data-evidence="${esc(id)}">查看出处</button>`)
-      .join("");
+    $("reviewCardFront").focus();
+  };
+  $("deleteReviewCard").onclick = async () => {
+    if (!confirm("永久删除这张卡片及其填空作答、评分和自评记录？原始资料不会删除。")) return;
+    $("deleteReviewCard").disabled = true;
     try {
-      const schedule = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/schedule-preview`);
-      if(state.cards[0]?.card_id !== card.card_id || !$("reviewDialog").open) return;
-      for (const choice of schedule.choices) {
-        const button = $("reviewContent").querySelector(`[data-rating="${choice.rating}"]`);
-        if(!button) continue;
-        const seconds = choice.interval_seconds;
-        const label = seconds < 3600 ? `${Math.max(1,Math.round(seconds/60))} 分钟后` : seconds < 86400 ? `${Math.round(seconds/3600)} 小时后` : `${Math.round(seconds/86400)} 天后`;
-        const small = document.createElement("small"); small.textContent = label; button.append(small);
-      }
-    } catch { /* Review remains usable if only the preview request fails. */ }
-  }
+      await api(`/api/study/cards/${encodeURIComponent(card.card_id)}?confirm=delete_card`, {method: "DELETE"});
+      if (!current()) return;
+      state.cards = state.cards.filter(item => item.card_id !== card.card_id); await drawReview();
+    } catch (error) { if (current()) { failure(error); $("deleteReviewCard").disabled = false; } }
+  };
+  $("reveal").onclick = revealAnswer;
+  const reflectionKey = crypto.randomUUID();
+  $("recordReflection").onclick = async () => {
+    if ($("recordReflection").disabled) return;
+    if (!$("reviewReflection").value.trim()) { $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。"; return; }
+    $("recordReflection").disabled = true; $("skipReflection").disabled = true; quiz.reveal();
+    try {
+      await api("/api/study/activity", {method: "POST", body: JSON.stringify({kind: "self_assessment", source_id: `card:${card.card_id}`, idempotency_key: reflectionKey})});
+      if (!current()) return;
+      $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。"; revealAnswer();
+    } catch (error) {
+      if (!current()) return;
+      $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
+      $("recordReflection").disabled = false; $("skipReflection").disabled = false;
+    }
+  };
+  $("skipReflection").onclick = revealAnswer;
+  $("reviewSources").innerHTML = (card.source_evidence_ids || []).map(id => `<button data-evidence="${esc(id)}">查看出处</button>`).join("");
+  try {
+    const schedule = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/schedule-preview`);
+    if (!current()) return;
+    for (const choice of schedule.choices) {
+      const button = $("reviewContent").querySelector(`[data-rating="${choice.rating}"]`); if (!button) continue;
+      const seconds = choice.interval_seconds;
+      const label = seconds < 3600 ? `${Math.max(1,Math.round(seconds/60))} 分钟后` : seconds < 86400 ? `${Math.round(seconds/3600)} 小时后` : `${Math.round(seconds/86400)} 天后`;
+      const small = document.createElement("small"); small.textContent = label; button.append(small);
+    }
+  } catch { /* Review remains usable if only the preview request fails. */ }
 }
 async function startReview(courseId = "", taskId = "") {
-  $("reviewDialog").showModal();
-  $("reviewContent").textContent = "正在读取…";
+  const session = ++reviewSession;
+  reviewQuiz?.dispose(); reviewQuiz = null;
+  $("reviewDialog").showModal(); $("reviewContent").textContent = "正在读取…";
+  const current = () => session === reviewSession && $("reviewDialog").open;
   try {
-    const initialized = await api("/api/study/plan/initialize", {
-      method: "POST",
-      body: JSON.stringify({
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }),
-    });
+    const initialized = await api("/api/study/plan/initialize", {method: "POST", body: JSON.stringify({timezone: Intl.DateTimeFormat().resolvedOptions().timeZone})});
+    if (!current()) return;
     if (initialized.plan?.paused) {
-      state.cards = [];
-      $("reviewContent").textContent = "学习计划已暂停；在学习工作室恢复计划后可继续复习。";
-      return;
+      state.cards = []; $("reviewContent").textContent = "学习计划已暂停；在学习工作室恢复计划后可继续复习。"; return;
     }
-    state.cards = (
-      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`)
-    ).cards;
-    drawReview();
-  } catch (error) {
-    $("reviewContent").textContent = error.message;
-  }
+    const result = await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`);
+    if (!current()) return;
+    state.cards = result.cards; drawReview();
+  } catch (error) { if (current()) $("reviewContent").textContent = error.message; }
 }
 $("review").onclick = () => startReview();
 
-$("reviewContent").onclick = async (e) => {
+$("reviewContent").onclick = async e => {
   const button = e.target.closest("[data-rating],[data-evidence]");
-  if (!button) return;
+  if (!button || button.disabled) return;
+  const session = reviewSession, render = reviewRender;
+  const current = () => session === reviewSession && render === reviewRender && $("reviewDialog").open;
+  let ratingControls = [];
   button.disabled = true;
   try {
-    if (button.dataset.evidence) {
-      $("reviewDialog").close();
-      await openEvidence(button.dataset.evidence);
-      return;
+    if (button.dataset.evidence) { $("reviewDialog").close(); await openEvidence(button.dataset.evidence); return; }
+    ratingControls = [...$("reviewContent").querySelectorAll("[data-rating], #editReviewCard, #deleteReviewCard, #reviewCardForm button, #reviewCardForm textarea")];
+    for (const control of ratingControls) control.disabled = true;
+    const card = state.cards[0], cardId = card.card_id;
+    const snapshot = JSON.stringify([Number(card.reps || 0), card.last_reviewed_at || ""]);
+    if (state.reviewSubmission?.cardId !== cardId || state.reviewSubmission.snapshot !== snapshot) {
+      state.reviewSubmission = {cardId, snapshot, key: crypto.randomUUID(), rating: Number(button.dataset.rating)};
     }
-    for (const b of $("reviewContent").querySelectorAll("[data-rating]"))
-      b.disabled = true;
-    const cardId = state.cards[0].card_id;
-    if(state.reviewSubmission?.cardId !== cardId) state.reviewSubmission = {cardId,key:crypto.randomUUID()};
-    const result = await api(`/api/study/cards/${cardId}/review`, {
-      method: "POST",
-      body: JSON.stringify({
-        rating: Number(button.dataset.rating),
-        idempotency_key: state.reviewSubmission.key,
-      }),
-    });
-    state.reviewSubmission = null;
-    if(result.card?.due_at) notice(`已记录，下次复习：${new Date(result.card.due_at).toLocaleString()}`);
-    state.cards.shift();
-    drawReview();
+    const submission = state.reviewSubmission;
+    const result = await api(`/api/study/cards/${cardId}/review`, {method: "POST", body: JSON.stringify({rating: submission.rating, idempotency_key: submission.key})});
+    if (!current()) return;
+    if (state.reviewSubmission === submission) state.reviewSubmission = null;
+    if (result.card?.due_at) notice(`已记录，下次复习：${new Date(result.card.due_at).toLocaleString()}`);
+    state.cards.shift(); drawReview();
   } catch (error) {
+    if (!current()) return;
     failure(error);
-    for (const b of $("reviewContent").querySelectorAll("button"))
-      b.disabled = false;
+    for (const control of ratingControls) control.disabled = false;
   }
 };
 window.addEventListener("beforeunload", (e) => {

@@ -1741,3 +1741,9 @@ body.theme-dark .source-dialog, body.theme-dark .material-reader.markdown-note {
     margin-inline: auto;
   }
 }
+
+.objective-quiz { margin-block: 16px; padding-block: 12px; overflow-wrap: anywhere; }
+.quiz-answer-form { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.quiz-answer-form label { flex: 1 1 180px; min-width: 0; }
+.quiz-answer-form input { display: block; width: 100%; max-width: 100%; box-sizing: border-box; }
+.quiz-answer-form button { max-width: 100%; white-space: normal; }

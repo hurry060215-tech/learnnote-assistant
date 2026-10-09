@@ -22,7 +22,7 @@ from .study_content import review_points
 from .text_corruption import corruption_prose, has_high_confidence_corruption
 
 
-STUDY_SCHEMA_VERSION = 3
+STUDY_SCHEMA_VERSION = 4
 FSRS_ALGORITHM = "fsrs-6.3.2"
 ACTIVITY_KINDS = {"reading", "answer", "self_assessment", "review"}
 _SCHEDULER = FsrsScheduler(enable_fuzzing=False)
@@ -33,6 +33,9 @@ def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(DATA_DIR / "study.sqlite3", timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
+    # Concurrent first reads must not both observe a missing legacy column and
+    # race the additive ALTER. Commit the schema transaction before returning.
+    connection.execute("BEGIN IMMEDIATE")
     connection.execute(
         """CREATE TABLE IF NOT EXISTS study_cards (
            card_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, front TEXT NOT NULL,
@@ -81,6 +84,12 @@ def _connect() -> sqlite3.Connection:
     connection.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS study_review_idempotency_idx ON study_reviews(card_id, idempotency_key) WHERE idempotency_key != ''"
     )
+    activity_columns = {row[1] for row in connection.execute("PRAGMA table_info(study_activity)")}
+    if "idempotency_key" not in activity_columns:
+        connection.execute("ALTER TABLE study_activity ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''")
+    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS study_activity_idempotency_idx ON study_activity(kind,source_id,idempotency_key) WHERE idempotency_key != ''")
+    from .study_quiz import initialize_tables
+    initialize_tables(connection)
     plan_columns = {row[1] for row in connection.execute("PRAGMA table_info(study_plans)")}
     if "timezone_initialized" not in plan_columns:
         connection.execute("ALTER TABLE study_plans ADD COLUMN timezone_initialized INTEGER NOT NULL DEFAULT 0")
@@ -416,12 +425,13 @@ def delete_study_card(card_id: str) -> dict[str, int]:
         connection.execute("BEGIN IMMEDIATE")
         if not connection.execute("SELECT 1 FROM study_cards WHERE card_id=?", (card_id,)).fetchone():
             raise ValueError("card_not_found")
+        attempts = connection.execute("DELETE FROM study_quiz_attempts WHERE card_id=?", (card_id,)).rowcount
         reviews = connection.execute("DELETE FROM study_reviews WHERE card_id=?", (card_id,)).rowcount
         connection.execute("DELETE FROM study_activity WHERE source_id IN (?, ?)", (card_id, f"card:{card_id}"))
         connection.execute("DELETE FROM study_card_spaces WHERE card_id=?", (card_id,))
         connection.execute("DELETE FROM study_cards WHERE card_id=?", (card_id,))
         connection.commit()
-        return {"deleted_cards": 1, "deleted_reviews": max(0, reviews)}
+        return {"deleted_cards": 1, "deleted_reviews": max(0, reviews), "deleted_quiz_attempts": max(0, attempts)}
     except Exception:
         connection.rollback()
         raise
@@ -449,6 +459,9 @@ def remove_cards_for_evidence(evidence_ids: list[str]) -> dict[str, int]:
                 card_ids.append(str(row["card_id"]))
         deleted_reviews = 0
         for card_id in card_ids:
+            connection.execute("DELETE FROM study_quiz_attempts WHERE card_id=?", (card_id,))
+            connection.execute("DELETE FROM study_activity WHERE source_id IN (?,?)", (card_id, f"card:{card_id}"))
+            connection.execute("DELETE FROM study_card_spaces WHERE card_id=?", (card_id,))
             deleted_reviews += max(0, connection.execute("DELETE FROM study_reviews WHERE card_id = ?", (card_id,)).rowcount)
             connection.execute("DELETE FROM study_cards WHERE card_id = ?", (card_id,))
         connection.commit()
@@ -467,6 +480,7 @@ def clear_study_data() -> dict[str, int]:
         review_count = int(connection.execute("SELECT COUNT(*) FROM study_reviews").fetchone()[0])
         card_count = int(connection.execute("SELECT COUNT(*) FROM study_cards").fetchone()[0])
         plan_count = int(connection.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0])
+        connection.execute("DELETE FROM study_quiz_attempts")
         connection.execute("DELETE FROM study_reviews")
         connection.execute("DELETE FROM study_activity")
         connection.execute("DELETE FROM study_card_spaces")
@@ -696,10 +710,13 @@ def study_summary() -> dict[str, object]:
     return {"schema_version": STUDY_SCHEMA_VERSION, "algorithm": FSRS_ALGORITHM, "counts": counts, "due_count": 0 if plan.paused else due, "reviewed_today": reviewed_today, "activity_today": activity_today, "timezone": plan.timezone, "paused": plan.paused}
 
 
-def record_activity(kind: str, source_id: str = "", occurred_at: str | None = None) -> dict[str, object]:
+def record_activity(kind: str, source_id: str = "", occurred_at: str | None = None, idempotency_key: str = "") -> dict[str, object]:
     normalized = str(kind or "").strip().lower()
     if normalized not in ACTIVITY_KINDS:
         raise ValueError("invalid_activity_kind")
+    safe_key = str(idempotency_key or "")
+    if len(safe_key) > 128 or safe_key and not re.fullmatch(r"[A-Za-z0-9._:-]+", safe_key):
+        raise ValueError("invalid_activity_key")
     when = _parse_datetime(occurred_at or "") or datetime.now(timezone.utc)
     get_study_plan()
     connection = _connect()
@@ -707,9 +724,15 @@ def record_activity(kind: str, source_id: str = "", occurred_at: str | None = No
         connection.execute("BEGIN IMMEDIATE")
         if connection.execute("SELECT paused FROM study_plans WHERE plan_id='default'").fetchone()[0]:
             raise ValueError("study_plan_paused")
+        if source_id.startswith("card:") and not connection.execute("SELECT 1 FROM study_cards WHERE card_id=? AND status!='deleted'", (source_id[5:],)).fetchone():
+            raise ValueError("card_not_found")
+        if safe_key:
+            previous = connection.execute("SELECT * FROM study_activity WHERE kind=? AND source_id=? AND idempotency_key=?", (normalized, source_id[:128], safe_key)).fetchone()
+            if previous:
+                return dict(previous)
         cursor = connection.execute(
-            "INSERT INTO study_activity(kind, source_id, occurred_at) VALUES (?, ?, ?)",
-            (normalized, str(source_id or "")[:128], when.astimezone(timezone.utc).isoformat()),
+            "INSERT INTO study_activity(kind, source_id, occurred_at, idempotency_key) VALUES (?, ?, ?, ?)",
+            (normalized, str(source_id or "")[:128], when.astimezone(timezone.utc).isoformat(), safe_key),
         )
         connection.commit()
         return {"activity_id": int(cursor.lastrowid), "kind": normalized, "source_id": str(source_id or "")[:128], "occurred_at": when.astimezone(timezone.utc).isoformat()}
@@ -761,7 +784,9 @@ def export_study_data() -> dict[str, object]:
     try:
         cards = [_row_to_card(row) for row in connection.execute("SELECT * FROM study_cards WHERE status!='deleted' ORDER BY position,card_id")]
         reviews = [dict(row) for row in connection.execute("SELECT r.review_id,r.card_id,r.rating,r.reviewed_at,r.due_at,r.stability,r.difficulty,r.idempotency_key FROM study_reviews r JOIN study_cards c ON c.card_id=r.card_id WHERE c.status!='deleted' ORDER BY r.review_id")]
-        activity_events = [dict(row) for row in connection.execute("SELECT kind,source_id,occurred_at FROM study_activity ORDER BY activity_id")]
+        activity_events = [dict(row) for row in connection.execute("SELECT kind,source_id,occurred_at,idempotency_key FROM study_activity ORDER BY activity_id")]
+        from .study_quiz import export_attempts
+        quiz_attempts = export_attempts(connection)
     finally:
         connection.close()
     return {
@@ -772,6 +797,8 @@ def export_study_data() -> dict[str, object]:
         "reviews": reviews,
         "activity": activity_summary(365)["days"],
         "activity_events": activity_events,
+        "quiz_attempts": quiz_attempts,
+        "review_basis": "self_assessment",
         "plan": get_study_plan().model_dump(mode="json"),
     }
 
@@ -781,7 +808,7 @@ def validate_study_backup(payload: dict) -> dict[str, object]:
 
     if not isinstance(payload, dict) or payload.get("algorithm") != FSRS_ALGORITHM:
         raise ValueError("study_backup_algorithm_unsupported")
-    if int(payload.get("schema_version") or 0) != STUDY_SCHEMA_VERSION:
+    if int(payload.get("schema_version") or 0) not in {3, STUDY_SCHEMA_VERSION}:
         raise ValueError("study_backup_schema_unsupported")
     raw_cards = payload.get("cards")
     raw_reviews = payload.get("reviews")
@@ -843,8 +870,13 @@ def validate_study_backup(payload: dict) -> dict[str, object]:
         occurred_at = _parse_datetime(raw.get("occurred_at"))
         if kind not in ACTIVITY_KINDS or occurred_at is None:
             raise ValueError("study_backup_activity_invalid")
-        events.append({"kind": kind, "source_id": source_id, "occurred_at": occurred_at.isoformat()})
+        key = str(raw.get("idempotency_key") or "")
+        if len(key) > 128 or key and not re.fullmatch(r"[A-Za-z0-9._:-]+", key):
+            raise ValueError("study_backup_activity_invalid")
+        events.append({"kind": kind, "source_id": source_id, "occurred_at": occurred_at.isoformat(), "idempotency_key": key})
 
+    from .study_quiz import validate_attempts
+    quiz_attempts = validate_attempts(payload.get("quiz_attempts", []), card_ids, _parse_datetime)
     plan = payload.get("plan")
     if not isinstance(plan, dict):
         raise ValueError("study_backup_plan_invalid")
@@ -856,6 +888,7 @@ def validate_study_backup(payload: dict) -> dict[str, object]:
         "cards": cards,
         "reviews": reviews,
         "activity_events": events,
+        "quiz_attempts": quiz_attempts,
         "plan": validated_plan.model_dump(mode="json"),
     }
 
@@ -911,12 +944,14 @@ def restore_study_data(payload: dict) -> dict[str, int]:
             ).fetchone()
             if duplicate:
                 continue
-            connection.execute(
-                "INSERT INTO study_activity(kind,source_id,occurred_at) VALUES (?,?,?)",
-                (item["kind"], item["source_id"], item["occurred_at"]),
+            inserted = connection.execute(
+                "INSERT OR IGNORE INTO study_activity(kind,source_id,occurred_at,idempotency_key) VALUES (?,?,?,?)",
+                (item["kind"], item["source_id"], item["occurred_at"], item["idempotency_key"]),
             )
-            restored_activity += 1
+            restored_activity += max(0, inserted.rowcount)
 
+        from .study_quiz import restore_attempts
+        restored_attempts = restore_attempts(connection, snapshot["quiz_attempts"])
         imported_plan = StudyPlan.model_validate(snapshot["plan"])
         current_plan = connection.execute("SELECT * FROM study_plans WHERE plan_id='default'").fetchone()
         current_is_uninitialized = current_plan is None or (
@@ -944,7 +979,7 @@ def restore_study_data(payload: dict) -> dict[str, int]:
         raise
     finally:
         connection.close()
-    return {"restored_cards": restored_cards, "restored_reviews": restored_reviews, "restored_activity": restored_activity, "restored_plan": plan_restored}
+    return {"restored_cards": restored_cards, "restored_reviews": restored_reviews, "restored_activity": restored_activity, "restored_quiz_attempts": restored_attempts, "restored_plan": plan_restored}
 
 
 def get_study_plan() -> StudyPlan:
@@ -1010,12 +1045,71 @@ def update_study_plan(title: str, daily_target: int, paused: bool, timezone_name
         connection.close()
 
 
+def _load_card(connection, card_id):
+    row = connection.execute("SELECT * FROM study_cards WHERE card_id=? AND status!='deleted'", (card_id,)).fetchone()
+    if row is None:
+        raise ValueError("card_not_found")
+    return _row_to_card(row)
+
+
+def question_for_card(card_id):
+    connection = _connect()
+    try:
+        card = _load_card(connection, card_id)
+        from .study_quiz import build_question
+        question = build_question(card, quiz_evidence_eligible)
+        if question is None:
+            return {"available": False, "reason": "insufficient_exact_evidence"}
+        return {"available": True, **{key: value for key, value in question.items() if key != "expected_answer"}}
+    finally:
+        connection.close()
+
+
+def submit_answer(card_id, question_revision, answer, idempotency_key):
+    from .study_quiz import build_question, _attempt, normalize_answer, SCORER
+    if not isinstance(answer, str) or not answer.strip() or len(answer) > 128:
+        raise ValueError("invalid_quiz_answer")
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", idempotency_key or ""):
+        raise ValueError("quiz_idempotency_key_required")
+    get_study_plan()
+    connection = _connect()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        card = _load_card(connection, card_id)
+        previous = connection.execute("SELECT * FROM study_quiz_attempts WHERE card_id=? AND idempotency_key=?", (card_id, idempotency_key)).fetchone()
+        if previous:
+            if previous["question_revision"] != question_revision or previous["submitted_answer"] != answer:
+                raise ValueError("quiz_submission_conflict")
+            return _attempt(previous)
+        if connection.execute("SELECT paused FROM study_plans WHERE plan_id='default'").fetchone()[0]:
+            raise ValueError("study_plan_paused")
+        if card.status != "active":
+            raise ValueError("card_not_active")
+        question = build_question(card, quiz_evidence_eligible)
+        if not question or question["question_revision"] != question_revision:
+            raise ValueError("quiz_question_changed")
+        correct = normalize_answer(answer) == normalize_answer(question["expected_answer"])
+        cursor = connection.execute("""INSERT INTO study_quiz_attempts
+            (card_id,question_revision,question,expected_answer,submitted_answer,correct,
+             source_evidence_ids,attempted_at,scorer,idempotency_key) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (card_id, question_revision, question["question"], question["expected_answer"], answer, int(correct),
+             json.dumps(question["source_evidence_ids"]), datetime.now(timezone.utc).isoformat(), SCORER, idempotency_key))
+        result = _attempt(connection.execute("SELECT * FROM study_quiz_attempts WHERE attempt_id=?", (cursor.lastrowid,)).fetchone())
+        connection.commit()
+        return result
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[str] | None = None) -> dict[str, object]:
     """Build one local-only learning workspace from the existing FSRS data.
 
     Quiz prompts are projections of due evidence-grounded cards; answers stay
     out of the queue payload so the client can reveal them deliberately. A
-    rating of 1 is treated as a review mistake for the recovery queue.
+    rating of 1 is a self-assessed recovery cue, never objective correctness.
     """
     cap = max(1, min(int(limit or 12), 50))
     days = max(7, min(int(activity_days or 14), 90))
@@ -1051,6 +1145,9 @@ def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[
                FROM study_reviews ORDER BY reviewed_at DESC LIMIT ?""",
             (cap,),
         ).fetchall()
+        from .study_quiz import learning_measures, objective_mistakes
+        measures = learning_measures(connection)
+        quiz_mistakes = objective_mistakes(connection, evidence_ids, cap)
         mastery_rows = connection.execute(
             """SELECT CASE WHEN c.reps=0 THEN 'new'
                       WHEN latest.rating=1 OR c.fsrs_state='Relearning' THEN 'needs_attention'
@@ -1125,6 +1222,8 @@ def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[
             {
                 "quiz_id": f"card-{card.card_id}",
                 "kind": "evidence_card_recall",
+                "answer_basis": "self_assessment",
+                "objective_question_endpoint": f"/api/study/cards/{card.card_id}/quiz",
                 "question": card.front,
                 "answer_included": False,
                 "source_evidence_ids": card.source_evidence_ids,
@@ -1134,6 +1233,8 @@ def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[
         ],
         "mistakes": [
             {
+                "basis": "self_assessment",
+                "correct": None,
                 "review_id": int(row["review_id"]),
                 "card_id": row["card_id"],
                 "question": row["front"],
@@ -1144,8 +1245,11 @@ def study_dashboard(limit: int = 12, activity_days: int = 14, evidence_ids: set[
             }
             for row in mistake_rows
         ],
+        "objective_mistakes": quiz_mistakes,
         "progress": {
             "activity": activity,
+            "measures": measures,
+            "stability_basis": "fsrs_from_self_ratings",
             "mastery": mastery,
             "card_counts": summary.get("counts") or {},
             "algorithm": FSRS_ALGORITHM,

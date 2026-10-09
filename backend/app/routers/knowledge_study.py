@@ -18,6 +18,7 @@ from ..study import activity_summary, clear_study_data, due_cards, export_study_
 from ..storage import get_task, read_json
 from ..study import initialize_study_timezone, quiz_evidence_eligible, edit_card_content, delete_study_card
 from ..study import rebuild_study_schedules
+from ..study import question_for_card, submit_answer
 from ..courses import course_evidence_ids
 from ..task_artifacts import read_task_note, read_task_transcript
 from ..learning_spaces import list_space_practice
@@ -376,7 +377,7 @@ def api_study_activity(days: int = 30) -> dict:
 def api_record_study_activity(payload: dict | None = Body(default=None)) -> dict:
     body = payload or {}
     try:
-        return {"ok": True, "activity": record_activity(str(body.get("kind") or ""), str(body.get("source_id") or ""))}
+        return {"ok": True, "activity": record_activity(str(body.get("kind") or ""), str(body.get("source_id") or ""), idempotency_key=str(body.get("idempotency_key") or ""))}
     except ValueError as exc:
         raise HTTPException(
             status_code=409 if str(exc) == "study_plan_paused" else 422,
@@ -463,6 +464,45 @@ def api_initialize_study_plan(request: StudyPlanUpdateRequest) -> dict:
         return {"plan": initialize_study_timezone(request.timezone or "UTC").model_dump(mode="json")}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "无法识别本地时区，请在学习计划中选择时区。"}) from exc
+
+
+class QuizAnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    answer: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def _quiz_public_error(exc: ValueError) -> HTTPException:
+    # Select literal public values; exception details can contain local paths
+    # or source text and must never become a response body.
+    errors = {
+        "card_not_found": (404, "card_not_found", "卡片不存在，请重新打开复习。"),
+        "card_not_active": (409, "card_not_active", "卡片已暂停，请恢复后再作答。"),
+        "study_plan_paused": (409, "study_plan_paused", "学习计划已暂停，请恢复后再作答。"),
+        "quiz_question_changed": (409, "quiz_question_changed", "题目或依据已改变，请重新打开复习。"),
+        "quiz_submission_conflict": (409, "quiz_submission_conflict", "本次提交已使用其他答案，请重新打开复习。"),
+        "invalid_quiz_answer": (422, "invalid_quiz_answer", "请填写有效的原文术语。"),
+        "quiz_idempotency_key_required": (422, "quiz_idempotency_key_required", "提交标识无效，请重新打开复习。"),
+    }
+    status, code, message = errors.get(str(exc), (422, "quiz_unavailable", "填空题暂不可用，请重新打开复习。"))
+    return HTTPException(status_code=status, detail={"code": code, "message": message})
+
+
+@study_router.get("/cards/{card_id}/quiz")
+def api_study_quiz(card_id: str) -> dict:
+    try:
+        return question_for_card(card_id)
+    except ValueError as exc:
+        raise _quiz_public_error(exc) from exc
+
+
+@study_router.post("/cards/{card_id}/answer")
+def api_study_answer(card_id: str, request: QuizAnswerRequest) -> dict:
+    try:
+        return {"attempt": submit_answer(card_id, request.question_revision, request.answer, request.idempotency_key)}
+    except ValueError as exc:
+        raise _quiz_public_error(exc) from exc
 
 
 @study_router.post("/cards/{card_id}/review")
