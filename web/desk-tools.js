@@ -19,6 +19,7 @@ export function installTools(ctx) {
     course = null,
     courses = [],
     courseEpisodes = [],
+    courseDeletion = null,
     proposals = [],
     batchRunning = false,
     cleanupPolicy = null,
@@ -129,6 +130,67 @@ export function installTools(ctx) {
       `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
     backAction = listCourses;
+  }
+  const deletionReason = (reason) => ({
+    shared_task: "其他课程仍在使用，已保护",
+    dependent_task: "其他任务或视频片段仍依赖此来源，已保护",
+    active_task: "仍在排队或处理中，请先停止任务",
+    busy_task: "后台仍在使用，请稍后刷新",
+    source_missing: "任务已不存在，无需删除",
+    source_unreadable: "任务记录不可读，暂不能删除",
+    identity_conflict: "任务身份不一致，暂不能删除",
+    references_unavailable: "无法核对全部课程引用或后台状态，暂不能删除",
+    pending: "尚未生成任务",
+  }[reason] || "来源不可用，暂不能删除");
+  function updateCourseDeletionCount() {
+    const count = dialog.querySelectorAll("[data-delete-course-task]:checked").length;
+    $("courseDeletionCount").textContent = count
+      ? `已选择 ${count} 个子任务。确认后永久删除这些任务、笔记修订、相关复习卡和本机生成文件；应用内上传副本也可能被清理。`
+      : "已选择 0 个子任务。只删除课程分组，保留全部任务和笔记。";
+    $("confirmCourseDeletion").textContent = count ? `确认删除课程及 ${count} 个子任务` : "仅删除课程，保留全部任务";
+  }
+  async function reviewCourseDeletion() {
+    const id = course.id;
+    const token = show("确认删除课程", '<p class="muted">正在核对课程与子任务…</p>');
+    backAction = () => openCourse(id);
+    courseDeletion = null;
+    let result;
+    try { result = await api(`/api/courses/${id}/deletion-preview`); }
+    catch (error) { if (token === generation) status(error.message); return; }
+    if (token !== generation) return;
+    courseDeletion = { ...result, generation: token, submitting: false };
+    $("toolBody").innerHTML = `<p><strong>${esc(result.title)}</strong></p><p>默认保留全部子任务。仅勾选你明确要永久删除的任务；未勾选和受保护的任务会保留。</p><p class="muted">独立资料文档和应用数据目录外的原文件保留。确认前关闭或取消此页面不会删除内容。</p><div class="source-picker">${result.tasks.map(item => `<label class="tool-choice"><input type="checkbox" data-delete-course-task="${esc(item.task_id)}" ${item.eligible ? "" : "disabled"}><span>${esc(item.title)}<small>${esc(item.eligible ? "可以选择删除" : deletionReason(item.reason))}</small></span></label>`).join("") || '<p class="muted">没有可删除的子任务。</p>'}</div>${result.unlinked.map(item => `<p class="muted">${esc(item.title)} · ${esc(deletionReason(item.status))}</p>`).join("")}<p id="courseDeletionCount" role="status" aria-live="polite"></p><div class="tool-actions"><button data-action="cancel-delete-course">取消</button><button data-action="delete-course">重新核对删除范围</button><button class="danger" id="confirmCourseDeletion" data-action="confirm-delete-course"></button></div>`;
+    updateCourseDeletionCount();
+  }
+  async function confirmCourseDeletion() {
+    const review = courseDeletion;
+    if (!review || review.generation !== generation || review.course_id !== course?.id || review.submitting || !guard()) return;
+    const taskIds = [...dialog.querySelectorAll("[data-delete-course-task]:checked")].map(input => input.dataset.deleteCourseTask);
+    review.submitting = true;
+    const controls = [...dialog.querySelectorAll("#toolBody button, #toolBody input:not(:disabled)")];
+    controls.forEach(input => { input.disabled = true; });
+    try {
+      const result = await request(`/api/courses/${review.course_id}`, { method: "DELETE", body: JSON.stringify({ confirm: "delete_course", revision: review.revision, snapshot: review.snapshot, task_ids: taskIds }) });
+      let refreshWarning = "";
+      try { await refresh(); } catch { refreshWarning = " 资料列表暂未刷新，请稍后重新打开。"; }
+      if (review.generation !== generation) return;
+      if (state.selected?.kind === "task" && result.deleted_task_ids?.includes(state.selected.id)) ctx.showHome({ check: false });
+      if (result.deleted) {
+        course = null;
+        const listGeneration = generation + 1;
+        try { await listCourses(); }
+        catch { if (generation !== listGeneration) return; refreshWarning = " 课程列表暂不可用，请稍后重新打开。"; }
+        status(`课程已删除；删除了 ${result.deleted_task_ids?.length || 0} 个子任务，其余内容保留。${refreshWarning}`);
+      } else {
+        const names = new Map(review.tasks.map(item => [item.task_id, item.title]));
+        const details = (result.task_outcomes || []).map(item => `${names.get(item.task_id) || item.task_id}：${item.error ? (item.deleted ? "任务已移除，但清理未完成" : "清理未完成，请核对剩余内容") : "已删除"}`).join("；");
+        await reviewCourseDeletion();
+        status(`删除未全部完成，课程仍保留。${details ? details + "。" : ""}请核对剩余任务后重新选择。${refreshWarning}`);
+      }
+    } finally {
+      review.submitting = false;
+      if (review.generation === generation) controls.forEach(input => { input.disabled = false; });
+    }
   }
   async function studySettings(courseId = "", taskId = "") {
     const token = show("复习与计划", '<p class="muted">正在读取…</p>');
@@ -612,6 +674,13 @@ export function installTools(ctx) {
     if (batchRunning) return;
     if (course.paused) throw new Error("请先继续课程。");
     const snapshot = await api(`/api/courses/${course.id}`);
+    // A legacy course or a lost bind acknowledgement may resolve by manifest
+    // alone. This explicit action durably adopts reuse before skipping it.
+    for (const episode of snapshot.episodes || []) {
+      if (episode.source_kind === "url" && episode.task_id) {
+        await api(`/api/courses/${snapshot.course.id}/episodes/${episode.episode_id}/prepare`, { method: "POST" });
+      }
+    }
     const pending = (snapshot.episodes || []).filter(item => item.source_kind === "url" && !item.task_id && item.status !== "identity_conflict").slice(0, 24);
     if (!pending.length) { status("没有待提交分集；失败或中断的分集可单独恢复。"); return; }
     if (!confirm(`将提交 ${pending.length} 个分集，字幕优先且不分析画面。每集使用当前资源预算；重复点击会复用已有任务。继续？`)) return;
@@ -770,12 +839,9 @@ export function installTools(ctx) {
       await saveCourse({ ...course, paused: !course.paused });
       courseView();
     },
-    "delete-course": async () => {
-      if (!confirm("只删除课程分组，保留其中的笔记和资料？")) return;
-      await api(`/api/courses/${course.id}`, { method: "DELETE" });
-      course = null;
-      await listCourses();
-    },
+    "delete-course": reviewCourseDeletion,
+    "cancel-delete-course": () => openCourse(courseDeletion.course_id),
+    "confirm-delete-course": confirmCourseDeletion,
     batch,
     "course-review": () => studySettings(course.id),
     "refresh-course": () => openCourse(course.id),
@@ -1003,6 +1069,9 @@ export function installTools(ctx) {
         await annotations();
         ctx.reloadAnnotations();
       });
+  });
+  dialog.addEventListener("change", (event) => {
+    if (event.target.matches("[data-delete-course-task]")) updateCourseDeletionCount();
   });
   dialog.addEventListener("submit", (event) => {
     event.preventDefault();

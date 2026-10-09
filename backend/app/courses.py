@@ -4,26 +4,22 @@ from __future__ import annotations
 import json
 import re
 import math
-import threading
 from uuid import uuid4
 
 from .config import DATA_DIR
+from .course_state import lock as _lock, course_path, read_course
 from .knowledge import evidence_for_task, evidence_ids_for_task
 from .library import get_material, material_anchors
 from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
 
-_lock = threading.RLock()
-
 
 def _path(course_id: str):
-    if not re.fullmatch(r"[a-f0-9]{32}", course_id):
-        raise ValueError("invalid_course_id")
-    return DATA_DIR / "courses" / f"{course_id}.json"
+    return course_path(DATA_DIR, course_id)
 
 
 def get_course(course_id: str) -> dict:
-    return json.loads(_path(course_id).read_text(encoding="utf-8"))
+    return read_course(DATA_DIR, course_id)
 
 
 def list_courses() -> list[dict]:
@@ -77,15 +73,25 @@ def save_course(title: str, sources: list[dict], paused: bool = False, course_id
             normalized.append(item)
         course = {"schema_version": 1, "id": course_id, "title": title.strip(), "sources": normalized, "paused": paused, "revision": revision + 1}
         atomic_write_text(_path(course_id), json.dumps(course, ensure_ascii=False, indent=2))
+        # Saving sources is an explicit write workflow. Adopt resolved reuse
+        # here so later option changes cannot silently detach a saved course;
+        # ordinary reads and deletion previews must remain side-effect free.
+        from .course_episodes import course_episodes, bind_course_episode
+        for episode in course_episodes(course):
+            if episode["source_kind"] == "url" and episode.get("task_id"):
+                bind_course_episode(course, episode["episode_id"], episode["task_id"])
         return course
 
 
 def delete_course(course_id: str) -> None:
     # Removing a collection is not authorization to delete its source files.
     with _lock:
-        _path(course_id).unlink()
+        path = _path(course_id)
+        if not path.exists():
+            raise FileNotFoundError(course_id)
         from .course_episodes import clear_course_episode_links
         clear_course_episode_links(course_id)
+        path.unlink()
 
 
 def _evidence_sources(course: dict) -> list[dict]:

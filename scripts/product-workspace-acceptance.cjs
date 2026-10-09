@@ -119,6 +119,8 @@ const fs = require("fs");
       ),
     );
     await p.screenshot({ path: `${out}/assistant-mobile.png` });
+    const courseDeletion = await require("./course-deletion-acceptance.cjs")(p.context(), base, out);
+    const courseMediaReuse = await require("./course-media-reuse-acceptance.cjs")(p.context(), base, out);
     assert.deepEqual(errors, []);
     fs.writeFileSync(
       `${out}/result.json`,
@@ -132,6 +134,8 @@ const fs = require("fs");
           save_answer: true,
           outline: true,
           mobile: true,
+          course_deletion: courseDeletion,
+          course_media_reuse: courseMediaReuse,
           errors,
         },
         null,

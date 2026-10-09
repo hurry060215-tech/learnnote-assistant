@@ -26,6 +26,7 @@ import hmac
 import json
 import mimetypes
 import re
+import sqlite3
 import shutil
 import threading
 import time
@@ -3345,8 +3346,18 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     request = request.model_copy(update={"page_url": source.url, "title": title})
     source_identity = current_page_source_identity(request)
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    with _deferred_handoffs_lock:
-        existing = _existing_handoff_task(request.handoff_id)
+    from .course_episodes import prepared_course_handoff
+    from .course_state import lock as course_state_lock
+    # Keep the reservation valid until the first task identity is persisted.
+    # Course deletion/editing uses the same lock and cannot pass this check
+    # while a delayed submission is between validation and creation.
+    with _deferred_handoffs_lock, course_state_lock:
+        try:
+            course_handoff, existing = prepared_course_handoff(request)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            raise HTTPException(status_code=409, detail={"code": "course_episode_identity_conflict", "message": "Course source identity is unavailable or ambiguous."}) from exc
+        if not course_handoff:
+            existing = _existing_handoff_task(request.handoff_id)
         if existing:
             if not _same_handoff_source(existing, source_identity, source.url) or existing.mode != request.mode or existing.learning_range != request.learning_range:
                 raise HTTPException(
@@ -3358,8 +3369,11 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                 write_json(existing.id, "deferred_preflight.json", redacted_request_dump(request))
             return _handoff_response(existing, deduplicated=True)
 
-        task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range)
+        # Persist the source identity with the first manifest write so a
+        # restart cannot leave an anonymous task that a retry duplicates.
+        task = create_task(source_type=source_type, title=title, page_url=source.url,
+                           options=request.options, mode=request.mode, handoff_id=request.handoff_id,
+                           source_identity=source_identity, learning_range=request.learning_range)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
