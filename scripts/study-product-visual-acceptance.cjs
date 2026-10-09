@@ -40,6 +40,7 @@ async function main(){
     assert.deepEqual(repaired.evidence_ids,material.evidence_ids);assert(repaired.metadata.reindexed_at);
     assert.deepEqual((await api(`/api/library/materials/${material.material_id}/anchors`)).anchors.map(item=>item.evidence_id),anchors.map(item=>item.evidence_id));
     report.material_rebuild={same_ids:true,anchor_count:repaired.anchor_count,reader_reopened:true};
+    report.material_encoding=await require("./reader-encoding-acceptance.cjs")({page,api,base,out,restoreMaterial:material});
     const openStudio=async()=>{
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
       await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();

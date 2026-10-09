@@ -197,21 +197,35 @@ def api_library_delete_material(material_id: str, confirm: str = "") -> dict:
 @library_router.post("/materials/{material_id}/redecode")
 def api_library_material_redecode(material_id: str, payload: dict | None = Body(default=None)) -> dict:
     encoding = str((payload or {}).get("encoding") or "").strip()[:40]
+    expected_updated_at = (payload or {}).get("expected_updated_at")
     try:
-        return {"ok": True, "material": redecode_document_material(material_id, encoding)}
-    except ValueError as exc:
-        code = str(exc)
-        status = 404 if code == "material_not_found" else 422
+        return {"ok": True, "material": redecode_document_material(material_id, encoding, expected_updated_at=expected_updated_at)}
+    except (ValueError, OSError, sqlite3.Error) as exc:
         messages = {
+            "material_not_found": "学习资料不存在。",
+            "material_redecode_changed_reload_required": "资料已被另一项操作修改，未覆盖当前版本。请关闭并重新打开编码窗口后再试。",
+            "material_rebuild_changed_reload_required": "资料已被另一项操作修改，未覆盖当前版本。请关闭并重新打开编码窗口后再试。",
+            "material_rebuild_requires_document": "视频资料请从原视频任务恢复。",
+            "material_rebuild_identity_invalid": "资料引用身份不一致，未覆盖当前资料。",
+            "material_source_missing": "本机原始文件缺失，无法重解码；现有资料未改变。",
+            "material_file_too_large": "原始文件过大，未覆盖当前资料。",
             "material_redecode_encoding_required": "请先选择原文编码。",
             "material_redecode_pdf_unsupported": "PDF 请使用本地 OCR；字符集重解码仅适用于 TXT、Markdown 和 HTML。",
             "material_source_integrity_mismatch": "原始文件校验失败，未覆盖当前资料。",
             "material_redecode_empty": "所选编码没有提取出有效文本，当前资料未改变。",
+            "material_no_extractable_text": "所选编码没有提取出有效文本，当前资料未改变。",
             "material_redecode_evidence_missing": "原始出处索引不完整，当前资料未改变。",
             "text_encoding_unsupported": "所选编码无法无损解码原始字节，当前资料未改变。",
             "text_mojibake_detected": "所选编码仍会产生高置信度乱码，当前资料未改变。",
             "material_anchor_limit_exceeded": "解码结果包含过多段落，当前资料未改变。",
+            "extracted_text_too_large": "解码结果过大，当前资料未改变。",
         }
+        # Return a literal public code from this mapping, never exception text
+        # (which can include local paths or document content).
+        public_codes = {known: known for known in messages}
+        code = public_codes.get(str(exc), "material_redecode_failed") if isinstance(exc, ValueError) else "material_redecode_failed"
+        conflict = code in {"material_redecode_changed_reload_required", "material_rebuild_changed_reload_required"}
+        status = 404 if code == "material_not_found" else 409 if conflict else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": messages.get(code, "资料重解码失败，当前内容未改变。")}) from exc
 
 

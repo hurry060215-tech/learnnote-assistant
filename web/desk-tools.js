@@ -1,6 +1,7 @@
 import { mountSupportSummary } from "/web/support-summary.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
+import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -41,6 +42,7 @@ export function installTools(ctx) {
     const el = $("toolStatus");
     if (el) el.textContent = text;
   }
+  const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
   async function run(button, work) {
     const token = generation;
     if (button) button.disabled = true;
@@ -607,6 +609,12 @@ export function installTools(ctx) {
       rebuildButton.textContent = "从本机原文件重建出处索引";
       $("toolBody").querySelector(".tool-menu")?.append(rebuildButton);
     }
+    if (canRedecodeMaterial(s)) {
+      const encodingButton = document.createElement("button");
+      encodingButton.dataset.action = "material-encoding";
+      encodingButton.textContent = "重新选择原文编码";
+      $("toolBody").querySelector(".tool-menu")?.append(encodingButton);
+    }
     backAction = null;
   }
   async function batch() {
@@ -712,6 +720,7 @@ export function installTools(ctx) {
     more();
   };
   const actions = {
+    "material-encoding": materialEncoding,
     community,
     "toggle-community": async (button) => {
       await api("/api/study/community/settings", {
