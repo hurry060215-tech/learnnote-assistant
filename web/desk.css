@@ -523,6 +523,7 @@ dialog {
 dialog::backdrop {
   background: #15151555;
   backdrop-filter: blur(3px);
+  animation: backdrop-arrive 0.16s ease-out;
 }
 dialog header {
   display: flex;
@@ -1793,9 +1794,6 @@ button {
 dialog[open] {
   animation: dialog-arrive 0.12s ease-out;
 }
-dialog::backdrop {
-  animation: backdrop-arrive 0.16s ease-out;
-}
 @keyframes dialog-arrive {
   from {
     opacity: 1;
@@ -1823,13 +1821,15 @@ dialog::backdrop {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after, dialog::backdrop {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+@media (prefers-reduced-transparency: reduce) {
+  dialog::backdrop { background: #f5f6f3; backdrop-filter: none; opacity: 1; animation: none !important; transition: none !important; }
+  body.dark dialog::backdrop { background: #252525; }
 }
 
 /* Reading workflow: recorded facts, quiet navigation, no decorative row icons. */

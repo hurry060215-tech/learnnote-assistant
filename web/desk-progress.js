@@ -2,7 +2,8 @@ import { escapeHtml as esc } from "/web/desk-api.js";
 
 const stageNames = {
   subtitle_probe: "检查字幕",
-  media: "获取视频",
+  download: "获取视频",
+  media: "准备媒体",
   transcript: "读取文字",
   visual: "补充画面",
   summary: "生成笔记",
@@ -12,7 +13,7 @@ export const phaseName = (phase) =>
     queued: "等待开始",
     detecting: "探测字幕",
     downloading: "获取视频",
-    processing_video: "准备音轨",
+    processing_video: "准备媒体",
     transcribing: "读取字幕或转写",
     extracting_frames: "补充画面",
     summarizing: "生成总结",
@@ -20,7 +21,6 @@ export const phaseName = (phase) =>
     failed: "需要处理",
     cancelled: "已停止",
     cancelling: "正在停止",
-    download: "获取视频",
     ...stageNames,
   })[phase] || "处理内容";
 export function elapsedLabel(ms) {
@@ -47,6 +47,10 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       (e) => e.event === "stage_timing" && e.phase === stage.key,
     );
     if (timed) {
+      const duration = timed.details?.duration_ms;
+      const durationLabel = Number.isFinite(duration) && duration >= 0
+        ? elapsedLabel(duration)
+        : "耗时未记录";
       stage.state =
         timed.status === "completed"
           ? "done"
@@ -56,22 +60,27 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       stage.detail =
         stage.state === "skipped"
           ? {
-              media: "无需下载",
+              download: "无需下载",
+              media: "无需准备媒体",
               visual: "未启用 / 无需画面",
               transcript: "复用已有文字",
               subtitle_probe: "复用已有结果",
             }[stage.key] || "无需执行"
-          : `${stage.state === "done" ? "已完成" : "未完成"} · ${elapsedLabel(timed.details?.duration_ms || 0)}`;
+          : `${stage.state === "done" ? "已完成" : "未完成"} · ${durationLabel}`;
     }
   }
-  const activeKey = {
+  const phaseStages = {
     detecting: "subtitle_probe",
-    downloading: "media",
-    processing_video: "transcript",
+    downloading: "download",
+    // Audio extraction reuses this phase after media preparation finishes.
+    processing_video: stages.some(
+      (s) => s.key === "media" && ["done", "skipped"].includes(s.state),
+    ) ? "transcript" : "media",
     transcribing: "transcript",
     extracting_frames: "visual",
     summarizing: "summary",
-  }[task.phase];
+  };
+  const activeKey = phaseStages[task.phase];
   const active = stages.find((s) => s.key === activeKey);
   if (
     active &&
@@ -96,13 +105,7 @@ export function taskTimeline(task, events = [], now = Date.now()) {
     ["failed", "cancelled", "cancelling"].includes(task.status)
   ) {
     const failedKey =
-      {
-        detecting: "subtitle_probe",
-        downloading: "media",
-        transcribing: "transcript",
-        summarizing: "summary",
-        extracting_frames: "visual",
-      }[task.failed_phase] ||
+      phaseStages[task.failed_phase] ||
       (task.error_code === "summary_unavailable" ? "summary" : null);
     const stopped = stages.find((s) => s.key === failedKey);
     if (stopped) {
