@@ -191,9 +191,14 @@ async function multipart(request) {
           const relative = pathname === "/" ? "web/index.html" : decodeURIComponent(pathname.slice(1));
           const target = path.resolve(root, relative);
           assert(target.startsWith(path.join(root, "web") + path.sep));
-          assert(fs.statSync(target).isFile(), `Missing fixture asset: ${relative}`);
           const contentType = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2" }[path.extname(target)] || "application/octet-stream";
-          return route.fulfill({ body: fs.readFileSync(target), contentType });
+          const descriptor = fs.openSync(target, "r");
+          let body;
+          try {
+            assert(fs.fstatSync(descriptor).isFile(), `Missing fixture asset: ${relative}`);
+            body = fs.readFileSync(descriptor);
+          } finally { fs.closeSync(descriptor); }
+          return route.fulfill({ body, contentType });
         }
         report.requests.push(`${request.method()} ${pathname}`);
         if (pathname === "/health") return json(health);
