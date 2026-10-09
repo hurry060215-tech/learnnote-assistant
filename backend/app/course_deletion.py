@@ -142,7 +142,11 @@ def delete_reviewed_course(course_id, *, revision, snapshot, task_ids):
                 # Filesystem/index deletion is not an atomic transaction. Keep
                 # the course for review/retry and report every attempted task.
                 present = storage.task_file(task_id).exists()
-                code = str(exc) if str(exc) in {"active_task", "task_index_cleanup_failed"} else "task_cleanup_failed"
+                code = "task_cleanup_failed"
+                if str(exc) == "active_task":
+                    code = "active_task"
+                elif str(exc) == "task_index_cleanup_failed":
+                    code = "task_index_cleanup_failed"
                 outcomes.append({"task_id": task_id, "deleted": not present, "error": code})
         course_deleted = False
         error = ""

@@ -156,6 +156,20 @@ class CourseDeletionTests(unittest.TestCase):
         self.assertNotIn("synthetic private storage detail", response.text)
         self.assertEqual(storage.get_task(task.id).id, task.id)
 
+    def test_partial_cleanup_only_returns_fixed_public_error_codes(self):
+        task = self.task()
+        course = self.course(task)
+        preview = self.preview(course)
+        for message, expected in (("active_task", "active_task"), ("task_index_cleanup_failed", "task_index_cleanup_failed"),
+                                  ("synthetic private storage detail", "task_cleanup_failed")):
+            with self.subTest(message=message), patch.object(storage, "delete_task", side_effect=RuntimeError(message)):
+                response = self.delete(course, [task.id], preview)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertFalse(response.json()["deleted"])
+            self.assertEqual(response.json()["task_outcomes"][0]["error"], expected)
+            self.assertNotIn("synthetic private storage detail", response.text)
+            self.assertEqual(storage.get_task(task.id).id, task.id)
+
     def test_shared_direct_url_handoff_and_material_alias_are_protected(self):
         for other_kind in ("task", "material", "url"):
             with self.subTest(other_kind=other_kind):
