@@ -129,10 +129,13 @@ def api_put_update_preferences(payload: UpdatePreferences) -> dict:
 
 @system_router.get("/api/model/route")
 def api_model_route(content_mode: Literal["auto", "subtitles", "text", "visual"] = "auto", transcriber: str = "faster-whisper", whisper_model: str = "small", visual_understanding: bool = True) -> dict:
-    from ..config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+    from ..config import LLM_BASE_URL, LLM_MODEL
     from ..local_models import model_status
     from ..model_connections import selected_connection_status
-    from ..summarizer import llm_model_supports_vision
+    from ..summarizer import _model_key
+    from ..model_capabilities import route_capabilities
+    from ..model_route import REMOTE_ASR_NAMES
+    from ..transcriber import remote_asr_api_key
     from importlib.util import find_spec
     local_asr = find_spec("faster_whisper") is not None
     try:
@@ -141,14 +144,30 @@ def api_model_route(content_mode: Literal["auto", "subtitles", "text", "visual"]
         local_model_ready = False
     connection = selected_connection_status()
     model = connection.get("model") or {}
-    configured = bool(connection.get("configured") or LLM_API_KEY)
     base_url = model.get("base_url") or LLM_BASE_URL
     model_name = model.get("model") or LLM_MODEL
+    # Selected metadata already uses execution's endpoint-bound credentials.
+    # A default environment key must not revive another selected connection.
+    configured = bool(connection.get("configured")) if model else bool(_model_key(TaskOptions()))
+    options = TaskOptions(llm_base_url=base_url, llm_model=model_name, content_mode=content_mode,
+        transcriber=transcriber, whisper_model=whisper_model, visual_understanding=visual_understanding,
+        use_saved_connection=bool(model.get("use_saved_connection")))
+    # Reuse execution's endpoint-bound credential rule. Loopback alone is not
+    # sufficient for the compatible audio client; no key crosses this API.
+    asr_configured = bool(remote_asr_api_key(options))
+    vision_allowed = llm_model_supports_vision(base_url, model_name)
     return plan_route(
-        TaskOptions(llm_base_url=base_url, llm_model=model_name, content_mode=content_mode, transcriber=transcriber, whisper_model=whisper_model, visual_understanding=visual_understanding),
+        options,
         local_asr_available=local_asr and local_model_ready,
         model_configured=configured,
-        vision_configured=bool(configured and llm_model_supports_vision(base_url, model_name)),
+        asr_configured=asr_configured,
+        vision_configured=bool(configured and vision_allowed),
+        capability_catalog=route_capabilities(
+            llm_provider_name(base_url), base_url, model_name, configured=configured,
+            vision_allowed=vision_allowed, remote_asr=transcriber.strip().lower() in REMOTE_ASR_NAMES,
+            local_asr_available=local_asr and local_model_ready,
+            asr_configured=asr_configured,
+        ),
     )
 
 

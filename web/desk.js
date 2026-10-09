@@ -18,6 +18,7 @@ import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
+import { batchVideoRoute } from "/web/material-batch.js";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
 import {
   api,
@@ -167,14 +168,10 @@ function updateContentMode() {
   $("vision").disabled = true;
   $("vision").closest("label").hidden = true;
   if ($("localOcr")) $("localOcr").disabled = mode !== "visual";
-  const model =
-    state.model.model || state.health.default_llm_model || "尚未配置";
-  $("contentModeExplanation").textContent =
-    mode === "subtitles"
-      ? "不生成 AI 总结。没有可用字幕时会停下来，不会自动改用语音转写。"
-      : mode === "visual"
-        ? `视觉理解：已启用 · 当前模型：${model}。画面和必要的字幕会发送给该模型。`
-        : `视觉理解：关闭 · 文字模型：${model}。本地转写只在没有可用字幕时进行。`;
+  $("contentModeExplanation").textContent = batchVideoRoute({
+    ...state.processing, llm_base_url: state.model.base_url, llm_model: state.model.model,
+    content_mode: mode, visual_understanding: mode === "visual",
+  }, state.health, { localFile: state.input === "file" });
   $("createSubmit").textContent =
     mode === "subtitles" ? "提取字幕" : "生成笔记";
 }
