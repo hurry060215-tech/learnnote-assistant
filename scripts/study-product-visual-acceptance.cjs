@@ -32,6 +32,14 @@ async function main(){
     await api(`/api/study/cards/${cards[1].card_id}/review`,{method:"POST",data:{rating:1,idempotency_key:`visual-${marker}`}});
     await api("/api/study/plan",{method:"PUT",data:{title:"Synthetic local review",daily_target:3,paused:false,timezone:"Asia/Shanghai"}});
     await page.goto(base);await page.locator(`[data-id="${material.material_id}"][data-kind="material"]`).first().click();await page.locator("#document").getByText(/Learning rate controls/).waitFor();
+    await page.locator("#moreTools").click();
+    const rebuildReply=page.waitForResponse(response=>response.request().method()==="POST"&&response.url().endsWith(`/api/library/materials/${material.material_id}/rebuild`));
+    await page.locator('[data-action="rebuild-material"]').click();assert.equal((await rebuildReply).status(),200);
+    await page.getByText(/已从本机原文件恢复 .* 条出处；现有引用 ID 保留。/).waitFor();
+    const repaired=(await api(`/api/library/materials/${material.material_id}`)).material;
+    assert.deepEqual(repaired.evidence_ids,material.evidence_ids);assert(repaired.metadata.reindexed_at);
+    assert.deepEqual((await api(`/api/library/materials/${material.material_id}/anchors`)).anchors.map(item=>item.evidence_id),anchors.map(item=>item.evidence_id));
+    report.material_rebuild={same_ids:true,anchor_count:repaired.anchor_count,reader_reopened:true};
     const openStudio=async()=>{
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
       await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();

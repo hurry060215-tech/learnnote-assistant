@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
-from .knowledge import add_evidence, clear_task_evidence, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
+from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
 
 
@@ -1179,14 +1179,27 @@ def material_content(material_id: str) -> str:
 
 def redecode_document_material(material_id: str, encoding: str) -> dict[str, object]:
     """Re-parse one stored text document from its unchanged original bytes."""
+    return _rewrite_document_material(material_id, encoding, rebuilding=False)
+
+
+def rebuild_document_material(material_id: str) -> dict[str, object]:
+    """Restore missing evidence rows without changing their source identities."""
+    return _rewrite_document_material(material_id, "", rebuilding=True)
+
+
+def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool) -> dict[str, object]:
     requested = str(encoding or "").strip()[:40]
-    if not requested:
+    if not requested and not rebuilding:
         raise ValueError("material_redecode_encoding_required")
     with _lock:
         material = get_material(material_id)
-        if str(material.get("source_type") or "") == "pdf" or Path(str(material.get("filename") or "")).suffix.lower() == ".pdf":
+        if material.get("linked_task_id"):
+            raise ValueError("material_rebuild_requires_document")
+        if not rebuilding and (str(material.get("source_type") or "") == "pdf" or Path(str(material.get("filename") or "")).suffix.lower() == ".pdf"):
             raise ValueError("material_redecode_pdf_unsupported")
         source = material_source_path(material_id)
+        if source.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
+            raise ValueError("material_file_too_large")
         raw = source.read_bytes()
         raw_sha256 = hashlib.sha256(raw).hexdigest()
         if raw_sha256 != str(material.get("sha256") or ""):
@@ -1194,7 +1207,24 @@ def redecode_document_material(material_id: str, encoding: str) -> dict[str, obj
 
         filename = str(material.get("filename") or source.name)
         content_type = str(material.get("content_type") or "")
-        source_type, sections, decoding = _material_sections(filename, raw, content_type, encoding=requested)
+        metadata = dict(material.get("metadata") or {})
+        if rebuilding:
+            requested = str(metadata.get("decoding_hint") or "")
+        if rebuilding and metadata.get("ocr_performed"):
+            ocr_path = source.parent / "ocr.json"
+            if ocr_path.resolve().parent != source.parent or not ocr_path.is_file() or ocr_path.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
+                raise ValueError("material_rebuild_ocr_cache_invalid")
+            ocr = json.loads(ocr_path.read_text(encoding="utf-8"))
+            revision = hashlib.sha256(json.dumps(ocr, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+            if revision != metadata.get("source_revision") or not isinstance(ocr, dict) or not isinstance(ocr.get("pages"), list):
+                raise ValueError("material_rebuild_ocr_cache_invalid")
+            sections = [(f"page {max(1, int(page.get('page') or 1))}", str(page.get("text") or "").strip())
+                        for page in ocr["pages"] if isinstance(page, dict) and str(page.get("text") or "").strip()]
+            source_type, decoding = "pdf", metadata.copy()
+        else:
+            source_type, sections, decoding = _material_sections(filename, raw, content_type, encoding=requested)
+        if rebuilding and decoding.get("source_revision") != metadata.get("source_revision"):
+            raise ValueError("material_rebuild_revision_changed")
         if not sections:
             raise ValueError("material_redecode_empty")
         if len(sections) > MATERIAL_MAX_ANCHORS:
@@ -1203,6 +1233,8 @@ def redecode_document_material(material_id: str, encoding: str) -> dict[str, obj
         current_ids = [str(value) for value in material.get("evidence_ids") or [] if str(value)]
         if not current_ids:
             raise ValueError("material_redecode_evidence_missing")
+        if rebuilding and (len(current_ids) != len(sections) or len(set(current_ids)) != len(current_ids) or any(not key.startswith(f"material-{material_id}-") for key in current_ids)):
+            raise ValueError("material_rebuild_identity_invalid")
         updated_at = datetime.now(timezone.utc).isoformat()
         new_ids: list[str] = []
         items: list[SourceEvidence] = []
@@ -1221,7 +1253,6 @@ def redecode_document_material(material_id: str, encoding: str) -> dict[str, obj
                 decoding_metadata=decoding,
             ))
 
-        metadata = dict(material.get("metadata") or {})
         previous_revision = str(metadata.get("source_revision") or "")
         metadata.update(decoding)
         metadata.update({
@@ -1229,41 +1260,47 @@ def redecode_document_material(material_id: str, encoding: str) -> dict[str, obj
             "raw_sha256": raw_sha256,
             "raw_byte_count": len(raw),
             "source_revision": str(decoding.get("source_revision") or ""),
-            "redecoded": True,
-            "redecoded_at": updated_at,
-            "redecoded_from_revision": previous_revision,
             "suffix": Path(filename).suffix.lower(),
             "original_filename": filename,
         })
+        operation = {"reindexed_at": updated_at} if rebuilding else {
+            "redecoded": True, "redecoded_at": updated_at, "redecoded_from_revision": previous_revision,
+        }
+        metadata.update(operation)
 
         # Evidence rows and the material's current anchor list share the same
         # SQLite file. Commit both together; on failure the old anchors remain.
         connection, _ = _connect()
         try:
+            ensure_evidence_schema(connection)
             connection.commit()
             connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute("SELECT * FROM library_materials WHERE material_id=?", (material_id,)).fetchone()
+            if current is None:
+                raise ValueError("material_not_found")
+            current_material = _material_row(current)
+            if any(current_material[field] != material[field] for field in ("updated_at", "sha256", "filename", "evidence_ids", "metadata")):
+                raise ValueError("material_rebuild_changed_reload_required")
             row = connection.execute(
                 "SELECT created_at FROM source_evidence WHERE evidence_id=?",
                 (current_ids[0],),
             ).fetchone()
-            if row is None:
+            if row is None and not rebuilding:
                 raise ValueError("material_redecode_evidence_missing")
             evidence_fts = bool(connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_evidence_fts'"
             ).fetchone())
             for item in items:
                 existing = connection.execute(
-                    "SELECT created_at FROM source_evidence WHERE evidence_id=?",
+                    "SELECT created_at, task_id, metadata_json FROM source_evidence WHERE evidence_id=?",
                     (item.evidence_id,),
                 ).fetchone()
-                if existing is None and item.evidence_id in current_ids:
+                if existing is None and item.evidence_id in current_ids and not rebuilding:
                     raise ValueError("material_redecode_evidence_missing")
+                if existing is not None and (existing["task_id"] or json.loads(existing["metadata_json"] or "{}").get("material_id") != material_id):
+                    raise ValueError("material_rebuild_identity_invalid")
                 evidence_metadata = dict(item.metadata or {})
-                evidence_metadata.update({
-                    "redecoded": True,
-                    "redecoded_at": updated_at,
-                    "redecoded_from_revision": previous_revision,
-                })
+                evidence_metadata.update(operation)
                 created_at = str(existing["created_at"]) if existing is not None else updated_at
                 connection.execute(
                     """INSERT OR REPLACE INTO source_evidence
@@ -1282,7 +1319,7 @@ def redecode_document_material(material_id: str, encoding: str) -> dict[str, obj
                 """UPDATE library_materials
                    SET anchor_count=?, evidence_ids_json=?, status=?, metadata_json=?, updated_at=?
                    WHERE material_id=?""",
-                (len(new_ids),json.dumps(new_ids,ensure_ascii=False),str(metadata.get("status") or "ready"),
+                (len(new_ids),json.dumps(new_ids,ensure_ascii=False),str(material["status"] if rebuilding else metadata.get("status") or "ready"),
                  json.dumps(metadata,ensure_ascii=False),updated_at,str(material_id)),
             )
             if material_update.rowcount != 1:
