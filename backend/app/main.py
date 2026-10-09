@@ -1,6 +1,8 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
 from .task_artifacts import public_summary_task
+from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
+    build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
 from . import qa_evidence, qa_history
 from .qa_evidence import (
     clip_text as _clip_text,
@@ -19,7 +21,6 @@ from .qa_evidence import (
 )
 
 from importlib.util import find_spec
-from io import BytesIO
 from contextlib import asynccontextmanager
 import asyncio
 import base64
@@ -32,7 +33,6 @@ import threading
 import time
 from secrets import token_urlsafe
 from uuid import uuid4
-from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -2508,14 +2508,6 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     return sanitize_export_text("\n".join(lines))
 
 
-def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
-    if not path_value:
-        return
-    path = Path(path_value)
-    if path.is_file():
-        archive.write(path, archive_name)
-
-
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     path = WEB_DIR / "index.html"
@@ -4343,38 +4335,18 @@ def api_export_bundle(task_id: str, include_annotations: bool = False) -> Respon
     if not has_artifact:
         raise HTTPException(status_code=404, detail="Task artifacts not found")
 
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        archive.writestr("audit.md", audit_report)
-        archive.writestr("diagnostics.md", diagnostics)
-        archive.writestr("visual_windows.md", visual_windows)
-        if qa_history:
-            archive.writestr("qa.md", qa_report)
-            archive.writestr(QA_HISTORY_FILE, json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
-        if note.strip():
-            archive.writestr("note.md", note)
-        archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
-        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
-        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
-        if resource_inventory:
-            archive.writestr("resource_inventory.json", json.dumps(resource_inventory, ensure_ascii=False, indent=2))
-        if page_preflight:
-            archive.writestr("page_preflight_report.json", json.dumps(page_preflight, ensure_ascii=False, indent=2))
-        if task.subtitle_path:
-            _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
-        elif generated_subtitles:
-            archive.writestr("subtitles/generated-transcript.srt", generated_subtitles)
-        if task.summary_diagnostics:
-            archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
-        if isinstance(claim_map, dict) and claim_map:
-            archive.writestr("claim_evidence_map.json", json.dumps(claim_map, ensure_ascii=False, indent=2))
-        if include_annotations:
-            from .personal_notes import list_annotations
-            archive.writestr("personal_annotations.json", json.dumps({"schema_version": 2, "task_id": task.id, "annotations": list_annotations("task", task.id)}, ensure_ascii=False, indent=2))
-        for index, grid in enumerate(task.frame_grids):
-            filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
-            _write_file_if_exists(archive, grid.path, f"grids/{filename}")
+    annotations = None
+    if include_annotations:
+        from .personal_notes import list_annotations
+        annotations = list_annotations("task", task.id)
+    content = build_bundle_archive(BundleArchive(
+        task=task, note=note, transcript=transcript, visual_index=visual_index,
+        qa_history=qa_history, claim_map=claim_map, diagnostics=diagnostics,
+        audit_report=audit_report, visual_windows=visual_windows, qa_report=qa_report,
+        manifest=manifest, resource_inventory=resource_inventory,
+        page_preflight=page_preflight, generated_subtitles=generated_subtitles,
+    ), annotations=annotations, qa_history_file=QA_HISTORY_FILE,
+        write_file=_write_file_if_exists)
 
     filename = bundle_filename(task.id, task.title)
     headers = {
@@ -4383,7 +4355,7 @@ def api_export_bundle(task_id: str, include_annotations: bool = False) -> Respon
             f"filename*=UTF-8''{quote(filename)}"
         )
     }
-    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+    return Response(content, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/sanitized-bundle")
@@ -4400,40 +4372,13 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
         raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
-    safe_manifest = {
-        "schema_version": 1,
-        "bundle_type": "sanitized-study",
-        "privacy": {
-            "original_media": False,
-            "cookies": False,
-            "signed_urls": False,
-            "diagnostics": False,
-            "source_paths": False,
-        },
-        "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
-        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history), "claim_evidence": bool(claim_map)},
-    }
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(safe_manifest, ensure_ascii=False, indent=2))
-        if note.strip():
-            archive.writestr("note.md", note)
-        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
-        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
-        if qa_history:
-            archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
-        if isinstance(claim_map, dict) and claim_map:
-            archive.writestr("claim_evidence_map.json", json.dumps({
-                "schema_version": claim_map.get("schema_version", 1),
-                "task_id": task.id,
-                "title": task.title,
-                "claims": claim_map.get("claims", []),
-                "counts": claim_map.get("counts", {}),
-                "quality": claim_map.get("quality", {}),
-            }, ensure_ascii=False, indent=2))
+    content = build_sanitized_archive(StudyArchive(
+        task=task, note=note, transcript=transcript, visual_index=visual_index,
+        qa_history=qa_history, claim_map=claim_map,
+    ))
     filename = f"learnnote-{task.id}-sanitized-study.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+    return Response(content, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/events")
@@ -4457,15 +4402,10 @@ def api_export_support_package(task_id: str) -> Response:
     manifest = redacted_support_manifest(task_id, events)
     diagnostics = sanitize_export_text(render_diagnostics_markdown(task))
     audit = sanitize_export_text(render_task_audit_markdown(task))
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        archive.writestr("events.json", json.dumps(events, ensure_ascii=False, indent=2))
-        archive.writestr("diagnostics.md", diagnostics)
-        archive.writestr("audit.md", audit)
+    content = build_support_archive(manifest, events, diagnostics, audit)
     filename = f"learnnote-{task.id}-support-package.zip"
     return Response(
-        buffer.getvalue(),
+        content,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

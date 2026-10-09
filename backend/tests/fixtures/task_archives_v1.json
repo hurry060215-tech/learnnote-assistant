@@ -1,0 +1,464 @@
+{
+  "api": {
+    "paths": {
+      "/api/tasks/{task_id}/exports/bundle": {
+        "get": {
+          "summary": "Api Export Bundle",
+          "operationId": "api_export_bundle_api_tasks__task_id__exports_bundle_get",
+          "parameters": [
+            {
+              "name": "task_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "title": "Task Id"
+              }
+            },
+            {
+              "name": "include_annotations",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "default": false,
+                "title": "Include Annotations"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tasks/{task_id}/exports/sanitized-bundle": {
+        "get": {
+          "summary": "Api Export Sanitized Bundle",
+          "description": "Export a shareable study bundle without media, cookies, signed URLs, or diagnostics.",
+          "operationId": "api_export_sanitized_bundle_api_tasks__task_id__exports_sanitized_bundle_get",
+          "parameters": [
+            {
+              "name": "task_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "title": "Task Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tasks/{task_id}/exports/support-package": {
+        "get": {
+          "summary": "Api Export Support Package",
+          "description": "Create a small, redacted support package for reproducible diagnosis.",
+          "operationId": "api_export_support_package_api_tasks__task_id__exports_support_package_get",
+          "parameters": [
+            {
+              "name": "task_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "title": "Task Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "openapi_sha256": "ba765c27227efc552c7780be2e88a2492d75f592dc49bd53ec5af5e362ea485f",
+    "task_schema_sha256": "69e8dadffd3b6de4480fbd8dc1a8e8c9cfa12109c7f8523e42f1fb0e135685aa",
+    "routes_sha256": "f05d0b85928d723f5e71b92f380f64018d039f2dd73bd946391743b281e903c2"
+  },
+  "archives": {
+    "('bundle', True, False)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture.zip\"; filename*=UTF-8''Synthetic%20%E4%B8%AD%E6%96%87%20caf%C3%A9%20%F0%9F%A7%AD.zip",
+        "content-length": "3831",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"task\": {\n    \"id\": \"archive-fixture\"\n  }\n}"
+        },
+        {
+          "name": "audit.md",
+          "compression": 8,
+          "text": "Synthetic audit\n"
+        },
+        {
+          "name": "diagnostics.md",
+          "compression": 8,
+          "text": "Synthetic diagnostics\n"
+        },
+        {
+          "name": "visual_windows.md",
+          "compression": 8,
+          "text": "Synthetic windows\n"
+        },
+        {
+          "name": "qa.md",
+          "compression": 8,
+          "text": "Synthetic QA\n"
+        },
+        {
+          "name": "qa_history.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"items\": [\n    {\n      \"id\": \"qa-fixture\",\n      \"answer\": \"Synthetic answer\",\n      \"citations\": []\n    }\n  ]\n}"
+        },
+        {
+          "name": "note.md",
+          "compression": 8,
+          "text": "# Synthetic café 中文 🧭\r\n\r\n**【待核对：未找到支持来源】** 保留原文。\r\n"
+        },
+        {
+          "name": "task.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"id\": \"archive-fixture\",\n  \"handoff_id\": \"\",\n  \"source_type\": \"local\",\n  \"mode\": \"video\",\n  \"title\": \"Synthetic 中文 café 🧭\",\n  \"page_url\": \"\",\n  \"source_identity\": {\n    \"page_url\": \"\",\n    \"platform\": \"\",\n    \"platform_id\": \"\",\n    \"title\": \"\",\n    \"resource_fingerprint\": \"\",\n    \"media_sha256\": \"\"\n  },\n  \"phase\": \"queued\",\n  \"status\": \"queued\",\n  \"progress\": 0,\n  \"message\": \"Queued\",\n  \"awaiting_confirmation\": false,\n  \"error_code\": \"\",\n  \"error_detail\": \"\",\n  \"failed_phase\": \"\",\n  \"retry_count\": 0,\n  \"checkpoint\": \"\",\n  \"checkpoint_updated_at\": \"\",\n  \"cancel_requested\": false,\n  \"cancel_requested_at\": \"\",\n  \"cancelled_at\": \"\",\n  \"source_task_id\": \"\",\n  \"source_media_path\": \"\",\n  \"learning_range\": {},\n  \"created_at\": \"2026-10-09T00:00:00+00:00\",\n  \"updated_at\": \"2026-10-09T00:00:00+00:00\",\n  \"options\": {\n    \"content_mode\": \"auto\",\n    \"transcriber\": \"faster-whisper\",\n    \"whisper_model\": \"small\",\n    \"visual_understanding\": true,\n    \"local_ocr\": false,\n    \"ocr_frame_limit\": 12,\n    \"frame_interval\": 20,\n    \"grid_columns\": 3,\n    \"grid_rows\": 3,\n    \"max_frame_count\": 900,\n    \"frame_extract_batch_size\": 12,\n    \"vision_batch_size\": 4,\n    \"vision_concurrency\": 2,\n    \"resource_budget_mb\": 4096,\n    \"low_resource_mode\": false,\n    \"note_style\": \"study\",\n    \"note_template\": \"standard\",\n    \"summary_depth\": \"standard\",\n    \"generate_questions\": false,\n    \"note_profile_name\": \"\",\n    \"note_profile_prompt\": \"\",\n    \"note_profile_sections\": [],\n    \"llm_base_url\": null,\n    \"llm_api_key\": null,\n    \"llm_model\": null,\n    \"use_saved_connection\": false\n  },\n  \"selected_resource\": null,\n  \"download_attempts\": [],\n  \"cookie_summary\": {},\n  \"drm_detected\": false,\n  \"drm_signals\": [],\n  \"active_video\": null,\n  \"browser_subtitles\": [],\n  \"media_path\": \"\",\n  \"audio_path\": \"\",\n  \"subtitle_path\": \"artifacts/captions.vtt\",\n  \"transcript_path\": \"\",\n  \"visual_index_path\": \"\",\n  \"media_integrity_path\": \"\",\n  \"media_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"handoff_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"evidence_coverage_path\": \"\",\n  \"evidence_coverage\": {\n    \"status\": \"not_checked\",\n    \"can_summarize\": false,\n    \"transcript_source\": \"\",\n    \"transcript_char_count\": 0,\n    \"transcript_covered_seconds\": 0.0,\n    \"transcript_coverage_ratio\": 0.0,\n    \"checkpoint_count\": 0,\n    \"matched_transcript_checkpoints\": 0,\n    \"matched_visual_checkpoints\": 0,\n    \"timeline_consistency_ratio\": 0.0,\n    \"visual_coverage_ratio\": 0.0,\n    \"platform_subtitle_coverage_ratio\": 0.0,\n    \"local_transcription_coverage_ratio\": 0.0,\n    \"visual_frame_count\": 0,\n    \"gates\": [],\n    \"blocking_reasons\": []\n  },\n  \"note_path\": \"artifacts/note.md\",\n  \"summary_source\": \"\",\n  \"summary_warning\": \"\",\n  \"summary_diagnostics_path\": \"\",\n  \"summary_diagnostics\": {\n    \"page_text_char_count\": 12\n  },\n  \"resource_inventory_path\": \"\",\n  \"resource_usage_path\": \"\",\n  \"page_preflight_report_path\": \"\",\n  \"frame_grids\": [\n    {\n      \"path\": \"artifacts/grid.png\",\n      \"url\": \"/synthetic-grid\",\n      \"start\": 0.0,\n      \"end\": 3.0,\n      \"frame_count\": 1,\n      \"frame_timestamps\": [],\n      \"frame_paths\": [],\n      \"important_frame_paths\": []\n    },\n    {\n      \"path\": \"artifacts/missing.png\",\n      \"url\": \"/missing\",\n      \"start\": 3.0,\n      \"end\": 6.0,\n      \"frame_count\": 1,\n      \"frame_timestamps\": [],\n      \"frame_paths\": [],\n      \"important_frame_paths\": []\n    }\n  ],\n  \"visual_windows\": []\n}"
+        },
+        {
+          "name": "transcript.json",
+          "compression": 8,
+          "text": "{\n  \"source\": \"synthetic\",\n  \"segments\": [\n    {\n      \"start\": 0,\n      \"end\": 3,\n      \"text\": \"中文 café 🧭\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "visual_index.json",
+          "compression": 8,
+          "text": "{\n  \"windows\": [\n    {\n      \"id\": \"W001\",\n      \"text\": \"合成画面\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "resource_inventory.json",
+          "compression": 8,
+          "text": "{\n  \"candidate_count\": 2\n}"
+        },
+        {
+          "name": "page_preflight_report.json",
+          "compression": 8,
+          "text": "{\n  \"ready\": false,\n  \"code\": \"synthetic\"\n}"
+        },
+        {
+          "name": "subtitles/captions.vtt",
+          "compression": 8,
+          "text": "WEBVTT\r\n\r\n00:00.000 --> 00:03.000\r\nSynthetic\r\n"
+        },
+        {
+          "name": "summary_diagnostics.json",
+          "compression": 8,
+          "text": "{\n  \"page_text_char_count\": 12\n}"
+        },
+        {
+          "name": "claim_evidence_map.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 6,\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\"\n    }\n  ],\n  \"counts\": {\n    \"pending_review\": 1\n  },\n  \"quality\": {\n    \"review_required\": true\n  }\n}"
+        },
+        {
+          "name": "grids/grid.png",
+          "compression": 8,
+          "hex": "73796e7468657469632d6772696400ff"
+        }
+      ]
+    },
+    "('bundle', True, True)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture.zip\"; filename*=UTF-8''Synthetic%20%E4%B8%AD%E6%96%87%20caf%C3%A9%20%F0%9F%A7%AD.zip",
+        "content-length": "4152",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"task\": {\n    \"id\": \"archive-fixture\"\n  }\n}"
+        },
+        {
+          "name": "audit.md",
+          "compression": 8,
+          "text": "Synthetic audit\n"
+        },
+        {
+          "name": "diagnostics.md",
+          "compression": 8,
+          "text": "Synthetic diagnostics\n"
+        },
+        {
+          "name": "visual_windows.md",
+          "compression": 8,
+          "text": "Synthetic windows\n"
+        },
+        {
+          "name": "qa.md",
+          "compression": 8,
+          "text": "Synthetic QA\n"
+        },
+        {
+          "name": "qa_history.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"items\": [\n    {\n      \"id\": \"qa-fixture\",\n      \"answer\": \"Synthetic answer\",\n      \"citations\": []\n    }\n  ]\n}"
+        },
+        {
+          "name": "note.md",
+          "compression": 8,
+          "text": "# Synthetic café 中文 🧭\r\n\r\n**【待核对：未找到支持来源】** 保留原文。\r\n"
+        },
+        {
+          "name": "task.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"id\": \"archive-fixture\",\n  \"handoff_id\": \"\",\n  \"source_type\": \"local\",\n  \"mode\": \"video\",\n  \"title\": \"Synthetic 中文 café 🧭\",\n  \"page_url\": \"\",\n  \"source_identity\": {\n    \"page_url\": \"\",\n    \"platform\": \"\",\n    \"platform_id\": \"\",\n    \"title\": \"\",\n    \"resource_fingerprint\": \"\",\n    \"media_sha256\": \"\"\n  },\n  \"phase\": \"queued\",\n  \"status\": \"queued\",\n  \"progress\": 0,\n  \"message\": \"Queued\",\n  \"awaiting_confirmation\": false,\n  \"error_code\": \"\",\n  \"error_detail\": \"\",\n  \"failed_phase\": \"\",\n  \"retry_count\": 0,\n  \"checkpoint\": \"\",\n  \"checkpoint_updated_at\": \"\",\n  \"cancel_requested\": false,\n  \"cancel_requested_at\": \"\",\n  \"cancelled_at\": \"\",\n  \"source_task_id\": \"\",\n  \"source_media_path\": \"\",\n  \"learning_range\": {},\n  \"created_at\": \"2026-10-09T00:00:00+00:00\",\n  \"updated_at\": \"2026-10-09T00:00:00+00:00\",\n  \"options\": {\n    \"content_mode\": \"auto\",\n    \"transcriber\": \"faster-whisper\",\n    \"whisper_model\": \"small\",\n    \"visual_understanding\": true,\n    \"local_ocr\": false,\n    \"ocr_frame_limit\": 12,\n    \"frame_interval\": 20,\n    \"grid_columns\": 3,\n    \"grid_rows\": 3,\n    \"max_frame_count\": 900,\n    \"frame_extract_batch_size\": 12,\n    \"vision_batch_size\": 4,\n    \"vision_concurrency\": 2,\n    \"resource_budget_mb\": 4096,\n    \"low_resource_mode\": false,\n    \"note_style\": \"study\",\n    \"note_template\": \"standard\",\n    \"summary_depth\": \"standard\",\n    \"generate_questions\": false,\n    \"note_profile_name\": \"\",\n    \"note_profile_prompt\": \"\",\n    \"note_profile_sections\": [],\n    \"llm_base_url\": null,\n    \"llm_api_key\": null,\n    \"llm_model\": null,\n    \"use_saved_connection\": false\n  },\n  \"selected_resource\": null,\n  \"download_attempts\": [],\n  \"cookie_summary\": {},\n  \"drm_detected\": false,\n  \"drm_signals\": [],\n  \"active_video\": null,\n  \"browser_subtitles\": [],\n  \"media_path\": \"\",\n  \"audio_path\": \"\",\n  \"subtitle_path\": \"artifacts/captions.vtt\",\n  \"transcript_path\": \"\",\n  \"visual_index_path\": \"\",\n  \"media_integrity_path\": \"\",\n  \"media_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"handoff_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"evidence_coverage_path\": \"\",\n  \"evidence_coverage\": {\n    \"status\": \"not_checked\",\n    \"can_summarize\": false,\n    \"transcript_source\": \"\",\n    \"transcript_char_count\": 0,\n    \"transcript_covered_seconds\": 0.0,\n    \"transcript_coverage_ratio\": 0.0,\n    \"checkpoint_count\": 0,\n    \"matched_transcript_checkpoints\": 0,\n    \"matched_visual_checkpoints\": 0,\n    \"timeline_consistency_ratio\": 0.0,\n    \"visual_coverage_ratio\": 0.0,\n    \"platform_subtitle_coverage_ratio\": 0.0,\n    \"local_transcription_coverage_ratio\": 0.0,\n    \"visual_frame_count\": 0,\n    \"gates\": [],\n    \"blocking_reasons\": []\n  },\n  \"note_path\": \"artifacts/note.md\",\n  \"summary_source\": \"\",\n  \"summary_warning\": \"\",\n  \"summary_diagnostics_path\": \"\",\n  \"summary_diagnostics\": {\n    \"page_text_char_count\": 12\n  },\n  \"resource_inventory_path\": \"\",\n  \"resource_usage_path\": \"\",\n  \"page_preflight_report_path\": \"\",\n  \"frame_grids\": [\n    {\n      \"path\": \"artifacts/grid.png\",\n      \"url\": \"/synthetic-grid\",\n      \"start\": 0.0,\n      \"end\": 3.0,\n      \"frame_count\": 1,\n      \"frame_timestamps\": [],\n      \"frame_paths\": [],\n      \"important_frame_paths\": []\n    },\n    {\n      \"path\": \"artifacts/missing.png\",\n      \"url\": \"/missing\",\n      \"start\": 3.0,\n      \"end\": 6.0,\n      \"frame_count\": 1,\n      \"frame_timestamps\": [],\n      \"frame_paths\": [],\n      \"important_frame_paths\": []\n    }\n  ],\n  \"visual_windows\": []\n}"
+        },
+        {
+          "name": "transcript.json",
+          "compression": 8,
+          "text": "{\n  \"source\": \"synthetic\",\n  \"segments\": [\n    {\n      \"start\": 0,\n      \"end\": 3,\n      \"text\": \"中文 café 🧭\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "visual_index.json",
+          "compression": 8,
+          "text": "{\n  \"windows\": [\n    {\n      \"id\": \"W001\",\n      \"text\": \"合成画面\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "resource_inventory.json",
+          "compression": 8,
+          "text": "{\n  \"candidate_count\": 2\n}"
+        },
+        {
+          "name": "page_preflight_report.json",
+          "compression": 8,
+          "text": "{\n  \"ready\": false,\n  \"code\": \"synthetic\"\n}"
+        },
+        {
+          "name": "subtitles/captions.vtt",
+          "compression": 8,
+          "text": "WEBVTT\r\n\r\n00:00.000 --> 00:03.000\r\nSynthetic\r\n"
+        },
+        {
+          "name": "summary_diagnostics.json",
+          "compression": 8,
+          "text": "{\n  \"page_text_char_count\": 12\n}"
+        },
+        {
+          "name": "claim_evidence_map.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 6,\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\"\n    }\n  ],\n  \"counts\": {\n    \"pending_review\": 1\n  },\n  \"quality\": {\n    \"review_required\": true\n  }\n}"
+        },
+        {
+          "name": "personal_annotations.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 2,\n  \"task_id\": \"archive-fixture\",\n  \"annotations\": [\n    {\n      \"id\": \"synthetic-annotation\",\n      \"text\": \"\\r\\n  const café = '🧭';\\r\\n\\treturn x;\\r\\n\",\n      \"quote\": \"原文\",\n      \"anchor\": {\n        \"source_id\": \"archive-fixture\",\n        \"target_id\": \"claim-fixture\"\n      }\n    }\n  ]\n}"
+        },
+        {
+          "name": "grids/grid.png",
+          "compression": 8,
+          "hex": "73796e7468657469632d6772696400ff"
+        }
+      ]
+    },
+    "('bundle', False, False)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture.zip\"; filename*=UTF-8''Synthetic%20%E4%B8%AD%E6%96%87%20caf%C3%A9%20%F0%9F%A7%AD.zip",
+        "content-length": "2308",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"task\": {\n    \"id\": \"archive-fixture\"\n  }\n}"
+        },
+        {
+          "name": "audit.md",
+          "compression": 8,
+          "text": "Synthetic audit\n"
+        },
+        {
+          "name": "diagnostics.md",
+          "compression": 8,
+          "text": "Synthetic diagnostics\n"
+        },
+        {
+          "name": "visual_windows.md",
+          "compression": 8,
+          "text": "Synthetic windows\n"
+        },
+        {
+          "name": "task.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"id\": \"archive-fixture\",\n  \"handoff_id\": \"\",\n  \"source_type\": \"local\",\n  \"mode\": \"video\",\n  \"title\": \"Synthetic 中文 café 🧭\",\n  \"page_url\": \"\",\n  \"source_identity\": {\n    \"page_url\": \"\",\n    \"platform\": \"\",\n    \"platform_id\": \"\",\n    \"title\": \"\",\n    \"resource_fingerprint\": \"\",\n    \"media_sha256\": \"\"\n  },\n  \"phase\": \"queued\",\n  \"status\": \"queued\",\n  \"progress\": 0,\n  \"message\": \"Queued\",\n  \"awaiting_confirmation\": false,\n  \"error_code\": \"\",\n  \"error_detail\": \"\",\n  \"failed_phase\": \"\",\n  \"retry_count\": 0,\n  \"checkpoint\": \"\",\n  \"checkpoint_updated_at\": \"\",\n  \"cancel_requested\": false,\n  \"cancel_requested_at\": \"\",\n  \"cancelled_at\": \"\",\n  \"source_task_id\": \"\",\n  \"source_media_path\": \"\",\n  \"learning_range\": {},\n  \"created_at\": \"2026-10-09T00:00:00+00:00\",\n  \"updated_at\": \"2026-10-09T00:00:00+00:00\",\n  \"options\": {\n    \"content_mode\": \"auto\",\n    \"transcriber\": \"faster-whisper\",\n    \"whisper_model\": \"small\",\n    \"visual_understanding\": true,\n    \"local_ocr\": false,\n    \"ocr_frame_limit\": 12,\n    \"frame_interval\": 20,\n    \"grid_columns\": 3,\n    \"grid_rows\": 3,\n    \"max_frame_count\": 900,\n    \"frame_extract_batch_size\": 12,\n    \"vision_batch_size\": 4,\n    \"vision_concurrency\": 2,\n    \"resource_budget_mb\": 4096,\n    \"low_resource_mode\": false,\n    \"note_style\": \"study\",\n    \"note_template\": \"standard\",\n    \"summary_depth\": \"standard\",\n    \"generate_questions\": false,\n    \"note_profile_name\": \"\",\n    \"note_profile_prompt\": \"\",\n    \"note_profile_sections\": [],\n    \"llm_base_url\": null,\n    \"llm_api_key\": null,\n    \"llm_model\": null,\n    \"use_saved_connection\": false\n  },\n  \"selected_resource\": null,\n  \"download_attempts\": [],\n  \"cookie_summary\": {},\n  \"drm_detected\": false,\n  \"drm_signals\": [],\n  \"active_video\": null,\n  \"browser_subtitles\": [],\n  \"media_path\": \"\",\n  \"audio_path\": \"\",\n  \"subtitle_path\": \"\",\n  \"transcript_path\": \"\",\n  \"visual_index_path\": \"\",\n  \"media_integrity_path\": \"\",\n  \"media_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"handoff_integrity\": {\n    \"status\": \"invalid\",\n    \"probe_backend\": \"\",\n    \"provisional\": false,\n    \"file_size\": 0,\n    \"sha256\": \"\",\n    \"duration\": 0.0,\n    \"container\": \"\",\n    \"stream_count\": 0,\n    \"video_stream_count\": 0,\n    \"audio_stream_count\": 0,\n    \"subtitle_stream_count\": 0,\n    \"has_video\": false,\n    \"has_audio\": false,\n    \"has_subtitles\": false,\n    \"video_codec\": \"\",\n    \"audio_codec\": \"\",\n    \"subtitle_codec\": \"\",\n    \"tracks\": [],\n    \"blocking_reasons\": [],\n    \"warnings\": []\n  },\n  \"evidence_coverage_path\": \"\",\n  \"evidence_coverage\": {\n    \"status\": \"not_checked\",\n    \"can_summarize\": false,\n    \"transcript_source\": \"\",\n    \"transcript_char_count\": 0,\n    \"transcript_covered_seconds\": 0.0,\n    \"transcript_coverage_ratio\": 0.0,\n    \"checkpoint_count\": 0,\n    \"matched_transcript_checkpoints\": 0,\n    \"matched_visual_checkpoints\": 0,\n    \"timeline_consistency_ratio\": 0.0,\n    \"visual_coverage_ratio\": 0.0,\n    \"platform_subtitle_coverage_ratio\": 0.0,\n    \"local_transcription_coverage_ratio\": 0.0,\n    \"visual_frame_count\": 0,\n    \"gates\": [],\n    \"blocking_reasons\": []\n  },\n  \"note_path\": \"artifacts/note.md\",\n  \"summary_source\": \"\",\n  \"summary_warning\": \"\",\n  \"summary_diagnostics_path\": \"\",\n  \"summary_diagnostics\": {},\n  \"resource_inventory_path\": \"\",\n  \"resource_usage_path\": \"\",\n  \"page_preflight_report_path\": \"\",\n  \"frame_grids\": [],\n  \"visual_windows\": []\n}"
+        },
+        {
+          "name": "transcript.json",
+          "compression": 8,
+          "text": "{\n  \"source\": \"synthetic\",\n  \"segments\": [\n    {\n      \"start\": 0,\n      \"end\": 3,\n      \"text\": \"中文 café 🧭\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "visual_index.json",
+          "compression": 8,
+          "text": "{\n  \"windows\": []\n}"
+        },
+        {
+          "name": "subtitles/generated-transcript.srt",
+          "compression": 8,
+          "text": "1\n00:00:00,000 --> 00:00:03,000\n中文 café 🧭\n"
+        }
+      ]
+    },
+    "('sanitized-bundle', True, False)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture-sanitized-study.zip\"",
+        "content-length": "1503",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"bundle_type\": \"sanitized-study\",\n  \"privacy\": {\n    \"original_media\": false,\n    \"cookies\": false,\n    \"signed_urls\": false,\n    \"diagnostics\": false,\n    \"source_paths\": false\n  },\n  \"task\": {\n    \"id\": \"archive-fixture\",\n    \"title\": \"Synthetic 中文 café 🧭\",\n    \"source_type\": \"local\",\n    \"status\": \"queued\"\n  },\n  \"artifacts\": {\n    \"note\": true,\n    \"transcript\": true,\n    \"visual_index\": true,\n    \"qa\": true,\n    \"claim_evidence\": true\n  }\n}"
+        },
+        {
+          "name": "note.md",
+          "compression": 8,
+          "text": "# Synthetic café 中文 🧭\r\n\r\n**【待核对：未找到支持来源】** 保留原文。\r\n"
+        },
+        {
+          "name": "transcript.json",
+          "compression": 8,
+          "text": "{\n  \"source\": \"synthetic\",\n  \"segments\": [\n    {\n      \"start\": 0,\n      \"end\": 3,\n      \"text\": \"中文 café 🧭\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "visual_index.json",
+          "compression": 8,
+          "text": "{\n  \"windows\": [\n    {\n      \"id\": \"W001\",\n      \"text\": \"合成画面\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "qa_history.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"items\": [\n    {\n      \"id\": \"qa-fixture\",\n      \"answer\": \"Synthetic answer\",\n      \"citations\": []\n    }\n  ]\n}"
+        },
+        {
+          "name": "claim_evidence_map.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 6,\n  \"task_id\": \"archive-fixture\",\n  \"title\": \"Synthetic 中文 café 🧭\",\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\"\n    }\n  ],\n  \"counts\": {\n    \"pending_review\": 1\n  },\n  \"quality\": {\n    \"review_required\": true\n  }\n}"
+        }
+      ]
+    },
+    "('sanitized-bundle', False, False)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture-sanitized-study.zip\"",
+        "content-length": "720",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"bundle_type\": \"sanitized-study\",\n  \"privacy\": {\n    \"original_media\": false,\n    \"cookies\": false,\n    \"signed_urls\": false,\n    \"diagnostics\": false,\n    \"source_paths\": false\n  },\n  \"task\": {\n    \"id\": \"archive-fixture\",\n    \"title\": \"Synthetic 中文 café 🧭\",\n    \"source_type\": \"local\",\n    \"status\": \"queued\"\n  },\n  \"artifacts\": {\n    \"note\": false,\n    \"transcript\": true,\n    \"visual_index\": false,\n    \"qa\": false,\n    \"claim_evidence\": false\n  }\n}"
+        },
+        {
+          "name": "transcript.json",
+          "compression": 8,
+          "text": "{\n  \"source\": \"synthetic\",\n  \"segments\": [\n    {\n      \"start\": 0,\n      \"end\": 3,\n      \"text\": \"中文 café 🧭\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "visual_index.json",
+          "compression": 8,
+          "text": "{\n  \"windows\": []\n}"
+        }
+      ]
+    },
+    "('support-package', True, False)": {
+      "status": 200,
+      "headers": {
+        "content-disposition": "attachment; filename=\"learnnote-archive-fixture-support-package.zip\"",
+        "content-length": "679",
+        "content-type": "application/zip"
+      },
+      "members": [
+        {
+          "name": "manifest.json",
+          "compression": 8,
+          "text": "{\n  \"schema_version\": 1,\n  \"bundle_type\": \"support-package\",\n  \"task_id\": \"archive-fixture\",\n  \"event_count\": 1,\n  \"privacy\": {\n    \"cookies\": false,\n    \"authorization\": false,\n    \"request_bodies\": false,\n    \"signed_urls\": false,\n    \"course_content\": false\n  }\n}"
+        },
+        {
+          "name": "events.json",
+          "compression": 8,
+          "text": "[\n  {\n    \"event\": \"synthetic\",\n    \"details\": {\n      \"progress\": 12\n    }\n  }\n]"
+        },
+        {
+          "name": "diagnostics.md",
+          "compression": 8,
+          "text": "Synthetic diagnostics\n"
+        },
+        {
+          "name": "audit.md",
+          "compression": 8,
+          "text": "Synthetic audit\n"
+        }
+      ]
+    }
+  }
+}

@@ -39,7 +39,8 @@ API routers (routers/*.py)
 - `adapters.py` 是来源契约；站点特例不能反向污染 API 或任务模型。
 - `downloader.py` 只负责候选排序、预检和下载策略；不生成学习笔记。
 - `media_kinds.py` 只负责无网络的媒体类型识别和有效类型归一化；`downloader.py` 保留兼容导出，避免旧调用方迁移时改变行为。
-- `media_candidate_ranking.py` 只负责候选评分、播放匹配、伴随音频配对和去重；页面扫描/Manifest 推断仍由 downloader 编排后交给该纯决策模块。
+- `media_candidate_ranking.py` 只负责候选评分、播放匹配、伴随音频配对和去重；`media_source_context.py` 将现有 Manifest 推断和页面候选可信度判断接入该纯决策模块。
+- `media_source_context.py` 只解释显式传入的候选、页面 URL 和请求头：保留来源身份、页面回退顺序、请求头白名单及分片推断策略，不发网络请求、不读取 Cookie、不保存任务。`downloader.py` 保留旧函数与常量导出，行数上限收紧到 2520；新模块上限 300，计入既有 9250 行合计预算。详见 [2026-10-09 来源边界记录](ISSUE_ARCHITECTURE_SOURCE_CONTEXT_20261009.md)。
 - `media_transport.py` 负责 SSRF 防护、DNS 结果固定、TLS/HTTP 连接、重定向和响应包装；它不决定候选来源或笔记内容。
 - `asr_pipeline.py` 负责本地/远程 ASR 选择、转写进度心跳和 ASR 失败分类；它通过 processor_state 检查取消，不直接编排视频阶段。
 - `local_video_task.py` 负责本地视频入口的资源监控、取消和统一错误收口；实际视频阶段通过注入的处理函数执行，避免入口逻辑复制。
@@ -115,5 +116,9 @@ OpenAPI 路径。独立测试覆盖模块无需导入主应用、可替换适配
 
 经典界面 CSS 的后续小阶段见 [2026-10-09 拆分记录](ISSUE_ARCHITECTURE_CSS_20261009.md)：
 末尾工作台密度、交互稳定性和学习控件共 658 行按原始顺序提取为三个同目录样式文件。
+
+任务 ZIP 的独立小阶段见 [2026-10-09 序列化边界记录](ISSUE_ARCHITECTURE_ARCHIVES_20261009.md)：
+三个 ZIP 格式的字节生成由显式类型输入驱动，路由与现有读取/渲染替换点保持在 `main`。
+`main` 当前上限收紧到 4705 行，新增序列化模块计入原有 9250 行后端总预算；#143 继续开放。
 `styles.css` 仍为 12,262 行，四文件合计仍受 12,920 行预算约束；精确快照、加载顺序和
 桌面发行排除规则均有门禁。此阶段不代表 #143 已完成。
