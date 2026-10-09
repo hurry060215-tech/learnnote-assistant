@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {"id": "single-loss-marker", "text": "这段锟斤拷内容应被阻断。", "blocked": true},
+    {"id": "single-chinese-artifact", "text": "测试鏂囧字幕。", "blocked": true},
+    {"id": "unresolved-greeting", "text": "浣犲ソ", "blocked": true},
+    {"id": "unresolved-learning", "text": "本节瀛︿内容。", "blocked": true},
+    {"id": "unresolved-speaking", "text": "字幕璇轰内容。", "blocked": true},
+    {"id": "prose-after-code", "text": "示例 `锟斤拷` 可以讨论；后面的鏂囧仍需核对。", "blocked": true},
+    {"id": "escaped-backticks-are-prose", "text": "字面反引号 \\`锟斤拷\\` 不是代码跨度。", "blocked": true},
+    {"id": "unclosed-inline-code", "text": "未闭合的 `锟斤拷仍是正文。", "blocked": true},
+    {"id": "multilingual", "text": "中文 日本語 한국어 العربية English café 🧭 👩🏽‍💻，学习率决定步长。", "blocked": false},
+    {"id": "legitimate-rare-cjk", "text": "閫外之任是古文词语。单字鏂、囧、璇与轰不是乱码证据。", "blocked": false},
+    {"id": "legitimate-latin", "text": "Ãlvaro、Ãgua、Ångström 与 naïve 保持原来的拼写。", "blocked": false},
+    {"id": "inline-code", "text": "诊断示例 `锟斤拷 鏂囧 � â€™ 武士运动` 是字符串内容。", "blocked": false},
+    {"id": "long-inline-delimiter", "text": "代码 ``value = `鏂囧` + '锟斤拷'`` 使用相同长度的闭合分隔符。", "blocked": false},
+    {"id": "fenced-code", "text": "字符串示例：\n\n```python\nvalue = '锟斤拷 鏂囧 � â€™ 武士运动'\n```\n\n以上仅为测试输入。", "blocked": false},
+    {"id": "indented-code", "text": "字符串示例：\n\n    value = '锟斤拷 鏂囧 � â€™ 武士运动'\n\n以上仅为测试输入。", "blocked": false},
+    {"id": "long-fence", "text": "字符串示例：\n\n~~~~python\nvalue = '锟斤拷 鏂囧 �'\n~~~\nother = '鏂囧'\n~~~~\n\n以上仅为测试输入。", "blocked": false}
+  ]
+}

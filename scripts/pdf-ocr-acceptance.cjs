@@ -27,6 +27,8 @@ async function main() {
     const reader = page.locator("#document .material-ocr-panel");
     await reader.getByText("第 1 页 · 识别器平均置信度 82% · 未核验", { exact: true }).waitFor();
     await reader.locator("summary").first().click();
+    // The browser dispatches <details> toggle asynchronously before lazy lines mount.
+    await reader.getByText("识别器置信度 92% · 未核验", { exact: true }).waitFor();
     assert.match(await reader.innerText(), /识别器置信度 92% · 未核验/);
     assert.match(await reader.innerText(), /识别器置信度 72% · 未核验/);
     assert.match(await reader.innerText(), /第 2 页 · 识别器平均置信度 未知 · 未核验/);
