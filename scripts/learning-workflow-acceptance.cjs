@@ -67,17 +67,51 @@ async function main() {
     await page.locator('.nav-rail [data-app-view="study"]').click();
     await page.waitForSelector(".study-card");
     const courseSelect = page.locator("#studyCourseSelect");
+    const studyCard = page.locator("#studyViewDueList .study-card");
+    const waitForRenderedCards = async cards => {
+      assert(cards.length > 0, "The selected study scope must contain the fixture cards");
+      await page.waitForFunction(expected => {
+        const card = document.querySelector("#studyViewDueList .study-card");
+        return card?.querySelector("h3")?.textContent === expected.front
+          && card?.querySelector("small")?.textContent === `第 1 / ${expected.count} 张`;
+      }, {front: cards[0].front, count: cards.length});
+    };
     await page.waitForFunction(id => Array.from(document.querySelector("#studyCourseSelect").options).some(option => option.value === id), course.id);
+    const scopedDueResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/study/due" && url.searchParams.get("course_id") === course.id;
+    });
     await courseSelect.focus();
     await page.keyboard.press("Home");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await page.waitForFunction(id => document.querySelector("#studyCourseSelect").value === id, course.id);
-    assert.match(await page.locator(".study-card").innerText(), /学习率决定什么/);
+    const scopedResponse = await scopedDueResponse;
+    assert.equal(scopedResponse.status(), 200);
+    const scopedCards = (await scopedResponse.json()).cards;
+    const materialEvidenceIds = new Set(imported.material.evidence_ids);
+    assert(materialEvidenceIds.size > 0);
+    assert(scopedCards.every(card => card.source_evidence_ids.length > 0 && card.source_evidence_ids.every(id => materialEvidenceIds.has(id))), "Course review must contain only the selected material's evidence");
+    await waitForRenderedCards(scopedCards);
+    const scopedCloze = studyCard.locator(".quiz-question");
+    await scopedCloze.waitFor({state: "visible"});
+    assert.equal(await scopedCloze.innerText(), "____决定每一步参数更新的步长，并影响收敛速度。");
+    assert.equal(await studyCard.locator("h3").textContent(), scopedCards[0].front);
+    assert.equal(await studyCard.locator("h3").isVisible(), false, "The active cloze must hide its answer-bearing recall heading");
+    assert.equal(await studyCard.locator(".study-answer").isVisible(), false);
+    assert.equal(await studyCard.getByRole("textbox", {name: "原文中的术语", exact: true}).isEnabled(), true);
+    const allDueResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/study/due" && url.searchParams.get("course_id") === "";
+    });
     await courseSelect.focus();
     await page.keyboard.press("Home");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.querySelector("#studyCourseSelect").value === "");
+    const allResponse = await allDueResponse;
+    assert.equal(allResponse.status(), 200);
+    const allCards = (await allResponse.json()).cards;
+    await waitForRenderedCards(allCards);
     const reflection = page.getByRole("textbox", { name: "自我解释", exact: true });
     await reflection.focus();
     await page.keyboard.type("学习率改变每一步参数更新的幅度。");
@@ -86,6 +120,8 @@ async function main() {
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), "记录解释并显示出处答案");
     await page.keyboard.press("Enter");
     await page.getByText("已记录自我解释动作；解释文本未保存。", { exact: true }).waitFor();
+    assert.equal(await studyCard.locator("h3").isVisible(), true, "Recording the explanation reveals the original recall heading");
+    assert.equal(await studyCard.locator("h3").textContent(), allCards[0].front);
     const studyDashboard = await (await page.request.get(new URL("/api/study/dashboard", base).href)).json();
     assert((studyDashboard.progress.activity || []).some(day => day.self_assessment_count > 0), "Self-assessment was not recorded locally");
     assert((await page.locator(".study-answer").innerText()).length <= 360);
