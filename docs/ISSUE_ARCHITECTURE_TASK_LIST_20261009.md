@@ -59,8 +59,8 @@ for the namespace, exports and compatibility adapters; this is not a claim of a
 net bundle reduction. Existing format/display limits remain 210/225 lines.
 
 The JavaScript graph recognizes the new namespace, rejects reverse/cross-layer
-imports and cycles, and checks classic script order. Its transitive app dependency
-closure must fit inside the explicitly budgeted group: omitting a helper from
+imports and cycles, and checks classic script order. Its transitive dependency closure for recognized pure classic contracts
+must fit inside the explicitly budgeted group: omitting a helper from
 the list fails even when that omission would reduce the measured total. Tests
 exercise missing helpers, reversed order, cycles, omitted dependencies, aggregate
 overruns and desktop package exclusions. No new CI workflow is needed.
@@ -93,7 +93,8 @@ Local cloud validation on this stage:
 
 No browser, provider, user data, media/model download, desktop application launch,
 or release build was used. Packaging claims are checked source/audit contracts;
-actual Windows packaging and visual acceptance remain integration CI work.
+actual Windows packaging and visual acceptance were deferred to integration CI;
+those final results are recorded below.
 
 ## #143 acceptance mapping and remaining limits
 
@@ -106,12 +107,36 @@ actual Windows packaging and visual acceptance remain integration CI work.
 - Enforced dependency direction/cycles: covered by the existing CI architecture
   command, now including the new pure namespace and complete aggregate group.
 - UI visual, real-extension smoke and long-task recovery: no new browser or live
-  run is claimed. Actual UI acceptance remains for ordinary Windows CI after
-  integration; no local/localhost browser route was used.
+  run is claimed. Actual UI acceptance was deferred to ordinary Windows CI after integration
+  and passed as recorded below; no local/localhost browser route was used.
 - Independent merge/revert: one code-only stage; no data migration or rebuild is
   required. Reverting it restores the previous functions and script loading.
 
 No new dependency, network destination, permission, telemetry, credential access,
 storage schema, API route or export path is introduced. Further app decomposition,
 extension/API boundary work and combined runtime acceptance remain outside this
-stage. No GitHub publication or issue closure is part of this local deliverable.
+stage. The original local stage was followed by the integrated PR validation below;
+issue closure is outside this increment.
+
+## Final integrated validation
+
+[PR #285](https://github.com/hurry060215-tech/learnnote-assistant/pull/285)
+merged at `41eaa32c6157539b0e0db6e61dc5276f4b935402`. Final head
+`bd9ceaea5939bca5f5cb119e42ec104d3ac21f56` passed all five triggered PR
+workflow groups. Detailed CodeQL reported no new alerts and review threads
+were clear. Its CI merge tree matched the locally verified tree
+`f0ccbd2b373c36b2a073182a4c8729036c22d018`.
+
+The final combined tree, including the independent resource-report and multi-cue
+fixes, passed 1,131 guarded backend tests, 247 Node entries across 49 web and
+69 extension files, and 222 script/desktop tests (four existing skips). The first
+combined backend process ended without a result during an execution interruption;
+only the fresh isolated rerun's completed 103.967-second result is counted.
+
+Actual classic and desk Edge acceptance passed in
+[UI run 37978467551](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37978467551),
+including classic stylesheet loading, learning/encoding flows, responsive layout
+and the real-backend personal-anchor scenario. Packaging smoke also passed in
+CI. No native extension, signed installer, manual screenshot review or full
+long-task recovery is inferred from those gates. These results leave #143's
+broader acceptance requirements open.
