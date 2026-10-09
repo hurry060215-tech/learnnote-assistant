@@ -50,10 +50,14 @@ def _projection(episode, task):
             "resource_budget_mb": task.options.resource_budget_mb, "content_mode": task.options.content_mode}
 
 
-def course_episodes(course):
+def course_episodes(course, *, read_only=False):
     episodes = [_episode(course["id"], source, index) for index, source in enumerate(course["sources"]) if source["kind"] in {"url", "task"}]
-    with closing(_connect()) as db:
-        rows = {row["episode_id"]: dict(row) for row in db.execute("SELECT * FROM course_episodes WHERE course_id=?", (course["id"],))}
+    path = DATA_DIR / "course-episodes.sqlite3"
+    rows = {}
+    if not read_only or path.is_file():
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) if read_only else _connect()) as db:
+            db.row_factory = sqlite3.Row
+            rows = {row["episode_id"]: dict(row) for row in db.execute("SELECT * FROM course_episodes WHERE course_id=?", (course["id"],))}
     by_handoff = {}
     if any(item["url"] and not rows.get(item["episode_id"], {}).get("task_id") for item in episodes):
         for task in list_tasks():

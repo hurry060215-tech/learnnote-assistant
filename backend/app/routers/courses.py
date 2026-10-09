@@ -6,8 +6,10 @@ from ..courses import list_courses, get_course, save_course, delete_course, comp
 from ..concept_identity import read_history, restore_history
 from ..playlists import preview_playlist
 from ..course_episodes import course_episodes, prepare_course_episode, bind_course_episode
+from .graph_snapshot import graph_snapshot_router
 
 course_router = APIRouter(prefix="/api/courses", tags=["courses"])
+course_router.include_router(graph_snapshot_router)
 
 
 class CourseSource(BaseModel):

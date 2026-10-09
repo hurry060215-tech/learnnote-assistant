@@ -5,6 +5,7 @@ import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
+import { relationshipGraph as snapshotRelationshipGraph, mountGraphCompleteness, mountGraphSnapshotExport, mountGraphSnapshotImport } from "/web/course-graph-snapshot.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -96,13 +97,20 @@ export function installTools(ctx) {
     return course;
   }
   async function listCourses() {
-    const token = show("课程", '<p class="muted">正在读取课程…</p>');
+    const token = show("课程", '<button data-action="graph-snapshot" data-graph-snapshot-import type="button">导入关系图快照（只读预览）</button><div id="courseCatalog"><p class="muted">正在读取课程…</p></div>');
+    backAction = null;
+    // Import stays available even when the live catalog is empty or unreadable.
     const result = await api("/api/courses");
     if (token !== generation) return;
     courses = result.courses;
     backAction = null;
-    $("toolBody").innerHTML =
+    $("courseCatalog").innerHTML =
       `<p class="muted">把相关笔记放在一起，按自己的顺序学习。</p><button class="primary" data-action="new-course">＋ 新建课程</button><div class="tool-list">${courses.map((c) => `<button class="tool-row" data-course="${c.id}"><strong>${esc(c.title)}</strong><small>${c.paused ? "已暂停" : "学习中"}</small><span>›</span></button>`).join("") || '<p class="muted">还没有课程。</p>'}</div>`;
+  }
+  function graphSnapshot() {
+    const token = show("关系图快照 · 只读预览", "");
+    backAction = listCourses;
+    mountGraphSnapshotImport($("toolBody"), { api, isCurrent: () => token === generation && dialog.open });
   }
   function courseEditor() {
     show(
@@ -672,63 +680,7 @@ export function installTools(ctx) {
       `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。分类仅按关键词提示，不代表事实判断。不会自动抓取网站内容；作者身份默认省略，明显联系方式与推广内容会过滤。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-actions">${links([["单独导出社区观点", `/api/tasks/${encodeURIComponent(s.id)}/community-context/export`]])}</div><div class="tool-list">${r.items.map((item) => `<blockquote><small>${category(item.item_id)} · ${item.kind === "danmaku" ? "弹幕" : "评论"}${item.timestamp_seconds === null ? "" : " · " + Number(item.timestamp_seconds) + " 秒"}</small><p>${esc(item.text)}</p><button data-action="delete-community-item" data-item-id="${esc(item.item_id)}">删除这条观点</button></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
   }
 
-  function relationshipGraph(result) {
-    const nodes = (result.nodes || []).slice(0, 24);
-    const edges = (result.edges || []).filter((edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to));
-    if (!nodes.length || !edges.length) return null;
-    const width = 760, cellWidth = 180, cellHeight = 86, columns = 4;
-    const height = Math.max(180, Math.ceil(nodes.length / columns) * cellHeight + 32);
-    const position = new Map(nodes.map((node, index) => [node.id, { x: 16 + (index % columns) * cellWidth, y: 16 + Math.floor(index / columns) * cellHeight }]));
-    const details = document.createElement("details");
-    details.className = "relationship-graph";
-    const summary = document.createElement("summary");
-    summary.textContent = "关系图（关键词线索，不代表因果或观点一致）";
-    details.append(summary);
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "课程来源关系图");
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = "课程来源关系图";
-    svg.append(title);
-    for (const edge of edges) {
-      const from = position.get(edge.from), to = position.get(edge.to);
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(from.x + 72)); line.setAttribute("y1", String(from.y + 25));
-      line.setAttribute("x2", String(to.x + 72)); line.setAttribute("y2", String(to.y + 25));
-      line.setAttribute("class", "relationship-edge");
-      const presentation = relationPresentation(edge);
-      line.setAttribute("stroke-dasharray", presentation.dash);
-      line.setAttribute("aria-label", `${presentation.label}：${(edge.terms || []).join("、")}`);
-      const edgeTitle = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      edgeTitle.setAttribute("data-user-content", "true");
-      edgeTitle.textContent = `${presentation.label}：${(edge.terms || []).join("、")}`;
-      line.append(edgeTitle);
-      svg.append(line);
-    }
-    for (const node of nodes) {
-      const point = position.get(node.id);
-      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      rect.setAttribute("x", String(point.x)); rect.setAttribute("y", String(point.y));
-      rect.setAttribute("width", "144"); rect.setAttribute("height", "50"); rect.setAttribute("rx", "8");
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("data-user-content", "true");
-      label.setAttribute("x", String(point.x + 8)); label.setAttribute("y", String(point.y + 22));
-      label.textContent = String(node.title || node.id).slice(0, 22);
-      const count = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      count.setAttribute("x", String(point.x + 8)); count.setAttribute("y", String(point.y + 40));
-      count.setAttribute("class", "relationship-node-meta");
-      count.textContent = `${(node.evidence_ids || []).length} 条来源证据`;
-      group.append(rect, label, count); svg.append(group);
-    }
-    details.append(svg);
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = "图下方的关系列表保留每条关系对应的证据 ID；无法理解图形时可直接使用列表。";
-    details.append(hint);
-    return details;
-  }
+  function relationshipGraph(result) { return snapshotRelationshipGraph(result); }
   async function compareSources(form, token) {
     const sequence = ++comparisonSequence;
     const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
@@ -745,6 +697,8 @@ export function installTools(ctx) {
       hint.textContent = `显示前 ${r.matches.length} 条出处，共 ${r.total_matches} 条；可缩小筛选范围。`;
       root.append(hint);
     }
+    mountGraphCompleteness(root, r);
+    mountGraphSnapshotExport(root, { api, course: selectedCourse, scope: filters, isCurrent: active });
     const graphView = relationshipGraph(r);
     if (graphView) root.append(graphView);
     if (r.edges?.length) {
@@ -786,6 +740,7 @@ export function installTools(ctx) {
     });
   };
   const actions = {
+    "graph-snapshot": graphSnapshot,
     "material-encoding": materialEncoding,
     community,
     "toggle-community": async (button) => {
