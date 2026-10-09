@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TASK_DIR
 from .model_connections import connected_api_key
+from .summary_outcome import safe_summary_diagnostics, safe_summary_events
 from .models import FrameGrid, TaskOptions, VisualWindow
 from .summarizer import (
     MAX_GRIDS_PER_VISION_CALL,
@@ -64,23 +65,13 @@ def _llm_failure_code(summary_source: str, summary_warning: str, configured: boo
 
 
 def _safe_llm_events(events: list[dict] | None, limit: int = 20) -> list[dict]:
-    safe_events: list[dict] = []
-    for event in (events or [])[:limit]:
-        if not isinstance(event, dict):
-            continue
-        safe_events.append({
-            key: value
-            for key, value in event.items()
-            if key in {"stage", "code", "error_type", "message", "batch", "model", "duration_ms", "cache", "issues"}
-            and value not in (None, "", [])
-        })
-    return safe_events
+    return safe_summary_events(events)[:limit]
 
 
 def _llm_event_failure(events: list[dict]) -> dict:
     for event in reversed(events or []):
         code = str(event.get("code") or "").strip()
-        if code and code not in {"ok", "success", "cache_hit"}:
+        if code and code not in {"ok", "success", "cache_hit", "offline_fixture", "repaired", "unclassified"}:
             return event
     return {}
 
@@ -164,7 +155,7 @@ def build_summary_diagnostics(
     last_llm_failure = _llm_event_failure(safe_llm_events)
     failed_vision_batch_count = sum(
         1 for event in safe_llm_events
-        if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success", "cache_hit"}
+        if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success", "cache_hit", "offline_fixture", "repaired", "unclassified"}
     )
     llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
     if not llm_failure_code and last_llm_failure and summary_source == "local-template":
@@ -176,7 +167,7 @@ def build_summary_diagnostics(
             pipeline_metrics = {}
     except (OSError, ValueError):
         pipeline_metrics = {}
-    return {
+    return safe_summary_diagnostics({
         "task_id": task_id,
         "title": title,
         "page_url": page_url,
@@ -234,7 +225,7 @@ def build_summary_diagnostics(
         "all_grids_had_images": total_image_count == len(grids),
         "window_ids": [window.id for window in visual_windows],
         "pipeline_metrics": pipeline_metrics,
-    }
+    })
 
 
 __all__ = ["build_summary_diagnostics"]

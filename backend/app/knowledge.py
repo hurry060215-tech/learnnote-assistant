@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, ensure_dirs
 from .embeddings import semantic_rank
+from .text_corruption import has_high_confidence_corruption, mojibake_score
 from .models import SourceEvidence
 from .text_cleanup import (
     TEXT_NORMALIZATION_VERSION,
@@ -34,6 +35,7 @@ class _VisibleTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._hidden_depth = 0
         self._pre_depth = 0
+        self._code_parts: list[str] | None = None
         self.parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
@@ -45,6 +47,8 @@ class _VisibleTextParser(HTMLParser):
         if tag == "pre":
             self.parts.append("\n\n```\n")
             self._pre_depth += 1
+        elif tag == "code" and not self._pre_depth and self._code_parts is None:
+            self._code_parts = []
         elif not self._pre_depth:
             if re.fullmatch(r"h[1-6]", tag):
                 self.parts.append("\n\n" + "#" * int(tag[1]) + " ")
@@ -61,14 +65,29 @@ class _VisibleTextParser(HTMLParser):
             return
         if self._hidden_depth:
             return
-        if tag.lower() == "pre" and self._pre_depth:
+        if tag.lower() == "code" and self._code_parts is not None:
+            literal = "".join(self._code_parts)
+            marker = "`" * (max((len(run) for run in re.findall(r"`+", literal)), default=0) + 1)
+            padding = " " if literal.startswith("`") or literal.endswith("`") else ""
+            self.parts.append(marker + padding + literal + padding + marker)
+            self._code_parts = None
+        elif tag.lower() == "pre" and self._pre_depth:
             self._pre_depth -= 1
             self.parts.append("\n```\n\n")
         elif not self._pre_depth and (tag.lower() in {"p", "div", "section", "article", "blockquote"} or re.fullmatch(r"h[1-6]", tag.lower())):
             self.parts.append("\n\n")
 
+    def close(self) -> None:
+        super().close()
+        if self._code_parts is not None:
+            # An unmatched tag cannot exempt the rest of a document.
+            self.parts.extend(self._code_parts)
+            self._code_parts = None
+
     def handle_data(self, data: str) -> None:
-        if not self._hidden_depth and (self._pre_depth or data.strip() or "\n" not in data):
+        if not self._hidden_depth and self._code_parts is not None:
+            self._code_parts.append(data)
+        elif not self._hidden_depth and (self._pre_depth or data.strip() or "\n" not in data):
             self.parts.append(data)
 
 
@@ -497,16 +516,21 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
         parser = _VisibleTextParser()
         parser.feed(decoded_info.text)
         parser.close()
-        return "".join(parser.parts).strip(), "webpage", {
+        visible_text = "".join(parser.parts).strip()
+        # Entity expansion is another decoding boundary: raw ASCII HTML can
+        # otherwise hide corruption that only appears in the visible text.
+        if has_high_confidence_corruption(visible_text):
+            raise ValueError("text_mojibake_detected")
+        return visible_text, "webpage", {
             "encoding": decoded_info.encoding,
             "decoding_source": "strict-lossless",
             "encoding_source": decoded_info.encoding_source,
             "encoding_confidence": decoded_info.encoding_confidence,
             "declared_encoding": declared_encoding,
-            "replacement_character_count": decoded_info.replacement_character_count,
+            "replacement_character_count": visible_text.count("\ufffd"),
             "normalization_version": decoded_info.normalization_version,
             "encoding_repaired": decoded_info.repaired,
-            "mojibake_score": decoded_info.mojibake_score,
+            "mojibake_score": mojibake_score(visible_text),
         }
     return decoded_info.text, "markdown" if suffix in {".md", ".markdown"} else "task", {
         "encoding": decoded_info.encoding,

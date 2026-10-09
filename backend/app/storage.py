@@ -16,6 +16,7 @@ from .models import TaskOptions, TaskRecord, now_iso
 from .migrations import migrate_task_record, migrate_task_payload
 from .observability import record_task_event
 from .source_input import clean_task_title
+from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, summary_failure_message
 from .activation import record_status
 
 _lock = threading.RLock()
@@ -108,6 +109,14 @@ def update_task(task_id: str, **changes: Any) -> TaskRecord:
         previous_phase = record.phase
         previous_status = record.status
         previous_checkpoint = record.checkpoint
+        if "summary_diagnostics" in changes:
+            changes["summary_diagnostics"] = safe_summary_diagnostics(changes["summary_diagnostics"])
+        if "summary_warning" in changes:
+            changes["summary_warning"] = safe_summary_warning(changes["summary_warning"])
+        if changes.get("error_code", record.error_code) == "summary_unavailable":
+            for key in ("message", "error_detail"):
+                if key in changes:
+                    changes[key] = summary_failure_message(changes[key])
         for key, value in changes.items():
             setattr(record, key, value)
         save_task(record)
@@ -291,6 +300,8 @@ def cleanup_tasks(retention_days: int = 30, keep_recent: int = 10, dry_run: bool
 def write_json(task_id: str, filename: str, data: Any) -> Path:
     with _lock:
         path = task_dir(task_id) / filename
+        if filename == "summary_diagnostics.json":
+            data = safe_summary_diagnostics(data)
         atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
         return path
 

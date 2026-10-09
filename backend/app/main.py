@@ -1,5 +1,6 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
+from .task_artifacts import public_summary_task
 from . import qa_evidence, qa_history
 from .qa_evidence import (
     clip_text as _clip_text,
@@ -48,9 +49,10 @@ from .downloader import effective_resource_kind, media_file_video_signature, pre
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from .integrations import notion_export_payload
+from .document_exports import sanitize_export_text
 from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, TranscriptResult, now_iso
-from .observability import read_task_events, redacted_support_manifest
+from .observability import read_task_events, redacted_support_manifest, support_event_projection
 from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_summary, update_study_plan
 from .processor import browser_subtitle_text_is_player_ui, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .media_preflight import page_preflight_report
@@ -1048,6 +1050,7 @@ def _audit_report_text(value: object) -> str:
 
 
 def render_task_audit_markdown(task: TaskRecord) -> str:
+    task = public_summary_task(task)
     audit = task_audit_summary(task)
     direct = direct_extraction_evidence(task)
     reuse = task_reuse_evidence(task)
@@ -1144,7 +1147,7 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
         "- 当前页直取失败时，本工具不会改用标签页录制、破解 DRM 或伪造学习进度。",
         "",
     ])
-    return "\n".join(lines)
+    return sanitize_export_text("\n".join(lines))
 
 
 def read_resource_inventory(task: TaskRecord) -> dict:
@@ -1172,6 +1175,7 @@ def read_page_preflight_report(task: TaskRecord) -> dict:
 
 
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
+    task = public_summary_task(task)
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
@@ -1933,6 +1937,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
 
 
 def task_audit_summary(task: TaskRecord) -> dict:
+    task = public_summary_task(task)
     gates = task_audit_gates(task)
     released = [gate for gate in gates if gate["state"] in {"pass", "skip"}]
     blocked = [gate for gate in gates if gate["state"] in {"fail", "warn"}]
@@ -2146,6 +2151,7 @@ def task_eta_seconds(task: TaskRecord) -> int:
 
 
 def task_payload(task: TaskRecord) -> dict:
+    task = public_summary_task(task)
     payload = task.model_dump(mode="json")
     payload["media_integrity"] = task.media_integrity.model_dump(mode="json")
     payload["handoff_integrity"] = task.handoff_integrity.model_dump(mode="json")
@@ -2208,6 +2214,7 @@ def task_artifact_status(task: TaskRecord) -> dict[str, object]:
 
 
 def render_diagnostics_markdown(task: TaskRecord) -> str:
+    task = public_summary_task(task)
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
@@ -2496,7 +2503,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         "- `media.mp4` 通过单独的“导出本地视频”接口下载，资料包默认不内嵌大视频文件。",
         "",
     ])
-    return "\n".join(lines)
+    return sanitize_export_text("\n".join(lines))
 
 
 def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
@@ -4303,7 +4310,7 @@ def api_export_manifest(task_id: str) -> Response:
 @app.get("/api/tasks/{task_id}/exports/bundle")
 def api_export_bundle(task_id: str) -> Response:
     try:
-        task = get_task(task_id)
+        task = public_summary_task(get_task(task_id))
         note = read_note(task_id)
         transcript = read_transcript(task_id)
         visual_index = read_visual_index(task_id)
@@ -4441,10 +4448,10 @@ def api_export_support_package(task_id: str) -> Response:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    events = read_task_events(task_id)
+    events = support_event_projection(read_task_events(task_id))
     manifest = redacted_support_manifest(task_id, events)
-    diagnostics = render_diagnostics_markdown(task)
-    audit = render_task_audit_markdown(task)
+    diagnostics = sanitize_export_text(render_diagnostics_markdown(task))
+    audit = sanitize_export_text(render_task_audit_markdown(task))
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))

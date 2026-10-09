@@ -5,7 +5,7 @@ import hashlib
 import sqlite3
 import re
 import math
-from .storage import atomic_write_text
+from .storage import atomic_write_text, get_task
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -19,7 +19,7 @@ from fsrs import State as FsrsState
 from .config import DATA_DIR, ensure_dirs
 from .models import SourceEvidence, StudyCard, StudyPlan
 from .study_content import review_points
-from .text_corruption import has_high_confidence_corruption
+from .text_corruption import corruption_prose, has_high_confidence_corruption
 
 
 STUDY_SCHEMA_VERSION = 3
@@ -106,9 +106,25 @@ def _row_to_card(row: sqlite3.Row) -> StudyCard:
 def quiz_evidence_eligible(item: SourceEvidence | dict) -> bool:
     value = item.model_dump() if isinstance(item, SourceEvidence) else item
     metadata = value.get("metadata") or {}
+    owner_id = str(value.get("task_id") or "")
+    if owner_id:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", owner_id):
+            return False
+        try:
+            owner = get_task(owner_id)
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError):
+            return False
+        else:
+            if owner.summary_source == "transcript-draft" or owner.summary_diagnostics.get("review_required"):
+                return False
     return (
         bool(value.get("evidence_id"))
-        and metadata.get("kind") not in {"community", "note", "generated-note"}
+        and metadata.get("kind") not in {"community", "note", "generated-note", "review-draft", "transcript-draft"}
+        and not metadata.get("review_required")
+        and metadata.get("evidence_quality") != "review_required"
+        and "【识别不清】" not in corruption_prose(str(value.get("text") or ""))
         and value.get("source_type") != "community"
         and value.get("locator") not in {"note", "generated-note"}
         and not has_high_confidence_corruption(str(value.get("text") or ""))

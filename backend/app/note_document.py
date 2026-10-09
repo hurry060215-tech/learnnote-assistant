@@ -18,7 +18,7 @@ import unicodedata
 from typing import Any, Iterable
 
 from .markdown_structure import prose_text, structural_lines
-from .text_corruption import has_high_confidence_corruption
+from .text_corruption import corruption_prose, has_high_confidence_corruption
 
 
 DOCUMENT_SCHEMA_VERSION = 2
@@ -342,6 +342,13 @@ def lint_note_markdown(markdown: str) -> list[dict[str, str]]:
             "code": "mojibake_detected",
             "severity": "error",
             "message": "检测到高置信度乱码模式，已阻止笔记发布。",
+        })
+
+    if "【识别不清】" in corruption_prose("\n".join(content_lines)):
+        issues.append({
+            "code": "transcript_review_required",
+            "severity": "error",
+            "message": "待核对字幕不能发布为正式笔记。",
         })
 
     headings: list[tuple[int, str]] = []

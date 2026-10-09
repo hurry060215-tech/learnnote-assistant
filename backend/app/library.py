@@ -220,7 +220,7 @@ def record_to_evidence(record: TaskRecord, text: str, kind: str):
         locator="transcript" if kind == "transcript" else "note",
         text=text,
         task_id=record.id,
-        metadata={"kind": kind, "checkpoint": record.checkpoint, "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest()},
+        metadata={"kind": kind, "checkpoint": record.checkpoint, "review_required": bool(record.summary_diagnostics.get("review_required")), "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest()},
     )
 
 
@@ -246,7 +246,7 @@ def transcript_evidence(record: TaskRecord, raw: str):
             locator=f"{start:.1f}-{end:.1f}s",
             text=str(segment.get("text") or ""),
             task_id=record.id,
-            metadata={"kind": "transcript", "start": start, "end": end, "source_revision": hashlib.sha256(str(segment.get("text") or "").encode("utf-8")).hexdigest()},
+            metadata={"kind": "transcript", "start": start, "end": end, "review_required": bool(record.summary_diagnostics.get("review_required")), "source_revision": hashlib.sha256(str(segment.get("text") or "").encode("utf-8")).hexdigest()},
         ))
     return items or [record_to_evidence(record, raw, "transcript")]
 
