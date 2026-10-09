@@ -68,7 +68,7 @@ def _inventory(root: Path) -> dict[str, str]:
         size += path.stat().st_size
         if size > 512 * 1024 * 1024:
             raise ValueError("catalog_recovery_too_large")
-        result[name] = library._file_sha256(path)
+        result[name] = "transient" if name == "library.sqlite3-shm" else library._file_sha256(path)
     return result
 
 
@@ -165,7 +165,7 @@ def _sync_directory(path: Path) -> None:
             os.close(descriptor)
 
 
-def _preserve(root: Path, inventory: dict) -> Path:
+def _preserve(root: Path, inventory: dict, shared_memory: bytes | None) -> Path:
     if (root / "exports").is_symlink():
         raise ValueError("catalog_source_path_unsafe")
     folder = root / "exports" / f"catalog-recovery-{uuid4().hex}"
@@ -177,7 +177,12 @@ def _preserve(root: Path, inventory: dict) -> Path:
             target.mkdir(parents=True, exist_ok=True)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(root / name, target)
+        if name == "library.sqlite3-shm":
+            if shared_memory is None:
+                raise ValueError("catalog_changed_preview_again")
+            target.write_bytes(shared_memory)
+        else:
+            shutil.copy2(root / name, target)
         actual = library._file_sha256(target)
         if name == "library.sqlite3-shm":
             preserved[name] = actual  # Reader bookkeeping is not source identity.
@@ -233,6 +238,9 @@ def apply_recovery(snapshot: Path, preview_token: str) -> dict:
         replacement = preview["catalog"]["state"] in {"missing", "corrupt"}
         target = root / "library.sqlite3"
         temporary = root / f".catalog-recovery-{uuid4().hex}.sqlite3"
+        # Windows locks SHM byte ranges during BEGIN IMMEDIATE. Capture its
+        # pre-operation bookkeeping before reserving the SQLite writer.
+        shared_memory = (root / "library.sqlite3-shm").read_bytes() if "library.sqlite3-shm" in inventory else None
         db = sqlite3.connect(temporary if replacement else target)
         published, backup = False, None
         try:
@@ -244,7 +252,7 @@ def apply_recovery(snapshot: Path, preview_token: str) -> dict:
             db.execute("BEGIN IMMEDIATE")
             if _freshness(_inventory(root)) != _freshness(inventory):
                 raise ValueError("catalog_changed_preview_again")
-            backup = _preserve(root, inventory)
+            backup = _preserve(root, inventory, shared_memory)
             _ensure_recovery_tables(db)
             counts = _merge(db, selected)
             if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":

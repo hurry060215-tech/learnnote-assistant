@@ -16,6 +16,14 @@ async function waitForFixture(promise) {
 }
 const fixture = name => ({ name, mimeType: "application/vnd.sqlite3", buffer: Buffer.from(`SQLite format 3\0Synthetic fixture snapshot: ${name}`) });
 
+function readAsset(target) {
+  const descriptor = fs.openSync(target, "r");
+  try {
+    assert(fs.fstatSync(descriptor).isFile(), "Fixture assets must be regular files");
+    return fs.readFileSync(descriptor);
+  } finally { fs.closeSync(descriptor); }
+}
+
 async function main() {
   const { chromium } = require("playwright");
   const base = new URL(process.argv[2] || "http://127.0.0.1:18932");
@@ -80,8 +88,7 @@ async function main() {
           assert.equal(method, "GET");
           const target = path.resolve(root, p === "/" ? "web/index.html" : decodeURIComponent(p.slice(1)));
           assert(target.startsWith(path.join(root, "web") + path.sep));
-          assert(fs.statSync(target).isFile());
-          return await route.fulfill({ body: fs.readFileSync(target), contentType: ({ ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" })[path.extname(target)] || "application/octet-stream" });
+          return await route.fulfill({ body: readAsset(target), contentType: ({ ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" })[path.extname(target)] || "application/octet-stream" });
         }
         if (p === "/health" && method === "GET") return await json({ ok: true, service: "learnnote", app_version: "0.2.14", protocol_version: 1, llm_model_configured: false, model_provider_presets: [], assistant_capabilities: {} });
         if (p === "/api/tasks" && method === "GET") return await json({ tasks: [] });
@@ -270,5 +277,14 @@ async function main() {
 }
 if (process.argv.includes("--self-test")) {
   assert.equal(fixture("test.sqlite3").buffer.subarray(0, 16).toString(), "SQLite format 3\0");
+  const asset = path.join(root, "web/index.html"), originalRead = fs.readFileSync;
+  assert(readAsset(asset).includes(Buffer.from("LearnNote")));
+  assert.throws(() => readAsset(path.join(root, "web")));
+  let failedDescriptor;
+  try {
+    fs.readFileSync = descriptor => { assert.equal(typeof descriptor, "number"); failedDescriptor = descriptor; throw new Error("Synthetic read failure"); };
+    assert.throws(() => readAsset(asset), /Synthetic read failure/);
+    assert.throws(() => fs.fstatSync(failedDescriptor), { code: "EBADF" });
+  } finally { fs.readFileSync = originalRead; }
   console.log("Catalog recovery Edge fixture loaded; browser run requires an authorized Edge environment.");
 } else main().catch(error => { console.error(error); process.exitCode = 1; });

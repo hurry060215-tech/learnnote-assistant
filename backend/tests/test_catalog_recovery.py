@@ -311,7 +311,13 @@ class CatalogRecoveryTests(unittest.TestCase):
             connection.commit()
             preview = preview_recovery(self.backup)
             self.assertTrue(preview["can_apply"], preview)
-            result = apply_recovery(self.backup, preview["preview_token"])
+            digest = library._file_sha256
+            def reject_locked_shm(path):
+                if path == self.root / "library.sqlite3-shm":
+                    raise PermissionError("Synthetic Windows SHM byte-range lock")
+                return digest(path)
+            with patch.object(library, "_file_sha256", side_effect=reject_locked_shm):
+                result = apply_recovery(self.backup, preview["preview_token"])
             self.assertEqual(result["status"], "pass")
             self.assertEqual(connection.execute("SELECT * FROM healthy_history").fetchall(), [("keep",)])
             manifest = json.loads((self.root / "exports" / result["rollback_directory"] / "preserved.json").read_text())
