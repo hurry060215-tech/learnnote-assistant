@@ -47,6 +47,7 @@ async function main(){
     };
     const capture=async(name,selector)=>{const g=await geometry(page,selector);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});assert(g.scrollWidth<=g.viewport+1,`${name} page overflow: ${JSON.stringify(g)}`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);return g;};
     report.objective_cloze=await require("./study-quiz-acceptance.cjs")({page,api,openStudio,evidence,cards,capture});
+    report.concept_groups=await require("./course-concepts-acceptance.cjs")({page,api,base,out,restoreMaterial:material});
     for(const item of cases()){
       await page.setViewportSize({width:item.cssWidth,height:item.cssHeight});await cdp.send("Emulation.setDeviceMetricsOverride",{width:item.cssWidth,height:item.cssHeight,deviceScaleFactor:item.zoom/100,mobile:false});
       for(const theme of ["light","dark"]){

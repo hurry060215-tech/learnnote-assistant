@@ -30,7 +30,7 @@ class CourseTests(unittest.TestCase):
             "two": [{"evidence_id":"c","locator":"5-15s","text":"梯度可以用于优化。"}],
         }
         with tempfile.TemporaryDirectory() as directory:
-            with patch("app.courses.DATA_DIR", Path(directory)), patch("app.courses.get_task", side_effect=lambda key: SimpleNamespace(title=key)), patch("app.courses.evidence_for_task", side_effect=lambda key, **kw: evidence[key]):
+            with patch("app.courses.DATA_DIR", Path(directory)), patch("app.courses.get_task", side_effect=lambda key: SimpleNamespace(title=key)), patch("app.courses._source_evidence_ids", side_effect=lambda source: {item["evidence_id"] for item in evidence[source["id"]]}), patch("app.courses.evidence_by_ids", side_effect=lambda ids, **kw: [item for rows in evidence.values() for item in rows if item["evidence_id"] in ids]):
                 course = save_course("课程", [{"kind":"task","id":"one"},{"kind":"task","id":"two"}])
                 result = compare_course(course["id"], "学习率 梯度")
                 self.assertFalse(result["inference"])
@@ -55,7 +55,7 @@ class CourseComparisonAcceptanceTests(unittest.TestCase):
                 {"evidence_id": "second", "locator": "20-25s", "text": "gradient second", "course_source": source},
             ]
             with self.subTest(prefix_length=len(prefix)), patch("app.courses.get_course", return_value={}), patch("app.courses.course_evidence", return_value=evidence):
-                result = compare_course("fixture", "gradient", start=10, end=30)
+                result = compare_course("f" * 32, "gradient", start=10, end=30)
             self.assertEqual([item["evidence_id"] for item in result["matches"]], ["first", "second"])
             self.assertEqual(result["filters"]["start"], 10)
             self.assertEqual(result["filters"]["end"], 30)
@@ -67,29 +67,29 @@ class CourseComparisonAcceptanceTests(unittest.TestCase):
         ]
         for ordered in (evidence, list(reversed(evidence))):
             with self.subTest(first=ordered[0]["evidence_id"]), patch("app.courses.get_course", return_value={}), patch("app.courses.course_evidence", return_value=ordered):
-                result = compare_course("fixture", "gradient")
+                result = compare_course("f" * 32, "gradient")
             self.assertEqual({item["evidence_id"] for item in result["matches"]}, {"video", "document"})
             self.assertEqual(len(result["edges"]), 1)
             self.assertIsNone(result["filters"]["start"])
 
     def test_same_evidence_registered_twice_is_not_a_cross_source_relation(self):
         evidence = {"evidence_id":"shared", "locator":"0-10s", "text":"gradient descent"}
-        with patch("app.courses.get_course", return_value={"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses.evidence_for_task", return_value=[evidence]), patch("app.courses.material_anchors", return_value=[evidence]):
-            result = compare_course("fixture", "gradient")
+        with patch("app.courses.get_course", return_value={"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses._source_evidence_ids", return_value={"shared"}), patch("app.courses.evidence_by_ids", return_value=[evidence]):
+            result = compare_course("f" * 32, "gradient")
         self.assertEqual(result["edges"], [])
         self.assertEqual(len(result["matches"]), 1)
 
     def test_comparison_filters_keep_correct_source_and_temporal_anchors(self):
         sources = [{"kind":"task","id":"one","title":"First"},{"kind":"task","id":"two","title":"Second"}]
         evidence = {"one":[{"evidence_id":"a","locator":"0-5s","text":"gradient early"},{"evidence_id":"b","locator":"15-20s","text":"gradient late"}], "two":[{"evidence_id":"c","locator":"15-20s","text":"gradient second"}]}
-        with patch("app.courses.get_course", return_value={"sources":sources}), patch("app.courses.evidence_for_task", side_effect=lambda key, **kw:evidence[key]):
-            result = compare_course("fixture", "gradient", start=10, end=30)
+        with patch("app.courses.get_course", return_value={"sources":sources}), patch("app.courses._source_evidence_ids", side_effect=lambda source: {item["evidence_id"] for item in evidence[source["id"]]}), patch("app.courses.evidence_by_ids", side_effect=lambda ids, **kw: [item for rows in evidence.values() for item in rows if item["evidence_id"] in ids]):
+            result = compare_course("f" * 32, "gradient", start=10, end=30)
             self.assertEqual([item["evidence_id"] for item in result["matches"]], ["b", "c"])
             self.assertEqual(result["edges"][0]["evidence_ids"], ["b", "c"])
-            self.assertEqual(len(compare_course("fixture", "gradient", source_id="two")["matches"]), 1)
-            self.assertEqual(compare_course("fixture", "gradient", source_kind="material")["matches"], [])
+            self.assertEqual(len(compare_course("f" * 32, "gradient", source_id="two")["matches"]), 1)
+            self.assertEqual(compare_course("f" * 32, "gradient", source_kind="material")["matches"], [])
             with self.assertRaisesRegex(ValueError, "invalid_comparison_filter"):
-                compare_course("fixture", "gradient", start=20, end=10)
+                compare_course("f" * 32, "gradient", start=20, end=10)
 
 
 if __name__ == "__main__":
