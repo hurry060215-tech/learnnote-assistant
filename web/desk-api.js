@@ -13,8 +13,8 @@ export async function api(path, options = {}) {
   } catch {
     value = text;
   }
-  if (!response.ok)
-    throw new Error(
+  if (!response.ok) {
+    const error = new Error(
       (Array.isArray(value?.detail)
         ? value.detail
             .map((item) => `${(item.loc || []).join(".")}: ${item.msg}`)
@@ -24,6 +24,10 @@ export async function api(path, options = {}) {
         value?.detail ||
         `请求失败 (${response.status})`,
     );
+    error.status = response.status;
+    error.code = typeof value?.detail?.code === "string" ? value.detail.code : "";
+    throw error;
+  }
   return value;
 }
 export const escapeHtml = (value) =>

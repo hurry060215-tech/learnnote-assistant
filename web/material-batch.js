@@ -72,7 +72,17 @@ export function createMaterialBatch({ api, changed = () => {}, previewVideo = pr
             if (item.kind === "material") {
               const data = new FormData(); data.append("file", item.file); data.append("encoding", item.encoding);
               result = await api("/api/library/materials/preview", { method: "POST", body: data, signal: controller.signal });
-            } else result = await previewVideo(item.file, { signal: controller.signal });
+            } else {
+              result = await previewVideo(item.file, { signal: controller.signal });
+              if (token !== generation || stopped) break;
+              if (!Number.isFinite(result?.duration) || result.duration <= 0) {
+                item.detail = "浏览器无法读取时长，正在上传到本机校验并暂存；不调用模型…"; emit();
+                const data = new FormData(); data.append("file", item.file);
+                result = await api("/api/media/preflight-local", { method: "POST", body: data, signal: controller.signal });
+                if (!Number.isFinite(result?.duration) || result.duration <= 0 || !/^[a-f0-9]{32}$/.test(result?.staging_token || ""))
+                  throw new Error("本机未返回有效的时长与暂存结果，请重新预检未完成项。");
+              }
+            }
             if (token !== generation || stopped) break;
             item.preview = result; item.status = "ready"; item.detail = "预检完成，待提交。";
           } catch (error) {
@@ -111,7 +121,9 @@ export function createMaterialBatch({ api, changed = () => {}, previewVideo = pr
           if (stopped || !current()) { stopped = true; break; }
           if (!item.preview || !["ready", "failed"].includes(item.status)) continue;
           item.status = "submitting"; item.detail = "正在提交，关闭窗口不会撤回此文件。"; emit();
-          const data = new FormData(); data.append("file", item.file);
+          const data = new FormData(), stagingToken = item.kind === "task" && item.preview.staging_token;
+          if (stagingToken) data.append("staging_token", stagingToken);
+          else data.append("file", item.file);
           if (item.kind === "material") data.append("encoding", item.encoding);
           else data.append("options", JSON.stringify(snapshot.options));
           try {
@@ -125,6 +137,23 @@ export function createMaterialBatch({ api, changed = () => {}, previewVideo = pr
             completed.push(item);
           } catch (error) {
             item.status = "failed"; item.detail = `${error.message || "提交失败"} 可重试；本机将按原始内容核对重复结果。`;
+            if (stagingToken) {
+              if (error.status === 404 && error.code === "staging_token_not_found") {
+                if (item.submissionUncertain) {
+                  // The token may have been consumed by a successful create whose
+                  // response was lost. Hash dedup excludes failed/cancelled tasks,
+                  // so uploading again cannot safely resolve this uncertainty.
+                  item.status = "unconfirmed";
+                  item.detail = "提交结果待核对，暂存文件已被使用或过期。请关闭此窗口，在资料库按文件名核对视频任务（包括失败或取消的任务）；为避免重复任务，不会自动重新上传。";
+                } else {
+                  item.preview = null;
+                  item.detail = "暂存文件已过期或不可用。原始文件仍保留，请点击「重新预检未完成项」重新在本机校验，再按本批原设置提交。";
+                }
+              } else {
+                item.submissionUncertain ||= !error.status || error.status >= 500 || error.status === 408;
+                if (item.submissionUncertain) item.detail = "未能确认视频任务是否已建立。可重试同一次暂存提交；不会重新上传。若暂存已被使用，将提示到资料库核对。";
+              }
+            }
           }
           emit();
         }

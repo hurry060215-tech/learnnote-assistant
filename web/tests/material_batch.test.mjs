@@ -27,7 +27,7 @@ function harness(newline = "\n", overrides = {}) {
     return path.endsWith("/from-local") ? { task_id: id, task: { id }, deduplicated: duplicate }
       : { material: { material_id: id, deduplicated: duplicate, metadata: { encoding: entry.encoding || "utf-8" }, sha256: hash } };
   };
-  h.queue = context.createMaterialBatch({ api: h.api, changed: () => h.changes++, previewVideo: async selected => { h.videos.push(selected); return { duration: null }; }, ...overrides });
+  h.queue = context.createMaterialBatch({ api: h.api, changed: () => h.changes++, previewVideo: async selected => { h.videos.push(selected); return { duration: 12.5 }; }, ...overrides });
   h.route = context.batchVideoRoute;
   h.kind = context.importKind;
   return h;
