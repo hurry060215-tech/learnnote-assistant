@@ -361,6 +361,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
+  $("inlineSourceView").hidden = true;
   state.selected = item;
   api("/api/study/activity", {
     method: "POST",
@@ -730,7 +731,9 @@ function closeSource() {
   delete $("sourcePanel").dataset.sourceKey;
 }
 
+let inlineSourceRequest = 0;
 async function openInlineSource(seconds, sourceOverride = null, endSeconds = undefined) {
+  const request = ++inlineSourceRequest;
   let source = sourceOverride || state.selected;
   if (!source) return;
   if (!state.selected || source.id !== state.selected.id || source.kind !== state.selected.kind) {
@@ -740,8 +743,11 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
       return;
     }
     await openItem(item, { remember: true, check: false });
+    if (request !== inlineSourceRequest || state.selected?.id !== item.id || state.selected?.kind !== item.kind) return;
     source = state.selected;
   }
+  const epoch = state.epoch;
+  const current = () => request === inlineSourceRequest && epoch === state.epoch;
   const view = $("inlineSourceView"), content = $("inlineSourceContent"), meta = $("inlineSourceMeta");
   state.summaryScrollY = window.scrollY;
   view.hidden = false;
@@ -751,6 +757,7 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
   try {
     if (source.kind === "material") {
       const data = await api(`/api/library/materials/${encodeURIComponent(source.id)}/content`);
+      if (!current()) return;
       meta.textContent = `${source.title} · 文档原文`;
       for (const paragraph of String(data.text || "").split(/\n{2,}/).filter(Boolean)) {
         const node = document.createElement("p");
@@ -759,6 +766,7 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
       }
     } else {
       const data = await api(`/api/tasks/${encodeURIComponent(source.id)}/transcript`);
+      if (!current()) return;
       const cues = (data.segments || []).filter((cue) => String(cue.text || "").trim());
       let matched = false;
       for (const cue of cues) {
@@ -789,11 +797,12 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
     }
     view.scrollIntoView({ block: "start", behavior: "instant" });
   } catch (error) {
-    meta.textContent = error.message || "原文暂时无法读取。";
+    if (current()) meta.textContent = error.message || "原文暂时无法读取。";
   }
 }
 
 $("backToSummary").onclick = () => {
+  inlineSourceRequest++;
   $("inlineSourceView").hidden = true;
   $("document").hidden = false;
   window.scrollTo({ top: Number(state.summaryScrollY || 0), behavior: "instant" });
