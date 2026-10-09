@@ -1,0 +1,328 @@
+{
+  "manifest_urls": [
+    [
+      "https://cdn.example.test/course/master.m3u8/part.ts?fixture=one#part",
+      "https://cdn.example.test/course/master.m3u8?fixture=one",
+      []
+    ],
+    [
+      "https://cdn.example.test/course/manifest.MPD/part.m4s;ignored?fixture=two#part",
+      "https://cdn.example.test/course/manifest.MPD?fixture=two",
+      []
+    ],
+    [
+      "https://cdn.example.test/course/720p/part.ts?fixture=three#part",
+      "",
+      [
+        "https://cdn.example.test/course/720p/index.m3u8?fixture=three",
+        "https://cdn.example.test/course/720p/playlist.m3u8?fixture=three",
+        "https://cdn.example.test/course/720p/master.m3u8?fixture=three",
+        "https://cdn.example.test/course/index.m3u8?fixture=three",
+        "https://cdn.example.test/course/playlist.m3u8?fixture=three",
+        "https://cdn.example.test/course/master.m3u8?fixture=three"
+      ]
+    ],
+    [
+      "https://cdn.example.test/course/video/part.m4s?fixture=four",
+      "",
+      [
+        "https://cdn.example.test/course/video/manifest.mpd?fixture=four",
+        "https://cdn.example.test/course/video/index.mpd?fixture=four",
+        "https://cdn.example.test/course/video/master.m3u8?fixture=four",
+        "https://cdn.example.test/course/video/index.m3u8?fixture=four",
+        "https://cdn.example.test/course/manifest.mpd?fixture=four",
+        "https://cdn.example.test/course/index.mpd?fixture=four",
+        "https://cdn.example.test/course/master.m3u8?fixture=four",
+        "https://cdn.example.test/course/index.m3u8?fixture=four"
+      ]
+    ],
+    [
+      "https://cdn.example.test/segments/part.ts",
+      "",
+      [
+        "https://cdn.example.test/segments/index.m3u8",
+        "https://cdn.example.test/segments/playlist.m3u8",
+        "https://cdn.example.test/segments/master.m3u8"
+      ]
+    ],
+    [
+      "https://cdn.example.test/course/not-a-segment.mp4",
+      "",
+      []
+    ],
+    [
+      "https://cdn.example.test/course/master.m3u8",
+      "",
+      []
+    ],
+    [
+      "http://[invalid",
+      "",
+      []
+    ],
+    [
+      "",
+      "",
+      []
+    ]
+  ],
+  "fallback_contexts": [
+    [
+      "https://course.example.test/top",
+      null
+    ],
+    [
+      "https://player.example.test/embed",
+      1
+    ],
+    [
+      "https://player.example.test/referer",
+      1
+    ],
+    [
+      "https://player.example.test",
+      1
+    ],
+    [
+      "https://course.example.test/api/play",
+      0
+    ],
+    [
+      "https://course.example.test/referer",
+      0
+    ],
+    [
+      "https://course.example.test/frame",
+      2
+    ]
+  ],
+  "fallback_urls": [
+    "https://course.example.test/top",
+    "https://player.example.test/embed",
+    "https://player.example.test/referer",
+    "https://player.example.test",
+    "https://course.example.test/api/play",
+    "https://course.example.test/referer",
+    "https://course.example.test/frame"
+  ],
+  "scannable": [
+    true,
+    false,
+    false,
+    false
+  ],
+  "request_headers": [
+    {},
+    {
+      "Referer": "https://course.example.test/referer",
+      "User-Agent": "secondary",
+      "Origin": "https://course.example.test"
+    },
+    {
+      "Referer": "https://player.example.test/referer",
+      "User-Agent": "primary agent",
+      "Accept": "video/*",
+      "Authorization": "Bearer synthetic"
+    },
+    {
+      "Referer": "https://ignored.example.test/case"
+    },
+    {}
+  ],
+  "ytdlp_headers": {
+    "User-Agent": "primary agent",
+    "Referer": "https://player.example.test/referer",
+    "Accept": "video/*",
+    "Authorization": "Bearer synthetic",
+    "Origin": "https://course.example.test"
+  },
+  "context_input_unchanged": true,
+  "enriched": {
+    "nested": {
+      "candidates": [
+        {
+          "url": "https://cdn.example.test/course/master.m3u8/part.ts?fixture=one",
+          "source": "webRequest",
+          "kind": "fragment",
+          "score": 12,
+          "page_url": "https://course.example.test/top",
+          "tab_id": 7,
+          "frame_id": 3,
+          "request_headers": {
+            "Referer": "https://course.example.test/top"
+          }
+        },
+        {
+          "url": "https://cdn.example.test/course/master.m3u8?fixture=one",
+          "source": "inferred-manifest",
+          "kind": "hls",
+          "mime": "application/vnd.apple.mpegurl",
+          "score": 100,
+          "label": "inferred manifest",
+          "playback_match": "inferred-from-fragment",
+          "page_url": "https://course.example.test/top",
+          "tab_id": 7,
+          "frame_id": 3,
+          "request_headers": {
+            "Referer": "https://course.example.test/top"
+          }
+        }
+      ],
+      "input_unchanged": true,
+      "original_identity": [
+        true
+      ]
+    },
+    "duplicate": {
+      "candidates": [
+        {
+          "url": "https://cdn.example.test/course/master.m3u8/part.ts?fixture=one",
+          "source": "webRequest",
+          "kind": "fragment",
+          "score": 12,
+          "page_url": "https://course.example.test/top",
+          "tab_id": 7,
+          "frame_id": 3,
+          "request_headers": {
+            "Referer": "https://course.example.test/top"
+          }
+        },
+        {
+          "url": "https://cdn.example.test/course/master.m3u8/part.ts?fixture=one",
+          "source": "webRequest",
+          "kind": "fragment",
+          "score": 12,
+          "page_url": "https://course.example.test/top",
+          "tab_id": 7,
+          "frame_id": 3,
+          "request_headers": {
+            "Referer": "https://course.example.test/top"
+          }
+        },
+        {
+          "url": "https://cdn.example.test/course/master.m3u8?fixture=one",
+          "source": "inferred-manifest",
+          "kind": "hls",
+          "mime": "application/vnd.apple.mpegurl",
+          "score": 100,
+          "label": "inferred manifest",
+          "playback_match": "inferred-from-fragment",
+          "page_url": "https://course.example.test/top",
+          "tab_id": 7,
+          "frame_id": 3,
+          "request_headers": {
+            "Referer": "https://course.example.test/top"
+          }
+        }
+      ],
+      "input_unchanged": true,
+      "original_identity": [
+        true,
+        true
+      ]
+    },
+    "unrelated_blob": {
+      "candidates": [
+        {
+          "url": "blob:https://course.example.test/player",
+          "kind": "blob"
+        },
+        {
+          "url": "https://cdn.example.test/course/chunk.m4s",
+          "source": "webRequest",
+          "kind": "fragment"
+        }
+      ],
+      "input_unchanged": true,
+      "original_identity": [
+        true,
+        true
+      ]
+    },
+    "matched_blob": {
+      "candidates": [
+        {
+          "url": "blob:https://course.example.test/player",
+          "kind": "blob"
+        },
+        {
+          "url": "https://cdn.example.test/course/chunk.m4s",
+          "source": "webRequest",
+          "kind": "fragment",
+          "playback_match": "blob-source"
+        },
+        {
+          "url": "https://cdn.example.test/course/manifest.mpd",
+          "source": "manifest-guess",
+          "kind": "dash",
+          "mime": "application/dash+xml",
+          "score": 42,
+          "label": "guessed DASH manifest from segment directory",
+          "playback_match": "blob-source"
+        },
+        {
+          "url": "https://cdn.example.test/course/index.mpd",
+          "source": "manifest-guess",
+          "kind": "dash",
+          "mime": "application/dash+xml",
+          "score": 42,
+          "label": "guessed DASH manifest from segment directory",
+          "playback_match": "blob-source"
+        },
+        {
+          "url": "https://cdn.example.test/course/master.m3u8",
+          "source": "manifest-guess",
+          "kind": "hls",
+          "mime": "application/vnd.apple.mpegurl",
+          "score": 42,
+          "label": "guessed HLS manifest from segment directory",
+          "playback_match": "blob-source"
+        },
+        {
+          "url": "https://cdn.example.test/course/index.m3u8",
+          "source": "manifest-guess",
+          "kind": "hls",
+          "mime": "application/vnd.apple.mpegurl",
+          "score": 42,
+          "label": "guessed HLS manifest from segment directory",
+          "playback_match": "blob-source"
+        }
+      ],
+      "input_unchanged": true,
+      "original_identity": [
+        true,
+        true
+      ]
+    }
+  },
+  "untrusted": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    true,
+    false
+  ],
+  "ranked": [
+    {
+      "url": "https://cdn.example.test/chosen.mp4",
+      "source": "page-frame-scan",
+      "kind": "video",
+      "score": 85,
+      "user_selected": true,
+      "frame_url": "https://unrelated.example.test/embed",
+      "page_url": "https://course.example.test/top"
+    },
+    {
+      "url": "https://cdn.example.test/lesson.mp4",
+      "source": "activeVideo",
+      "kind": "video",
+      "score": 93,
+      "is_main_video": true
+    }
+  ]
+}
