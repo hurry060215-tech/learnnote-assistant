@@ -1,7 +1,7 @@
-"""Readable completed vision batches; these are drafts, never final notes.
+"""Readable completed source batches; these are drafts, never final notes.
 
 The additive JSON projection and Markdown can be rebuilt from the existing
-vision cache. Source artifacts and previously published notes are not changed.
+vision cache or completed text requests. Source artifacts and published notes stay intact.
 """
 from __future__ import annotations
 
@@ -14,20 +14,27 @@ from .claims import build_claim_evidence_map, mark_claims_for_review
 from .note_document import normalize_note_markdown
 from .observability import read_task_events_after, record_task_event
 from .processor_state import check_cancel
-from .reading_notes import stamp
+from .reading_notes import source_block_entries, stamp
 from .storage import atomic_write_text, get_task, read_json, task_dir, update_task, write_json
 from .summary_outcome import safe_summary_text
 from .text_cleanup import TextDecodingError, canonicalize_unicode_text, redact_sensitive_url_values
+from .text_chunk_sections import text_chunk_source, valid_text_chunk
 
 
 def _revision(value) -> str:
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def _valid_section(item: object, source_revision: str) -> bool:
+def _valid_section(item: object, source_revision: str, text_blocks: list) -> bool:
     if not isinstance(item, dict) or item.get("status") != "evidence_pending" or item.get("verified") is not False:
         return False
-    if item.get("kind") != "vision_batch" or item.get("summary_generated") is not True or not isinstance(item.get("markdown"), str):
+    if item.get("summary_generated") is not True or not isinstance(item.get("markdown"), str):
+        return False
+    if item.get("revision") != _revision(item["markdown"]):
+        return False
+    if item.get("kind") == "text_chunk":
+        return valid_text_chunk(item, text_blocks, source_revision)
+    if item.get("kind") != "vision_batch":
         return False
     if any(type(item.get(key)) not in (int, float) for key in ("start", "end")):
         return False
@@ -64,15 +71,27 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         return  # A late completion from an older run cannot replace current drafts.
     task = get_task(task_id)
     root = task_dir(task_id)
-    windows = payload["source_windows"]
-    if not windows or any(not math.isfinite(float(w[key])) for w in windows for key in ("start", "end")):
+    if payload.get("kind") not in (None, "vision_batch", "text_chunk"):
         return
-    if any(w["start"] < 0 or w["end"] < w["start"] for w in windows):
-        return
-    start, end = min(w["start"] for w in windows), max(w["end"] for w in windows)
     source_revision = _revision([task.source_identity.media_sha256, transcript.model_dump(mode="json")])
-    section_id = "vision-" + _revision([source_revision, [[w["start"], w["end"]] for w in windows]])[:24]
-    heading = f"图文章节 {stamp(start)}–{stamp(end)}"
+    text_blocks = []
+    if payload.get("kind") == "text_chunk":
+        text_blocks = source_block_entries(transcript)
+        source = text_chunk_source(payload, text_blocks, source_revision)
+        if source is None:
+            return
+        heading = f"文字分段 {source['block_index'] + 1}"
+    else:
+        windows = payload["source_windows"]
+        if not windows or any(not math.isfinite(float(w[key])) for w in windows for key in ("start", "end")):
+            return
+        if any(w["start"] < 0 or w["end"] < w["start"] for w in windows):
+            return
+        start, end = min(w["start"] for w in windows), max(w["end"] for w in windows)
+        section_id = "vision-" + _revision([source_revision, [[w["start"], w["end"]] for w in windows]])[:24]
+        source = {"id": section_id, "kind": "vision_batch", "start": start, "end": end, "source_windows": windows}
+        heading = f"图文章节 {stamp(start)}–{stamp(end)}"
+    section_id = source["id"]
     try:
         text = safe_summary_text(redact_sensitive_url_values(canonicalize_unicode_text(payload["markdown"])))
         normalized = normalize_note_markdown(heading, text, generate_questions=task.options.generate_questions)
@@ -84,9 +103,8 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         markdown = mark_claims_for_review(normalized.markdown, claims)
     except TextDecodingError:
         return
-    section = {"id": section_id, "kind": "vision_batch", "status": "evidence_pending",
-               "verified": False, "summary_generated": True, "start": start, "end": end,
-               "source_windows": windows, "markdown": markdown, "revision": _revision(markdown)}
+    section = {**source, "status": "evidence_pending", "verified": False,
+               "summary_generated": True, "markdown": markdown, "revision": _revision(markdown)}
     try:
         previous = read_json(task_id, "partial_note.json", {})
     except (OSError, ValueError):
@@ -102,24 +120,24 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
     compatible = (previous.get("source_revision") == source_revision
                   and previous.get("generation_revision") == payload["generation_revision"])
     saved = previous.get("sections")
-    saved = [item for item in saved if _valid_section(item, source_revision)] if isinstance(saved, list) else []
+    saved = [item for item in saved if _valid_section(item, source_revision, text_blocks)] if isinstance(saved, list) else []
     sections = {item["id"]: item for item in saved} if compatible else {}
     sections[section_id] = section
     document = {"schema_version": 1, "status": "draft", "verified": False,
                 "source_revision": source_revision, "generation_revision": payload["generation_revision"],
-                "sections": sorted(sections.values(), key=lambda item: (item["start"], item["end"], item["id"]))}
+                "sections": sorted(sections.values(), key=lambda item: (item.get("block_index", item.get("start", 0)), item.get("end", 0), item["id"]))}
     document["revision"] = _revision(document)
     check_cancel(task_id)
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
         return
     write_json(task_id, "partial_note.json", document)
     source_draft = root / "draft.md"
-    prefix = source_draft.read_text(encoding="utf-8") if source_draft.is_file() else "# 图文章节草稿\n"
-    lines = [prefix.rstrip(), "", "## 已生成的图文章节（草稿）", "",
+    prefix = source_draft.read_text(encoding="utf-8") if source_draft.is_file() else "# 分段草稿\n"
+    lines = [prefix.rstrip(), "", "## 已生成的分段草稿", "",
              "> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。", ""]
     for item in document["sections"]:
         first, _, body = item["markdown"].partition("\n")
-        lines.extend(["#" + first, "", "> 草稿 · 证据补充中 · 未完成最终校验", "", body.strip(), ""])
+        lines.extend(["#" + first, "", "> 草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查", "", body.strip(), ""])
     target = root / "draft.partial.md"
     rendered = "\n".join(lines)
     try:
@@ -140,6 +158,6 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
     # but does not create duplicate ready events for an unchanged document.
     if not _already_notified(task_id, document["revision"]):
         record_task_event(task_id, "partial_section_ready", phase="summary", status="draft",
-            message="已生成图文章节草稿，证据仍待核对",
+            message="已生成分段草稿，待最终来源检查",
             details={"schema_version": 1, "section_id": section_id, "revision": document["revision"],
-                     "section_count": len(sections), "artifact": target.name, "verified": False})
+                     "section_count": len(sections), "kind": source["kind"], "artifact": target.name, "verified": False})

@@ -7,9 +7,10 @@ const path = require("node:path");
 const { createHash } = require("node:crypto");
 
 const TASK_ID = "progressive-sections-ui-fixture";
-const TITLE = "合成验收：渐进图文章节";
-const FIRST_HEADING = "图文章节 00:00–00:10";
-const SECOND_HEADING = "图文章节 00:10–00:20";
+const SCENARIOS = [
+  { name: "vision", kind: "vision_batch", title: "合成验收：渐进图文章节", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
+  { name: "text", kind: "text_chunk", title: "合成验收：文字分段草稿", first: "文字分段 1", second: "文字分段 2" },
+];
 const SECOND_CLAIM = "Synthetic batch 2: the reference transcript says the square is blue.";
 const TRANSCRIPT = [
   { start: 0, end: 10, text: "The circle is orange." },
@@ -27,8 +28,8 @@ function validateBase(value) {
   return base;
 }
 
-function batch(number) {
-  const heading = number === 1 ? FIRST_HEADING : SECOND_HEADING;
+function batch(number, scenario) {
+  const heading = number === 1 ? scenario.first : scenario.second;
   const claim = number === 1
     ? "Synthetic batch 1: the reference transcript says the circle is orange."
     : SECOND_CLAIM;
@@ -36,14 +37,14 @@ function batch(number) {
   // to scroll its repeated subheading above the viewport without hitting bottom.
   const paragraphs = Array.from({ length: 18 }, (_, index) =>
     `Synthetic reading spacer ${number}.${index + 1}. This text exists only to check reader position. It makes no claim about a real lesson, a model result, or verified facts.`);
-  return `## ${heading}\n\n> 草稿 · 证据补充中 · 未完成最终校验\n\n### Core points\n\n${claim}\n\n${paragraphs.join("\n\n")}\n\n${number === 2 ? HOSTILE_TEXT : "Synthetic first-batch reference only."}`;
+  return `## ${heading}\n\n> 草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查\n\n### Core points\n\n${claim}\n\n${paragraphs.join("\n\n")}\n\n${number === 2 ? HOSTILE_TEXT : "Synthetic first-batch reference only."}`;
 }
 
-function partialText(withFirst) {
-  return `# ${TITLE}\n\n## 已生成的图文章节（草稿）\n\n> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。\n\n${withFirst ? batch(1) + "\n\n" : ""}${batch(2)}\n`;
+function partialText(withFirst, scenario) {
+  return `# ${scenario.title}\n\n## 已生成的分段草稿\n\n> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。\n\n${withFirst ? batch(1, scenario) + "\n\n" : ""}${batch(2, scenario)}\n`;
 }
 
-function createFixture() {
+function createFixture(scenario) {
   let sequence = 0;
   let clock = Date.parse("2026-10-01T10:00:00Z");
   const fixture = {
@@ -51,14 +52,14 @@ function createFixture() {
     retryCalls: 0,
     explicitSuccess: false,
     events: [],
-    edition: { text: partialText(false), revision: "fixture-batch-2", edited: false },
+    edition: { text: partialText(false, scenario), revision: "fixture-batch-2", edited: false },
     task: {
-      id: TASK_ID, title: TITLE, kind: "task", source_type: "local", mode: "visual",
+      id: TASK_ID, title: scenario.title, kind: "task", source_type: "local", mode: scenario.name === "text" ? "subtitle_only" : "visual",
       status: "running", phase: "summarizing", progress: 62,
       created_at: new Date(clock).toISOString(), updated_at: new Date(clock).toISOString(),
       summary_source: "partial-draft", transcript_path: "transcript.json", note_path: "draft.partial.md",
       message: `Synthetic fixture only: ${HOSTILE_TEXT}`,
-      options: { content_mode: "visual", visual_understanding: true, generate_questions: false },
+      options: { content_mode: scenario.name === "text" ? "text" : "visual", visual_understanding: scenario.name === "vision", generate_questions: false },
       artifact_status: { draft_available: true, partial_draft_available: true, transcript_ready: true },
     },
   };
@@ -74,14 +75,14 @@ function createFixture() {
     return entry;
   }
   const sectionDetails = count => ({
-    schema_version: 1, section_id: `synthetic-batch-${count === 1 ? 2 : 1}`,
+    schema_version: 1, kind: scenario.kind, section_id: `synthetic-${scenario.kind}-${count === 1 ? 2 : 1}`,
     revision: fixture.edition.revision, section_count: count, artifact: "draft.partial.md", verified: false,
   });
   fixture.initialEvent = record("partial_section_ready", sectionDetails(1));
   fixture.addEarlierBatch = () => {
     assert.equal(fixture.phase, "second-batch");
     fixture.phase = "both-batches";
-    fixture.edition = { text: partialText(true), revision: "fixture-batches-1-2", edited: false };
+    fixture.edition = { text: partialText(true, scenario), revision: "fixture-batches-1-2", edited: false };
     fixture.task.progress = 78;
     return record("partial_section_ready", sectionDetails(2));
   };
@@ -115,10 +116,10 @@ function createFixture() {
     fixture.phase = "success";
     fixture.explicitSuccess = true;
     fixture.edition = {
-      text: `# ${TITLE}\n\n## ${FINAL_MARKER}\n\nThis is a synthetic final-edition fixture, released only by the test's explicit success transition. It does not establish that any real course fact has been verified.\n\n${SECOND_CLAIM}\n`,
+      text: `# ${scenario.title}\n\n## ${FINAL_MARKER}\n\nThis is a synthetic final-edition fixture, released only by the test's explicit success transition. It does not establish that any real course fact has been verified.\n\n${SECOND_CLAIM}\n`,
       revision: "fixture-final-success", edited: false,
     };
-    Object.assign(fixture.task, { status: "success", phase: "completed", progress: 100, summary_source: "vision-llm", note_path: "note.md" });
+    Object.assign(fixture.task, { status: "success", phase: "completed", progress: 100, summary_source: scenario.name === "text" ? "text-llm" : "vision-llm", note_path: "note.md" });
     fixture.task.artifact_status = { draft_available: false, partial_draft_available: false, transcript_ready: true };
     return record("task_terminal");
   };
@@ -162,8 +163,9 @@ function installMockEventSource({ taskId }) {
   };
 }
 
-async function selfTest() {
-  const fixture = createFixture();
+async function selfTestScenario(scenario) {
+  const FIRST_HEADING = scenario.first, SECOND_HEADING = scenario.second;
+  const fixture = createFixture(scenario);
   const original = fixture.edition.text;
   const initialStamp = fixture.task.updated_at;
   assert(!original.includes(FIRST_HEADING));
@@ -173,6 +175,8 @@ async function selfTest() {
   assert(fixture.task.updated_at > initialStamp);
   assert.equal(earlier.event, "partial_section_ready");
   assert.equal(earlier.details.verified, false);
+  assert.equal(earlier.details.kind, scenario.kind);
+  if (scenario.name === "text") assert(!fixture.edition.text.includes("图文章节"));
   assert(fixture.edition.text.indexOf(FIRST_HEADING) < fixture.edition.text.indexOf(SECOND_HEADING));
   assert.equal(fixture.edition.text.match(/### Core points/g).length, 2);
   const markdownSandbox = {};
@@ -211,16 +215,16 @@ async function selfTest() {
   console.log("PASS: synthetic transitions, monotonic IDs/timestamps, shipped Markdown heading IDs/escaping, explicit final boundary, and EventSource mock; no browser launched");
 }
 
-async function main() {
-  const out = path.resolve(process.argv[3] || "build/progressive-sections-ui");
+async function runScenario(scenario, out) {
+  const FIRST_HEADING = scenario.first, SECOND_HEADING = scenario.second;
   fs.mkdirSync(out, { recursive: true });
   const report = {
-    passed: false, browser: "Microsoft Edge", checks: [], screenshots: [], pageErrors: [], fixtureErrors: [], unexpectedRequests: [],
+    passed: false, scenario: scenario.name, kind: scenario.kind, browser: "Microsoft Edge", checks: [], screenshots: [], pageErrors: [], fixtureErrors: [], unexpectedRequests: [],
     scope: { web_assets: "shipped app from supplied loopback backend", task_apis: "synthetic route fulfillment", event_stream: "mocked EventSource", model_execution: false, factual_verification: false, backend_artifact_publication: false, native_webview_tested: false },
     requests: [], editionRequests: [], observations: {}, referenceTranscript: TRANSCRIPT,
   };
   let browser, page;
-  const fixture = createFixture();
+  const fixture = createFixture(scenario);
   async function screenshot(name, fullPage = false) {
     await page.screenshot({ path: path.join(out, name), animations: "disabled", fullPage });
     report.screenshots.push(name);
@@ -316,6 +320,11 @@ async function main() {
     assert.equal(await page.locator('#taskStatus [data-stage="summary"]').getAttribute("data-state"), "active");
     await assertNoFinal();
     await assertEscaped();
+    assert.match(await page.locator("#taskStatus").innerText(), /分段草稿可读/);
+    if (scenario.name === "text") {
+      assert(!(await page.locator("#document").innerText()).includes("图文章节"));
+      assert.match(await page.locator("#document").innerText(), /待最终来源检查/);
+    }
     const initialRefresh = page.waitForResponse(response => new URL(response.url()).pathname === "/api/tasks");
     await emit(fixture.initialEvent);
     await initialRefresh;
@@ -403,15 +412,15 @@ async function main() {
     await emit(fixture.failMetadata());
     await waitEdition();
     assert.equal(await page.locator("#taskStatus").getAttribute("data-status"), "needs-summary");
-    assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*图文章节仍以草稿保留/s);
-    assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated chapters must not collapse into a transcript-only draft");
+    assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*分段仍以草稿保留/s);
+    assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated source chunks must not collapse into a transcript-only draft");
     assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), 2);
-    assert.match(await page.locator("#document").innerText(), /草稿 · 证据补充中 · 未完成最终校验/);
+    assert.match(await page.locator("#document").innerText(), /草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查/);
     await assertEscaped();
     await assertNoFinal();
     await page.evaluate(() => { window.getSelection().removeAllRanges(); window.scrollTo(0, 0); });
     await screenshot("04-failed-partial-chapters.png");
-    report.checks.push("Failed local-template metadata retains generated chapters when partial_draft_available is true; hostile text stays escaped");
+    report.checks.push("Failed local-template metadata retains generated source chunks when partial_draft_available is true; hostile text stays escaped");
 
     await page.locator('[data-task-action="retry-summary"]').click();
     await page.waitForFunction(() => document.getElementById("taskStatus")?.dataset.status === "running");
@@ -455,7 +464,27 @@ async function main() {
     fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
     await browser?.close();
   }
-  console.log(JSON.stringify({ passed: report.passed, out, checks: report.checks }));
+  console.log(JSON.stringify({ passed: report.passed, scenario: scenario.name, out, checks: report.checks }));
+  return report;
+}
+
+async function selfTest() {
+  for (const scenario of SCENARIOS) await selfTestScenario(scenario);
+}
+
+async function main() {
+  const out = path.resolve(process.argv[3] || "build/progressive-sections-ui");
+  fs.mkdirSync(out, { recursive: true });
+  const report = { passed: false, scenarios: [] };
+  try {
+    for (const scenario of SCENARIOS) {
+      const result = await runScenario(scenario, path.join(out, scenario.name));
+      report.scenarios.push({ scenario: scenario.name, passed: result.passed, report: `${scenario.name}/report.json` });
+    }
+    report.passed = report.scenarios.every(scenario => scenario.passed);
+  } finally {
+    fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
+  }
 }
 
 if (require.main === module) {
