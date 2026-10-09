@@ -16,8 +16,8 @@ function installFixtures({locale,catalog,fixture}) {
   const originalFetch=globalThis.fetch.bind(globalThis);let release;
   const healthGate=new Promise(resolve=>{release=resolve;});
   const site="https://www.bilibili.com/video/BV1SYNTHETIC?p=1";
-  const cues=Array.from({length:12},(_,i)=>({start:i*10,end:i*10+10,text:fixture.subtitle+" "+(i+1)}));
-  const page={page_url:site,title:fixture.title,active_video:{src:"https://example.com/synthetic.mp4",duration:120,current_time:45,paused:false,has_audio:true},browser_subtitles:cues,subtitle_probe:{status:"ready",elapsed_ms:400},chapters:[{title:"原文章节一",start:0,end:60},{title:"原文章节二",start:60,end:120}]};
+  const cues=fixture.cues||Array.from({length:12},(_,i)=>({start:i*10,end:i*10+10,text:fixture.subtitle+" "+(i+1)}));
+  const page={page_url:site,title:fixture.title,active_video:{src:"https://example.com/synthetic.mp4",duration:fixture.duration||120,current_time:45,paused:false,has_audio:true},browser_subtitles:cues,subtitle_probe:{status:"ready",elapsed_ms:400},chapters:fixture.chapters||[{title:"原文章节一",start:0,end:60},{title:"原文章节二",start:60,end:120}]};
   const control=globalThis.__localeFixture={health:"loading",startError:"",sent:[],unexpected:[],storage:{processingMode:"study"},context:{tab:{id:7,url:site,title:fixture.title},page,resources:[]},connect(){this.health="connected";release();}};
   const json=value=>new Response(JSON.stringify(value),{status:200,headers:{"Content-Type":"application/json"}});
   globalThis.fetch=async(input,options={})=>{
@@ -27,13 +27,13 @@ function installFixtures({locale,catalog,fixture}) {
     if(url.pathname==="/health"){
       if(control.health==="loading")await healthGate;
       if(control.health==="offline")throw TypeError("Failed to fetch");
-      return json({service:"learnnote",app_version:"0.2.14",backend_version:"0.2.14",protocol_version:control.health==="incompatible"?999:1,llm_model_configured:true,default_llm_model:"Synthetic-long-model-name-for-layout-acceptance",default_llm_supports_vision:true});
+      return json({service:"learnnote",app_version:"0.2.14",backend_version:"0.2.14",protocol_version:control.health==="incompatible"?999:1,llm_model_configured:true,default_llm_model:fixture.modelName||"Synthetic-long-model-name-for-layout-acceptance",default_llm_supports_vision:true});
     }
     if(url.pathname==="/api/preferences")return json({task_options:{note_profile_prompt:fixture.instruction}});
     if(url.pathname==="/api/pairing/issue")return json({token:"synthetic-fixture-only",expires_at:Date.now()/1000+300});
     if(url.pathname.endsWith("/note"))return new Response(fixture.note);
     if(url.pathname.endsWith("/transcript"))return json({segments:cues});
-    if(url.pathname.endsWith("/qa"))return json({answer:"用户回答保持原文",source:"local",citations:[]});
+    if(url.pathname.endsWith("/qa"))return json({answer:fixture.answer||"用户回答保持原文",source:"local",citations:[]});
     if(url.pathname.includes("/api/tasks/"))return json({task:{id:"locale-fixture",status:"success",note_path:"synthetic-note",options:{content_mode:"text"}}});
     return json({configured:true,model:{model:"synthetic"},report:{ready:true,ok:true}});
   };
@@ -97,12 +97,14 @@ async function run() {
       if(item.width===390&&item.zoom===100){for(const state of ["offline","incompatible"]){await page.evaluate(state=>{__localeFixture.health=state;},state);await page.evaluate(()=>__learnnoteSidepanel.checkClient());await capture(state);}}
       const unexpected=await page.evaluate(()=>__localeFixture.unexpected);assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
       report.cases.push({...item,geometry:connected,page_errors:errors,external_requests:unexpected});
-      if(item.width===1440&&item.zoom===100){await page.setViewportSize({width:1280,height:800});await page.evaluate(()=>{__localeFixture.health="connected";});await page.evaluate(()=>__learnnoteSidepanel.checkClient());await page.evaluate(()=>{for(const id of ["sourcePreviewCard","learningRangeOptions","extensionOptions"])document.getElementById(id).open=false;});for(const state of ["summary","transcript"]){await page.locator(`[data-quick-tab="${state}"]`).click();await page.locator("#quickResultCard").scrollIntoViewIfNeeded();const filename=`store-${item.locale}-${state}-1280x800.png`;await page.screenshot({path:path.join(out,filename)});report.store_candidates.push(filename);}}
       await context.close();
     }
+    report.store_candidates=await require("./extension-store-visual-fixtures.cjs").captureStoreCandidates({browser,origin:`http://127.0.0.1:${server.address().port}`,out,root:ROOT,installFixtures,geometry,sourceSha:report.source_sha});
+    report.store_manifest="store-candidates.json";
     report.passed=true;fs.writeFileSync(path.join(out,"report.json"),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:true,cases:report.cases.length,store_candidates:report.store_candidates.length,out}));
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
-if(process.argv.includes("--self-test")){
+module.exports={FIXTURE,installFixtures,matrix,asset};
+if(require.main===module&&process.argv.includes("--self-test")){
   assert.equal(matrix().length,18);assert.equal(asset("/extension/../../backend/app/main.py"),null);assert.equal(asset("/extension/%2e%2e/backend/app/main.py"),null);assert(asset("/extension/sidepanel.html"));console.log("Locale visual matrix/path self-test passed; no browser launched");
-}else run().catch(error=>{console.error(error);process.exitCode=1;});
+}else if(require.main===module)run().catch(error=>{console.error(error);process.exitCode=1;});

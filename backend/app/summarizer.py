@@ -1569,11 +1569,19 @@ def summarize_with_llm(
                 _record_llm_event(events, "vision_merge", code, exc, model=model)
                 return None
 
-    from .reading_notes import source_blocks
-    blocks = source_blocks(transcript)
+    from .reading_notes import source_block_entries
+    entries = source_block_entries(transcript)
+    blocks = [entry["text"] for entry in entries]
     if len(blocks) > 3:
         # Every block is processed. A failure returns an honest full-source fallback,
         # rather than silently presenting a successful summary of the opening only.
+        from .text_chunk_sections import text_chunk_payload
+        generation_revision = hashlib.sha256(json.dumps([
+            "text-chunk-v1", model, base_url, title, page_url, page_context,
+            options.model_dump(mode="json", exclude={"llm_api_key"}),
+            note_generation_contract(options), note_style_instruction(options), note_template_instruction(options),
+            blocks,
+        ], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         sections = []
         for index, block in enumerate(blocks, 1):
             check_cancel()
@@ -1587,6 +1595,12 @@ def summarize_with_llm(
                 return None
             body = re.sub(r"^# [^\n]*\n+", "", partial[0], count=1)
             sections.append(f"## 第 {index} 部分\n\n{body}")
+            # Only the parent publishes: child calls keep their existing prompts,
+            # validation/repair and output; dispatch the next block afterward.
+            check_cancel()
+            if section_callback is not None:
+                section_callback(text_chunk_payload(entries[index - 1], index - 1, partial[0], generation_revision))
+        check_cancel()
         return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
     text_transcript_prompt = "\n\n".join(blocks)
     if page_context_prompt:
