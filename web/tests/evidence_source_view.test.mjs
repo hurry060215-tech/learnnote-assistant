@@ -76,6 +76,27 @@ test("latest card reference wins even when an older lookup replies first", async
   await abandoned; assert.equal(calls.length, 2);
 });
 
+test("API-seeded material references need a synchronized reader list before navigation", async () => {
+  const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8"), calls = [];
+  const original = { kind: "material", id: "original", title: "Same title" };
+  const seeded = { kind: "material", id: "api-seeded", title: "Same title" };
+  const state = { epoch: 1, selected: original, items: [original] };
+  const context = vm.createContext({ state, evidenceAnchor,
+    api: async () => ({ evidence: { evidence_id: "seeded-quote", locator: "paragraph 2", metadata: { material_id: seeded.id } } }),
+    openItem: async item => { calls.push(["item", item.id]); state.selected = item; state.epoch++; },
+    openSource: async (seconds, item, target) => { calls.push(["source", item.id, target.evidenceId]); },
+  });
+  vm.runInContext(desk.slice(desk.indexOf("let evidenceRequest = 0;"), desk.indexOf("async function drawReview()")), context);
+  // A valid server-side citation is not enough: title matching must not select
+  // another document, and polling later cannot replay the rejected click.
+  await assert.rejects(context.openEvidence("seeded-quote"), /引用来源已不在当前资料库/);
+  assert.deepEqual(calls, []);
+  state.items.push(seeded);
+  assert.deepEqual(calls, []);
+  await context.openEvidence("seeded-quote");
+  assert.deepEqual(calls, [["item", "api-seeded"], ["source", "api-seeded", "seeded-quote"]]);
+});
+
 test("mistake backlinks use the same canonical resolver and explain a missing source", async () => {
   const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
   const block = tools.slice(tools.indexOf("    const mistakes = ["), tools.indexOf("    backAction = courseId"));
