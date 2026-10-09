@@ -70,8 +70,11 @@ def _remote_asr_source(options: TaskOptions) -> str:
     return "groq-asr" if _remote_asr_provider(options) == "groq" else "openai-compatible-asr"
 
 
-def _safe_asr_error(exc: BaseException) -> str:
-    message = re.sub(r"\s+", " ", str(exc or "")).strip()
+def _safe_asr_error(exc: BaseException, *, api_key: str = "") -> str:
+    message = str(exc or "")
+    if api_key:
+        message = message.replace(api_key, "<redacted>")
+    message = re.sub(r"\s+", " ", message).strip()
     message = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-<redacted>", message)
     message = re.sub(r"(?i)\b(?:ak|org|proj)-[A-Za-z0-9_-]{6,}", "<redacted>", message)
     message = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", message)
@@ -241,8 +244,17 @@ def _segments_from_remote_response(response) -> list[TranscriptSegment]:
     return [TranscriptSegment(start=0, end=0, text=text)] if text else []
 
 
+def remote_asr_api_key(options: TaskOptions) -> str:
+    """Keep explicit, saved and default credentials bound to their endpoint."""
+    key = options.llm_api_key or connected_api_key(options)
+    if key:
+        return key
+    base_url = options.llm_base_url or LLM_BASE_URL
+    return LLM_API_KEY if not options.use_saved_connection and base_url.rstrip("/") == LLM_BASE_URL.rstrip("/") else ""
+
+
 def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -> TranscriptResult:
-    api_key = options.llm_api_key or (connected_api_key(options) if options.use_saved_connection else LLM_API_KEY)
+    api_key = remote_asr_api_key(options)
     source = _remote_asr_source(options)
     if not api_key:
         return TranscriptResult(
@@ -261,7 +273,7 @@ def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -
         return TranscriptResult(
             language="unknown",
             source=f"{source}-missing-sdk",
-            warning=_remote_asr_warning(options, "client_import", "missing_openai_sdk", _safe_asr_error(exc)),
+            warning=_remote_asr_warning(options, "client_import", "missing_openai_sdk", _safe_asr_error(exc, api_key=api_key)),
             segments=[TranscriptSegment(start=0, end=0, text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。")],
             full_text="未安装 openai SDK，当前任务没有生成远程 ASR 字幕。",
         )
@@ -305,7 +317,7 @@ def transcribe_audio_openai_compatible(audio_path: Path, options: TaskOptions) -
             warning="" if segments else "远程 ASR 已返回，但没有解析出有效字幕片段。",
         )
     except Exception as exc:
-        reason = _safe_asr_error(exc)
+        reason = _safe_asr_error(exc, api_key=api_key)
         return TranscriptResult(
             language="unknown",
             source=f"{source}-error",
