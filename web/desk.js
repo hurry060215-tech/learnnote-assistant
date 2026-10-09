@@ -18,6 +18,7 @@ import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
+import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
 import {
   api,
   escapeHtml as esc,
@@ -42,6 +43,9 @@ const state = {
   annotationEditingAnchor: {},
   annotationQuote: "",
   annotationQuoteReanchored: false,
+  annotationRevision: "",
+  annotationRequestId: "",
+  annotationSaving: false,
   input: "url",
   busy: false,
   refreshing: false,
@@ -388,6 +392,9 @@ async function openItem(item, { remember = true, check = true } = {}) {
   state.annotationEditingAnchor = {};
   state.annotationQuote = "";
   state.annotationQuoteReanchored = false;
+  state.annotationRevision = "";
+  state.annotationRequestId = "";
+  personalAnchorPicker.reset();
   $("annotationQuote").textContent = "";
   $("cancelAnnotationEdit").hidden = true;
   closeSource();
@@ -693,17 +700,21 @@ async function loadAnnotations(epoch) {
   const value = await api(`/api/personal/${s.kind}/${s.id}`);
   if (epoch !== state.epoch) return;
   $("annotationList").innerHTML = value.annotations
-    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote>${esc(a.quote)}</blockquote>` : ""}<span>${esc(a.text)}</span>${a.anchor_status?.stale ? `<small>${a.anchor_status.repairable ? "原文版本已变化；重新选择当前正文以修复出处。" : "原文版本已变化；没有可恢复的引用片段。"}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
+    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote data-user-content>${esc(a.quote)}</blockquote>` : ""}<span data-user-content style="white-space:pre-wrap">${esc(a.text)}</span>${annotationAnchorLabel(a.anchor) ? `<small>${esc(annotationAnchorLabel(a.anchor))}</small>` : ""}${annotationStatusMessage(a) ? `<small>${esc(annotationStatusMessage(a))}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
     .join("");
   for (const button of $("annotationList").querySelectorAll("[data-annotation-edit]")) button.onclick = () => {
+    if (state.annotationSaving) { notice("正在保存这条批注，请稍候。"); return; }
     const item = value.annotations.find((annotation) => annotation.id === button.dataset.annotationEdit);
     if (!item) return;
     state.annotationEditingId = item.id;
+    state.annotationRevision = item.revision || "";
+    state.annotationRequestId = "";
+    personalAnchorPicker.reset();
     state.annotationEditingAnchor = item.anchor && typeof item.anchor === "object" ? item.anchor : {};
     state.annotationQuote = String(item.quote || "");
     state.annotationQuoteReanchored = false;
     $("annotationText").value = item.text;
-    $("annotationQuote").textContent = state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。";
+    $("annotationQuote").textContent = annotationAnchorLabel(item.anchor) || (state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。");
     $("saveAnnotation").textContent = item.anchor_status?.stale ? "修复出处并保存" : "保存修改";
     $("cancelAnnotationEdit").hidden = false;
     $("annotationText").focus();
@@ -1063,16 +1074,19 @@ $("export").onclick = () => {
 };
 $("annotationForm").onsubmit = async (e) => {
   e.preventDefault();
+  if (state.annotationSaving) return;
   const epoch = state.epoch,
     s = state.selected,
     text = $("annotationText").value;
-  const button = e.submitter;
-  button.disabled = true;
+  state.annotationSaving = true;
+  const controls = [...$("annotationForm").querySelectorAll("input,textarea,select,button")].map((control) => [control, control.disabled]);
+  for (const [control] of controls) control.disabled = true;
   try {
     const quote = state.annotationQuote;
     const anchor = state.annotationQuoteReanchored && quote
       ? { source_revision: state.revision, selected_text: quote }
       : state.annotationEditingAnchor;
+    if (!state.annotationEditingId && !state.annotationRequestId) state.annotationRequestId = crypto.randomUUID();
     await api(`/api/personal/${s.kind}/${s.id}`, {
       method: "POST",
       body: JSON.stringify({
@@ -1080,6 +1094,8 @@ $("annotationForm").onsubmit = async (e) => {
         quote: quote.slice(0, 1000),
         id: state.annotationEditingId,
         anchor,
+        revision: state.annotationRevision,
+        request_id: state.annotationRequestId,
       }),
     });
     if (epoch !== state.epoch) return;
@@ -1091,11 +1107,18 @@ $("annotationForm").onsubmit = async (e) => {
     state.annotationEditingAnchor = {};
     state.annotationQuote = "";
     state.annotationQuoteReanchored = false;
+    state.annotationRevision = "";
+    state.annotationRequestId = "";
+    personalAnchorPicker.reset();
     await loadAnnotations(epoch);
   } catch (error) {
-    failure(error);
+    if (epoch !== state.epoch || state.selected?.kind !== s.kind || state.selected?.id !== s.id) return;
+    const message = ({ annotation_revision_conflict: "这条批注已在其他页面修改。请复制当前文字，重新打开后再保存。", annotation_request_conflict: "上次保存已完成，但当前文字已变化。请复制当前文字，再编辑已保存的批注。", annotation_anchor_stale: "所选出处已变化。文字仍保留，请重新打开出处选择器并选择。" })[error.message];
+    if (message) notice(message); else failure(error);
   } finally {
-    button.disabled = false;
+    state.annotationSaving = false;
+    for (const [control, disabled] of controls) control.disabled = disabled;
+    if (epoch !== state.epoch) personalAnchorPicker.reset();
   }
 };
 $("captureAnnotationQuote").onclick = () => {
@@ -1108,6 +1131,7 @@ $("captureAnnotationQuote").onclick = () => {
   if (!quote) { notice("所选文字为空，请重新选择。"); return; }
   state.annotationQuote = quote;
   state.annotationQuoteReanchored = true;
+  personalAnchorPicker.reset();
   $("annotationQuote").textContent = `引用：${quote}`;
 };
 $("captureAnnotationQuote").onmousedown = (event) => event.preventDefault();
@@ -1116,6 +1140,9 @@ $("cancelAnnotationEdit").onclick = () => {
   state.annotationEditingAnchor = {};
   state.annotationQuote = "";
   state.annotationQuoteReanchored = false;
+  state.annotationRevision = "";
+  state.annotationRequestId = "";
+  personalAnchorPicker.reset();
   $("annotationText").value = "";
   $("annotationQuote").textContent = "";
   $("saveAnnotation").textContent = "保存补充";
@@ -1680,4 +1707,5 @@ window.addEventListener("learnnote:annotations", () =>
 installInteractions({ state, drawList, showHome, navigateBack });
 installLayout();
 installProfile({state, notice, startReview});
+const personalAnchorPicker = installAnnotationAnchors({ state, api, notice });
 $("review").onclick = () => workspaceTools.studySettings();
