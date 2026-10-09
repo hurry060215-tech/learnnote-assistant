@@ -8,8 +8,8 @@ import threading
 from uuid import uuid4
 
 from .config import DATA_DIR
-from .knowledge import evidence_for_task, evidence_ids_for_task
-from .library import get_material, material_anchors
+from .knowledge import answer_from_evidence, evidence_for_task, evidence_ids_for_task
+from .library import get_material, material_anchors, task_material_source_uri
 from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
 
@@ -121,13 +121,45 @@ def course_evidence_ids(course_id: str) -> set[str]:
     ids: set[str] = set()
     for source in _evidence_sources(get_course(course_id)):
         try:
-            if source["kind"] == "task":
-                ids.update(evidence_ids_for_task(source["id"]))
-            elif source["kind"] == "material":
-                ids.update(get_material(source["id"])["evidence_ids"])
+            material = get_material(source["id"]) if source["kind"] == "material" else None
+            task_id = source["id"] if source["kind"] == "task" else (material or {}).get("linked_task_id")
+            if task_id:
+                # Only the canonical registered-video relation can alias a
+                # task. Free-form document metadata cannot broaden membership.
+                if material and (material.get("source_type") != "video" or material.get("owns_evidence") is not False):
+                    continue
+                # Recheck the owner as well as row metadata: older projections
+                # may predate review flags, or survive a missing source file.
+                owner = get_task(task_id)
+                if owner.id != task_id or owner.summary_source == "transcript-draft" or owner.summary_diagnostics.get("review_required"):
+                    continue
+                if material and material.get("source_uri") != task_material_source_uri(owner):
+                    continue
+            if task_id:
+                # A registered video is an alias for this task, not a frozen
+                # first-page snapshot of the task's evidence at registration.
+                ids.update(evidence_ids_for_task(task_id))
+            elif material:
+                ids.update(material["evidence_ids"])
         except (ValueError, FileNotFoundError):
             continue
     return ids
+
+
+def ask_course(course_id: str, question: str, revision: int, limit: int = 6, mode: str = "lexical") -> dict:
+    # Keep the course revision and its membership consistent with save/delete
+    # in this process. A stale client must explicitly reload its chosen scope.
+    with _lock:
+        course = get_course(course_id)
+        if course["revision"] != revision:
+            raise ValueError("course_changed_reload_required")
+        answer = answer_from_evidence(question, limit, mode, evidence_ids=course_evidence_ids(course_id), canonical_only=True)
+        answer["scope"] = {"kind": "course", "id": course_id, "title": course["title"], "revision": course["revision"]}
+        if not answer["grounded"]:
+            answer["answer"] = "本课程中没有找到足够的原始证据，未生成无依据答案。可更换关键词，或检查课程中的资料是否已完成索引。"
+        else:
+            answer["answer"] = str(answer["answer"]).replace("根据资料库中的可追溯证据：", "本课程中的原文摘录（本地检索，未进行模型综合）：", 1)
+        return answer
 
 
 def compare_course(course_id: str, query: str, *, source_id: str = "", source_kind: str = "", start: float | None = None, end: float | None = None) -> dict:

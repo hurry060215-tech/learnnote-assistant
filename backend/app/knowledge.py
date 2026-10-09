@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from collections.abc import Collection
 from io import BytesIO
 from html.parser import HTMLParser
 from datetime import datetime, timezone
@@ -298,39 +299,65 @@ def remove_evidence(evidence_id: str) -> bool:
         connection.close()
 
 
-def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical") -> list[dict[str, object]]:
+def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical", *, evidence_ids: Collection[str] | None = None, canonical_only: bool = False) -> list[dict[str, object]]:
+    # None means the existing library-wide search. An empty explicit scope must
+    # never become a global fallback, including when semantic search is enabled.
+    if evidence_ids is not None and not evidence_ids:
+        return []
     limit = max(1, min(int(limit or 12), 50))
     semantic_mode = str(mode or "lexical").lower() in {"embedding", "semantic", "local-embedding"}
     query_limit = 500 if semantic_mode else limit
     connection = _connect()
     try:
+        predicates = []
+        if evidence_ids is not None:
+            # A temporary membership table avoids SQLite's parameter limit for
+            # long courses. Only IDs are loaded; evidence text remains bounded
+            # by query_limit, after membership is enforced in every SQL path.
+            connection.execute("CREATE TEMP TABLE question_scope (evidence_id TEXT PRIMARY KEY) WITHOUT ROWID")
+            connection.executemany("INSERT OR IGNORE INTO question_scope VALUES (?)", ((value,) for value in evidence_ids))
+            predicates.append("e.evidence_id IN (SELECT evidence_id FROM question_scope)")
+        if canonical_only:
+            predicates.extend([
+                "e.source_type != 'community'",
+                "e.locator NOT IN ('note', 'generated-note')",
+                "COALESCE(json_extract(e.metadata_json, '$.kind'), '') NOT IN ('note', 'community', 'generated-note', 'review-draft', 'transcript-draft')",
+                "COALESCE(json_extract(e.metadata_json, '$.review_required'), 0) = 0",
+                "COALESCE(json_extract(e.metadata_json, '$.evidence_quality'), '') != 'review_required'",
+            ])
+        scope = " AND ".join(predicates) or "1=1"
+        like_text = str(query).strip()
+        escape = ""
+        if evidence_ids is not None:
+            like_text = like_text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            escape = " ESCAPE '\\'"
+        like = f"%{like_text}%"
+        like_match = " OR ".join(f"e.{column} LIKE ?{escape}" for column in ("title", "source_uri", "locator", "text"))
         term = _fts_query(query)
         if term and _fts_available(connection):
             try:
                 rows = connection.execute(
-                    """SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
+                    f"""SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
                        JOIN source_evidence e ON e.evidence_id = f.evidence_id
-                       WHERE source_evidence_fts MATCH ?
+                       WHERE source_evidence_fts MATCH ? AND {scope}
                        ORDER BY score ASC, e.created_at DESC LIMIT ?""",
                     (term, query_limit),
                 ).fetchall()
             except sqlite3.OperationalError:
                 rows = []
             if not rows:
-                like = f"%{str(query).strip()}%"
                 rows = connection.execute(
-                    "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
+                    f"SELECT e.* FROM source_evidence e WHERE {scope} AND ({like_match}) ORDER BY e.created_at DESC LIMIT ?",
                     (like, like, like, like, query_limit),
                 ).fetchall()
         else:
-            if term:
-                like = f"%{str(query).strip()}%"
+            if term or (evidence_ids is not None and str(query).strip()):
                 rows = connection.execute(
-                    "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
+                    f"SELECT e.* FROM source_evidence e WHERE {scope} AND ({like_match}) ORDER BY e.created_at DESC LIMIT ?",
                     (like, like, like, like, query_limit),
                 ).fetchall()
             else:
-                rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (query_limit,)).fetchall()
+                rows = connection.execute(f"SELECT e.* FROM source_evidence e WHERE {scope} ORDER BY e.created_at DESC LIMIT ?", (query_limit,)).fetchall()
     finally:
         connection.close()
     result: list[dict[str, object]] = []
@@ -347,7 +374,9 @@ def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical") -> 
             "metadata": json.loads(row["metadata_json"] or "{}"),
             "score": float(row["score"]) if "score" in row.keys() and row["score"] is not None else 0.0,
         })
-    if semantic_mode:
+    if semantic_mode and (result or evidence_ids is None):
+        if evidence_ids is not None:
+            return semantic_rank(query, result, limit, local_only=True)
         return semantic_rank(query, result, limit)
     return result
 
@@ -416,8 +445,8 @@ def evidence_ids_for_task(task_id: str) -> set[str]:
         connection.close()
 
 
-def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -> dict[str, object]:
-    hits = search_evidence(question, limit, mode)
+def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical", *, evidence_ids: Collection[str] | None = None, canonical_only: bool = False) -> dict[str, object]:
+    hits = search_evidence(question, limit, mode, evidence_ids=evidence_ids, canonical_only=canonical_only)
     if not hits:
         return {
             "answer": "资料库中没有找到足够的证据，未生成无依据答案。",

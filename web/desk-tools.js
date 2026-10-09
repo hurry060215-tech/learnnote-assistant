@@ -3,6 +3,7 @@ import { mountSupportSummary } from "/web/support-summary.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
+import { installCourseQuestion } from "/web/course-question.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -44,6 +45,7 @@ export function installTools(ctx) {
     if (el) el.textContent = text;
   }
   const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
+  const courseQuestion = installCourseQuestion({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
   async function run(button, work) {
     const token = generation;
     if (button) button.disabled = true;
@@ -131,6 +133,11 @@ export function installTools(ctx) {
       course.title,
       `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
+    const askCourse = document.createElement("button");
+    askCourse.type = "button";
+    askCourse.dataset.action = "course-question";
+    askCourse.textContent = "在课程中提问";
+    $("toolBody").querySelector(".tool-actions").prepend(askCourse);
     backAction = listCourses;
   }
   async function studySettings(courseId = "", taskId = "") {
@@ -601,6 +608,11 @@ export function installTools(ctx) {
       "笔记工具",
       `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
+    const courseTools = document.createElement("button");
+    courseTools.type = "button";
+    courseTools.dataset.action = "courses";
+    courseTools.textContent = "课程与提问";
+    $("toolBody").querySelector(".tool-menu").append(courseTools);
     if (canOcrMaterial(s)) {
       const ocrButton = document.createElement("button");
       ocrButton.dataset.action = "run-material-ocr";
@@ -776,6 +788,11 @@ export function installTools(ctx) {
       $("regenerate").click();
     },
     courses: listCourses,
+    "course-question": () => {
+      const work = courseQuestion(course);
+      backAction = listCourses;
+      return work;
+    },
     "new-course": () => {
       course = null;
       courseEditor();

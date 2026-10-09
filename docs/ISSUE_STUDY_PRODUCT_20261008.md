@@ -203,14 +203,16 @@ is requested because no redesign was attempted.
 | Before import: file/pages-duration/space/route | New non-persisting document preflight proves PDF page count, text preview, storage estimate and local/OCR route; selected video reads browser metadata when supported and states upload-space lower bound. Full decoded-video size estimate remains unavailable. |
 | PDF pages, document paragraphs, video times | Existing anchor tests pass; range and canonical video identity tests added. |
 | Optional local scanned-PDF OCR with confidence | Existing optional OCR engine/line-confidence contract and scanned-PDF fixture pass. Preflight exposes OCR-required route; real OCR/browser confidence display not newly validated. |
-| Hash dedup and rebuild from original file | Import dedup and raw-byte preservation tests pass. Full damaged-document-index reconstruction is incomplete; current rebuild primarily covers tasks. |
-| Courses and scoped Q&A | Existing material/course/scoped question APIs remain; course comparison filters improved. |
+| Hash dedup and rebuild from original file | Import dedup and raw-byte preservation tests pass. The subsequent document rebuild work restores TXT/Markdown/HTML/PDF evidence IDs, locators, original bytes and card backlinks (`test_material_rebuild.py`); whole-database disaster recovery is not this criterion. |
+| Courses and scoped Q&A | Course comparison alone did not satisfy this criterion. A dedicated selectable course question form now calls `/api/courses/{id}/ask`; canonical member IDs restrict FTS/LIKE and optional local reranking before result limits. Empty/deleted/stale scopes never use global evidence. It returns cited local extracts, not model synthesis. See [focused acceptance](COURSE_QUESTION_ACCEPTANCE_20261009.md). |
 | Index deletion preserves user original | Existing local-video registration reuses source and keep-source deletion tests pass. |
 | Path/name/content encoding | Existing filename/encoding tests pass, plus `.markdown` route/preflight. Broader #150 work is owned by evidence/encoding patch. |
 
-**Keep open:** remaining complete original-source index reconstruction and
-requested video/OCR end-to-end matrix. Full-media backup is not invented as a
-new standalone closure condition.
+**Verification boundary:** the course increment has offline API and UI behavior
+tests plus a synthetic Windows Edge fixture in the UI gate. Its exact-head Edge
+result and the existing video/OCR fixtures must be checked on the integrated
+branch before claiming browser acceptance. Full-media backup and whole-database
+disaster recovery are not invented as new standalone closure conditions.
 
 ### #158 — optional community perspective lane
 
