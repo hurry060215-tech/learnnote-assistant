@@ -1,3 +1,4 @@
+import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountSupportSummary } from "/web/support-summary.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
@@ -597,10 +598,10 @@ export function installTools(ctx) {
       "笔记工具",
       `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
-    if (s.kind === "material" && s.status === "ocr_required") {
+    if (canOcrMaterial(s)) {
       const ocrButton = document.createElement("button");
       ocrButton.dataset.action = "run-material-ocr";
-      ocrButton.textContent = "准备扫描 PDF 的本地 OCR";
+      ocrButton.textContent = "查看扫描 PDF 的 OCR 与置信度";
       $("toolBody").querySelector(".tool-menu")?.append(ocrButton);
     }
     if (s.kind === "material" && !s.linked_task_id) {
@@ -711,13 +712,14 @@ export function installTools(ctx) {
     $("toolBody").innerHTML =
       `<h3>LearnNote ${esc(h.app_version)}</h3><p>统一阅读工作台 · 数据保存在本机</p><button data-action="check-update">检查正式发布版</button><p id="updateResult" role="status"></p><a class="tool-link" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest" target="_blank" rel="noreferrer">打开官方下载页 ↗</a>`;
   }
-  const ocrMaterial = async () => {
-    const s = current();
-    if (!confirm("使用本机可选 OCR 读取扫描 PDF？OCR 结果会保留置信度并标为未核验。")) return;
-    const result = await api("/api/library/materials/" + encodeURIComponent(s.id) + "/ocr", { method: "POST" });
-    await refresh();
-    notice(result.ocr?.warning || "扫描 PDF OCR 已完成，请核对每页文字。");
-    more();
+  const ocrMaterial = () => {
+    const selected = current();
+    const token = show("扫描 PDF 的 OCR 与置信度", "");
+    mountMaterialOcr($("toolBody"), {
+      material: selected, api,
+      isCurrent: () => token === generation && dialog.open && state.selected?.kind === selected.kind && state.selected?.id === selected.id,
+      onUpdated: async () => { await refresh(); },
+    });
   };
   const actions = {
     "material-encoding": materialEncoding,

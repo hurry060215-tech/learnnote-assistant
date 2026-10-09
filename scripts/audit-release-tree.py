@@ -47,6 +47,7 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk-api.js"),
     Path("_internal/web/desk-tools.js"),
     Path("_internal/web/desk-material-encoding.js"),
+    Path("_internal/web/material-ocr.js"),
     Path("_internal/web/desk-product.js"),
     Path("_internal/web/desk-settings.js"),
     Path("_internal/web/desk-interactions.js"),

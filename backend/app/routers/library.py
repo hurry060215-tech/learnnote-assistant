@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import DATA_DIR, TEMP_DIR
 from ..library import (
     MATERIAL_IMPORT_MAX_BYTES,
-    apply_material_ocr,
     backup_library,
     delete_material,
     duplicate_groups,
@@ -142,22 +141,50 @@ async def api_library_material_import(file: UploadFile = File(...), encoding: st
     return {"ok": True, "material": material}
 
 
+def _material_ocr_error(exc: Exception) -> HTTPException:
+    messages = {
+        "material_not_found": "学习资料不存在。",
+        "material_ocr_requires_pdf": "扫描 PDF OCR 只支持 PDF 资料。",
+        "material_ocr_not_required": "这份 PDF 已有原始文本，无需扫描识别。",
+        "material_source_integrity_mismatch": "原始文件校验失败，现有 OCR 内容未改变。",
+        "material_ocr_cache_invalid": "OCR 缓存校验失败，已保留现有文字与引用；请从本地备份恢复缓存。",
+        "material_ocr_batch_failed": "本次页面识别失败，已保留之前的结果；可以再次继续。",
+        "material_ocr_changed_reload_required": "资料已更新，请重新打开后继续。",
+        "material_source_missing": "本机原始 PDF 缺失，已保留 OCR 结果；请恢复原文件后继续。",
+        "material_ocr_cache_too_large": "OCR 缓存超过安全大小，已保留之前的结果。请拆分 PDF 后导入。",
+        "material_ocr_invalid_result": "本次 OCR 结果无效，已保留之前的结果；可以重试。",
+        "material_ocr_identity_invalid": "OCR 引用身份不一致，未覆盖现有引用。",
+        "pdf_page_limit_exceeded": "PDF 超过支持的 500 页，请拆分后再导入。",
+    }
+    # Use exception text only as a lookup key. Responses contain public literals,
+    # never exception strings that could include local paths or document content.
+    public_codes = {known: known for known in messages}
+    code = public_codes.get(str(exc), "material_ocr_failed") if isinstance(exc, ValueError) else "material_ocr_failed"
+    return HTTPException(status_code=404 if code == "material_not_found" else 422,
+                         detail={"code": code, "message": messages.get(code, "本地 OCR 未能完成，已保留之前的结果；请检查可选组件后重试。")})
+
+
+@library_router.get("/materials/{material_id}/ocr")
+def api_library_material_ocr_cache(material_id: str) -> dict:
+    from ..material_ocr import get_material_ocr
+    try:
+        return {"ok": True, "ocr": get_material_ocr(material_id)}
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        raise _material_ocr_error(exc) from exc
+
+
 @library_router.post("/materials/{material_id}/ocr")
 def api_library_material_ocr(material_id: str) -> dict:
+    from ..material_ocr import continue_material_ocr
     try:
-        material = get_material(material_id)
-        source = material_source_path(material_id)
-        from ..pdf_ocr import ocr_pdf
-        result = ocr_pdf(source)
-        if result.get("status") not in {"ready", "partial"}:
-            raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result.get("warning", "扫描 PDF OCR 组件不可用。")})
-        return {"ok": True, "material": apply_material_ocr(material_id, result), "ocr": result}
+        result = continue_material_ocr(material_id)
+        if not result["ok"]:
+            raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result["ocr"].get("warning", "扫描 PDF OCR 组件不可用。")})
+        return result
     except HTTPException:
         raise
-    except (ValueError, OSError) as exc:
-        code = str(exc)
-        message = "扫描 PDF OCR 只支持 PDF 资料。" if code == "material_ocr_requires_pdf" else "扫描 PDF OCR 未能完成，请检查文件和可选组件。"
-        raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
+    except (ValueError, OSError, ImportError, RuntimeError, sqlite3.Error) as exc:
+        raise _material_ocr_error(exc) from exc
 
 
 @library_router.post("/materials/register-task/{task_id}")

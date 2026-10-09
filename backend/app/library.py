@@ -1180,6 +1180,12 @@ def material_content(material_id: str) -> str:
         # Old index-only documents remain readable from their complete anchors.
         anchors = material_anchors(material_id, 1000)
         if not anchors:
+            if str(exc) == "material_no_extractable_text" and material["source_type"] == "pdf" and not material["evidence_ids"]:
+                # Only a valid scan with no indexed text gets an empty reader.
+                # Missing evidence from a prior OCR must still report failure.
+                if _file_sha256(source) != material["sha256"]:
+                    raise ValueError("material_source_integrity_mismatch") from exc
+                return ""
             raise
         return "\n\n".join(str(item["text"]) for item in anchors)
 
@@ -1220,13 +1226,11 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
         if rebuilding:
             requested = str(metadata.get("decoding_hint") or "")
         if rebuilding and metadata.get("ocr_performed"):
-            ocr_path = source.parent / "ocr.json"
-            if ocr_path.resolve().parent != source.parent or not ocr_path.is_file() or ocr_path.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
-                raise ValueError("material_rebuild_ocr_cache_invalid")
-            ocr = json.loads(ocr_path.read_text(encoding="utf-8"))
-            revision = hashlib.sha256(json.dumps(ocr, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
-            if revision != metadata.get("source_revision") or not isinstance(ocr, dict) or not isinstance(ocr.get("pages"), list):
-                raise ValueError("material_rebuild_ocr_cache_invalid")
+            from .pdf_ocr_cache import read_ocr_cache
+            try:
+                ocr = read_ocr_cache(material, source.parent)
+            except ValueError as exc:
+                raise ValueError("material_rebuild_ocr_cache_invalid") from exc
             sections = [(f"page {max(1, int(page.get('page') or 1))}", str(page.get("text") or "").strip())
                         for page in ocr["pages"] if isinstance(page, dict) and str(page.get("text") or "").strip()]
             source_type, decoding = "pdf", metadata.copy()
@@ -1261,6 +1265,10 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
                 filename=filename,
                 decoding_metadata=decoding,
             ))
+            if rebuilding and metadata.get("ocr_performed"):
+                page = next(page for page in ocr["pages"] if f"page {page['page']}" == locator)
+                items[-1].metadata.update({"ocr_performed": True, "ocr_verified": False,
+                                           "ocr_confidence": page["confidence"], "verification": "unreviewed"})
 
         previous_revision = str(metadata.get("source_revision") or "")
         metadata.update(decoding)
@@ -1342,56 +1350,113 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
         return get_material(material_id)
 
 
-def apply_material_ocr(material_id: str, ocr_result: dict[str, object]) -> dict[str, object]:
-    material = get_material(material_id)
-    if str(material.get("source_type") or "") != "pdf":
-        raise ValueError("material_ocr_requires_pdf")
-    pages = ocr_result.get("pages") if isinstance(ocr_result, dict) else []
-    if not isinstance(pages, list):
-        raise ValueError("material_ocr_invalid_result")
-    for evidence_id in [str(value) for value in material.get("evidence_ids", []) if str(value)]:
-        remove_evidence(evidence_id)
-    evidence_ids: list[str] = []
-    for page in pages:
-        if not isinstance(page, dict):
-            continue
-        text = str(page.get("text") or "").strip()
-        if not text:
-            continue
-        page_number = max(1, int(page.get("page") or 1))
-        evidence_ids.append(add_evidence(record_to_material_evidence(
-            evidence_id=f"material-{material_id}-ocr-{page_number:04d}",
-            source_type="pdf",
-            title=str(material["title"]),
-            source_uri=str(material["source_uri"]),
-            locator=f"page {page_number}",
-            text=text,
-            material_id=material_id,
-            filename=str(material["filename"]),
-        )).evidence_id)
-    root = (DATA_DIR / "materials" / str(material_id)).resolve()
-    if not root.is_relative_to(DATA_DIR.resolve()):
-        raise ValueError("invalid_material_path")
-    ocr_path = root / "ocr.json"
-    _atomic_text(ocr_path, json.dumps(ocr_result, ensure_ascii=False, indent=2))
-    metadata = dict(material.get("metadata") or {})
-    metadata.update({
-        "ocr_performed": True,
-        "ocr_engine": ocr_result.get("engine", ""),
-        "ocr_path": str(ocr_path),
-        "ocr_verified": False,
-        "ocr_page_count": int(ocr_result.get("page_count") or len(pages)),
-        "ocr_processed_page_count": int(ocr_result.get("processed_page_count") or len(pages)),
-        "ocr_missing_page_range": ocr_result.get("missing_page_range") or [],
-        "source_revision": hashlib.sha256(json.dumps(ocr_result, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
-    })
-    connection, _ = _connect()
-    try:
-        connection.execute(
-            "UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?, owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?",
-            ("ready" if evidence_ids and not ocr_result.get("missing_page_range") else ("ocr_partial" if evidence_ids else "ocr_required"), len(evidence_ids), json.dumps(evidence_ids, ensure_ascii=False), json.dumps(metadata, ensure_ascii=False), datetime.now(timezone.utc).isoformat(), str(material_id)),
-        )
-        connection.commit()
-    finally:
-        connection.close()
-    return get_material(material_id)
+def apply_material_ocr(material_id: str, ocr_result: dict) -> dict:
+    from .pdf_ocr import summarize_ocr
+    from .pdf_ocr_cache import _revision, read_ocr_cache
+
+    with _lock:
+        material = get_material(material_id)
+        if material["source_type"] != "pdf":
+            raise ValueError("material_ocr_requires_pdf")
+        source = material_source_path(material_id)
+        if _file_sha256(source) != material["sha256"]:
+            raise ValueError("material_source_integrity_mismatch")
+        cached = read_ocr_cache(material, source.parent)
+        pages = ocr_result.get("pages") if isinstance(ocr_result, dict) else None
+        if not isinstance(pages, list) or not pages:
+            raise ValueError("material_ocr_invalid_result")
+        total = ocr_result.get("page_count") or (cached or {}).get("page_count") or max(int(page.get("page") or 0) for page in pages)
+        batch = summarize_ocr(pages, total, engine=ocr_result.get("engine", ""), failed_pages=ocr_result.get("failed_pages") or [])
+        if cached and cached["page_count"] != batch["page_count"]:
+            raise ValueError("material_ocr_invalid_result")
+        # Existing pages win, including successful blank pages. Concurrent/retried
+        # batches cannot overwrite already usable text or its confidence.
+        merged = {page["page"]: page for page in batch["pages"]}
+        merged.update({page["page"]: page for page in (cached or {}).get("pages", [])})
+        result = summarize_ocr(list(merged.values()), total, engine=(cached or {}).get("engine") or batch["engine"], failed_pages=batch["failed_pages"])
+        revision = _revision(result)
+        cache_path = source.parent / f"ocr-{revision}.json"
+        serialized = json.dumps(result, ensure_ascii=False, indent=2)
+        if len(serialized.encode("utf-8")) > MATERIAL_IMPORT_MAX_BYTES:
+            raise ValueError("material_ocr_cache_too_large")
+        old_metadata = dict(material.get("metadata") or {})
+        old_cache = source.parent / Path(str(old_metadata.get("ocr_path") or "ocr.json")).name
+        now = datetime.now(timezone.utc).isoformat()
+        scores = [page["confidence"] for page in result["pages"] if page["confidence"] is not None]
+        metadata = {**old_metadata, "ocr_performed": True, "ocr_engine": result["engine"], "ocr_path": str(cache_path),
+                    "ocr_verified": False, "ocr_page_count": result["page_count"],
+                    "ocr_processed_page_count": result["processed_page_count"],
+                    "ocr_missing_page_range": result["missing_page_range"], "ocr_missing_pages": result["missing_pages"],
+                    "ocr_confidence": round(sum(scores) / len(scores), 4) if scores else None,
+                    "source_revision": revision}
+        anchors = {row["locator"]: row["evidence_id"] for row in material_anchors(material_id, 1000)}
+        if cached:
+            previous_pages = [page for page in cached["pages"] if page["text"]]
+            previous_ids = material["evidence_ids"]
+            if len(previous_pages) != len(previous_ids):
+                raise ValueError("material_ocr_identity_invalid")
+            for page, evidence_id in zip(previous_pages, previous_ids):
+                anchors.setdefault(f"page {page['page']}", evidence_id)
+        connection, _ = _connect()
+        wrote_cache = False
+        try:
+            ensure_evidence_schema(connection)
+            connection.commit()
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute("SELECT * FROM library_materials WHERE material_id=?", (material_id,)).fetchone()
+            if current is None or any(_material_row(current)[field] != material[field] for field in ("updated_at", "sha256", "filename", "evidence_ids", "metadata")):
+                raise ValueError("material_ocr_changed_reload_required")
+            evidence_fts = bool(connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_evidence_fts'").fetchone())
+            evidence_ids = []
+            for page in result["pages"]:
+                if not page["text"]:
+                    continue
+                locator = f"page {page['page']}"
+                evidence_id = anchors.get(locator) or f"material-{material_id}-ocr-{page['page']:04d}"
+                existing = connection.execute("SELECT * FROM source_evidence WHERE evidence_id=?", (evidence_id,)).fetchone()
+                if existing is not None and (existing["task_id"] or json.loads(existing["metadata_json"] or "{}").get("material_id") != material_id):
+                    raise ValueError("material_ocr_identity_invalid")
+                item = record_to_material_evidence(evidence_id=evidence_id, source_type="pdf", title=material["title"],
+                                                          source_uri=material["source_uri"], locator=locator, text=page["text"],
+                                                          material_id=material_id, filename=material["filename"])
+                item.metadata.update({"ocr_performed": True, "ocr_verified": False, "ocr_confidence": page["confidence"], "verification": "unreviewed"})
+                connection.execute("""INSERT OR REPLACE INTO source_evidence
+                    (evidence_id,schema_version,source_type,title,source_uri,locator,text,task_id,metadata_json,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (item.evidence_id, item.schema_version, item.source_type, item.title, item.source_uri, item.locator,
+                     item.text, "", json.dumps(item.metadata, ensure_ascii=False), existing["created_at"] if existing else now))
+                if evidence_fts:
+                    connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id=?", (evidence_id,))
+                    connection.execute("INSERT INTO source_evidence_fts(evidence_id,title,source_uri,locator,text) VALUES (?,?,?,?,?)",
+                                       (evidence_id, item.title, item.source_uri, item.locator, item.text))
+                evidence_ids.append(evidence_id)
+            # Publish an immutable cache before the SQLite pointer. A failure or
+            # interruption leaves the previous pointer/cache/anchors usable.
+            if cache_path.exists():
+                if cache_path.resolve().parent != source.parent.resolve() or _revision(json.loads(cache_path.read_text(encoding="utf-8"))) != revision:
+                    raise ValueError("material_ocr_cache_invalid")
+            else:
+                _atomic_text(cache_path, serialized)
+                wrote_cache = True
+            connection.execute("""UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?,
+                owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?""",
+                ("ocr_partial" if result["missing_pages"] else "ready", len(evidence_ids), json.dumps(evidence_ids),
+                 json.dumps(metadata, ensure_ascii=False), now, material_id))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            if wrote_cache:
+                try:
+                    cache_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+        finally:
+            connection.close()
+        # Only remove our superseded generated cache after the new pointer commits.
+        if old_cache != cache_path and re.fullmatch(r"ocr-[a-f0-9]{64}\.json", old_cache.name):
+            try:
+                old_cache.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return get_material(material_id)
