@@ -19,6 +19,7 @@ from fsrs import State as FsrsState
 from .config import DATA_DIR, ensure_dirs
 from .models import SourceEvidence, StudyCard, StudyPlan
 from .study_content import review_points
+from .text_corruption import has_high_confidence_corruption
 
 
 STUDY_SCHEMA_VERSION = 3
@@ -110,6 +111,7 @@ def quiz_evidence_eligible(item: SourceEvidence | dict) -> bool:
         and metadata.get("kind") not in {"community", "note", "generated-note"}
         and value.get("source_type") != "community"
         and value.get("locator") not in {"note", "generated-note"}
+        and not has_high_confidence_corruption(str(value.get("text") or ""))
     )
 
 

@@ -20,6 +20,10 @@ rewritten, and the result is explicitly marked as requiring review. Existing
 sparse local-ASR uncertainty marking and the strict replacement-character
 failure boundaries remain in place.
 
+Preserved OCR or legacy evidence is also checked when proposing or saving new
+study cards. Known corruption cannot bypass the import gate through previously
+indexed text. Existing evidence and cards are not rewritten or deleted.
+
 Direct subtitle downloads now pass the HTTP-declared charset to the strict
 decoder. An incompatible declaration fails without overwriting previously
 saved subtitle artifacts. BOM precedence remains unchanged. Subtitle
