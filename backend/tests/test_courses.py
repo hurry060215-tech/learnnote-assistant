@@ -46,6 +46,32 @@ class CourseTests(unittest.TestCase):
 
 
 class CourseComparisonAcceptanceTests(unittest.TestCase):
+    def test_time_filter_does_not_change_with_excerpt_character_position(self):
+        source = {"kind": "task", "id": "video", "title": "Video"}
+        for prefix in ("", "x" * 100):
+            evidence = [
+                {"evidence_id": "first", "locator": "15-18s", "text": prefix + "gradient first", "course_source": source},
+                {"evidence_id": "early", "locator": "0-5s", "text": "gradient early", "course_source": source},
+                {"evidence_id": "second", "locator": "20-25s", "text": "gradient second", "course_source": source},
+            ]
+            with self.subTest(prefix_length=len(prefix)), patch("app.courses.get_course", return_value={}), patch("app.courses.course_evidence", return_value=evidence):
+                result = compare_course("fixture", "gradient", start=10, end=30)
+            self.assertEqual([item["evidence_id"] for item in result["matches"]], ["first", "second"])
+            self.assertEqual(result["filters"]["start"], 10)
+            self.assertEqual(result["filters"]["end"], 30)
+
+    def test_unfiltered_comparison_keeps_document_evidence_after_video(self):
+        evidence = [
+            {"evidence_id": "video", "locator": "15-20s", "text": "intro gradient", "course_source": {"kind": "task", "id": "video", "title": "Video"}},
+            {"evidence_id": "document", "locator": "page:2", "text": "gradient notes", "course_source": {"kind": "material", "id": "document", "title": "Document"}},
+        ]
+        for ordered in (evidence, list(reversed(evidence))):
+            with self.subTest(first=ordered[0]["evidence_id"]), patch("app.courses.get_course", return_value={}), patch("app.courses.course_evidence", return_value=ordered):
+                result = compare_course("fixture", "gradient")
+            self.assertEqual({item["evidence_id"] for item in result["matches"]}, {"video", "document"})
+            self.assertEqual(len(result["edges"]), 1)
+            self.assertIsNone(result["filters"]["start"])
+
     def test_same_evidence_registered_twice_is_not_a_cross_source_relation(self):
         evidence = {"evidence_id":"shared", "locator":"0-10s", "text":"gradient descent"}
         with patch("app.courses.get_course", return_value={"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses.evidence_for_task", return_value=[evidence]), patch("app.courses.material_anchors", return_value=[evidence]):
