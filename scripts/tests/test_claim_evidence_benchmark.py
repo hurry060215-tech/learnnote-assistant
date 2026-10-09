@@ -40,7 +40,9 @@ class ClaimEvidenceBenchmarkTests(unittest.TestCase):
             self.assertIn(label, source)
         self.assertIn('"document": "文档"', source)
         self.assertIn('candidate.kind === "document"', source)
-        self.assertIn("source-evidence-target", source)
+        self.assertIn("highlightMaterialSource", source)
+        view = (ROOT / "web" / "evidence-source-view.js").read_text(encoding="utf-8")
+        self.assertIn("source-evidence-target", view)
         self.assertIn("Number(quality.direct_count || 0)", source)
         self.assertNotIn("quality.direct_count || quality.supported_count", source)
 

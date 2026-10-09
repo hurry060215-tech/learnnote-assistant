@@ -234,7 +234,8 @@ export function installTools(ctx) {
           source.textContent = "查看依据";
           source.onclick = async () => {
             dialog.close();
-            await ctx.openEvidence(mistake.source_evidence_ids[0]);
+            try { await ctx.openEvidence(mistake.source_evidence_ids[0]); }
+            catch (error) { notice(error.message || "引用出处暂不可用。"); }
           };
           item.append(source);
         }
