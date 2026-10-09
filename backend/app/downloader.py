@@ -120,6 +120,13 @@ def _preserve_raw_text_artifact(path: Path, raw: bytes, decoded) -> None:
                 {
                     "schema_version": 1,
                     "encoding": decoded.encoding,
+                    "encoding_source": decoded.encoding_source,
+                    "encoding_confidence": decoded.encoding_confidence,
+                    "declared_encoding": decoded.declared_encoding,
+                    "repaired": decoded.repaired,
+                    "mojibake_score": decoded.mojibake_score,
+                    "replacement_character_count": decoded.replacement_character_count,
+                    "normalization_version": decoded.normalization_version,
                     "raw_sha256": decoded.raw_sha256,
                     "byte_count": decoded.byte_count,
                     "canonicalized": True,
@@ -2577,7 +2584,9 @@ class MediaDownloader:
             if response.status_code >= 400:
                 raise DownloadError("download_forbidden", f"字幕资源返回 HTTP {response.status_code}。")
             raw_subtitle = response.content
-            decoded_subtitle = decode_text_bytes(raw_subtitle, source="downloaded-subtitle")
+            response_headers = getattr(response, "headers", {}) or {}
+            declared_encoding = declared_text_encoding(response_headers.get("content-type") or response_headers.get("Content-Type") or "")
+            decoded_subtitle = decode_text_bytes(raw_subtitle, source="downloaded-subtitle", declared_encoding=declared_encoding)
             text = decoded_subtitle.text
             text = re.sub(r"\r+\n", "\n", text)
             text = re.sub(r"\r+", "\n", text).strip()
