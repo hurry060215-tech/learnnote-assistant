@@ -1072,7 +1072,8 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         finish_transcript_note(task_id, request.title, request.page_url, transcript, request.options,
             duration=duration, media_skipped=True,
             summarize=lambda *args: _summarize_with_optional_cache(summarize_with_diagnostics, *args,
-                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested)),
+                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                section_callback=partial_section_callback(task_id, transcript)),
             build_diagnostics=build_summary_diagnostics, check_cancel=_check_cancel)
     except (TaskCancelled, SummarizationCancelled):
         if get_task(task_id).cancel_requested:
@@ -1106,7 +1107,8 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         finish_transcript_note(task_id, task.title, task.page_url, transcript, options,
             duration=duration, media_skipped=not bool(task.media_path),
             summarize=lambda *args: _summarize_with_optional_cache(summarize_with_diagnostics, *args,
-                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested)),
+                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                section_callback=partial_section_callback(task_id, transcript)),
             build_diagnostics=build_summary_diagnostics, check_cancel=_check_cancel)
     except (TaskCancelled, SummarizationCancelled):
         if get_task(task_id).cancel_requested:

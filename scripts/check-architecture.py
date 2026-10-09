@@ -47,6 +47,9 @@ MODULE_SIZE_LIMITS = {
     "backend/app/local_ocr.py": 250,
     "backend/app/task_queue.py": 400,
     "backend/app/upload_limits.py": 250,
+    "backend/app/progressive_sections.py": 180,
+    "backend/app/text_chunk_sections.py": 80,
+    "backend/app/reading_notes.py": 115,
 }
 
 
@@ -67,6 +70,8 @@ PURE_MODULE_DEPENDENCIES = {
     "qa_history": {"models", "qa_evidence"},
     "task_archives": {"models"},
     "models": {"app"},
+    "text_chunk_sections": {"reading_notes"},
+    "reading_notes": {"models"},
 }
 
 
