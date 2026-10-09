@@ -6,18 +6,24 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .pipeline_timing import measured_stage
+
+from .processor_state import TaskCancelled
 from .models import EvidenceCoverage, EvidenceGate, TranscriptResult
 from .note_document import build_note_document, normalize_note_markdown
 from .claims import build_claim_evidence_map, mark_claims_for_review
 from .transcript_quality import preserve_transcript_review_draft
-from .pipeline_progress import record_stage_duration, write_progressive_draft
+from .pipeline_progress import UNSET_ATTEMPT, current_pipeline_attempt, finish_pipeline_attempt, record_stage_duration, stage_duration_recorder, write_progressive_draft
 from .storage import get_task, task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
 
 
 def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: TranscriptResult, options,
                            *, duration: float, media_skipped: bool, summarize: Callable,
-                           build_diagnostics: Callable, check_cancel: Callable) -> None:
+                           build_diagnostics: Callable, check_cancel: Callable, attempt_id=UNSET_ATTEMPT) -> None:
+    if attempt_id is UNSET_ATTEMPT:
+        attempt_id = current_pipeline_attempt(task_id)
+    timing_callback = stage_duration_recorder(task_id, attempt_id)
     check_cancel(task_id)
     if preserve_transcript_review_draft(task_id, title, transcript,
             task_dir=task_dir, write_json=write_json, update_task=update_task):
@@ -25,7 +31,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
     work_dir = task_dir(task_id)
     previous = get_task(task_id)
     if not previous.note_path or not Path(previous.note_path).is_file():
-        draft = write_progressive_draft(task_id, title, transcript)
+        draft = write_progressive_draft(task_id, title, transcript, expected_attempt_id=attempt_id)
         if draft:
             update_task(task_id, note_path=str(draft), summary_source="transcript-draft")
     options = options.model_copy(update={"visual_understanding": False})
@@ -75,28 +81,30 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         if provenance not in note:
             first, sep, rest = note.lstrip().partition("\n")
             note = f"{first}\n\n{provenance}\n\n{rest.lstrip()}" if first.startswith("# ") and sep else f"{provenance}\n\n{note}"
-        normalized = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
-        quality_path = write_json(task_id, "note_quality.json", normalized.report)
-        if normalized.report.get("blocking"):
-            (work_dir / "note.quarantine.md").write_text(note, encoding="utf-8")
-            stage_status = "failed"
-            update_task(task_id, status="failed", phase="failed", progress=100,
-                message="总结质量检查未通过；字幕已保留，可以重新总结。", error_code="note_quality_failed",
-                error_detail="；".join(item["message"] for item in normalized.report["issues"] if item["severity"] == "error") + " 原始输出已保留，可直接重试总结。", checkpoint="transcript_ready", failed_phase="summarizing")
-            return
-        check_cancel(task_id)
-        note_path = work_dir / "note.md"
-        claim_map = build_claim_evidence_map(task_id, title, normalized.markdown, transcript)
-        note = mark_claims_for_review(normalized.markdown, claim_map)
-        if note != normalized.markdown:
-            claim_map = build_claim_evidence_map(task_id, title, note, transcript)
-            review_count = sum(claim["review_required"] for claim in claim_map["claims"])
-            warning = "；".join(filter(None, [warning, f"{review_count} 条内容待回源核对，已在正文标记"]))
-            fields["summary_warning"] = warning
-            diagnostics["summary_warning"] = warning
-        claim_path = write_json(task_id, "claim_evidence_map.json", claim_map)
-        note_path.write_text(note, encoding="utf-8")
-        doc_path = write_json(task_id, "note_document.json", build_note_document(title, note, evidence=claim_map["evidence"]))
+        with measured_stage("verify", timing_callback, cancelled=(TaskCancelled,)) as timing:
+            normalized = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
+            quality_path = write_json(task_id, "note_quality.json", normalized.report)
+            if normalized.report.get("blocking"):
+                timing["status"] = "failed"
+                (work_dir / "note.quarantine.md").write_text(note, encoding="utf-8")
+                stage_status = "failed"
+                update_task(task_id, status="failed", phase="failed", progress=100,
+                    message="总结质量检查未通过；字幕已保留，可以重新总结。", error_code="note_quality_failed",
+                    error_detail="；".join(item["message"] for item in normalized.report["issues"] if item["severity"] == "error") + " 原始输出已保留，可直接重试总结。", checkpoint="transcript_ready", failed_phase="summarizing")
+                return
+            check_cancel(task_id)
+            note_path = work_dir / "note.md"
+            claim_map = build_claim_evidence_map(task_id, title, normalized.markdown, transcript)
+            note = mark_claims_for_review(normalized.markdown, claim_map)
+            if note != normalized.markdown:
+                claim_map = build_claim_evidence_map(task_id, title, note, transcript)
+                review_count = sum(claim["review_required"] for claim in claim_map["claims"])
+                warning = "；".join(filter(None, [warning, f"{review_count} 条内容待回源核对，已在正文标记"]))
+                fields["summary_warning"] = warning
+                diagnostics["summary_warning"] = warning
+            claim_path = write_json(task_id, "claim_evidence_map.json", claim_map)
+            note_path.write_text(note, encoding="utf-8")
+            doc_path = write_json(task_id, "note_document.json", build_note_document(title, note, evidence=claim_map["evidence"]))
         diagnostics.update({"claim_evidence_map_path": str(claim_path), "claim_evidence_quality": claim_map["quality"]})
         diagnostics.update({"note_quality_path": str(quality_path), "note_quality": normalized.report, "note_document_path": str(doc_path)})
         diag_path = write_json(task_id, "summary_diagnostics.json", diagnostics)
@@ -107,4 +115,6 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
     finally:
         if get_task(task_id).cancel_requested:
             stage_status = "cancelled"
-        record_stage_duration(task_id, "summary", started, status=stage_status)
+        record_stage_duration(task_id, "summary", started, status=stage_status, expected_attempt_id=attempt_id)
+        if get_task(task_id).status == "success":
+            finish_pipeline_attempt(task_id, expected_attempt_id=attempt_id)

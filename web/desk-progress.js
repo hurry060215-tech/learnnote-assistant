@@ -1,12 +1,17 @@
 import { escapeHtml as esc } from "/web/desk-api.js";
 
 const stageNames = {
+  queue: "本次排队",
   subtitle_probe: "检查字幕",
   download: "获取视频",
   media: "准备媒体",
   transcript: "读取文字",
-  visual: "补充画面",
-  summary: "生成笔记",
+  frames: "抽帧与本地准备",
+  vision: "视觉批次",
+  merge: "合并内容",
+  verify: "本地输出/来源检查",
+  visual: "画面准备（合计）",
+  summary: "生成笔记（合计）",
 };
 export const phaseName = (phase) =>
   ({
@@ -33,9 +38,10 @@ export function elapsedLabel(ms) {
 }
 export function taskTimeline(task, events = [], now = Date.now()) {
   const start = events.findLastIndex(
-    (e) => e.event === "pipeline_attempt_started",
+    (e) => ["task_enqueued", "pipeline_attempt_started"].includes(e.event),
   );
-  const current = start < 0 ? events : events.slice(start);
+  const waitingForAdmission = task.status === "queued" && task.phase === "queued" && events[start]?.event !== "task_enqueued";
+  const current = waitingForAdmission ? [] : start < 0 ? events : events.slice(start);
   const stages = Object.entries(stageNames).map(([key, label]) => ({
     key,
     label,
@@ -60,6 +66,9 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       stage.detail =
         stage.state === "skipped"
           ? {
+              frames: "无需抽帧或本地 OCR",
+              vision: "无需视觉模型分析",
+              merge: "无需合并",
               download: "无需下载",
               media: "无需准备媒体",
               visual: "未启用 / 无需画面",
@@ -70,6 +79,7 @@ export function taskTimeline(task, events = [], now = Date.now()) {
     }
   }
   const phaseStages = {
+    queued: "queue",
     detecting: "subtitle_probe",
     downloading: "download",
     // Audio extraction reuses this phase after media preparation finishes.
@@ -77,7 +87,7 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       (s) => s.key === "media" && ["done", "skipped"].includes(s.state),
     ) ? "transcript" : "media",
     transcribing: "transcript",
-    extracting_frames: "visual",
+    extracting_frames: "frames",
     summarizing: "summary",
   };
   const activeKey = phaseStages[task.phase];
@@ -150,7 +160,7 @@ export function timelineHtml(
       (s, i) =>
         `<li data-stage="${s.key}" data-state="${s.state}"><span class="timeline-mark" aria-hidden="true">${s.state === "done" ? "✓" : s.state === "skipped" ? "−" : i + 1}</span><div><strong>${s.label}</strong><small>${esc(s.detail)}</small></div></li>`,
     )
-    .join("")}</ol></details>`;
+    .join("")}</ol><p class="muted">抽帧与本地准备包含已启用的本地 OCR；本地输出/来源检查记录格式与来源映射检查，不代表事实已核验。画面和笔记汇总步骤可包含上面的细分耗时，请勿相加。</p></details>`;
 }
 export function taskExplanation(task) {
   if (task.status === "failed" && task.artifact_status?.partial_draft_available)
@@ -194,6 +204,7 @@ export function eventLogHtml(events) {
     partial_section_ready: "分段草稿可读",
     summary_retry_requested: "重新生成总结",
     task_created: "接收来源",
+    task_enqueued: "加入本次队列",
     task_started: "开始处理",
     task_completed: "处理完成",
     task_failed: "处理未完成",
@@ -207,7 +218,7 @@ export function eventLogHtml(events) {
         .slice(-120)
         .map(
           (e) =>
-            `<li><time>${esc(new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</time><div><strong>${esc(names[e.event] || phaseName(e.phase))}</strong><p>${esc(e.event === "stage_timing" ? `${phaseName(e.phase)} · ${e.status === "skipped" ? "无需执行" : elapsedLabel(e.details?.duration_ms || 0)}` : e.message || phaseName(e.phase))}</p></div></li>`,
+            `<li><time>${esc(new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</time><div><strong>${esc(names[e.event] || phaseName(e.phase))}</strong><p>${esc(e.event === "stage_timing" ? `${phaseName(e.phase)} · ${e.status === "skipped" ? "无需执行" : Number.isFinite(e.details?.duration_ms) && e.details.duration_ms >= 0 ? elapsedLabel(e.details.duration_ms) : "耗时未记录"}` : e.message || phaseName(e.phase))}</p></div></li>`,
         )
         .join("")}</ol></details>`
     : '<p class="muted">这份旧任务没有可用的逐步记录。可以下载诊断报告查看已保存的状态。</p>';

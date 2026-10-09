@@ -15,6 +15,8 @@ import time
 from typing import Callable
 
 from .worker_lease import worker_lease
+from .pipeline_timing import queued_callback
+from .observability import record_task_event
 from .queue_policy import LANES, lane_budgets
 from .queue_controls import initialize_queue_schema, ordered_entries, queue_candidates, queue_is_paused
 
@@ -85,7 +87,11 @@ class LocalTaskQueue:
                 db.execute("DELETE FROM jobs WHERE state IN ('done','failed','cancelled') AND sequence NOT IN (SELECT sequence FROM jobs ORDER BY sequence DESC LIMIT 1000)")
                 db.commit()
             future = Future()
-            self.jobs[task_id] = (callback, future)
+            self.jobs[task_id] = (queued_callback(task_id, callback), future)
+            try:
+                record_task_event(task_id, "task_enqueued", phase="queue", status="queued")
+            except Exception:
+                pass  # The durable queue intent must still dispatch if optional logging fails.
             for slot in range(self.concurrency[lane]):
                 worker_key = f"{lane}:{slot}"
                 worker = self.workers.get(worker_key)

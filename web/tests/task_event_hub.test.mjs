@@ -41,3 +41,33 @@ assert.equal(connections.filter(c=>!c.closed).length,6);
 hub.disconnect();
 assert(connections.every(c=>c.closed));
 console.log('SSE replay deduplication, cursor reconnect, terminal marker and bounded lifecycle pass');
+
+// The real reader cache must be invalidated when a retry is admitted, even
+// before task_updated or pipeline_attempt_started arrives from the worker.
+const retryConnections = [];
+let retryInvalidated = 0;
+let retryRefreshed = 0;
+const retryHub = createTaskEventHub({
+  connect() {
+    const listeners = new Map();
+    const source = { close() {}, addEventListener(name, fn) { listeners.set(name, fn); },
+      emit(name, id) { listeners.get(name)?.({ lastEventId: String(id) }); } };
+    retryConnections.push(source);
+    return source;
+  },
+  onInvalidate: id => { assert.equal(id, 'retry'); retryInvalidated++; },
+  onUpdate: async () => { retryRefreshed++; },
+});
+retryHub.sync([{ id: 'retry', kind: 'task', status: 'queued' }]);
+retryConnections[0].emit('task_enqueued', 11);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(retryInvalidated, 1);
+assert.equal(retryRefreshed, 1);
+retryConnections[0].emit('task_enqueued', 11);
+assert.equal(retryInvalidated, 1, 'replayed admission must be deduplicated');
+retryConnections[0].emit('pipeline_attempt_started', 12);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(retryInvalidated, 2);
+assert.equal(retryRefreshed, 2);
+retryHub.disconnect();
+console.log('Admission and attempt events invalidate the actual reader event cache');

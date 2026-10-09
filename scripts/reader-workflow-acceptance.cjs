@@ -65,6 +65,14 @@ const os = require("node:os");
       summary_source: "llm",
       transcript_path: "transcript.json",
     },
+    {
+      id: "detailed-stage-timings",
+      title: "当前尝试的各阶段实测时间",
+      status: "success",
+      phase: "completed",
+      summary_source: "llm",
+      transcript_path: "transcript.json",
+    },
   ].map((t) => ({
     created_at: "2026-09-08T10:00:00Z",
     updated_at: "2026-09-08T10:01:00Z",
@@ -94,6 +102,14 @@ const os = require("node:os");
   });
   await p.route("**/api/tasks/*/events?*", (r) => {
     const id = new URL(r.request().url()).pathname.split("/").at(-2);
+    if (id === "detailed-stage-timings") {
+      return r.fulfill({ json: { events: [
+        {event: "pipeline_attempt_started", phase: "pipeline", status: "running", details: {attempt_id: "timing-fixture"}},
+        ...Object.entries({queue: 3000, download: 23000, media: 1000, transcript: 7000,
+          frames: 11000, vision: 13000, merge: 2000, verify: 1000, visual: 12000, summary: 20000})
+          .map(([stage, duration]) => event(stage, "completed", duration)),
+      ] } });
+    }
     const mediaEvents = id === "download-timed"
       ? [event("download", "completed", 23000), event("media", "completed", 1000)]
       : id === "legacy-media-only"
@@ -244,6 +260,23 @@ const os = require("node:os");
       assert.equal(await download.locator("small").innerText(), id === "download-timed" ? "已完成 · 23 秒" : "未记录");
       await p.screenshot({path: path.join(out, `${id}.png`), animations: "disabled"});
     }
+    await p.locator('#notes [data-id="detailed-stage-timings"]').click();
+    await p.waitForFunction(() =>
+      document.querySelector('[data-task-progress="detailed-stage-timings"] [data-stage="verify"] small')?.textContent === "已完成 · 1 秒");
+    const detailed = p.locator('[data-task-progress="detailed-stage-timings"]');
+    await detailed.locator("summary").click();
+    for (const [stage, seconds] of Object.entries({queue: 3, download: 23, transcript: 7,
+      frames: 11, vision: 13, merge: 2, verify: 1, visual: 12, summary: 20})) {
+      const row = detailed.locator(`[data-stage="${stage}"]`);
+      assert.equal(await row.getAttribute("data-state"), "done");
+      assert.equal(await row.locator("small").innerText(), `已完成 · ${seconds} 秒`);
+    }
+    assert.equal(await detailed.locator('[data-stage="verify"] strong').innerText(), "本地输出/来源检查");
+    assert.equal(await detailed.locator('[data-stage="visual"] strong').innerText(), "画面准备（合计）");
+    assert.equal(await detailed.locator('[data-stage="summary"] strong').innerText(), "生成笔记（合计）");
+    assert.match(await detailed.innerText(), /不代表事实已核验/);
+    assert.match(await detailed.innerText(), /请勿相加/);
+    await p.screenshot({path: path.join(out, "detailed-stage-timings.png"), animations: "disabled"});
     await p.setViewportSize({ width: 390, height: 844 });
     await p.locator("#menu").click();
     await p.locator('#notes [data-id="summary-good"]').click();
@@ -266,7 +299,7 @@ const os = require("node:os");
           retryCalls,
           mediaRequests,
           errors,
-          timing_cases: ["subtitle-skipped", "download-timed", "legacy-media-only"],
+          timing_cases: ["subtitle-skipped", "download-timed", "legacy-media-only", "detailed-stage-timings"],
           viewports: ["1536x1024", "390x844"],
         },
         null,
