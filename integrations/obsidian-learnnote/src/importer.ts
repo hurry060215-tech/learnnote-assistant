@@ -1,5 +1,6 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { strFromU8, unzipSync } from "fflate";
+import { annotationSnapshot } from "./annotations";
 import {
   formatTimestamp,
   importedTaskId,
@@ -16,6 +17,7 @@ const MAX_ARCHIVE_FILES = 240;
 const MAX_ARCHIVE_COMPRESSED_BYTES = 60 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 120 * 1024 * 1024;
 const MAX_SINGLE_FILE_BYTES = 30 * 1024 * 1024;
+const MAX_ANNOTATION_BYTES = 8 * 1024 * 1024;
 
 function decoded(files: Record<string, Uint8Array>, name: string): string {
   const value = files[name];
@@ -110,6 +112,67 @@ export class LearnNoteImporter {
       || taskFolderPath(this.settings().targetFolder, task.title, task.id);
   }
 
+  private async previousAnnotationSnapshot(folderPath: string): Promise<string> {
+    const metadata = this.app.vault.getAbstractFileByPath(`${folderPath}/_learnnote.json`);
+    if (!(metadata instanceof TFile)) return "";
+    try {
+      const path = JSON.parse(await this.app.vault.read(metadata)).annotation_snapshot;
+      return typeof path === "string" && /^Personal annotations\/annotations-[a-f0-9]{8}(?:-\d+)?\.md$/.test(path)
+        && this.app.vault.getAbstractFileByPath(`${folderPath}/${path}`) instanceof TFile ? path : "";
+    } catch {
+      return "";
+    }
+  }
+
+  private async importAnnotations(folderPath: string, taskId: string, content?: Uint8Array): Promise<{ path: string; description: string }> {
+    const previous = await this.previousAnnotationSnapshot(folderPath);
+    const unavailable = (reason: string) => ({ path: previous, description: previous
+      ? `[[${previous.slice(0, -3)}|个人批注（上次快照）]] · ${reason}；历史版本与本地修改已保留`
+      : `个人批注：${reason}；已有文件不会被删除` });
+    if (!content) return unavailable("后端未提供批注，本次未刷新");
+    let snapshot: ReturnType<typeof annotationSnapshot>;
+    try {
+      if (content.byteLength > MAX_ANNOTATION_BYTES) throw new Error("personal_annotations_too_large");
+      snapshot = annotationSnapshot(strFromU8(content), taskId);
+    } catch {
+      return unavailable("批注映射无法校验，本次未刷新");
+    }
+    const directory = `${folderPath}/Personal annotations`;
+    await this.ensureFolder(directory);
+    // Files in this directory are immutable to the importer. Even a malformed
+    // or locally edited file remains untouched; a retry selects another pair.
+    for (let version = 1; version <= 1000; version++) {
+      const name = `annotations-${snapshot.key}${version === 1 ? "" : `-${version}`}`;
+      const markdown = snapshot.markdown.replace(`[[annotations-${snapshot.key}.json|`, `[[${name}.json|`);
+      const pair: Array<[string, string]> = [[`${directory}/${name}.json`, snapshot.json], [`${directory}/${name}.md`, markdown]];
+      let conflict = false;
+      for (const [path, expected] of pair) {
+        const existing = this.app.vault.getAbstractFileByPath(path);
+        if (existing && (!(existing instanceof TFile) || await this.app.vault.read(existing) !== expected)) {
+          conflict = true;
+          break;
+        }
+      }
+      if (conflict) continue;
+      for (const [path, expected] of pair) {
+        if (this.app.vault.getAbstractFileByPath(path)) continue;
+        try {
+          await this.app.vault.create(path, expected);
+        } catch (error) {
+          // A concurrent import may have created this exact file. Never use
+          // modify() to resolve that race or a local edit.
+          const raced = this.app.vault.getAbstractFileByPath(path);
+          if (!(raced instanceof TFile)) throw error;
+          if (await this.app.vault.read(raced) !== expected) { conflict = true; break; }
+        }
+      }
+      if (conflict) continue;
+      const path = `Personal annotations/${name}.md`;
+      return { path, description: `[[${path.slice(0, -3)}|个人批注（${snapshot.count} 条）]] · 历史版本与本地修改已保留${version > 1 ? "；检测到本地版本，已另存快照" : ""}` };
+    }
+    return unavailable("本地快照版本过多，本次未刷新");
+  }
+
   importedNote(task: LearnNoteTask): TFile | null {
     const path = normalizePath(`${this.taskFolder(task)}/LearnNote.md`);
     const file = this.app.vault.getAbstractFileByPath(path);
@@ -164,6 +227,8 @@ export class LearnNoteImporter {
     if (settings.includeQaHistory && files["qa.md"]) related.push("[[qa|课程问答记录]]");
     if (settings.includeManifest && files["manifest.json"]) related.push("[[manifest.json|资料清单]]");
     if (settings.includeManifest && files["claim_evidence_map.json"]) related.push("[[claim_evidence_map.json|逐条来源映射]]");
+    const annotations = await this.importAnnotations(folderPath, task.id, files["personal_annotations.json"]);
+    related.push(annotations.description);
 
     const generated = [
       stripFrontmatter(note),
@@ -186,6 +251,7 @@ export class LearnNoteImporter {
       source_title: task.title,
       synced_at: syncedAt,
       generated_note: "LearnNote.md",
+      annotation_snapshot: annotations.path,
       extracted_files: extractedFiles
     }, null, 2));
 

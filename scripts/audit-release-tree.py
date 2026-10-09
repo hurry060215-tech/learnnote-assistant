@@ -46,6 +46,7 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk.js"),
     Path("_internal/web/study-quiz.js"),
     Path("_internal/web/desk-api.js"),
+    Path("_internal/web/personal-anchors.js"),
     Path("_internal/web/desk-tools.js"),
     Path("_internal/web/course-question.js"),
     Path("_internal/web/desk-material-encoding.js"),

@@ -105,6 +105,17 @@ class ReleaseTreeAuditTests(unittest.TestCase):
                 self.assertFalse(result["passed"])
                 self.assertEqual([relative.as_posix()], result["missing_bundled"])
 
+    def test_missing_personal_anchor_module_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/personal-anchors.js").unlink()
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/personal-anchors.js"], result["missing_bundled"])
+
     def test_missing_material_ocr_module_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -13,7 +13,7 @@ from typing import Any
 
 from .models import TaskRecord, TranscriptResult
 from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, summary_failure_message
-from .storage import get_task
+from .storage import get_task, task_dir
 from .text_cleanup import read_canonical_text
 
 
@@ -61,4 +61,18 @@ def read_task_transcript(task_id: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else TranscriptResult().model_dump(mode="json")
 
 
-__all__ = ["read_task_note", "read_task_transcript", "public_summary_task"]
+def owned_task_artifact(task_id: str, value: str, *, directory: str = "") -> Path | None:
+    """Apply the saved-note/asset ownership boundary before inspecting a file."""
+    if not value:
+        return None
+    root, path = task_dir(task_id), Path(value)
+    if root.is_symlink() or path.is_symlink():
+        return None
+    expected = root.resolve() / directory
+    resolved = path.resolve()
+    if resolved.parent != expected or not resolved.is_file():
+        return None
+    return resolved
+
+
+__all__ = ["read_task_note", "read_task_transcript", "public_summary_task", "owned_task_artifact"]

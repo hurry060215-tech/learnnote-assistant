@@ -4308,7 +4308,7 @@ def api_export_manifest(task_id: str) -> Response:
 
 
 @app.get("/api/tasks/{task_id}/exports/bundle")
-def api_export_bundle(task_id: str) -> Response:
+def api_export_bundle(task_id: str, include_annotations: bool = False) -> Response:
     try:
         task = public_summary_task(get_task(task_id))
         note = read_note(task_id)
@@ -4367,6 +4367,9 @@ def api_export_bundle(task_id: str) -> Response:
             archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
         if isinstance(claim_map, dict) and claim_map:
             archive.writestr("claim_evidence_map.json", json.dumps(claim_map, ensure_ascii=False, indent=2))
+        if include_annotations:
+            from .personal_notes import list_annotations
+            archive.writestr("personal_annotations.json", json.dumps({"schema_version": 2, "task_id": task.id, "annotations": list_annotations("task", task.id)}, ensure_ascii=False, indent=2))
         for index, grid in enumerate(task.frame_grids):
             filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
             _write_file_if_exists(archive, grid.path, f"grids/{filename}")
