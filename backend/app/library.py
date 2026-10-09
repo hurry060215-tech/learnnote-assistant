@@ -7,6 +7,7 @@ import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
@@ -15,6 +16,8 @@ from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
 from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
+from .catalog_guard import CatalogUnavailable, catalog_guard, connect_catalog
+from .catalog_health import catalog_status
 
 
 LIBRARY_SCHEMA_VERSION = 3
@@ -25,6 +28,14 @@ MATERIAL_MAX_ANCHORS = 1000
 SUPPORTED_DOCUMENT_SUFFIXES = {".pdf", ".md", ".markdown", ".html", ".htm", ".txt"}
 SUPPORTED_LOCAL_VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
 _lock = threading.RLock()
+
+
+def _catalog_operation(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with _lock, catalog_guard(DATA_DIR):
+            return function(*args, **kwargs)
+    return guarded
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -124,7 +135,8 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
           ON library_materials(updated_at DESC);
         CREATE INDEX IF NOT EXISTS library_materials_task_idx
           ON library_materials(linked_task_id);
-        INSERT OR REPLACE INTO library_meta(key, value) VALUES ('schema_version', '3');
+        INSERT INTO library_meta(key, value) VALUES ('schema_version', '3')
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value;
         """
     )
     columns = {row[1] for row in connection.execute("PRAGMA table_info(library_tasks)").fetchall()}
@@ -140,13 +152,17 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
         return False
 
 
-def _connect() -> tuple[sqlite3.Connection, bool]:
+def _connect(*, allow_missing: bool = False) -> tuple[sqlite3.Connection, bool]:
     ensure_dirs()
-    connection = sqlite3.connect(_db_path(), timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout=30000")
-    fts_available = _ensure_schema(connection)
-    return connection, fts_available
+    connection = connect_catalog(_db_path(), allow_missing=allow_missing)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        fts_available = _ensure_schema(connection)
+        return connection, fts_available
+    except BaseException:
+        connection.close()
+        raise
 
 
 def index_task(record: TaskRecord) -> bool:
@@ -280,9 +296,14 @@ def remove_task(task_id: str) -> bool:
         return False
 
 
-def rebuild_index() -> dict[str, int | str]:
+@_catalog_operation
+def rebuild_index() -> dict:
+    catalog = catalog_status(DATA_DIR)
+    if catalog["state"] == "corrupt" or (catalog["recovery_required"] and not any(TASK_DIR.glob("*/task.json"))):
+        return {"status": "blocked", "indexed": 0, "skipped": 0, "catalog": catalog,
+                "code": "catalog_recovery_required", "schema_version": LIBRARY_SCHEMA_VERSION}
     with _lock:
-        connection, fts_available = _connect()
+        connection, fts_available = _connect(allow_missing=True)
         try:
             connection.execute("DELETE FROM library_tasks")
             if fts_available:
@@ -300,7 +321,8 @@ def rebuild_index() -> dict[str, int | str]:
             skipped += 1
             continue
         indexed += int(index_task(record))
-    return {"status": "pass", "indexed": indexed, "skipped": skipped, "schema_version": LIBRARY_SCHEMA_VERSION}
+    return {"status": "partial" if catalog["recovery_required"] else "pass", "indexed": indexed, "skipped": skipped,
+            "schema_version": LIBRARY_SCHEMA_VERSION, "catalog": catalog_status(DATA_DIR)}
 
 
 def _search_term(value: str) -> str:
@@ -341,6 +363,12 @@ def search_library(query: str = "", limit: int = 50) -> list[dict[str, object]]:
 
 def library_status() -> dict[str, object]:
     with _lock:
+        catalog = catalog_status(DATA_DIR)
+        if catalog["state"] != "healthy":
+            return {"schema_version": LIBRARY_SCHEMA_VERSION, "catalog": catalog,
+                    "indexed_task_count": catalog["indexed_task_count"], "material_count": catalog["material_count"],
+                    "fts_available": False, "path": str(_db_path()),
+                    "bytes": _db_path().stat().st_size if _db_path().exists() else 0}
         connection, fts_available = _connect()
         try:
             count = int(connection.execute("SELECT COUNT(*) FROM library_tasks").fetchone()[0])
@@ -348,6 +376,7 @@ def library_status() -> dict[str, object]:
             path = _db_path()
             return {
                 "schema_version": LIBRARY_SCHEMA_VERSION,
+                "catalog": catalog,
                 "indexed_task_count": count,
                 "material_count": material_count,
                 "fts_available": fts_available,
@@ -378,8 +407,11 @@ def duplicate_groups() -> list[dict[str, object]]:
             connection.close()
 
 
+@_catalog_operation
 def backup_library() -> Path:
     """Create a SQLite-consistent index snapshot (not a full data backup)."""
+    if catalog_status(DATA_DIR)["recovery_required"]:
+        raise CatalogUnavailable("catalog_recovery_required")
     export_dir = DATA_DIR / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -409,6 +441,7 @@ def backup_library() -> Path:
     return target
 
 
+@_catalog_operation
 def restore_library(backup_path: Path) -> dict[str, object]:
     """Logically migrate a validated task index into a fresh local database."""
     candidate = Path(backup_path).resolve()
@@ -507,7 +540,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
                 export_dir = DATA_DIR / "exports"
                 export_dir.mkdir(parents=True, exist_ok=True)
                 rollback = export_dir / f"learnnote-library-pre-restore-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}.sqlite3"
-                live = sqlite3.connect(target)
+                live = connect_catalog(target)
                 snapshot = sqlite3.connect(rollback)
                 try:
                     live.backup(snapshot)
@@ -519,7 +552,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
             # The database also owns documents and canonical evidence. Restore
             # only the validated task projection in one SQLite transaction;
             # replacing the whole file silently erased those unrelated tables.
-            live = sqlite3.connect(target)
+            live = connect_catalog(target)
             sanitized = sqlite3.connect(temporary)
             try:
                 live_fts = _ensure_schema(live)
@@ -702,6 +735,7 @@ def get_material(material_id: str) -> dict[str, object]:
     return _material_row(row)
 
 
+@_catalog_operation
 def delete_material(material_id: str) -> dict[str, object]:
     """Permanently remove one app-owned material and only its own evidence."""
 
@@ -798,11 +832,11 @@ def _split_long_section(text: str, max_chars: int = 6000) -> list[str]:
     return chunks
 
 
-def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "") -> tuple[str, list[tuple[str, str]], dict[str, object]]:
+def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "", *, preserve_original: bool = True) -> tuple[str, list[tuple[str, str]], dict[str, object]]:
     text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type, encoding=encoding)
     suffix = Path(filename).suffix.lower()
     sections: list[tuple[str, str]] = []
-    raw_info = preserve_raw_import(content, filename)
+    raw_info = preserve_raw_import(content, filename) if preserve_original else {"sha256": hashlib.sha256(content).hexdigest(), "byte_count": len(content)}
     metadata: dict[str, object] = {
         "extraction": "local",
         "ocr_performed": False,
@@ -856,6 +890,7 @@ def _find_material_by_sha(connection: sqlite3.Connection, digest: str) -> sqlite
     return connection.execute("SELECT * FROM library_materials WHERE sha256 = ?", (digest,)).fetchone()
 
 
+@_catalog_operation
 def import_document_material(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> dict[str, object]:
     safe_name = _safe_material_filename(filename)
     suffix = Path(safe_name).suffix.lower()
@@ -1126,7 +1161,7 @@ def material_anchors(material_id: str, limit: int = 500) -> list[dict[str, objec
     cap = max(1, min(int(limit or 500), 1000))
     selected = evidence_ids[:cap]
     placeholders = ",".join("?" for _ in selected)
-    connection = sqlite3.connect(_db_path(), timeout=30)
+    connection = connect_catalog(_db_path())
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
@@ -1206,6 +1241,7 @@ def rebuild_document_material(material_id: str) -> dict[str, object]:
     return _rewrite_document_material(material_id, "", rebuilding=True)
 
 
+@_catalog_operation
 def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool, expected_updated_at: str | None = None) -> dict[str, object]:
     requested = str(encoding or "").strip()[:40]
     if not requested and not rebuilding:
@@ -1356,6 +1392,7 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
         return get_material(material_id)
 
 
+@_catalog_operation
 def apply_material_ocr(material_id: str, ocr_result: dict) -> dict:
     from .pdf_ocr import summarize_ocr
     from .pdf_ocr_cache import _revision, read_ocr_cache

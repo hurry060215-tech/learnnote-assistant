@@ -33,6 +33,8 @@ from ..library import (
     search_library,
 )
 from ..storage import get_task
+from ..catalog_health import catalog_status
+from .catalog_recovery import catalog_recovery_router
 from ..document_exports import (
     DocumentExportUnavailable,
     build_docx_export,
@@ -45,6 +47,7 @@ from ..document_exports import (
 
 
 library_router = APIRouter(prefix="/api/library", tags=["library"])
+library_router.include_router(catalog_recovery_router)
 
 
 class MaterialUnifiedExportRequest(BaseModel):
@@ -78,6 +81,9 @@ def api_library_material_capabilities() -> dict:
 
 @library_router.get("/materials")
 def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
+    catalog = catalog_status(DATA_DIR)
+    if catalog["state"] in {"missing", "corrupt"} and catalog["recovery_required"]:
+        return {"schema_version": 1, "materials": [], "catalog": catalog}
     return {"schema_version": 1, "materials": list_materials(limit, source_type)}
 
 
@@ -414,7 +420,10 @@ def api_material_export(material_id: str, kind: str, include_annotations: bool =
 
 @library_router.post("/backup")
 def api_library_backup() -> dict:
-    path = backup_library()
+    try:
+        path = backup_library()
+    except (sqlite3.Error, OSError) as exc:
+        raise HTTPException(status_code=409, detail={"code": "catalog_recovery_required", "message": "资料目录缺失或损坏；请先选择已有备份预览资料目录恢复。原文件仍然保留。"}) from exc
     return {
         "status": "pass",
         "name": path.name,
@@ -450,6 +459,8 @@ async def api_library_restore(file: UploadFile = File(...)) -> dict:
                 handle.write(chunk)
         try:
             return restore_library(temporary)
+        except sqlite3.Error as exc:
+            raise HTTPException(status_code=409, detail={"code": "catalog_recovery_required", "message": "当前数据库不可安全写入。任务索引恢复不恢复文档；请先单独预览资料目录恢复。"}) from exc
         except ValueError as exc:
             code = str(exc)
             messages = {

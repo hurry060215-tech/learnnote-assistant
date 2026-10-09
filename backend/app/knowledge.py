@@ -126,12 +126,17 @@ def _raw_import_path(raw_sha256: str) -> Path:
 
 
 def _connect() -> sqlite3.Connection:
+    from .catalog_guard import connect_catalog
     ensure_dirs()
-    connection = sqlite3.connect(_db_path(), timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout=30000")
-    ensure_evidence_schema(connection)
-    return connection
+    connection = connect_catalog(_db_path())
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        ensure_evidence_schema(connection)
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def ensure_evidence_schema(connection: sqlite3.Connection) -> None:
