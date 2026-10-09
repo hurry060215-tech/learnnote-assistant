@@ -111,6 +111,15 @@ class UnicodeBoundaryTests(unittest.TestCase):
             self.assertEqual(raw.read_bytes(), original)
             self.assertEqual(Path(record.note_path).read_bytes(), draft)
             self.assertFalse((task_dir(task.id) / "note.md").exists())
+            # Windows-generated drafts have CRLF. The special review reader
+            # must preserve both forms, even when this regression runs on Linux.
+            lf_draft = draft.decode("utf-8").replace("\r\n", "\n")
+            for newline in ("\n", "\r\n"):
+                literal = lf_draft.replace("\n", newline).encode("utf-8")
+                Path(record.note_path).write_bytes(literal)
+                self.assertEqual(get_edition("task", task.id)["text"].encode("utf-8"), literal)
+                self.assertEqual(Path(record.note_path).read_bytes(), literal)
+                self.assertEqual(raw.read_bytes(), original)
 
     def test_review_filename_alone_does_not_bypass_strict_formal_note_reader(self):
         self.isolated_tasks()

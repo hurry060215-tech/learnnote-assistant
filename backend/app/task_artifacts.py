@@ -46,7 +46,7 @@ def read_task_note(task_id: str) -> str:
             and path.name == "draft.review.md"):
         # These are generated UTF-8 drafts, not an alternate decoder for formal
         # notes. Keep the warning and unresolved words exactly as preserved.
-        return path.read_text(encoding="utf-8")
+        return path.read_bytes().decode("utf-8")
     return read_canonical_text(path).text
 
 
