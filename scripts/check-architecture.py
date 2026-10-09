@@ -50,6 +50,12 @@ MODULE_SIZE_LIMITS = {
     "backend/app/progressive_sections.py": 180,
     "backend/app/text_chunk_sections.py": 80,
     "backend/app/reading_notes.py": 115,
+    "backend/app/catalog_guard.py": 100,
+    "backend/app/catalog_health.py": 70,
+    "backend/app/catalog_snapshot.py": 180,
+    "backend/app/catalog_recovery.py": 300,
+    "backend/app/routers/catalog_recovery.py": 100,
+    "web/material-catalog-recovery.js": 160,
 }
 
 
