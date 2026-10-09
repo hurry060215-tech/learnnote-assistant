@@ -135,6 +135,29 @@ test("remote revisions, unresolved anchors and deletions preserve every historic
   assert.ok(f.files.get(first.notePath).content.includes("个人批注（0 条）"));
 });
 
+test("multi-cue interval mappings and literal text survive snapshot retries and local edits", async () => {
+  const interval = { ...annotation, text: "\r\n  Multi-cue cafe\u0301 🧭\r\n ", anchor: { ...annotation.anchor,
+    evidence_id: "task-synthetic-task-transcript-00000..00001", start: 12, end: 21,
+    cues: [{ evidence_id: "task-synthetic-task-transcript-00000", start: 12, end: 18, target_hash: "first-exact-cue" },
+      { evidence_id: "task-synthetic-task-transcript-00001", start: 16, end: 21, target_hash: "second-exact-cue" }] } };
+  const f = fixture(payload([interval]));
+  const first = await f.importer.importTask(task);
+  const jsonFile = f.snapshots()[0][1], markdownFile = f.latest(first);
+  const stored = JSON.parse(jsonFile.content).annotations[0];
+  assert.equal(stored.id, interval.id); assert.equal(stored.text, interval.text);
+  assert.deepEqual(stored.anchor, interval.anchor);
+  assert.ok(markdownFile.content.includes("00:00:12 – 00:00:21"));
+  assert.ok(markdownFile.content.includes(interval.text));
+  await f.importer.importTask(task); assert.equal(f.snapshots().length, 1);
+  markdownFile.content += "\r\n  Local interval explanation.\r\n";
+  const local = markdownFile.content, original = jsonFile.content;
+  f.state.personal = payload([{ ...interval, anchor_status: { resolution: "orphaned", stale: true, reason: "ambiguous_target" } }]);
+  const changed = await f.importer.importTask(task);
+  assert.equal(markdownFile.content, local); assert.equal(jsonFile.content, original);
+  assert.ok(f.latest(changed).content.includes("未定位，请人工核对原文"));
+  assert.deepEqual(JSON.parse(f.snapshots()[1][1].content).annotations[0].anchor, interval.anchor);
+});
+
 test("local JSON or Markdown conflicts get another snapshot and remain byte-for-byte intact", async () => {
   const f = fixture();
   const first = await f.importer.importTask(task);

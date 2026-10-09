@@ -1072,6 +1072,7 @@ $("export").onclick = () => {
 };
 $("annotationForm").onsubmit = async (e) => {
   e.preventDefault();
+  if (state.annotationAnchorLoading) { notice("正在核对字幕区间，请稍候再保存。"); return; }
   if (state.annotationSaving) return;
   const epoch = state.epoch,
     s = state.selected,

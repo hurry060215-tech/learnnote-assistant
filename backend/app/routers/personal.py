@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from ..personal_notes import list_annotations, save_annotation, delete_annotation
-from ..personal_anchors import annotation_targets
+from ..personal_anchors import annotation_targets, transcript_interval
 
 personal_router = APIRouter(prefix="/api/personal", tags=["personal"])
 PUBLIC_ERRORS = {
@@ -25,6 +25,23 @@ class AnnotationRequest(BaseModel):
     anchor: dict = Field(default_factory=dict)
     revision: str = Field(default="", max_length=64)
     request_id: str = Field(default="", max_length=128, pattern="^[A-Za-z0-9_-]*$")
+
+
+class TranscriptIntervalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    first_evidence_id: str = Field(min_length=1, max_length=1000)
+    last_evidence_id: str = Field(min_length=1, max_length=1000)
+    source_revision: str = Field(min_length=1, max_length=1000)
+
+
+@personal_router.post("/task/{source_id}/transcript-interval")
+def get_transcript_interval(source_id: str, request: TranscriptIntervalRequest):
+    try:
+        return {"anchor": transcript_interval(source_id, request.first_evidence_id, request.last_evidence_id, request.source_revision)}
+    except (ValueError, OSError) as exc:
+        status, detail = PUBLIC_ERRORS.get(str(exc), (422, "annotation_anchor_unavailable"))
+        raise HTTPException(status_code=status, detail=detail) from exc
 
 
 @personal_router.get("/{kind}/{source_id}/targets")
