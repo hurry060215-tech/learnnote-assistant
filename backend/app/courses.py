@@ -8,10 +8,11 @@ import threading
 from uuid import uuid4
 
 from .config import DATA_DIR
-from .knowledge import answer_from_evidence, evidence_for_task, evidence_ids_for_task
-from .library import get_material, material_anchors, task_material_source_uri
+from .knowledge import answer_from_evidence, evidence_by_ids, evidence_ids_for_task
+from .library import get_material, task_material_source_uri
 from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
+from .concept_identity import read_history, assignments, identity_groups, identity_key, edit_identity
 
 _lock = threading.RLock()
 
@@ -100,49 +101,52 @@ def _evidence_sources(course: dict) -> list[dict]:
 
 def course_evidence(course_id: str) -> list[dict]:
     evidence = []
-    seen_ids: set[str] = set()
+    sources_by_id = {}
     for source in _evidence_sources(get_course(course_id)):
-        try:
-            items = evidence_for_task(source["id"], limit=500) if source["kind"] == "task" else material_anchors(source["id"], 1000) if source["kind"] == "material" else []
-        except (ValueError, FileNotFoundError):
-            continue
-        for item in items:
-            if item.get("metadata", {}).get("kind") in {"note", "community"}:
+        for evidence_id in sorted(_source_evidence_ids(source)):
+            sources_by_id.setdefault(evidence_id, source)
+    # Resolve every scoped ID in bounded batches. Generated/review rows cannot
+    # starve a valid later citation, and registered videos use live task IDs.
+    if len(sources_by_id) > 100_000:
+        raise ValueError("comparison_scope_too_large")
+    ids = list(sources_by_id)
+    for start in range(0, len(ids), 500):
+        for item in evidence_by_ids(ids[start:start + 500], limit=500):
+            metadata = item.get("metadata") or {}
+            if item.get("source_type") == "community" or item.get("locator") in {"note", "generated-note"} or metadata.get("kind") in {"note", "community", "generated-note", "review-draft", "transcript-draft"} or metadata.get("review_required") or metadata.get("evidence_quality") == "review_required":
                 continue
             evidence_id = str(item.get("evidence_id") or "")
-            if not evidence_id or evidence_id in seen_ids:
+            if evidence_id not in sources_by_id:
                 continue
-            seen_ids.add(evidence_id)
+            source = sources_by_id[evidence_id]
             evidence.append({**item, "course_source": {"kind": source["kind"], "id": source["id"], "title": source["title"]}})
     return evidence
+
+
+def _source_evidence_ids(source: dict) -> set[str]:
+    try:
+        material = get_material(source["id"]) if source["kind"] == "material" else None
+        task_id = source["id"] if source["kind"] == "task" else (material or {}).get("linked_task_id")
+        if task_id:
+            # Only canonical registered videos can alias a task. Recheck the
+            # owner too: older evidence may predate row-level review flags.
+            if material and (material.get("source_type") != "video" or material.get("owns_evidence") is not False):
+                return set()
+            owner = get_task(task_id)
+            if owner.id != task_id or owner.summary_source == "transcript-draft" or owner.summary_diagnostics.get("review_required"):
+                return set()
+            if material and material.get("source_uri") != task_material_source_uri(owner):
+                return set()
+            return evidence_ids_for_task(task_id)
+        return set(material["evidence_ids"]) if material else set()
+    except (ValueError, FileNotFoundError):
+        return set()
 
 
 def course_evidence_ids(course_id: str) -> set[str]:
     ids: set[str] = set()
     for source in _evidence_sources(get_course(course_id)):
-        try:
-            material = get_material(source["id"]) if source["kind"] == "material" else None
-            task_id = source["id"] if source["kind"] == "task" else (material or {}).get("linked_task_id")
-            if task_id:
-                # Only the canonical registered-video relation can alias a
-                # task. Free-form document metadata cannot broaden membership.
-                if material and (material.get("source_type") != "video" or material.get("owns_evidence") is not False):
-                    continue
-                # Recheck the owner as well as row metadata: older projections
-                # may predate review flags, or survive a missing source file.
-                owner = get_task(task_id)
-                if owner.id != task_id or owner.summary_source == "transcript-draft" or owner.summary_diagnostics.get("review_required"):
-                    continue
-                if material and material.get("source_uri") != task_material_source_uri(owner):
-                    continue
-            if task_id:
-                # A registered video is an alias for this task, not a frozen
-                # first-page snapshot of the task's evidence at registration.
-                ids.update(evidence_ids_for_task(task_id))
-            elif material:
-                ids.update(material["evidence_ids"])
-        except (ValueError, FileNotFoundError):
-            continue
+        ids.update(_source_evidence_ids(source))
     return ids
 
 
@@ -166,11 +170,15 @@ def compare_course(course_id: str, query: str, *, source_id: str = "", source_ki
     if source_kind not in {"", "task", "material"} or any(value is not None and (not math.isfinite(value) or value < 0) for value in (start, end)) or (start is not None and end is not None and end < start):
         raise ValueError("invalid_comparison_filter")
     terms = list(dict.fromkeys(term.casefold() for term in query.split() if term.strip()))[:8]
+    history = read_history(course_id)
+    evidence = course_evidence(course_id)
+    chosen = {term: assignments(history, term) for term in terms}
     matches = []
     groups: dict[str, dict] = {}
-    for item in course_evidence(course_id):
+    for item in evidence:
         source = item["course_source"]
-        if (source_id and source["id"] != source_id) or (source_kind and source["kind"] != source_kind):
+        filter_kind = "task" if item.get("task_id") else source["kind"]
+        if (source_id and source["id"] != source_id) or (source_kind and filter_kind != source_kind):
             continue
         if start is not None or end is not None:
             metadata = item.get("metadata") or {}
@@ -198,13 +206,29 @@ def compare_course(course_id: str, query: str, *, source_id: str = "", source_ki
         groups[key]["evidence_ids"].append(item["evidence_id"])
         groups[key]["terms"] = sorted(set(groups[key]["terms"] + hits))
         for term in hits:
-            groups[key]["term_evidence"].setdefault(term, item["evidence_id"])
+            identity = identity_key(item, chosen[term])
+            if identity is not None:
+                groups[key]["term_evidence"].setdefault((term, identity), item["evidence_id"])
         matches.append({"evidence_id": item["evidence_id"], "title": source["title"], "locator": item["locator"], "excerpt": excerpt, "matched_terms": hits, "source": source})
     nodes = list(groups.values())[:40]
     edges = []
     for index, left in enumerate(nodes):
         for right in nodes[index + 1:]:
-            shared = sorted(set(left["terms"]) & set(right["terms"]))
-            if shared:
-                edges.append({"from": left["id"], "to": right["id"], "kind": "keyword_cooccurrence", "terms": shared, "evidence_ids": [left["term_evidence"][shared[0]], right["term_evidence"][shared[0]]]})
-    return {"mode": "local_cited_comparison", "query": query, "matches": matches[:100], "total_matches": len(matches), "nodes": nodes, "edges": edges[:100], "inference": False, "filters": {"source_id": source_id, "source_kind": source_kind, "start": start, "end": end}, "warning": "共同关键词不代表同义、因果或观点一致，请核对各自原文。"}
+            for term, identity in sorted(set(left["term_evidence"]) & set(right["term_evidence"])):
+                ids = [left["term_evidence"][(term, identity)], right["term_evidence"][(term, identity)]]
+                if len(set(ids)) == 2:
+                    edges.append({"from": left["id"], "to": right["id"], "kind": "keyword_cooccurrence", "terms": [term], "identity_group": identity, "evidence_ids": ids})
+    # Every displayed relation carries the real titles/locators even when the
+    # separate excerpt page was truncated. Internal tuple keys stay private.
+    citations = {item["evidence_id"]: item for item in matches}
+    for edge in edges:
+        edge["citations"] = [citations[key] for key in edge["evidence_ids"]]
+    for node in nodes:
+        node.pop("term_evidence", None)
+    return {"mode": "local_cited_comparison", "query": query, "matches": matches[:100], "total_matches": len(matches), "nodes": nodes, "edges": edges[:100], "inference": False, "identity_revision": len(history["events"]), "concepts": [identity_groups(history, evidence, term) for term in terms], "filters": {"source_id": source_id, "source_kind": source_kind, "start": start, "end": end}, "warning": "共同关键词不代表同义、因果或观点一致。含义分组仅是你的整理选择，请核对各自原文。"}
+
+
+def edit_course_identity(course_id: str, request_id: str, request: dict) -> dict:
+    with _lock:
+        course = get_course(course_id)
+        return edit_identity(course_id, course["revision"], course_evidence(course_id), request_id, request)

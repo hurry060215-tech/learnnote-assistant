@@ -13,6 +13,7 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
+      - "scripts/course-concepts-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
@@ -27,6 +28,7 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/personal-anchors-*"
       - "scripts/course-question-acceptance.cjs"
+      - "scripts/course-concepts-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
 
 permissions:

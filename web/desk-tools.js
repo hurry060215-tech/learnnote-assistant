@@ -4,6 +4,7 @@ import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
+import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -19,6 +20,7 @@ export function installTools(ctx) {
   dialog.className = "tools-dialog";
   document.body.append(dialog);
   let generation = 0,
+    comparisonSequence = 0,
     course = null,
     courses = [],
     courseEpisodes = [],
@@ -695,7 +697,13 @@ export function installTools(ctx) {
       line.setAttribute("x1", String(from.x + 72)); line.setAttribute("y1", String(from.y + 25));
       line.setAttribute("x2", String(to.x + 72)); line.setAttribute("y2", String(to.y + 25));
       line.setAttribute("class", "relationship-edge");
-      line.setAttribute("aria-label", `共同关键词：${(edge.terms || []).join("、")}`);
+      const presentation = relationPresentation(edge);
+      line.setAttribute("stroke-dasharray", presentation.dash);
+      line.setAttribute("aria-label", `${presentation.label}：${(edge.terms || []).join("、")}`);
+      const edgeTitle = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      edgeTitle.setAttribute("data-user-content", "true");
+      edgeTitle.textContent = `${presentation.label}：${(edge.terms || []).join("、")}`;
+      line.append(edgeTitle);
       svg.append(line);
     }
     for (const node of nodes) {
@@ -705,6 +713,7 @@ export function installTools(ctx) {
       rect.setAttribute("x", String(point.x)); rect.setAttribute("y", String(point.y));
       rect.setAttribute("width", "144"); rect.setAttribute("height", "50"); rect.setAttribute("rx", "8");
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("data-user-content", "true");
       label.setAttribute("x", String(point.x + 8)); label.setAttribute("y", String(point.y + 22));
       label.textContent = String(node.title || node.id).slice(0, 22);
       const count = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -719,6 +728,46 @@ export function installTools(ctx) {
     hint.textContent = "图下方的关系列表保留每条关系对应的证据 ID；无法理解图形时可直接使用列表。";
     details.append(hint);
     return details;
+  }
+  async function compareSources(form, token) {
+    const sequence = ++comparisonSequence;
+    const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
+    if ($("compareStart").value !== "") filters.set("start", $("compareStart").value);
+    if ($("compareEnd").value !== "") filters.set("end", $("compareEnd").value);
+    const selectedCourse = { ...course };
+    const r = await api(`/api/courses/${selectedCourse.id}/compare?${filters}`);
+    const active = () => token === generation && sequence === comparisonSequence && dialog.open && form.isConnected;
+    if (!active()) return;
+    const root = $("compareResults");
+    root.innerHTML = `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong data-user-content>${esc(m.title)}</strong><small data-user-content>${esc(m.locator)}</small><p data-user-content>${esc(m.excerpt)}</p><button data-evidence="${esc(m.evidence_id)}">核对出处</button></blockquote>`).join("") || "没有匹配出处。"}`;
+    if (r.total_matches > r.matches.length) {
+      const hint = document.createElement("p");
+      hint.textContent = `显示前 ${r.matches.length} 条出处，共 ${r.total_matches} 条；可缩小筛选范围。`;
+      root.append(hint);
+    }
+    const graphView = relationshipGraph(r);
+    if (graphView) root.append(graphView);
+    if (r.edges?.length) {
+      const graph = document.createElement("details"), summary = document.createElement("summary"), list = document.createElement("ol");
+      summary.textContent = "关系列表（虚线为关键词共现；不表示事实关系）";
+      graph.append(summary);
+      const nodes = new Map((r.nodes || []).map(node => [node.id, node.title]));
+      for (const edge of r.edges) {
+        const item = document.createElement("li");
+        item.append(literalText(nodes.get(edge.from) || edge.from), document.createTextNode(" ↔ "), literalText(nodes.get(edge.to) || edge.to),
+          document.createTextNode(` · ${relationPresentation(edge).label}：`), literalText((edge.terms || []).join("、")));
+        for (const citation of edge.citations || []) {
+          const source = document.createElement("button");
+          source.dataset.evidence = citation.evidence_id;
+          source.append(document.createTextNode("核对出处："), literalText(`${citation.title} · ${citation.locator}`));
+          item.append(source);
+        }
+        list.append(item);
+      }
+      graph.append(list);
+      root.append(graph);
+    }
+    mountConceptControls(root, r, { api, course: selectedCourse, isCurrent: active, reload: () => compareSources(form, token), openEvidence: async id => { dialog.close(); await ctx.openEvidence(id); } });
   }
   async function about() {
     const token = show("关于与更新", "<p>正在读取版本信息…</p>");
@@ -1081,30 +1130,7 @@ export function installTools(ctx) {
         });
         courseView();
       } else if (form.id === "compareForm") {
-        const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
-        if ($("compareStart").value !== "") filters.set("start", $("compareStart").value);
-        if ($("compareEnd").value !== "") filters.set("end", $("compareEnd").value);
-        const r = await api(`/api/courses/${course.id}/compare?${filters}`);
-        if (token !== generation) return;
-        $("compareResults").innerHTML =
-          `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p><button data-evidence="${esc(m.evidence_id)}">核对出处</button></blockquote>`).join("") || "没有匹配出处。"}`;
-        if (form.id === "compareForm" && r.edges?.length) {
-          const graphView = relationshipGraph(r);
-          if (graphView) $("compareResults").append(graphView);
-          const graph = document.createElement("details");
-          const graphTitle = document.createElement("summary");
-          graphTitle.textContent = "关系列表（每条关系保留来源）";
-          graph.append(graphTitle);
-          const list = document.createElement("ol");
-          const nodes = new Map((r.nodes || []).map((node) => [node.id, node.title]));
-          for (const edge of r.edges) {
-            const item = document.createElement("li");
-            item.textContent = (nodes.get(edge.from) || edge.from) + " ↔ " + (nodes.get(edge.to) || edge.to) + " · 共同关键词：" + (edge.terms || []).join("、") + " · 证据：" + (edge.evidence_ids || []).join("、");
-            list.append(item);
-          }
-          graph.append(list);
-          $("compareResults").append(graph);
-        }
+        await compareSources(form, token);
       } else if (form.id === "planForm") {
         await api("/api/study/plan", {
           method: "PUT",
