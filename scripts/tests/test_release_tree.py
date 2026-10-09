@@ -127,6 +127,18 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertEqual(["_internal/web/material-ocr.js"], result["missing_bundled"])
 
+    def test_classic_css_modules_remain_excluded_from_release(self):
+        for name in ("classic-workbench.css", "classic-interactions.css", "classic-study.css"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                (root / "_internal/web" / name).write_text(".fixture {}", encoding="utf-8")
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([str(Path("_internal/web") / name)], result["legacy_ui"])
+
 
 if __name__ == "__main__":
     unittest.main()

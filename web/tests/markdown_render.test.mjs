@@ -187,7 +187,8 @@ context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const markdownCode = await readFile(new URL("../markdown.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../classic.html", import.meta.url), "utf8");
-const stylesCss = await readFile(new URL("../styles.css", import.meta.url), "utf8");
+const stylesCss = (await Promise.all(["styles.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css"]
+  .map(name => readFile(new URL(`../${name}`, import.meta.url), "utf8")))).join("");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");
 const matureCss = await readFile(new URL("../mature.css", import.meta.url), "utf8");
@@ -528,7 +529,7 @@ assert.match(indexHtml, /id="restoreLibraryButton"/);
 assert.match(indexHtml, /id="libraryBackupInput"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
-assert.match(indexHtml, /styles\.css\?v=20260724-ui3/);
+assert.match(indexHtml, /styles\.css\?v=classic-css-20261009/);
 assert.match(indexHtml, /app\.js\?v=\d{8}-[a-z0-9-]+/);
 assert.match(indexHtml, /id="viewReleaseNotesButton"/);
 assert.match(indexHtml, /id="releaseNotesOverlay"/);

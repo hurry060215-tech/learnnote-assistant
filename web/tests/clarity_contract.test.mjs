@@ -9,7 +9,7 @@ const html = fs.readFileSync(path.join(root, "web", "classic.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
 const editorial = fs.readFileSync(path.join(root, "web", "editorial.js"), "utf8");
 const experience = fs.readFileSync(path.join(root, "web", "experience.css"), "utf8");
-const allCss = ["styles.css", "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css"]
+const allCss = ["styles.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css", "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css"]
   .map(name => fs.readFileSync(path.join(root, "web", name), "utf8"))
   .join("\n");
 
