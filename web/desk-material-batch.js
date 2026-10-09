@@ -6,7 +6,7 @@ export function installMaterialBatch({ state, options, updatePresentation, openR
   let visit = 0, handling = false, route = "", routeOptions = {}, routeError = "";
   const queue = createMaterialBatch({ api, changed: render,
     videoLimit: () => state.health.upload_policy?.max_video_bytes });
-  const labels = { pending: "待预检", preflighting: "预检中", ready: "待提交", invalid: "未通过", failed: "失败", submitting: "提交中", success: "已完成" };
+  const labels = { pending: "待预检", preflighting: "预检中", ready: "待提交", invalid: "未通过", failed: "失败", unconfirmed: "待核对", submitting: "提交中", success: "已完成" };
   function render() {
     const busy = queue.running || queue.preparing || handling || state.busy;
     const locked = state.input === "file" && (Boolean(queue.snapshot) || queue.running || handling);
@@ -23,9 +23,9 @@ export function installMaterialBatch({ state, options, updatePresentation, openR
       const preview = item.preview;
       const detail = preview ? item.kind === "material"
         ? `${preview.page_count ? `${preview.page_count} 页 · ` : ""}预计本地空间 ${importSize(preview.estimated_storage_bytes)}（可选 OCR 另计）。${preview.ocr_required ? "扫描 PDF，导入后可选择本地 OCR，识别结果需核验。" : "本地提取文字，不发送给模型。"}`
-        : `${Number.isFinite(preview.duration) && preview.duration > 0 ? `时长 ${timestamp(preview.duration)}。` : "浏览器未能读取时长；时长未知，提交后由本机校验媒体，可能失败。"}至少需要 ${importSize(item.file.size)} 上传空间，解码缓存另计。`
+        : `时长 ${timestamp(preview.duration)}。${item.status === "unconfirmed" ? "本机预检曾校验此文件，提交结果待核对。" : preview.staging_token ? "已在本机校验并暂存，提交时复用本次上传；预检不调用模型。" : "浏览器读取时长，提交后由本机校验媒体。"}至少需要 ${importSize(item.file.size)} 上传空间，解码缓存另计。`
         : "";
-      return `<li class="model-route-item ${["failed", "invalid"].includes(item.status) ? "waiting" : "ready"}" data-status="${item.status}"><div><strong>${esc(item.file.name)}</strong><span>${labels[item.status]}</span></div><small>${importSize(item.file.size)}${item.encoding ? ` · ${esc(item.encoding)}` : ""}</small><p>${esc(detail)}</p><p>${esc(item.detail)}</p>${item.result ? `<button type="button" data-batch-open="${index}" ${busy ? "disabled" : ""}>${item.kind === "material" ? "阅读资料" : "查看视频任务"}</button>` : ""}</li>`;
+      return `<li class="model-route-item ${["failed", "invalid", "unconfirmed"].includes(item.status) ? "waiting" : "ready"}" data-status="${item.status}"><div><strong>${esc(item.file.name)}</strong><span>${labels[item.status]}</span></div><small>${importSize(item.file.size)}${item.encoding ? ` · ${esc(item.encoding)}` : ""}</small><p>${esc(detail)}</p><p>${esc(item.detail)}</p>${item.result ? `<button type="button" data-batch-open="${index}" ${busy ? "disabled" : ""}>${item.kind === "material" ? "阅读资料" : "查看视频任务"}</button>` : ""}</li>`;
     }).join("");
     for (const button of document.querySelectorAll("[data-input]")) button.disabled = queue.running || handling;
     $("contentModeChoices").disabled = locked;

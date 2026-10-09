@@ -22,7 +22,7 @@ const videoKey = upload => {
 };
 const fixtureFile = (name, text = `Synthetic fixture: ${name}\n`) => ({
   name,
-  mimeType: name.endsWith(".mp4") ? "video/mp4" : "text/plain",
+  mimeType: name.endsWith(".mp4") ? "video/mp4" : name.endsWith(".mkv") ? "video/x-matroska" : "text/plain",
   buffer: Buffer.isBuffer(text) ? text : Buffer.from(text),
 });
 async function waitForFixture(promise, label) {
@@ -46,10 +46,12 @@ async function multipart(request) {
     body,
   }).formData();
   const file = parsed.get("file");
-  assert(file && typeof file.arrayBuffer === "function", "Submit an actual file");
+  const stagingToken = parsed.get("staging_token");
+  assert(Boolean(file) !== Boolean(stagingToken), "Submit either the original file or its staging token");
   return {
-    name: file.name,
-    bytes: Buffer.from(await file.arrayBuffer()),
+    name: file?.name,
+    bytes: file ? Buffer.from(await file.arrayBuffer()) : null,
+    stagingToken,
     encoding: parsed.get("encoding"),
     options: parsed.has("options") ? JSON.parse(parsed.get("options")) : null,
   };
@@ -68,6 +70,9 @@ async function multipart(request) {
   const previews = [];
   const imports = [];
   const videos = [];
+  const videoPreviews = [];
+  const videoSubmissions = [];
+  const stagedUploads = new Map();
   const materials = new Map();
   const materialsByHash = new Map();
   const materialContents = new Map();
@@ -231,11 +236,28 @@ async function multipart(request) {
         if (task && request.method() === "GET" && tasks.has(task[1])) return json({ task: tasks.get(task[1]) });
         if (/^\/api\/tasks\/[^/]+\/events$/.test(pathname) && request.method() === "GET") return json({ events: [] });
         if (/^\/api\/tasks\/[^/]+\/transcript$/.test(pathname) && request.method() === "GET") return json({ segments: [] });
-        if (["/api/library/materials/preview", "/api/library/materials/import", "/api/tasks/from-local"].includes(pathname)) {
-          const upload = await multipart(request);
+        if (["/api/library/materials/preview", "/api/library/materials/import", "/api/media/preflight-local", "/api/tasks/from-local"].includes(pathname)) {
+          let upload = await multipart(request);
+          if (pathname.endsWith("/from-local")) videoSubmissions.push({ token: upload.stagingToken, uploaded: Boolean(upload.bytes), options: upload.options });
+          if (upload.stagingToken) {
+            assert.equal(pathname, "/api/tasks/from-local");
+            if (!stagedUploads.has(upload.stagingToken)) return await json({ detail: { code: "staging_token_not_found", message: "预检文件不存在或已被使用。" } }, 404);
+            upload = { ...stagedUploads.get(upload.stagingToken), options: upload.options, stagingToken: upload.stagingToken };
+            stagedUploads.delete(upload.stagingToken);
+          }
           assert(expectedFiles.has(upload.name), `Unexpected file: ${upload.name}`);
           assert(expectedFiles.get(upload.name).some(bytes => upload.bytes.equals(bytes)), `Preserve raw bytes: ${upload.name}`);
           const record = { name: upload.name, bytes: upload.bytes.length, sha256: sha256(upload.bytes), encoding: upload.encoding, options: upload.options };
+          if (pathname.endsWith("/preflight-local")) {
+            assert.equal(upload.options, null, "Local preflight cannot invoke the selected model route");
+            videoPreviews.push(record);
+            activeHold = held("video-preview", upload.name);
+            await activeHold?.released;
+            if (upload.name === "invalid-video.mkv") return await json({ detail: { code: "invalid_local_video", message: "文件中没有可读取的音视频轨道或有效时长。" } }, 400);
+            const staging_token = String(videoPreviews.length).padStart(32, "0");
+            stagedUploads.set(staging_token, upload);
+            return await json({ duration: 92.5, integrity: { status: "ready", duration: 92.5, has_video: true, has_audio: true, sha256: record.sha256 }, source_fingerprint: record.sha256, staging_token });
+          }
           if (pathname.endsWith("/preview")) {
             previews.push(record);
             const attempt = (previewAttempts.get(upload.name) || 0) + 1;
@@ -261,12 +283,19 @@ async function multipart(request) {
           activeHold = held("video", upload.name);
           await activeHold?.released;
           const fingerprint = videoKey(upload);
-          const deduplicated = tasksByFingerprint.has(fingerprint);
-          const task = tasksByFingerprint.get(fingerprint) || { id: `video-${tasks.size + 1}`, title: upload.name, status: "success", phase: "completed", source_type: "local", mode: "local", summary_source: "subtitle-extract", options: upload.options, source_identity: { media_sha256: record.sha256 }, media_integrity: { sha256: record.sha256 }, created_at: "2026-09-25T10:00:00Z", updated_at: "2026-09-25T10:00:00Z" };
+          const existingTask = tasksByFingerprint.get(fingerprint);
+          const deduplicated = Boolean(existingTask && !["failed", "cancelled"].includes(existingTask.status));
+          const task = deduplicated ? existingTask : { id: `video-${tasks.size + 1}`, title: upload.name, status: "success", phase: "completed", source_type: "local", mode: "local", summary_source: "subtitle-extract", options: upload.options, source_identity: { media_sha256: record.sha256 }, media_integrity: { sha256: record.sha256 }, created_at: "2026-09-25T10:00:00Z", updated_at: "2026-09-25T10:00:00Z" };
           tasksByFingerprint.set(fingerprint, task);
           tasks.set(task.id, task);
           record.task_id = task.id;
           record.deduplicated = deduplicated;
+          if (upload.name === "lost-response.mkv") {
+            // The backend already consumed the token and created a task, then
+            // the response disappeared and processing quickly failed.
+            task.status = "failed"; task.phase = "failed";
+            return await route.abort("failed");
+          }
           return await json({ task_id: task.id, task, deduplicated });
         }
         report.unexpectedRequests.push(`${request.method()} ${pathname}`);
@@ -433,18 +462,19 @@ async function multipart(request) {
     report.checks.push("dismissal and reopen protect new selection and reader navigation");
     await close();
 
-    // Synthetic undecodable media keeps duration unknown. Subtitle selection is
-    // snapshotted and sent intact; no model or ASR request is allowed by routing.
+    // Unsupported browser bytes exercise real metadata failure in Edge. The
+    // fixture supplies the local probe result; real FFmpeg is covered by the
+    // offline backend regression. No model/ASR request is allowed by routing.
     await openFiles();
     const videoBytes = Buffer.from([0, 1, 2, 3, 255]);
-    await choose([fixtureFile("unknown-duration.mp4", videoBytes), fixtureFile("renamed-video.mp4", videoBytes), fixtureFile("video-companion.md")]);
+    await choose([fixtureFile("fallback-duration.mkv", videoBytes), fixtureFile("renamed-video.mkv", videoBytes), fixtureFile("video-companion.md")]);
     await statuses(["ready", "ready", "ready"]);
     await page.locator('[name="contentMode"][value="subtitles"]').check();
-    await page.waitForFunction(() => /时长.*(?:未知|无法|未能|不可|尚未)|(?:未知|无法|未能|不可|尚未).*时长/.test(document.querySelector("#materialBatchItems").textContent));
+    await page.waitForFunction(() => /时长 1:32.*本机校验并暂存/.test(document.querySelector("#materialBatchItems").textContent));
     const videoText = (await rowNames())[0];
     assert.doesNotMatch(videoText, /NaN|Infinity|\b0:00\b/);
     assert.match(await page.locator("#materialBatchRoute").innerText(), /字幕/);
-    await screenshot("06-unknown-duration-subtitles.png");
+    await screenshot("06-local-duration-subtitles.png");
     await page.locator("#createSubmit").click();
     await statuses(["success", "success", "success"]);
     assert.equal(videos.length, 2);
@@ -456,19 +486,95 @@ async function multipart(request) {
     assert.equal(videos[0].task_id, videos[1].task_id);
     assert.equal(videos[1].deduplicated, true);
     assert.equal(tasks.size, 1);
-    assert.equal(count(previews, "unknown-duration.mp4"), 0);
-    assert.equal(count(previews, "renamed-video.mp4"), 0);
-    report.checks.push("unknown duration is honest, subtitle-only options survive submission, and duplicate video results are reused");
+    assert.equal(count(videoPreviews, "fallback-duration.mkv"), 1);
+    assert.equal(count(videoPreviews, "renamed-video.mkv"), 1);
+    assert(videoSubmissions.every(row => row.token && !row.uploaded), "The staged bytes are never uploaded a second time");
+    report.checks.push("browser metadata failure falls back to local duration, token-only submit preserves subtitle route, duplicate video results are reused");
+    await close();
+
+    // An unused expired token can be explicitly re-preflighted. Frozen settings
+    // and already successful neighbours survive this recovery.
+    await openFiles();
+    await choose([fixtureFile("expired-video.mkv"), fixtureFile("expiry-companion.md")]);
+    await statuses(["ready", "ready"]);
+    stagedUploads.clear();
+    await page.locator("#createSubmit").click();
+    await statuses(["failed", "success"]);
+    assert.match((await rowNames())[0], /重新预检未完成项/);
+    assert(await page.locator('[name="contentMode"][value="subtitles"]').isDisabled());
+    await page.locator("#materialBatchRetryPreview").click();
+    await statuses(["ready", "success"]);
+    await page.locator("#createSubmit").click();
+    await statuses(["success", "success"]);
+    assert.equal(count(videoPreviews, "expired-video.mkv"), 2);
+    assert.equal(count(videos, "expired-video.mkv"), 1);
+    assert.equal(count(imports, "expiry-companion.md"), 1);
+    assert.equal(videos.at(-1).options.content_mode, "subtitles");
+    report.checks.push("expired unused staging token requires explicit preflight retry and preserves successful items and frozen options");
+    await close();
+
+    // A consumed token after a lost response must not reupload, even if the
+    // original task has already failed and ordinary hash dedup would skip it.
+    await openFiles();
+    await choose([fixtureFile("lost-response.mkv"), fixtureFile("lost-companion.md"), fixtureFile("invalid-video.mkv")]);
+    await statuses(["ready", "ready", "failed"]);
+    await page.locator("#createSubmit").click();
+    await statuses(["failed", "success", "failed"]);
+    const taskCount = tasks.size;
+    await page.locator("#createSubmit").click();
+    await statuses(["unconfirmed", "success", "failed"]);
+    assert.match((await rowNames())[0], /待核对.*资料库.*失败或取消.*不会自动重新上传/);
+    assert(await page.locator("#createSubmit").isDisabled());
+    // A neighbour keeps the preview-retry control available. Clicking it must
+    // still leave the uncertain video untouched and submission disabled.
+    await page.locator("#materialBatchRetryPreview").click();
+    await statuses(["unconfirmed", "success", "failed"]);
+    assert(await page.locator("#createSubmit").isDisabled());
+    assert.equal(count(videoPreviews, "lost-response.mkv"), 1);
+    assert.equal(count(videos, "lost-response.mkv"), 1);
+    assert.equal(count(imports, "lost-companion.md"), 1);
+    assert.equal(tasks.size, taskCount);
+    assert(videoSubmissions.slice(-2).every(row => row.token === videoSubmissions.at(-1).token && !row.uploaded));
+    await screenshot("09-uncertain-video-library-check.png");
+    report.checks.push("lost creation response plus consumed token blocks reupload and duplicate failed tasks, preserving successful neighbours");
+    await close();
+
+    await openFiles();
+    const staleVideo = hold("video-preview", "stale-video.mkv");
+    await choose([fixtureFile("stale-video.mkv"), fixtureFile("unsent-video.mkv")]);
+    await waitForFixture(staleVideo.started, "local video fallback to start");
+    await choose([fixtureFile("new-video-selection.md")]);
+    await statuses(["ready"]);
+    staleVideo.release();
+    await waitForFixture(staleVideo.finished, "stale local video fallback");
+    await noPendingWork();
+    assert((await rowNames())[0].includes("new-video-selection.md"));
+    assert.equal(count(videoPreviews, "unsent-video.mkv"), 0);
+    const cancelledVideo = hold("video-preview", "cancelled-video.mkv");
+    await choose([fixtureFile("cancelled-video.mkv"), fixtureFile("cancelled-unsent-video.mkv")]);
+    await waitForFixture(cancelledVideo.started, "cancelled local video fallback to start");
+    await page.locator("#materialBatchCancel").click();
+    cancelledVideo.release();
+    await waitForFixture(cancelledVideo.finished, "cancelled local video fallback response");
+    await statuses(["pending", "pending"]);
+    assert.equal(count(videoPreviews, "cancelled-unsent-video.mkv"), 0);
+    assert.equal(count(videos, "cancelled-video.mkv"), 0);
+    await choose([fixtureFile("invalid-video.mkv")]);
+    await statuses(["failed"]);
+    assert(await page.locator("#createSubmit").isDisabled());
+    assert.equal(count(videos, "invalid-video.mkv"), 0);
+    report.checks.push("stale/cancelled local video preflight cannot overwrite the selection or send the next video; invalid media cannot submit");
     await close();
 
     // Test front-end limits using synthetic File.size metadata. No multi-GiB
     // allocation or upload occurs; real byte-limit enforcement belongs to API tests.
     await openFiles();
-    const validationBefore = previews.length + imports.length + videos.length;
+    const requestCount = () => previews.length + videoPreviews.length + imports.length + videoSubmissions.length;
+    const validationBefore = requestCount();
     await choose(Array.from({ length: 21 }, (_, i) => fixtureFile(`over-count-${i}.md`)));
     await page.waitForFunction(() => document.querySelector("#createSubmit").disabled);
     assert.match(await page.locator("#fileInput").innerText() + await page.locator("#createStatus").innerText(), /20/);
-    assert.equal(previews.length + imports.length + videos.length, validationBefore);
+    assert.equal(requestCount(), validationBefore);
     for (const files of [
       [{ name: "oversize-document.txt", size: 32 * MiB + 1 }],
       [{ name: "oversize-video.mp4", size: 4 * GiB + 1 }],
@@ -483,7 +589,7 @@ async function multipart(request) {
       }, files);
       await page.waitForFunction(() => document.querySelector("#createSubmit").disabled);
       await noPendingWork();
-      assert.equal(previews.length + imports.length + videos.length, validationBefore);
+      assert.equal(requestCount(), validationBefore);
     }
     await screenshot("07-batch-limits.png");
     report.checks.push("20-file, 32-MiB document, default video, and 4-GiB total guards (synthetic size metadata)");
@@ -504,7 +610,7 @@ async function multipart(request) {
     await statuses(["invalid"]);
     assert(await page.locator("#createSubmit").isDisabled());
     assert.match((await rowNames())[0], /2\.00 MiB.*上限/);
-    assert.equal(previews.length + imports.length + videos.length, validationBefore);
+    assert.equal(requestCount(), validationBefore);
     report.checks.push("health-advertised video limit overrides the default (synthetic size metadata)");
     await close();
 
@@ -535,6 +641,8 @@ async function multipart(request) {
     report.previews = previews;
     report.imports = imports;
     report.videos = videos;
+    report.videoPreviews = videoPreviews;
+    report.videoSubmissions = videoSubmissions;
     fs.writeFileSync(path.join(out, "result.json"), JSON.stringify(report, null, 2));
     await browser?.close();
     console.log(JSON.stringify({ passed: report.passed, out, checks: report.checks }));

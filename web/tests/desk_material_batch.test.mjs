@@ -27,6 +27,7 @@ function harness(newline = "\n") {
     window: { addEventListener: (name, fn) => events.set(name, fn) },
     api: async (path, request) => {
       const selected = request.body.get("file"); calls.push({ path, request, file: selected });
+      if (path.endsWith("/preflight-local")) return { duration: 12.5, staging_token: "a".repeat(32) };
       if (path.endsWith("/preview")) {
         if (h.previewWait?.name === selected.name) await h.previewWait.work.promise;
         return { filename: selected.name, byte_size: selected.size, estimated_storage_bytes: 42 };
@@ -61,14 +62,14 @@ for (const newline of ["\n", "\r\n"]) {
 {
   const h = harness(); await h.select([file("<file>.txt"), file("video.mp4")]);
   assert.match(h.$("materialBatchItems").innerHTML, /&lt;file&gt;/);
-  assert.match(h.$("materialBatchItems").innerHTML, /时长未知/);
+  assert.match(h.$("materialBatchItems").innerHTML, /时长 12.5s.*本机校验并暂存/);
   assert.match(h.$("materialBatchRoute").textContent, /仅提取内嵌字幕/);
   h.importWait = defer(); const work = h.view.submit(); await tick();
   assert.equal(h.$("materialBatchCancel").hidden, false);
   assert.equal(h.$("file").disabled, true);
   assert.equal(h.$("materialEncoding").disabled, true);
   assert.equal(h.$("contentModeChoices").disabled, true);
-  await h.view.submit(); assert.equal(h.calls.filter(call => !call.path.endsWith("/preview")).length, 1);
+  await h.view.submit(); assert.equal(h.calls.filter(call => !call.path.endsWith("/preview") && !call.path.endsWith("/preflight-local")).length, 1);
   h.$("materialBatchCancel").onclick(); h.importWait.resolve(); await work;
   assert.equal(h.opened.length, 0);
   assert.equal(h.view.items[0].status, "success"); assert.equal(h.view.items[1].status, "ready");
@@ -85,7 +86,7 @@ for (const leave of ["close", "escape", "navigate"]) {
   await h.flushClose();
   assert.equal(h.$("file").disabled, true, "Reopening cannot bypass an in-flight import");
   h.importWait.resolve(); await work;
-  assert.equal(h.calls.filter(call => !call.path.endsWith("/preview")).length, 1, `${leave} stops unsent items`);
+  assert.equal(h.calls.filter(call => !call.path.endsWith("/preview") && !call.path.endsWith("/preflight-local")).length, 1, `${leave} stops unsent items`);
   assert.equal(h.$("createStatus").textContent, "Newer visit");
   assert.equal(h.opened.length, 0); assert.equal(h.refreshes, 0, `${leave} cannot trigger a late reader refresh`);
   assert.equal(h.$("createDialog").open, true, "An old completion must not close the reopened dialog");
@@ -123,10 +124,10 @@ for (const leave of ["close", "escape", "navigate"]) {
   const h = harness(); await h.select([file("video.mp4"), file("document.txt")]);
   h.videoOptions = { content_mode: "visual", visual_understanding: true, llm_base_url: "https://new-provider.invalid", llm_model: "changed-model" };
   await h.view.submit();
-  assert.equal(h.calls.filter(call => !call.path.endsWith("/preview")).length, 0, "A silently changed processing route needs another explicit click after showing the new route");
+  assert.equal(h.calls.filter(call => !call.path.endsWith("/preview") && !call.path.endsWith("/preflight-local")).length, 0, "A silently changed processing route needs another explicit click after showing the new route");
   assert.match(h.$("createStatus").textContent, /设置已变化/);
   assert.match(h.$("materialBatchRoute").textContent, /new-provider.invalid/);
-  await h.view.submit(); assert.equal(h.calls.filter(call => !call.path.endsWith("/preview")).length, 2);
+  await h.view.submit(); assert.equal(h.calls.filter(call => !call.path.endsWith("/preview") && !call.path.endsWith("/preflight-local")).length, 2);
   h.state.input = "url"; h.view.render();
   assert.equal(h.$("contentModeChoices").disabled, false, "A retained batch must not lock a later URL workflow");
 }
