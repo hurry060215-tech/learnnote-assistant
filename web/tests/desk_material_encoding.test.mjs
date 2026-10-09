@@ -11,7 +11,7 @@ const fixture = { kind: "material", id: "local/text", material_id: "local/text",
   filename: "lesson.txt", source_type: "text", updated_at: "original-version", metadata: { encoding: "big5", decoding_hint: "big5" } };
 const updated = () => ({ material: { ...fixture, updated_at: "new-version", metadata: { encoding: "gb18030" } } });
 
-function harness() {
+function harness(moduleSource = source) {
   const nodes = new Map(), calls = [], posts = [], gets = [], confirmations = [], windowEvents = new Map();
   let generation = 0, refreshes = 0;
   class Element {
@@ -37,7 +37,7 @@ function harness() {
       return { material: structuredClone(fixture) };
     },
   });
-  vm.runInContext(source.replace(/^import .*;\n/, "").replaceAll("export function", "function"), context);
+  vm.runInContext(moduleSource.replace(/^import .*;\r?\n/, "").replaceAll("export function", "function"), context);
   const show = () => {
     generation++; dialog.open = true;
     nodes.set("toolBody", new Element()); nodes.set("toolStatus", new Element());
@@ -58,6 +58,13 @@ function harness() {
   h.home = () => { state.selected = null; state.epoch++; windowEvents.get("learnnote:navigation")(); };
   h.otherTool = () => { show(); $("toolStatus").textContent = "Newer tool"; };
   return h;
+}
+
+for (const newline of ["\n", "\r\n"]) {
+  const h = harness(source.replace(/\r?\n/g, newline));
+  await h.open();
+  assert.match(h.$("materialCurrentEncoding").textContent, /big5/);
+  assert.equal(h.posts.length, 0, "Opening the module remains read-only on either checkout newline convention");
 }
 
 {
