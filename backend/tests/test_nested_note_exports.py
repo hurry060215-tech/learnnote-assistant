@@ -84,3 +84,18 @@ class NestedNoteExportTests(unittest.TestCase):
         text=build_structured_export(task,NOTE,options={'include_diagnostics':True})['markdown']
         self.assertIn('## 诊断摘要',text);self.assertIn('long_paragraph',text)
         for secret in ['PRIVATE_SECRET','PRIVATE_BODY','C:/private']:self.assertNotIn(secret,text)
+
+    def test_static_metadata_footer_and_link_labels_use_explicit_cjk_runs(self):
+        result=build_docx_export(self.task,NOTE+'\n\n[日本語链接 🧭](https://example.org/lesson)',export_options={'include_toc':True})
+        with ZipFile(BytesIO(result.content)) as package: root=etree.fromstring(package.read('word/document.xml'))
+        ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        import re
+        cjk_runs=[]
+        for run in root.xpath('//w:r',namespaces=ns):
+            text=''.join(run.xpath('w:t/text()',namespaces=ns))
+            if re.search(r'[\u2e80-\u9fff]',text):
+                cjk_runs.append(text)
+                for script in ['ascii','hAnsi','eastAsia','cs']:
+                    self.assertTrue(run.xpath(f'w:rPr/w:rFonts/@w:{script}',namespaces=ns),text)
+        self.assertIn('在本机生成；原视频、',''.join(cjk_runs))
+        self.assertIn('日本語链接',''.join(cjk_runs))

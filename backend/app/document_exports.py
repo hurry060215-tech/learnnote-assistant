@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
+from .document_citations import project_claim_citations
+from .pdf_unicode import emoji_font_for
 from .note_document import section_anchor_id, strip_note_frontmatter
 from .markdown_structure import structural_lines
 from .math_text import inline_math_expressions, math_source_requires_fallback, render_math_text
@@ -276,12 +278,16 @@ def build_structured_export(
     *,
     annotations: str = "",
     practice: list[dict] | None = None,
+    claim_map: dict | None = None,
     options: dict | None = None,
 ) -> dict:
     """Build one portable content tree consumed by HTML, DOCX and PDF."""
     settings = normalize_export_options(options)
     title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     source_url = _safe_hyperlink(str(getattr(task, "page_url", ""))) if settings["include_source_link"] else ""
+    note, citation_warnings = project_claim_citations(task, str(note or ""), claim_map, settings,
+        safe_url=_safe_hyperlink, timed_url=_timestamp_source_url, sanitize=sanitize_export_text, transcript=transcript,
+        heading_texts=[block.text for block in _content_blocks(strip_note_frontmatter(note), title) if block.kind == "heading"])
     parts: list[str] = []
     if settings["include_note"]:
         notice = evidence_review_notice(task)
@@ -325,7 +331,7 @@ def build_structured_export(
     content_blocks = _content_blocks(body, title)
     expressions = [block.text for block in content_blocks if block.kind == "math"]
     expressions += [expression for block in content_blocks if block.kind != "code" for expression in inline_math_expressions(block.text)]
-    warnings = ["unrecognized_math_commands_preserved_as_source"] if any(math_source_requires_fallback(value) for value in expressions) else []
+    warnings = citation_warnings + (["unrecognized_math_commands_preserved_as_source"] if any(math_source_requires_fallback(value) for value in expressions) else [])
     return {
         "schema_version": DOCUMENT_EXPORT_SCHEMA_VERSION,
         "title": sanitize_export_text(title),
@@ -709,18 +715,16 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
             is_external=True,
         )
         hyperlink.set(qn("r:id"), relation_id)
-    run = OxmlElement("w:r")
-    properties = OxmlElement("w:rPr")
-    color = OxmlElement("w:color")
-    color.set(qn("w:val"), "0F766E")
-    underline = OxmlElement("w:u")
-    underline.set(qn("w:val"), "single")
-    properties.extend((color, underline))
-    run.append(properties)
-    node = OxmlElement("w:t")
-    node.text = text
-    run.append(node)
-    hyperlink.append(run)
+    from docx.text.paragraph import Paragraph as WordParagraph
+    scratch = WordParagraph(OxmlElement("w:p"), paragraph._parent)
+    scratch.style = paragraph.style
+    _add_docx_text(scratch, text)
+    for run in scratch.runs:
+        properties = run._element.get_or_add_rPr()
+        color = OxmlElement("w:color"); color.set(qn("w:val"), "0F766E")
+        underline = OxmlElement("w:u"); underline.set(qn("w:val"), "single")
+        properties.extend((color, underline))
+        hyperlink.append(run._element)
     paragraph._p.append(hyperlink)
 
 
@@ -763,7 +767,7 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
                     fonts.set(qn(f"w:{script}"), "Segoe UI Emoji")
 
 
-def _add_docx_inline(paragraph, value: str) -> None:
+def _add_docx_inline(paragraph, value: str, *, anchors: dict[str, str] | None = None) -> None:
     cursor = 0
     text = str(value or "")
     token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
@@ -772,7 +776,7 @@ def _add_docx_inline(paragraph, value: str) -> None:
             _add_docx_text(paragraph, _sanitize_export_text(text[cursor:match.start()]))
         if match.group(1) is not None:
             label, raw_url = match.group(1), match.group(2)
-            url = _safe_hyperlink(raw_url)
+            url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else _sanitize_export_text(label)
                 _add_docx_hyperlink(paragraph, display_label, url)
@@ -796,6 +800,7 @@ def build_docx_export(
     *,
     annotations: str = "",
     practice: list[dict] | None = None,
+    claim_map: dict | None = None,
     export_options: dict | None = None,
 ) -> DocumentExport:
     try:
@@ -813,9 +818,14 @@ def build_docx_export(
         transcript,
         annotations=annotations,
         practice=practice,
+        claim_map=claim_map,
         options={**settings, "include_toc": False},
     )
     note = structured["markdown"]
+    anchor_targets = {"#" + value: "#" + _word_bookmark_name(value)
+                      for value in _heading_anchors(_content_blocks(note, structured["title"])).values()}
+    def inline(paragraph, value):
+        _add_docx_inline(paragraph, value, anchors=anchor_targets)
     document = Document()
     section = document.sections[0]
     section.page_width, section.page_height = Cm(21), Cm(29.7)
@@ -881,23 +891,23 @@ def build_docx_export(
     if settings["include_source_link"] or settings["include_timestamps"]:
         source_line = document.add_paragraph()
         if settings["include_source_link"]:
-            source_line.add_run("来源：").bold = True
+            _add_docx_text(source_line, "来源：", bold=True)
             if source_url:
                 _add_docx_hyperlink(source_line, source_url, source_url)
             else:
-                source_line.add_run("本地资料")
+                _add_docx_text(source_line, "本地资料")
         if settings["include_timestamps"]:
-            source_line.add_run(("\n" if settings["include_source_link"] else "") + f"导出时间：{datetime.now(timezone.utc).isoformat()}")
+            _add_docx_text(source_line, ("\n" if settings["include_source_link"] else "") + f"导出时间：{datetime.now(timezone.utc).isoformat()}")
     segments = (transcript or {}).get("segments") if isinstance(transcript, dict) else []
     if settings["include_timestamps"] and isinstance(segments, list) and segments:
         source_line = locals().get("source_line") or document.add_paragraph()
-        source_line.add_run(f"\n可追溯字幕片段：{len(segments)} 段")
+        _add_docx_text(source_line, f"\n可追溯字幕片段：{len(segments)} 段")
 
     blocks = _content_blocks(note, raw_title)
     heading_anchors = _heading_anchors(blocks)
     if settings["include_toc"] and heading_anchors:
-        document.add_paragraph("目录", style="TOC Heading")
-        document.add_paragraph("页码由 Word/WPS 排版后更新目录生成。")
+        _add_docx_text(document.add_paragraph(style="TOC Heading"), "目录")
+        _add_docx_text(document.add_paragraph(), "页码由 Word/WPS 排版后更新目录生成。")
         toc_paragraph = document.add_paragraph()
         begin = OxmlElement("w:fldChar"); begin.set(qn("w:fldCharType"), "begin")
         command = OxmlElement("w:instrText"); command.set(qn("xml:space"), "preserve")
@@ -928,14 +938,14 @@ def build_docx_export(
         if block.kind == "table":
             rows = _table_rows(block.text)
             if not rows:
-                document.add_paragraph(_sanitize_export_text(block.text))
+                _add_docx_text(document.add_paragraph(), _sanitize_export_text(block.text))
                 continue
             table = document.add_table(rows=0, cols=len(rows[0]))
             table.style = "Table Grid"
             for index, values in enumerate(rows):
                 cells = table.add_row().cells
                 for cell, value in zip(cells, values):
-                    _add_docx_inline(cell.paragraphs[0], value)
+                    inline(cell.paragraphs[0], value)
                 if index == 0:
                     repeat = OxmlElement("w:tblHeader")
                     table.rows[0]._tr.get_or_add_trPr().append(repeat)
@@ -954,10 +964,10 @@ def build_docx_export(
                 picture._inline.docPr.set("descr", caption or "画面出处；请回原资料核对")
                 caption_paragraph = document.add_paragraph()
                 caption_text = caption or "画面出处；请回原资料核对"
-                _add_docx_inline(caption_paragraph, _linkify_video_timestamps(caption_text, source_url) if source_url else caption_text)
+                inline(caption_paragraph, _linkify_video_timestamps(caption_text, source_url) if source_url else caption_text)
         elif block.kind == "heading":
             paragraph = document.add_heading(level=max(1, min(block.level, 3)))
-            _add_docx_inline(paragraph, block.text)
+            inline(paragraph, block.text)
             bookmark = OxmlElement("w:bookmarkStart")
             bookmark.set(qn("w:id"), str(block_index + 1))
             bookmark.set(qn("w:name"), _word_bookmark_name(heading_anchors[block_index]))
@@ -968,7 +978,7 @@ def build_docx_export(
         elif block.kind == "bullet":
             paragraph = document.add_paragraph(style="List Bullet")
             paragraph.paragraph_format.left_indent = Cm(.6 + .6 * block.level)
-            _add_docx_inline(paragraph, block.text)
+            inline(paragraph, block.text)
         elif block.kind == "ordered":
             paragraph = document.add_paragraph(style="List Number")
             paragraph.paragraph_format.left_indent = Cm(.6 + .6 * block.level)
@@ -980,10 +990,10 @@ def build_docx_export(
             numbering.get_or_add_ilvl().val = 0
             numbering.get_or_add_numId().val = sequence_id
             numbering_sequences[block.level] = (sequence_id, block.ordinal)
-            _add_docx_inline(paragraph, block.text)
+            inline(paragraph, block.text)
         elif block.kind == "quote":
             paragraph = document.add_paragraph(style="Quote")
-            _add_docx_inline(paragraph, block.text)
+            inline(paragraph, block.text)
         elif block.kind == "math":
             paragraph = document.add_paragraph()
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -996,11 +1006,11 @@ def build_docx_export(
                 run.font.size = Pt(9)
         else:
             paragraph = document.add_paragraph()
-            _add_docx_inline(paragraph, block.text)
+            inline(paragraph, block.text)
 
     # Word handles page breaks and long documents more reliably when the final
     # paragraph is not part of a list or a code run.
-    document.add_paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。")
+    _add_docx_text(document.add_paragraph(), "由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。")
     buffer = BytesIO()
     document.save(buffer)
     warnings = [] if _font_available(settings["font_family"]) else ["requested_docx_font_unavailable_using_host_fallback"]
@@ -1056,10 +1066,10 @@ def _pdf_font(preferred: str = "") -> tuple[str, list[str]]:
 def _pdf_compatible_text(value: str) -> str:
     """Keep PDF output legible when ReportLab cannot encode non-BMP glyphs."""
 
-    source = str(value or "").replace("\uFE0F", "").replace("\u200D", "")
+    source = str(value or "")
     pieces = []
     for character in source:
-        if ord(character) <= 0xFFFF:
+        if ord(character) <= 0xFFFF or emoji_font_for(character):
             pieces.append(character)
             continue
         name = unicodedata.name(character, "")
@@ -1092,10 +1102,14 @@ def _pdf_symbol_font() -> str:
 
 def _pdf_text_runs(value: str, base_font: str = "") -> list[tuple[str, str]]:
     symbols = "αβγδθλμπστφωΔΣΩ∂≤≥≠→←≈≡∑∫√∞"
-    result = []
-    for part in re.split(r"([\u00a0-\u00ff]+|[" + re.escape(symbols) + r"]+)", str(value or "")):
-        font = "Helvetica" if part and all(0xA0 <= ord(c) <= 0xFF for c in part) else _pdf_symbol_font() if part and all(c in symbols for c in part) else base_font
-        result.append((part, font))
+    result: list[tuple[str, str]] = []
+    for character in str(value or ""):
+        font = emoji_font_for(character) or ("Helvetica" if 0xA0 <= ord(character) <= 0xFF
+            else _pdf_symbol_font() if character in symbols else base_font)
+        if result and result[-1][1] == font:
+            result[-1] = (result[-1][0] + character, font)
+        else:
+            result.append((character, font))
     return result
 
 
@@ -1104,7 +1118,7 @@ def _pdf_escape_text(value: str) -> str:
                    for part, font in _pdf_text_runs(value))
 
 
-def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
+def _pdf_inline(value: str, *, pdf_safe: bool = True, anchors: dict[str, str] | None = None) -> str:
     compatible = _pdf_compatible_text if pdf_safe else str
     escape_text = _pdf_escape_text if pdf_safe else html.escape
     source = str(value or "")
@@ -1115,7 +1129,7 @@ def _pdf_inline(value: str, *, pdf_safe: bool = True) -> str:
         parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:match.start()]))))
         if match.group(1) is not None:
             label, raw_url = match.group(1), match.group(2)
-            url = _safe_hyperlink(raw_url)
+            url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else compatible(_sanitize_export_text(label))
                 parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{escape_text(display_label)}</u></a>')
@@ -1147,6 +1161,7 @@ def build_pdf_export(
     *,
     annotations: str = "",
     practice: list[dict] | None = None,
+    claim_map: dict | None = None,
     export_options: dict | None = None,
 ) -> DocumentExport:
     try:
@@ -1166,14 +1181,19 @@ def build_pdf_export(
         transcript,
         annotations=annotations,
         practice=practice,
+        claim_map=claim_map,
         options={**settings, "include_toc": False},
     )
     note = structured["markdown"]
+    anchor_targets = {"#" + value: "#" + value
+                      for value in _heading_anchors(_content_blocks(note, structured["title"])).values()}
+    def inline(value):
+        return _pdf_inline(value, anchors=anchor_targets)
     font_name, warnings = _pdf_font(settings["font_family"])
     warnings.extend(structured["warnings"])
     raw_title = str(getattr(task, "title", "LearnNote 学习笔记")) or "LearnNote 学习笔记"
     safe_title = _pdf_compatible_text(_sanitize_export_text(raw_title))
-    has_non_bmp_text = bool(_NON_BMP_RE.search(str(note or "") + raw_title))
+    has_non_bmp_text = any(not emoji_font_for(character) for character in _NON_BMP_RE.findall(str(note or "") + raw_title))
     if has_non_bmp_text:
         warnings.append("non_bmp_symbols_rendered_as_unicode_names")
     buffer = BytesIO()
@@ -1183,8 +1203,9 @@ def build_pdf_export(
             heading = getattr(flowable, "learnnote_heading", None)
             if heading:
                 level, label, anchor = heading
-                self.canv.bookmarkPage(anchor)
-                self.notify("TOCEntry", (level, label, self.page, anchor))
+                self.canv.bookmarkHorizontalAbsolute(anchor, self.frame._y + flowable.height)
+                if level <= 2:
+                    self.notify("TOCEntry", (level, label, self.page, anchor))
 
     document = EvidenceDocTemplate(
         buffer,
@@ -1252,7 +1273,7 @@ def build_pdf_export(
         story.extend([Paragraph("目录", toc_heading), toc, Spacer(1, 8 * mm)])
     for block_index, block in enumerate(blocks):
         if block.kind == "table":
-            rows = [[Paragraph(_pdf_inline(cell), body) for cell in row] for row in _table_rows(block.text)]
+            rows = [[Paragraph(inline(cell), body) for cell in row] for row in _table_rows(block.text)]
             if not rows:
                 story.append(Paragraph(html.escape(_pdf_compatible_text(_sanitize_export_text(block.text))), body))
                 continue
@@ -1267,24 +1288,23 @@ def build_pdf_export(
                 image.drawWidth, image.drawHeight = image.imageWidth * scale, image.imageHeight * scale
                 story.append(image)
             caption_text = caption or "画面出处；请回原资料核对"
-            story.append(Paragraph(_pdf_inline(_linkify_video_timestamps(caption_text, source_url) if source_url else caption_text), meta))
+            story.append(Paragraph(inline(_linkify_video_timestamps(caption_text, source_url) if source_url else caption_text), meta))
         elif block.kind == "heading":
-            paragraph = Paragraph(_pdf_inline(block.text), heading_styles[max(1, min(block.level, 3))])
-            if block.level <= 3:
-                paragraph.learnnote_heading = (max(0, block.level - 1),
-                    _pdf_escape_text(_pdf_compatible_text(_sanitize_export_text(_clean_inline_markdown(block.text)))),
-                    heading_anchors[block_index])
+            paragraph = Paragraph(inline(block.text), heading_styles[max(1, min(block.level, 3))])
+            paragraph.learnnote_heading = (max(0, block.level - 1),
+                _pdf_escape_text(_pdf_compatible_text(_sanitize_export_text(_clean_inline_markdown(block.text)))),
+                heading_anchors[block_index])
             story.append(paragraph)
         elif block.kind == "bullet":
             style = ParagraphStyle("NestedBullet", parent=bullet, leftIndent=10+12*block.level, bulletIndent=12*block.level)
-            story.append(Paragraph(_pdf_inline(block.text), style, bulletText="•"))
+            story.append(Paragraph(inline(block.text), style, bulletText="•"))
         elif block.kind == "ordered":
             style = ParagraphStyle("NestedNumber", parent=bullet, leftIndent=10+12*block.level, bulletIndent=12*block.level)
-            story.append(Paragraph(_pdf_inline(block.text), style, bulletText=f"{block.ordinal}."))
+            story.append(Paragraph(inline(block.text), style, bulletText=f"{block.ordinal}."))
         elif block.kind == "quote":
             quote = ParagraphStyle("LearnNoteQuote", parent=body, leftIndent=14,
                 borderColor=colors.HexColor("#ccd9db"), borderWidth=.5, borderPadding=6)
-            story.append(Paragraph(_pdf_inline(block.text), quote))
+            story.append(Paragraph(inline(block.text), quote))
         elif block.kind == "math":
             style = ParagraphStyle("LessonMath", parent=body, alignment=TA_CENTER)
             story.append(Paragraph(_pdf_escape_text(_pdf_compatible_text(render_math_text(_sanitize_export_text(block.text)))), style))
@@ -1294,14 +1314,14 @@ def build_pdf_export(
                 font_name, code.fontSize, max(1, document.width - 14 - 12*block.level))
             story.append(XPreformatted(_pdf_escape_text(wrapped_code), style))
         else:
-            story.append(Paragraph(_pdf_inline(block.text).replace("\n", "<br/>"), body))
+            story.append(Paragraph(inline(block.text).replace("\n", "<br/>"), body))
     story.extend((Spacer(1, 4 * mm), Paragraph("由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。", meta)))
 
     def draw_footer(canvas, doc) -> None:
         canvas.saveState()
         from reportlab.pdfbase.pdfmetrics import stringWidth
         label = safe_title
-        while label and stringWidth(label, font_name, 7) > doc.width:
+        while label and sum(stringWidth(part, selected, 7) for part, selected in _pdf_text_runs(label, font_name)) > doc.width:
             label = label[:-1]
         if label != safe_title:
             label = label[:-3] + "..."
@@ -1341,6 +1361,7 @@ def build_html_export(
     *,
     annotations: str = "",
     practice: list[dict] | None = None,
+    claim_map: dict | None = None,
     export_options: dict | None = None,
 ) -> DocumentExport:
     """Render the same structured blocks as an offline, self-contained HTML file."""
@@ -1351,8 +1372,13 @@ def build_html_export(
         transcript,
         annotations=annotations,
         practice=practice,
+        claim_map=claim_map,
         options={**settings, "include_toc": False},
     )
+    anchor_targets = {"#" + value: "#" + value
+                      for value in _heading_anchors(_content_blocks(structured["markdown"], structured["title"])).values()}
+    def inline(value):
+        return _pdf_inline(value, pdf_safe=False, anchors=anchor_targets)
     title = html.escape(structured["title"])
     body: list[str] = []
     toc: list[str] = []
@@ -1370,7 +1396,7 @@ def build_html_export(
         if len(list_stack) <= target:
             body.append(f"<{kind}>"); list_stack.append(kind)
         ordinal = f' value="{block.ordinal}"' if kind == "ol" else ""
-        body.append(f"<li{ordinal}>{_pdf_inline(block.text, pdf_safe=False)}")
+        body.append(f"<li{ordinal}>{inline(block.text)}")
     for block in _content_blocks(structured["markdown"], structured["title"]):
         if block.kind == "heading":
             close_list()
@@ -1389,7 +1415,7 @@ def build_html_export(
                 rendered_rows = []
                 for row_index, row in enumerate(rows):
                     tag = "th" if row_index == 0 else "td"
-                    rendered_rows.append("<tr>" + "".join(f"<{tag}>{_pdf_inline(cell, pdf_safe=False)}</{tag}>" for cell in row) + "</tr>")
+                    rendered_rows.append("<tr>" + "".join(f"<{tag}>{inline(cell)}</{tag}>" for cell in row) + "</tr>")
                 body.append("<table>" + "".join(rendered_rows) + "</table>")
         elif block.kind == "image":
             close_list()
@@ -1402,7 +1428,7 @@ def build_html_export(
             list_item(block)
         elif block.kind == "quote":
             close_list()
-            body.append(f"<blockquote>{_pdf_inline(block.text, pdf_safe=False)}</blockquote>")
+            body.append(f"<blockquote>{inline(block.text)}</blockquote>")
         elif block.kind == "math":
             if not block.level: close_list()
             expression = html.escape(render_math_text(_sanitize_export_text(block.text)))
@@ -1412,7 +1438,7 @@ def build_html_export(
             body.append(f"<pre><code>{html.escape(_sanitize_export_text(block.text))}</code></pre>")
         else:
             close_list()
-            body.append(f"<p>{_pdf_inline(block.text, pdf_safe=False).replace(chr(10), '<br>')}</p>")
+            body.append(f"<p>{inline(block.text).replace(chr(10), '<br>')}</p>")
     close_list()
     rendered = body
 
