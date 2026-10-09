@@ -14,6 +14,7 @@ from .storage import get_task, task_dir
 from .task_artifacts import owned_task_artifact
 
 KINDS = {"claim", "transcript", "visual"}
+MAX_TRANSCRIPT_CUES = 1000
 TEXT_FIELDS = ("source_revision", "locator", "quote_hash", "selected_text",
                "kind", "source_task_id", "claim_id", "evidence_id", "window_id", "target_hash")
 
@@ -47,6 +48,24 @@ def normalize_anchor(anchor: dict | None) -> dict:
     if kind in KINDS and (not result.get("target_hash") or not result.get("source_task_id") or not result.get("source_revision")
                          or not result.get("claim_id" if kind == "claim" else "evidence_id")):
         raise ValueError("annotation_anchor_target_required")
+    if "cues" in anchor:
+        cues = anchor["cues"]
+        if kind != "transcript" or not isinstance(cues, list) or not 2 <= len(cues) <= MAX_TRANSCRIPT_CUES:
+            raise ValueError("annotation_anchor_range_invalid")
+        result["cues"] = []
+        for cue in cues:
+            if not isinstance(cue, dict) or set(cue) != {"evidence_id", "start", "end", "target_hash"}:
+                raise ValueError("annotation_anchor_range_invalid")
+            checked = normalize_anchor({**cue, "kind": kind, "source_task_id": result["source_task_id"],
+                                        "source_revision": result["source_revision"]})
+            result["cues"].append({key: checked[key] for key in cue})
+        if (result["start"] != min(cue["start"] for cue in cues)
+                or result["end"] != max(cue["end"] for cue in cues)):
+            raise ValueError("annotation_anchor_range_invalid")
+        interval = _transcript_interval([{**cue, "kind": kind, "source_task_id": result["source_task_id"],
+                                          "source_revision": result["source_revision"]} for cue in result["cues"]])
+        if any(result[key] != interval[key] for key in ("evidence_id", "target_hash")):
+            raise ValueError("annotation_anchor_range_invalid")
     return result
 
 
@@ -190,18 +209,101 @@ def annotation_targets(kind: str, source_id: str) -> dict:
     return {"targets": targets}
 
 
+def _transcript_interval(cues: list[dict]) -> dict:
+    """One ordered, uninterrupted run; retain all original cue boundaries."""
+    if not cues or len(cues) > MAX_TRANSCRIPT_CUES:
+        raise ValueError("annotation_anchor_range_invalid")
+    first = cues[0]
+    prefix = f"task-{first['source_task_id']}-transcript-"
+    ordinals = []
+    for cue in cues:
+        match = re.fullmatch(re.escape(prefix) + r"(\d{5,})", cue.get("evidence_id", ""))
+        if (not match or cue.get("kind") != "transcript" or cue.get("source_revision") != first["source_revision"]
+                or cue.get("source_task_id") != first["source_task_id"]):
+            raise ValueError("annotation_anchor_range_invalid")
+        ordinals.append(int(match[1]))
+    if ordinals != list(range(ordinals[0], ordinals[0] + len(cues))):
+        raise ValueError("annotation_anchor_range_invalid")
+    if len(cues) == 1:
+        return dict(first)  # Keep schema-2 single-cue identities unchanged.
+    start, end = min(cue["start"] for cue in cues), max(cue["end"] for cue in cues)
+    return {"kind": "transcript", "source_task_id": first["source_task_id"],
+            "source_revision": first["source_revision"], "start": start, "end": end,
+            "evidence_id": f"{first['evidence_id']}..{ordinals[-1]:05d}",
+            "target_hash": digest(["transcript-range", [[float(cue["start"]), float(cue["end"]), cue["target_hash"]] for cue in cues]]),
+            "selected_text": "\n".join(cue.get("selected_text", "") for cue in cues)[:1000],
+            "locator": f"{start:g}–{end:g}s",
+            "cues": [{key: cue[key] for key in ("evidence_id", "start", "end", "target_hash")} for cue in cues]}
+
+
+def transcript_interval(source_id: str, first_id: str, last_id: str, revision: str) -> dict:
+    cues = [item["anchor"] for item in annotation_targets("task", source_id)["targets"]
+            if item["anchor"]["kind"] == "transcript"]
+    identities = [cue["evidence_id"] for cue in cues]
+    if not revision or any(cue["source_revision"] != revision for cue in cues) or first_id not in identities or last_id not in identities:
+        raise ValueError("annotation_anchor_stale")
+    first, last = identities.index(first_id), identities.index(last_id)
+    return _transcript_interval(cues[first:last + 1])
+
+
+def _interval_targets(anchor: dict, targets: list[dict]) -> list[dict]:
+    """Search exact cue sequences without enumerating every possible interval."""
+    try:
+        anchor = normalize_anchor(anchor)
+    except (ValueError, KeyError):
+        return []
+    needle = "".join(cue["target_hash"] + ";" for cue in anchor["cues"])
+    if any(not re.fullmatch(r"[a-f0-9]{64}", cue["target_hash"]) for cue in anchor["cues"]):
+        return []
+    groups = {}
+    for target in targets:
+        cue = target["anchor"]
+        if cue.get("kind") == "transcript":
+            groups.setdefault(cue["source_task_id"], []).append(cue)
+    groups = {owner: cues for owner, cues in groups.items() if _related(anchor["source_task_id"], owner)}
+    for cues in groups.values():
+        for index, cue in enumerate(cues):
+            if (cue["source_task_id"] == anchor["source_task_id"] and cue["source_revision"] == anchor["source_revision"]
+                    and cue["evidence_id"] == anchor["cues"][0]["evidence_id"]):
+                try:
+                    candidate = _transcript_interval(cues[index:index + len(anchor["cues"])])
+                except ValueError:
+                    continue
+                if candidate.get("cues") == anchor["cues"] and candidate["target_hash"] == anchor["target_hash"]:
+                    return [{"anchor": candidate}]
+    matches = []
+    for cues in groups.values():
+        haystack = "".join(cue["target_hash"] + ";" for cue in cues)
+        offset = haystack.find(needle)
+        while offset >= 0:
+            index = offset // 65  # SHA-256 hex plus one delimiter per cue.
+            try:
+                candidate = _transcript_interval(cues[index:index + len(anchor["cues"])])
+            except ValueError:
+                candidate = None  # Invalid/missing cues must never be bridged.
+            if candidate and candidate["target_hash"] == anchor["target_hash"]:
+                matches.append({"anchor": candidate})
+                if len(matches) == 2:
+                    return matches  # Two exact sequences already prove ambiguity.
+            offset = haystack.find(needle, offset + 65)
+    return matches
+
+
 def resolve_anchor(anchor: dict, targets: list[dict]) -> dict:
+    if anchor.get("kind") == "transcript" and "cues" in anchor:
+        targets = _interval_targets(anchor, targets)
     source = str(anchor.get("source_task_id") or "")
     owners = {str(item["anchor"].get("source_task_id") or "") for item in targets}
     related = {owner for owner in owners if _related(source, owner)}
     candidates = [item["anchor"] for item in targets if item["anchor"].get("source_task_id") in related and item["anchor"].get("kind") == anchor.get("kind")
-                  and item["anchor"].get("target_hash") == anchor.get("target_hash")]
+                  and item["anchor"].get("target_hash") == anchor.get("target_hash")
+                  and all(item["anchor"].get(key) == anchor.get(key) for key in ("start", "end"))]
     identity = "claim_id" if anchor.get("kind") == "claim" else "evidence_id"
     exact = [item for item in candidates if item.get(identity) == anchor.get(identity)
              and item.get("source_task_id") == anchor.get("source_task_id")]
     # Unchanged artifact revision makes its occurrence ID meaningful. Changed
     # revisions require one unique exact match even if an ordinal ID repeats.
-    unchanged = exact and exact[0].get("source_revision") == anchor.get("source_revision")
+    unchanged = exact and exact[0].get("source_revision") == anchor.get("source_revision") and exact[0].get("cues") == anchor.get("cues")
     if len(exact) == 1 and unchanged:
         resolution, selected = "exact", exact[0]
     elif len(candidates) == 1:
