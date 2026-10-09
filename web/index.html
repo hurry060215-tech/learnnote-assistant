@@ -120,13 +120,14 @@
           />
         </div>
         <div id="fileInput" hidden>
-          <label class="file-drop" for="file"
-            >选择视频或学习资料<input
+          <label id="fileDrop" class="file-drop" for="file"
+            >选择或拖入视频、学习资料（可多选）<input
               id="file"
               type="file"
-              accept="video/*,.mkv,.pdf,.md,.markdown,.txt,.html,.htm"
+              multiple
+              accept=".mp4,.m4s,.m4v,.mov,.mkv,.webm,.flv,.avi,.pdf,.md,.markdown,.txt,.html,.htm"
             /><small
-              >视频生成笔记；PDF / Markdown / TXT / HTML 保留原文阅读。</small
+              >每批最多 20 个文件、合计 4 GiB；每份文档最多 32 MiB。视频使用当前处理路线；PDF / Markdown / TXT / HTML 保留原文阅读。</small
             ></label
           >
           <label id="materialEncodingChoice" class="material-encoding-choice" for="materialEncoding" hidden>
@@ -141,6 +142,14 @@
               <option value="utf-16-be">UTF-16 BE</option>
             </select>
           </label>
+          <section id="selectedFilePreview" class="material-batch" aria-label="所选文件预检与导入进度" hidden>
+            <p id="materialBatchRoute" class="muted"></p>
+            <ol id="materialBatchItems"></ol>
+            <p id="materialBatchSummary" role="status" aria-live="polite"></p>
+            <button type="button" id="materialBatchRetryPreview" hidden>重新预检未完成项</button>
+            <button type="button" id="materialBatchCancel" hidden>停止后续文件</button>
+            <p class="muted">预检和提交逐个进行。关闭窗口会停止后续文件；已经提交的文件可能继续完成，已有资料不会删除。</p>
+          </section>
         </div>
         <div id="browserInput" hidden>
           <p>
