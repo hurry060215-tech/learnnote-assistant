@@ -112,6 +112,47 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         (root / "web/classic.html").write_text('<script src="/web/app.js"></script>', encoding="utf-8")
         self.assertTrue(any("before its classic script is loaded" in error for error in javascript_violations(root)))
 
+    def test_task_list_requires_both_helpers_before_app(self):
+        files = {
+            "web/task-format.js": "globalThis.LearnNoteTaskFormat = {};",
+            "web/task-display.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteTaskDisplay = {};",
+            "web/task-list.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteTaskDisplay; globalThis.LearnNoteTaskList = {};",
+            "web/app.js": "globalThis.LearnNoteTaskList;",
+        }
+        root = self.repository(files)
+        order = list(files)
+        html = root / "web/classic.html"
+        html.write_text("".join(f'<script src="/{name}?v=fixture"></script>' for name in order), encoding="utf-8")
+        self.assertEqual(javascript_violations(root), [])
+        for sequence in (order[:-2] + order[-2:][::-1], [order[0], order[2], order[1], order[3]], order[:2] + [order[3]]):
+            with self.subTest(sequence=sequence):
+                html.write_text("".join(f'<script src="/{name}"></script>' for name in sequence), encoding="utf-8")
+                self.assertTrue(any("before its classic script is loaded" in error for error in javascript_violations(root)))
+
+    def test_task_list_reverse_dependency_and_missing_helper_fail(self):
+        root = self.repository({
+            "web/task-list.js": 'import "./app.js"; globalThis.LearnNoteTaskFormat;',
+            "web/app.js": "globalThis.LearnNoteTaskList;",
+        })
+        errors = javascript_violations(root)
+        self.assertTrue(any("dependency cycle" in error for error in errors))
+        self.assertTrue(any("pure-module boundary" in error for error in errors))
+        self.assertTrue(any("missing local script web/task-format.js" in error for error in errors))
+
+    def test_classic_task_dependency_cannot_escape_combined_budget(self):
+        root = self.repository({
+            "web/app.js": "globalThis.LearnNoteTaskList;",
+            "web/task-list.js": "globalThis.LearnNoteTaskDisplay;",
+            "web/task-display.js": "globalThis.LearnNoteTaskFormat;",
+            "web/task-format.js": "globalThis.LearnNoteTaskFormat = {};",
+        })
+        names = ("app.js", "task-list.js", "task-display.js", "task-format.js")
+        self.assertEqual(javascript_violations(root, classic_task_scripts=names), [])
+        for omitted in names:
+            with self.subTest(omitted=omitted):
+                errors = javascript_violations(root, classic_task_scripts=tuple(name for name in names if name != omitted))
+                self.assertTrue(any(f"Classic task budget omits dependency web/{omitted}" in error for error in errors))
+
     def test_pure_reverse_dependency_and_cross_surface_import_fail(self):
         root = self.repository({
             "extension/capture-classification.js": 'importScripts("background.js");',

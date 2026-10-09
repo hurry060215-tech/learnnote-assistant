@@ -22,7 +22,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/main.py": 4705,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
-    "web/app.js": 9650,
+    "web/app.js": 9455,
     "web/styles.css": 12262,
     "backend/app/media_source_context.py": 300,
     "backend/app/media_url_parsing.py": 290,
@@ -42,6 +42,7 @@ MODULE_SIZE_LIMITS = {
     "extension/capture-ranking.js": 320,
     "web/task-format.js": 210,
     "web/task-display.js": 225,
+    "web/task-list.js": 215,
     "web/learning.js": 600,
     "web/personal-notes.js": 300,
     "web/courses.js": 500,
@@ -119,6 +120,8 @@ EXTRACTED_BACKEND_MODULES = (
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
+CLASSIC_TASK_SCRIPT_BUDGET = 10100
+CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js")
 
 
 def aggregate_size_violations() -> list[str]:
@@ -129,6 +132,9 @@ def aggregate_size_violations() -> list[str]:
     size = sum((ROOT / "extension" / name).stat().st_size for name in EXTENSION_CAPTURE_SCRIPTS)
     if size > EXTENSION_SCRIPT_BUDGET_BYTES:
         violations.append(f"Extension capture scripts have {size} bytes; bundle budget is {EXTENSION_SCRIPT_BUDGET_BYTES}")
+    lines = sum(len((ROOT / "web" / name).read_text(encoding="utf-8").splitlines()) for name in CLASSIC_TASK_SCRIPTS)
+    if lines > CLASSIC_TASK_SCRIPT_BUDGET:
+        violations.append(f"Classic task scripts have {lines} lines; combined budget is {CLASSIC_TASK_SCRIPT_BUDGET}")
     return violations
 
 
@@ -156,7 +162,7 @@ def module_size_violations() -> list[str]:
 
 
 def main() -> int:
-    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS) + classic_style_violations(ROOT) + module_size_violations() + aggregate_size_violations()
+    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS, CLASSIC_TASK_SCRIPTS) + classic_style_violations(ROOT) + module_size_violations() + aggregate_size_violations()
     if violations:
         print("Architecture boundary violations:")
         print("\n".join(violations))
