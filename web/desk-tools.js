@@ -1,6 +1,7 @@
 import { mountSupportSummary } from "/web/support-summary.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
+import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -41,6 +42,7 @@ export function installTools(ctx) {
     const el = $("toolStatus");
     if (el) el.textContent = text;
   }
+  const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
   async function run(button, work) {
     const token = generation;
     if (button) button.disabled = true;
@@ -324,6 +326,7 @@ export function installTools(ctx) {
       const messages = {
         non_bmp_symbols_rendered_as_unicode_names: "PDF 中的部分表情与特殊符号已替换为可读名称，以免显示为空白。",
         docx_toc_page_numbers_require_field_update: "Word 目录页码需要在打开文件后右键目录，选择“更新域/更新整个目录”。",
+        claim_citations_require_current_map: "部分结论引用需要按当前笔记重建，请回来源页核对。",
         unrecognized_math_commands_preserved_as_source: "少量公式命令已保留原文，请核对。",
         requested_docx_font_unavailable_using_host_fallback: "所选 Word 字体未安装，将使用打开文件设备上的替代字体；排版可能变化。",
         emoji_font_unavailable_using_host_fallback: "表情字体未安装，将使用打开文件设备上的替代字体。",
@@ -606,6 +609,12 @@ export function installTools(ctx) {
       rebuildButton.textContent = "从本机原文件重建出处索引";
       $("toolBody").querySelector(".tool-menu")?.append(rebuildButton);
     }
+    if (canRedecodeMaterial(s)) {
+      const encodingButton = document.createElement("button");
+      encodingButton.dataset.action = "material-encoding";
+      encodingButton.textContent = "重新选择原文编码";
+      $("toolBody").querySelector(".tool-menu")?.append(encodingButton);
+    }
     backAction = null;
   }
   async function batch() {
@@ -711,6 +720,7 @@ export function installTools(ctx) {
     more();
   };
   const actions = {
+    "material-encoding": materialEncoding,
     community,
     "toggle-community": async (button) => {
       await api("/api/study/community/settings", {

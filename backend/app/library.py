@@ -1184,9 +1184,9 @@ def material_content(material_id: str) -> str:
         return "\n\n".join(str(item["text"]) for item in anchors)
 
 
-def redecode_document_material(material_id: str, encoding: str) -> dict[str, object]:
+def redecode_document_material(material_id: str, encoding: str, *, expected_updated_at: str | None = None) -> dict[str, object]:
     """Re-parse one stored text document from its unchanged original bytes."""
-    return _rewrite_document_material(material_id, encoding, rebuilding=False)
+    return _rewrite_document_material(material_id, encoding, rebuilding=False, expected_updated_at=expected_updated_at)
 
 
 def rebuild_document_material(material_id: str) -> dict[str, object]:
@@ -1194,12 +1194,14 @@ def rebuild_document_material(material_id: str) -> dict[str, object]:
     return _rewrite_document_material(material_id, "", rebuilding=True)
 
 
-def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool) -> dict[str, object]:
+def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool, expected_updated_at: str | None = None) -> dict[str, object]:
     requested = str(encoding or "").strip()[:40]
     if not requested and not rebuilding:
         raise ValueError("material_redecode_encoding_required")
     with _lock:
         material = get_material(material_id)
+        if expected_updated_at is not None and material.get("updated_at") != expected_updated_at:
+            raise ValueError("material_redecode_changed_reload_required")
         if material.get("linked_task_id"):
             raise ValueError("material_rebuild_requires_document")
         if not rebuilding and (str(material.get("source_type") or "") == "pdf" or Path(str(material.get("filename") or "")).suffix.lower() == ".pdf"):

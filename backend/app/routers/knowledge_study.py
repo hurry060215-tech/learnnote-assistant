@@ -14,9 +14,8 @@ from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text_with_metadata, preserve_raw_import, redecode_evidence, remove_evidence, search_evidence
 from ..learning_backup import export_learning_backup, restore_learning_backup
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
-from ..note_document import normalize_note_markdown
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
-from ..storage import get_task
+from ..storage import get_task, read_json
 from ..study import initialize_study_timezone, quiz_evidence_eligible, edit_card_content, delete_study_card
 from ..study import rebuild_study_schedules
 from ..courses import course_evidence_ids
@@ -589,12 +588,14 @@ def _document_export_response(task_id: str, export_type: str, include_annotation
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
     if not note.strip():
         raise HTTPException(status_code=404, detail={"code": "note_not_found", "message": "任务还没有可导出的笔记。"})
-    note = normalize_note_markdown(task.title, note).markdown
+    annotations = ""
     if include_annotations:
         from ..personal_notes import annotation_markdown
-        note += annotation_markdown("task", task_id)
+        annotations = annotation_markdown("task", task_id)
+    claim_map = read_json(task_id, "claim_evidence_map.json", {})
+    builder = build_docx_export if export_type == "docx" else build_pdf_export
     try:
-        artifact = build_docx_export(task, note, transcript) if export_type == "docx" else build_pdf_export(task, note, transcript)
+        artifact = builder(task, note, transcript, annotations=annotations, claim_map=claim_map)
     except DocumentExportUnavailable as exc:
         code = str(exc)
         raise HTTPException(
@@ -655,7 +656,7 @@ def _unified_export_inputs(task_id: str, request: UnifiedExportRequest):
 @task_study_router.post("/{task_id}/exports/preview")
 def api_unified_export_preview(task_id: str, request: UnifiedExportRequest) -> dict:
     task, note, transcript, annotations, practice, options = _unified_export_inputs(task_id, request)
-    artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+    artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, claim_map=read_json(task_id, "claim_evidence_map.json", {}), export_options=options)
     return {
         "format": request.format,
         "schema_version": artifact.schema_version,
@@ -671,22 +672,24 @@ def api_unified_export(task_id: str, export_format: str, request: UnifiedExportR
     if export_format not in {"html", "docx", "pdf", "markdown"}:
         raise HTTPException(404, {"code": "unsupported_export_format", "message": "支持 HTML、Word、PDF 或 Markdown。"})
     task, note, transcript, annotations, practice, options = _unified_export_inputs(task_id, request.model_copy(update={"format": export_format}))
+    claim_map = read_json(task_id, "claim_evidence_map.json", {})
     try:
         if export_format == "html":
-            artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+            artifact = build_html_export(task, note, transcript, annotations=annotations, practice=practice, claim_map=claim_map, export_options=options)
         elif export_format == "docx":
-            artifact = build_docx_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+            artifact = build_docx_export(task, note, transcript, annotations=annotations, practice=practice, claim_map=claim_map, export_options=options)
         elif export_format == "pdf":
-            artifact = build_pdf_export(task, note, transcript, annotations=annotations, practice=practice, export_options=options)
+            artifact = build_pdf_export(task, note, transcript, annotations=annotations, practice=practice, claim_map=claim_map, export_options=options)
         else:
             from ..document_exports import sanitize_export_text
+            structured = build_structured_export(task, note, transcript, annotations=annotations, practice=practice, claim_map=claim_map, options=options)
             artifact = type("MarkdownArtifact", (), {
-                "content": sanitize_export_text(build_structured_export(task, note, transcript, annotations=annotations, practice=practice, options=options)["markdown"]),
+                "content": sanitize_export_text(structured["markdown"]),
                 "media_type": "text/markdown; charset=utf-8",
                 "suffix": "md",
                 "font_name": "UTF-8",
-                "warnings": [],
-                "schema_version": 1,
+                "warnings": structured["warnings"],
+                "schema_version": structured["schema_version"],
             })()
             artifact.content = str(artifact.content).encode("utf-8")
     except DocumentExportUnavailable as exc:

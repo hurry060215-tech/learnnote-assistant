@@ -193,12 +193,12 @@ test("download warnings explain PDF emoji fallback, Word TOC, formulas, and miss
   const h = createHarness(); await flush();
   h.$("unifiedExportFormat").value = "pdf";
   const work = h.$("downloadUnifiedExport").fire("click");
-  const codes = ["non_bmp_symbols_rendered_as_unicode_names", "docx_toc_page_numbers_require_field_update", "unrecognized_math_commands_preserved_as_source", "requested_pdf_font_unavailable_using_cjk_fallback"];
+  const codes = ["non_bmp_symbols_rendered_as_unicode_names", "docx_toc_page_numbers_require_field_update", "unrecognized_math_commands_preserved_as_source", "requested_pdf_font_unavailable_using_cjk_fallback", "claim_citations_require_current_map"];
   h.files[0].resolve(h.fileResponse(codes.join(","))); await work;
   assert.equal(h.downloads.length, 1);
   assert.equal(h.downloads[0].name, "原始笔记.pdf");
   const status = h.$("unifiedExportStatus").textContent;
-  for (const text of ["可读名称", "更新域", "公式命令已保留原文", "中文替代字体"]) assert.ok(status.includes(text), status);
+  for (const text of ["可读名称", "更新域", "公式命令已保留原文", "中文替代字体", "当前笔记重建"]) assert.ok(status.includes(text), status);
   for (const code of codes) assert.ok(!status.includes(code));
   assert.equal(h.$("downloadUnifiedExport").disabled, false);
 });

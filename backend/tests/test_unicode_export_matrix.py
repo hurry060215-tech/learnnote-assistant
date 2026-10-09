@@ -217,14 +217,14 @@ class UnicodeCrossOutputMatrixTests(unittest.TestCase):
                 self.assertIn(NFC_TEXT, "\n".join(paragraph.text for paragraph in Document(BytesIO(docx.content)).paragraphs))
                 pdf = build_pdf_export(task, note)
                 extracted = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages)
-                for expected in ("中文学习", "日本語の勉強", "English café", "导航", "[compass]", "E = mc²"):
+                for expected in ("中文学习", "日本語の勉強", "English café", "导航", "🧭", "E = mc²"):
                     self.assertIn(expected, extracted)
                 self.assertIn(
-                    "".join(NFC_TEXT.replace("🧭", "[compass]").split()),
+                    "".join(NFC_TEXT.split()),
                     "".join(extracted.split()),
                 )
                 self.assertNotIn("\ufffd", extracted)
-                self.assertIn("non_bmp_symbols_rendered_as_unicode_names", pdf.warnings)
+                self.assertNotIn("non_bmp_symbols_rendered_as_unicode_names", pdf.warnings)
         self.assertEqual(len(set(normalized_notes)), 1)
 
 

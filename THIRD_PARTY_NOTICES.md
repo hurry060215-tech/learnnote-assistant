@@ -109,3 +109,12 @@ This file is an attribution aid, not legal advice.
 ## BiliNote implementation reference
 
 The caption-first flow and Bilibili player API sequence were implemented with reference to JefferyHcool/BiliNote (MIT). See third_party/licenses/BiliNote-LICENSE.txt and docs/PRODUCT_REFERENCE_REVIEW.md. No login or commercial cloud service code is included.
+
+## Bundled PDF emoji font
+
+Noto Emoji, copyright 2013 Google LLC, is bundled unmodified under the SIL
+Open Font License 1.1. Source, pinned revision and SHA-256 are recorded in
+`backend/app/fonts/noto-emoji/README.md`; the full license is adjacent in
+`OFL.txt`. PDF exports embed a local monochrome subset and retain Unicode
+text; no user content or credentials leave the machine and no font is
+fetched during export. Upstream: <https://github.com/google/fonts/tree/main/ofl/notoemoji>.
