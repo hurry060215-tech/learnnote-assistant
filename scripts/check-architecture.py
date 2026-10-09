@@ -36,6 +36,8 @@ MODULE_SIZE_LIMITS = {
     "extension/background.js": 2500,
     "extension/content.js": 2200,
     "extension/content-study-evidence.js": 110,
+    "extension/sidepanel.js": 1523,
+    "extension/sidepanel-progress.js": 220,
     "extension/capture-classification.js": 290,
     "extension/capture-ranking.js": 320,
     "web/task-format.js": 210,
@@ -53,6 +55,8 @@ MODULE_SIZE_LIMITS = {
     "backend/app/task_queue.py": 400,
     "backend/app/upload_limits.py": 250,
     "backend/app/progressive_sections.py": 180,
+    "backend/app/partial_note_projection.py": 270,
+    "backend/app/partial_outline_projection.py": 65,
     "backend/app/text_chunk_sections.py": 80,
     "backend/app/reading_notes.py": 115,
 }

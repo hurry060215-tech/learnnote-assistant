@@ -817,5 +817,53 @@
   },
   "range_selected_bounds": {
     "message": "Selected {start}–{end} seconds. Position and video identity are rechecked when sending."
+  },
+  "progress_title": {
+    "message": "Read as sections arrive"
+  },
+  "progress_sections": {
+    "message": "Draft sections"
+  },
+  "progress_waiting": {
+    "message": "Waiting for sections. View or confirm this task in the workspace."
+  },
+  "progress_draft": {
+    "message": "Draft · Evidence pending · Unverified"
+  },
+  "progress_workspace": {
+    "message": "View the final result or cancel processing in the workspace."
+  },
+  "progress_reconnecting": {
+    "message": "Reconnecting and syncing. Visible sections remain unverified drafts."
+  },
+  "progress_paused": {
+    "message": "Reading paused. Check the workspace connection and retry. Visible sections remain unverified drafts."
+  },
+  "progress_retry": {
+    "message": "Reconnect reading"
+  },
+  "progress_cancelled": {
+    "message": "Task cancelled; reading stopped. Visible sections remain unverified drafts."
+  },
+  "progress_failed": {
+    "message": "Task did not finish; reading stopped. Check the workspace for details. Visible sections remain unverified drafts."
+  },
+  "progress_complete": {
+    "message": "Task finished. Review the final result in the workspace. Sections retained here remain unverified drafts."
+  },
+  "progress_cancelling": {
+    "message": "Cancellation requested; reading stopped. Check processing status in the workspace. Visible sections remain unverified drafts."
+  },
+  "progress_syncing": {
+    "message": "Syncing the draft version. Visible content remains unverified."
+  },
+  "progress_legacy": {
+    "message": "This older draft cannot be linked to the current attempt. Check the task and retained content in the workspace."
+  },
+  "progress_unavailable": {
+    "message": "Some draft content could not pass content or source checks and is hidden. Check the task and retained content in the workspace."
+  },
+  "progress_excerpt": {
+    "message": "Source excerpts · Not an AI summary · Unverified"
   }
 }

@@ -73,13 +73,11 @@ let preflightFingerprint = "";
 let activeHandoff = null;
 let suppressTabActivationUntil = 0;
 let currentTaskMode = "";
-let quickPollTimer = 0;
 let quickTranscript = [];
 let selectedProcessingMode = "study";
 let currentTaskContentMode = "";
 let connectionRequest = null;
 let clientOpenRequest = null;
-let quickPollRequest = null;
 let quickQuestionPending = false;
 let activationGeneration = 0;
 
@@ -226,11 +224,6 @@ function formatCueTime(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function stopQuickPolling() {
-  if (quickPollTimer) clearInterval(quickPollTimer);
-  quickPollTimer = 0;
-}
-
 function showQuickResult(status = t("ui_processing_subtitles")) {
   if (!els.quickResultCard) return;
   els.quickResultCard.hidden = false;
@@ -263,21 +256,14 @@ function setQuickTab(tabName = "summary") {
   });
 }
 
-async function fetchQuickTask(taskId = currentTaskId) {
-  const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(taskId)}`);
-  if (!response.ok) throw new Error(t("task_query_failed", { status: response.status }));
-  return response.json();
-}
-
-async function loadQuickArtifacts(task) {
-  const sourceKey = sourceContinuityKey(displayedIdentity);
+async function loadQuickArtifacts(task, reader) {
   const [noteResponse, transcriptResponse] = await Promise.all([
-    fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/note`),
-    fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`)
+    fetch(`${reader.base}/note`, { signal: reader.signal, redirect: "error" }),
+    fetch(`${reader.base}/transcript`, { signal: reader.signal, redirect: "error" })
   ]);
   const note = noteResponse.ok ? await noteResponse.text() : "";
   const transcript = transcriptResponse.ok ? await transcriptResponse.json() : {};
-  if (sourceKey !== sourceContinuityKey(displayedIdentity) || task.id !== currentTaskId) return;
+  if (!reader.isCurrent()) return;
   quickNoteText=note;
   quickTranscript = Array.isArray(transcript?.segments) ? transcript.segments : [];
   if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = renderQuickMarkdown(note);
@@ -289,46 +275,29 @@ async function loadQuickArtifacts(task) {
   if (extractedOnly) setQuickTab("transcript");
 }
 
-async function pollQuickTask() {
-  if (!currentTaskId || currentTaskMode !== "subtitle_only" || quickPollRequest) return;
-  const taskId = currentTaskId;
-  const sourceKey = sourceContinuityKey(displayedIdentity);
-  const isCurrent = () => taskId === currentTaskId && sourceKey === sourceContinuityKey(displayedIdentity);
-  quickPollRequest = taskId;
-  try {
-    const payload = await fetchQuickTask(taskId);
-    if (!isCurrent()) return;
-    const task = payload?.task || payload;
-    if (task.status === "failed" || task.status === "cancelled") {
-      stopQuickPolling();
-      showQuickResult(productMessage(task.error_detail) || productMessage(task.message) || t("ui_processing_did_not_finish_check_the_workspace_for_details"));
-      if (els.quickSummaryPanel) els.quickSummaryPanel.innerHTML = `<p>${escapeQuickHtml(productMessage(task.error_detail) || productMessage(task.message) || t("ui_processing_did_not_finish"))}</p>`;
-      setProgress(100, productMessage(task.error_detail) || productMessage(task.message) || t("ui_processing_did_not_finish_check_the_task_history"), "error");
-      try {
-        const response = await fetchWithTimeout(`${backendUrl}/api/tasks/${encodeURIComponent(task.id)}/transcript`);
-        const data = response.ok ? await response.json() : {};
-        if (isCurrent()) { quickTranscript = data.segments || []; renderSourcePreview(); }
-      } catch { /* Keep the original task failure visible. */ }
-      return;
-    }
-    showQuickResult(task.note_path ? t("ui_loading_results") : (productMessage(task.message) || t("ui_reading_subtitles")));
-    if (task.note_path && task.status === "success") {
-      stopQuickPolling();
-      await loadQuickArtifacts(task);
-      if (isCurrent()) setProgress(100, currentTaskContentMode === "subtitles" ? t("ui_transcript_extracted_save_the_srt_file_or_choose_to_generate_a") : t("ui_your_text_note_is_ready_to_read_revisit_or_export"), "success");
-    }
-  } catch (error) {
-    if (isCurrent()) showQuickResult(productMessage(error?.message) || t("ui_waiting_for_the_local_service"));
-  } finally {
-    quickPollRequest = null;
+const progressiveReader = globalThis.LearnNoteProgressive.create({
+  card: document.querySelector("#progressiveCard"), status: document.querySelector("#progressiveStatus"),
+  sections: document.querySelector("#progressiveSections"), retry: document.querySelector("#progressiveRetry"), document, t,
+  onProgress: task => { if (currentTaskMode === "subtitle_only") showQuickResult(productMessage(task.message) || t("ui_reading_subtitles")); },
+  onStop: async (state, reader) => {
+    if (currentTaskMode !== "subtitle_only" || state === "success") return;
+    showQuickResult(t(state === "cancelling" ? "progress_cancelling" : state === "cancelled" ? "progress_cancelled" : "progress_failed"));
+    const response = await fetch(`${reader.base}/transcript`, { signal: reader.signal, redirect: "error" });
+    if (!response.ok) return;
+    const transcript = await response.json();
+    if (reader.isCurrent() && Array.isArray(transcript.segments)) { quickTranscript = transcript.segments; renderQuickTranscript(); renderSourcePreview(); }
+  },
+  onTask: async (task, reader) => {
+    if (currentTaskMode !== "subtitle_only" || !task.note_path) return;
+    await loadQuickArtifacts(task, reader);
+    if (reader.isCurrent()) setProgress(100, currentTaskContentMode === "subtitles" ? t("ui_transcript_extracted_save_the_srt_file_or_choose_to_generate_a") : t("ui_your_text_note_is_ready_to_read_revisit_or_export"), "success");
   }
+});
+function startProgressiveReading() {
+  progressiveReader.start({ backendUrl, taskId: currentTaskId, sourceKey: sourceContinuityKey(displayedIdentity) });
 }
-
-function startQuickPolling() {
-  stopQuickPolling();
-  pollQuickTask();
-  quickPollTimer = setInterval(pollQuickTask, 1200);
-}
+window.addEventListener("pagehide", () => progressiveReader.suspend());
+window.addEventListener("pageshow", () => progressiveReader.resume());
 
 function withTimeout(promise, timeoutMs, label) {
   let timer = 0;
@@ -495,7 +464,7 @@ function resetSourceState(keepRange = false) {
     for (const id of ["learningRangeStart","learningRangeEnd"]) { const field=document.querySelector("#"+id); if(field)field.value=""; }
     const mode=document.querySelector("#learningRangeMode"); if(mode)mode.value="whole";
   }
-  stopQuickPolling();
+  progressiveReader.reset();
   preflightReport = null;
   preflightIdentity = null;
   preflightAt = 0;
@@ -992,7 +961,7 @@ function clearPageContextAfterPermissionRevocation(origin = "") {
   preflightAt = 0;
   preflightFingerprint = "";
   preflightRequest = null;
-  stopQuickPolling();
+  progressiveReader.reset();
   quickTranscript = [];
   quickNoteText = "";
   if (els.quickAskConversation) els.quickAskConversation.innerHTML = `<p>${escapeQuickHtml(t("ui_answers_cite_only_subtitle_evidence_from_this_video"))}</p>`;
@@ -1137,6 +1106,8 @@ async function sendToClient(modeOverride = "") {
     }
 
     selectedRange = learningRange(fresh);
+    const taskBackendUrl = backendUrl;
+    const canReadCreatedTask = () => permissionEpoch === sitePermissionEpoch && taskBackendUrl === backendUrl && sameSourceIdentity(freshIdentity, displayedIdentity);
     const quick = requestedMode !== "deep" && hasReliableBrowserSubtitles(fresh);
     currentTaskContentMode = selectedOptions.content_mode;
     if (quick) {
@@ -1147,7 +1118,7 @@ async function sendToClient(modeOverride = "") {
       }
       const response = await withTimeout(chrome.runtime.sendMessage({
         type: "start-current-task",
-        backendUrl,
+        backendUrl: taskBackendUrl,
         targetTabId: freshIdentity.tab_id,
         page: fresh.page,
         resources: [],
@@ -1158,13 +1129,14 @@ async function sendToClient(modeOverride = "") {
         learning_range: selectedRange,
         options: selectedOptions
       }), REQUEST_TIMEOUT_MS, t("ui_creating_transcript_task"));
+      if (!canReadCreatedTask()) return false;
       if (response?.error) throw new Error(productMessage(response.error));
       currentTaskId = String(response?.task_id || "");
       if (!currentTaskId) throw new Error(t("ui_the_client_did_not_confirm_the_transcript_task"));
       els.openTaskButton.hidden = false;
       showQuickResult(currentTaskContentMode === "subtitles" ? t("ui_saving_the_original_transcript") : t("ui_generating_with_the_text_model"));
       setQuickTab(currentTaskContentMode === "subtitles" ? "transcript" : "summary");
-      startQuickPolling();
+      startProgressiveReading();
       setProgress(72, currentTaskContentMode === "subtitles" ? t("ui_subtitles_sent_to_the_local_service_saving_the_original_transc") : t("ui_subtitles_sent_to_the_text_model_generating_a_note"));
       return true;
     }
@@ -1187,7 +1159,7 @@ async function sendToClient(modeOverride = "") {
     setProgress(76, t("ui_sending_the_video_source_to_the_client"));
     const response = await withTimeout(chrome.runtime.sendMessage({
       type: "start-current-task",
-      backendUrl,
+      backendUrl: taskBackendUrl,
       targetTabId: freshIdentity.tab_id,
       page: fresh.page,
       resources: requestedMode === "quick" ? [] : mediaCandidates(fresh),
@@ -1199,11 +1171,13 @@ async function sendToClient(modeOverride = "") {
       learning_range: selectedRange,
       options: selectedOptions
     }), REQUEST_TIMEOUT_MS, t("sendToClient"));
+    if (!canReadCreatedTask()) return false;
     if (response?.error) throw new Error(productMessage(response.error));
     currentTaskId = String(response?.task_id || "");
     if (!currentTaskId) throw new Error(t("ui_the_client_did_not_confirm_task_creation_try_again"));
     setProgress(92, response?.deduplicated ? t("ui_task_already_exists_opening_the_client") : t("ui_task_created_opening_the_client"));
     els.openTaskButton.hidden = !currentTaskId;
+    startProgressiveReading();
     const opened = await openClient("task", currentTaskId, "note");
     setProgress(100, opened ? t("ui_sent_to_the_workspace_review_and_confirm_to_start_processing") : t("ui_task_created_use_the_button_below_to_open_it_and_confirm_proce"), "success");
     return true;
