@@ -11,6 +11,6 @@ assert.match(learning, /onRedecode\(encoding\.value\)/);
 assert.match(app, /\/api\/library\/materials\/\$\{encodeURIComponent\(materialId\)\}\/redecode/);
 assert.match(app, /onRedecode: async encoding/);
 assert.match(library, /@library_router\.post\("\/materials\/\{material_id\}\/redecode"\)/);
-assert.match(library, /redecode_document_material\(material_id, encoding\)/);
+assert.match(library, /redecode_document_material\(material_id, encoding, expected_updated_at=expected_updated_at\)/);
 
 console.log("Existing local material can be re-decoded from its preserved source bytes");
