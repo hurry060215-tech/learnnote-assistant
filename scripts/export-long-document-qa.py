@@ -72,7 +72,7 @@ def main():
               'docx_code_retained':'learning_rate' in xml,
               'source_links_retained':'https://example.com/lesson?' in relationships,
               'pdf_no_replacement_char':'\ufffd' not in text,
-              'emoji_preserved_or_explicit_fallback':'🧭' in xml and '[compass]' in text}
+              'emoji_unicode_preserved':'🧭' in xml and '🧭' in text}
     if args.include_keyframes:
         checks['docx_frame_alt'] = 'descr="00:05 本机生成的合成关键帧"' in xml
         checks['pdf_frames_embedded'] = sum(bool(page.images) for page in reader.pages) >= 4
@@ -87,7 +87,7 @@ def main():
               'warnings':{'docx':docx.warnings, 'pdf':pdf.warnings},
               'structural_status':'pass' if all(checks.values()) else 'fail',
               'visual_status':'pending_page_render_review', 'word_wps_status':'pending_native_review',
-              'scope':'synthetic bilingual text, tables, code, plain Unicode formulas, explicit emoji fallback, source links, optional local keyframes and native TOC; no native equation coverage'}
+              'scope':'synthetic bilingual text, tables, code, plain Unicode formulas, embedded monochrome Unicode emoji, source links, optional local keyframes and native TOC; no native equation coverage'}
     (output / 'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False))
     return 0 if all(checks.values()) else 1

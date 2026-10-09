@@ -98,7 +98,14 @@ def api_delete_course(course_id: str, request: CourseDeletionRequest | None = Bo
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Course unavailable") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail={"code": str(exc), "message": "课程、任务状态或引用已变化，未执行删除。请重新查看删除范围后确认。"}) from exc
+        code = "course_unavailable"
+        if str(exc) == "course_deletion_changed_reload_required":
+            code = "course_deletion_changed_reload_required"
+        elif str(exc) == "course_deletion_ineligible_task":
+            code = "course_deletion_ineligible_task"
+        elif str(exc) == "invalid_course_id":
+            code = "invalid_course_id"
+        raise HTTPException(status_code=409, detail={"code": code, "message": "课程、任务状态或引用已变化，未执行删除。请重新查看删除范围后确认。"}) from exc
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=409, detail={"code": "course_cleanup_failed", "message": "课程清理未完成，请刷新后重试。"}) from exc
 

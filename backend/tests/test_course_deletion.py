@@ -145,6 +145,17 @@ class CourseDeletionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertTrue(courses.get_course(course["id"]))
 
+    def test_unexpected_deletion_error_never_exposes_internal_exception(self):
+        task = self.task()
+        course = self.course(task)
+        preview = self.preview(course)
+        with patch("app.routers.courses.delete_reviewed_course", side_effect=ValueError("synthetic private storage detail")):
+            response = self.delete(course, [task.id], preview)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["code"], "course_unavailable")
+        self.assertNotIn("synthetic private storage detail", response.text)
+        self.assertEqual(storage.get_task(task.id).id, task.id)
+
     def test_shared_direct_url_handoff_and_material_alias_are_protected(self):
         for other_kind in ("task", "material", "url"):
             with self.subTest(other_kind=other_kind):

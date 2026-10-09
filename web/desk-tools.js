@@ -386,6 +386,7 @@ export function installTools(ctx) {
       const messages = {
         non_bmp_symbols_rendered_as_unicode_names: "PDF 中的部分表情与特殊符号已替换为可读名称，以免显示为空白。",
         docx_toc_page_numbers_require_field_update: "Word 目录页码需要在打开文件后右键目录，选择“更新域/更新整个目录”。",
+        claim_citations_require_current_map: "部分结论引用需要按当前笔记重建，请回来源页核对。",
         unrecognized_math_commands_preserved_as_source: "少量公式命令已保留原文，请核对。",
         requested_docx_font_unavailable_using_host_fallback: "所选 Word 字体未安装，将使用打开文件设备上的替代字体；排版可能变化。",
         emoji_font_unavailable_using_host_fallback: "表情字体未安装，将使用打开文件设备上的替代字体。",
