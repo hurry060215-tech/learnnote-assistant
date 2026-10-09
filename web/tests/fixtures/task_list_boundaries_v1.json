@@ -1,0 +1,3252 @@
+{
+  "base_commit": "6279fca6c049d92dc1be2ef2af37c44c1c720bb9",
+  "app_sha256": "3f2a06f5e4bc7b650181a7d81aa2f3c79cf1a4064bfe7e36f120e72b712c693f",
+  "timezone": "UTC",
+  "clock": "2026-10-09T12:00:00.000Z",
+  "cases": [
+    {
+      "name": "active running/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "running",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "confirmation running/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "running",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active running/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "running",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "confirmation running/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "running",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active queued/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "queued",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "confirmation queued/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "queued",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active queued/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "queued",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation queued/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "queued",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "active cancelling/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "cancelling",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "confirmation cancelling/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "cancelling",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active cancelling/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "cancelling",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "confirmation cancelling/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "cancelling",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active success/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "success",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation success/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "success",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active success/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "success",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation success/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "success",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active failed/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "failed",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation failed/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "failed",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active failed/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "failed",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation failed/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "failed",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active cancelled/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "cancelled",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation cancelled/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "cancelled",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active cancelled/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "cancelled",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation cancelled/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "cancelled",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active unknown/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "unknown",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation unknown/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "unknown",
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active unknown/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "status": "unknown",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation unknown/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "status": "unknown",
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active undefined/false",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation undefined/false",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "awaiting_confirmation": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "active undefined/true",
+      "method": "isActiveTask",
+      "args": [
+        {
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "confirmation undefined/true",
+      "method": "taskAwaitingConfirmation",
+      "args": [
+        {
+          "awaiting_confirmation": true
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "title readable",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "title": "  <b>课程 & notes</b>  "
+        },
+        "自定义空标题"
+      ],
+      "expected": "<b>课程 & notes</b>"
+    },
+    {
+      "name": "title missing",
+      "method": "displayTaskTitle",
+      "args": [
+        {},
+        "自定义空标题"
+      ],
+      "expected": "自定义空标题"
+    },
+    {
+      "name": "title short id",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "id": "123456789abcdef",
+          "title": "????"
+        },
+        "自定义空标题"
+      ],
+      "expected": "任务 12345678"
+    },
+    {
+      "name": "title current HLS",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "title": "????",
+          "source_type": "current_page",
+          "selected_resource": {
+            "kind": "hls"
+          }
+        },
+        "自定义空标题"
+      ],
+      "expected": "当前页直取 · HLS"
+    },
+    {
+      "name": "title download media",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "mode": "download_only",
+          "media_path": "C:\\synthetic\\lesson.mp4?part=1"
+        },
+        "自定义空标题"
+      ],
+      "expected": "当前页下载 · lesson.mp4"
+    },
+    {
+      "name": "title reuse host",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "mode": "rerun_from_media",
+          "page_url": "https://course.example.test/lesson"
+        },
+        "自定义空标题"
+      ],
+      "expected": "复用本地视频 · course.example.test"
+    },
+    {
+      "name": "title local",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "source_type": "local"
+        },
+        "自定义空标题"
+      ],
+      "expected": "本地视频"
+    },
+    {
+      "name": "title text",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "source_type": "page_text"
+        },
+        "自定义空标题"
+      ],
+      "expected": "页面文本"
+    },
+    {
+      "name": "title resource host",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "selected_resource": {
+            "frame_url": "https://frame.example.test/p"
+          }
+        },
+        "自定义空标题"
+      ],
+      "expected": "frame.example.test"
+    },
+    {
+      "name": "title unknown kind",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "source_type": "current_page",
+          "selected_resource": {
+            "kind": "custom"
+          }
+        },
+        "自定义空标题"
+      ],
+      "expected": "当前页直取 · custom"
+    },
+    {
+      "name": "title invalid URL",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "page_url": "not a url"
+        },
+        "自定义空标题"
+      ],
+      "expected": "自定义空标题"
+    },
+    {
+      "name": "title replacement chars",
+      "method": "displayTaskTitle",
+      "args": [
+        {
+          "title": "����"
+        },
+        "自定义空标题"
+      ],
+      "expected": "自定义空标题"
+    },
+    {
+      "name": "rank other",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "other",
+          "status": "cancelled"
+        },
+        "failed"
+      ],
+      "expected": 8
+    },
+    {
+      "name": "rank failed",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "failed",
+          "status": "failed"
+        },
+        "failed"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "rank failed-note",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "failed-note",
+          "status": "failed",
+          "note_path": "synthetic.md"
+        },
+        "failed"
+      ],
+      "expected": 6
+    },
+    {
+      "name": "rank queued",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "queued",
+          "status": "queued"
+        },
+        "failed"
+      ],
+      "expected": 5
+    },
+    {
+      "name": "rank plain",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "plain",
+          "status": "success"
+        },
+        "failed"
+      ],
+      "expected": 4
+    },
+    {
+      "name": "rank frames",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "frames",
+          "status": "success",
+          "frame_grids": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ]
+        },
+        "failed"
+      ],
+      "expected": 3
+    },
+    {
+      "name": "rank visual",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "visual",
+          "status": "success",
+          "visual_windows": [
+            {
+              "id": "W001"
+            }
+          ]
+        },
+        "failed"
+      ],
+      "expected": 3
+    },
+    {
+      "name": "rank reuse",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "reuse",
+          "status": "success",
+          "reuse": {
+            "media_available": true
+          }
+        },
+        "failed"
+      ],
+      "expected": 3
+    },
+    {
+      "name": "rank media",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "media",
+          "status": "success",
+          "media_path": "synthetic.mp4"
+        },
+        "failed"
+      ],
+      "expected": 3
+    },
+    {
+      "name": "rank note",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "note",
+          "status": "success",
+          "note_path": "synthetic.md"
+        },
+        "failed"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "rank running",
+      "method": "taskStudyRank",
+      "args": [
+        {
+          "id": "running",
+          "status": "running"
+        },
+        "failed"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "rank absent",
+      "method": "taskStudyRank",
+      "args": [
+        null,
+        "failed"
+      ],
+      "expected": 90
+    },
+    {
+      "name": "sort all",
+      "method": "sortedVisibleTasks",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "running",
+            "status": "running"
+          }
+        ],
+        "failed"
+      ],
+      "expected": [
+        {
+          "id": "failed",
+          "status": "failed"
+        },
+        {
+          "id": "running",
+          "status": "running"
+        },
+        {
+          "id": "note",
+          "status": "success",
+          "note_path": "synthetic.md"
+        },
+        {
+          "id": "frames",
+          "status": "success",
+          "frame_grids": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ]
+        },
+        {
+          "id": "visual",
+          "status": "success",
+          "visual_windows": [
+            {
+              "id": "W001"
+            }
+          ]
+        },
+        {
+          "id": "reuse",
+          "status": "success",
+          "reuse": {
+            "media_available": true
+          }
+        },
+        {
+          "id": "media",
+          "status": "success",
+          "media_path": "synthetic.mp4"
+        },
+        {
+          "id": "plain",
+          "status": "success"
+        },
+        {
+          "id": "queued",
+          "status": "queued"
+        },
+        {
+          "id": "failed-note",
+          "status": "failed",
+          "note_path": "synthetic.md"
+        },
+        {
+          "id": "other",
+          "status": "cancelled"
+        }
+      ]
+    },
+    {
+      "name": "initial all",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "running",
+            "status": "running"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "running",
+        "status": "running"
+      }
+    },
+    {
+      "name": "sort ties",
+      "method": "sortedVisibleTasks",
+      "args": [
+        [
+          {
+            "id": "running",
+            "status": "running"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "other",
+            "status": "cancelled"
+          }
+        ],
+        "failed"
+      ],
+      "expected": [
+        {
+          "id": "failed",
+          "status": "failed"
+        },
+        {
+          "id": "running",
+          "status": "running"
+        },
+        {
+          "id": "note",
+          "status": "success",
+          "note_path": "synthetic.md"
+        },
+        {
+          "id": "media",
+          "status": "success",
+          "media_path": "synthetic.mp4"
+        },
+        {
+          "id": "reuse",
+          "status": "success",
+          "reuse": {
+            "media_available": true
+          }
+        },
+        {
+          "id": "visual",
+          "status": "success",
+          "visual_windows": [
+            {
+              "id": "W001"
+            }
+          ]
+        },
+        {
+          "id": "frames",
+          "status": "success",
+          "frame_grids": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ]
+        },
+        {
+          "id": "plain",
+          "status": "success"
+        },
+        {
+          "id": "queued",
+          "status": "queued"
+        },
+        {
+          "id": "failed-note",
+          "status": "failed",
+          "note_path": "synthetic.md"
+        },
+        {
+          "id": "other",
+          "status": "cancelled"
+        }
+      ]
+    },
+    {
+      "name": "initial ties",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "running",
+            "status": "running"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "other",
+            "status": "cancelled"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "running",
+        "status": "running"
+      }
+    },
+    {
+      "name": "sort empty",
+      "method": "sortedVisibleTasks",
+      "args": [
+        [],
+        "failed"
+      ],
+      "expected": []
+    },
+    {
+      "name": "initial empty",
+      "method": "preferredInitialTask",
+      "args": [
+        []
+      ],
+      "expected": null
+    },
+    {
+      "name": "sort non-array",
+      "method": "sortedVisibleTasks",
+      "args": [
+        {},
+        "failed"
+      ],
+      "expected": []
+    },
+    {
+      "name": "initial non-array",
+      "method": "preferredInitialTask",
+      "args": [
+        {}
+      ],
+      "expected": null
+    },
+    {
+      "name": "initial suffix 0",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "other",
+        "status": "cancelled"
+      }
+    },
+    {
+      "name": "initial suffix 1",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "other",
+        "status": "cancelled"
+      }
+    },
+    {
+      "name": "initial suffix 2",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "failed-note",
+        "status": "failed",
+        "note_path": "synthetic.md"
+      }
+    },
+    {
+      "name": "initial suffix 3",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "queued",
+        "status": "queued"
+      }
+    },
+    {
+      "name": "initial suffix 4",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "plain",
+        "status": "success"
+      }
+    },
+    {
+      "name": "initial suffix 5",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          }
+        ]
+      ],
+      "expected": {
+        "id": "frames",
+        "status": "success",
+        "frame_grids": [
+          {
+            "start": 0,
+            "end": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "initial suffix 6",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          }
+        ]
+      ],
+      "expected": {
+        "id": "frames",
+        "status": "success",
+        "frame_grids": [
+          {
+            "start": 0,
+            "end": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "initial suffix 7",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          }
+        ]
+      ],
+      "expected": {
+        "id": "frames",
+        "status": "success",
+        "frame_grids": [
+          {
+            "start": 0,
+            "end": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "initial suffix 8",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "frames",
+        "status": "success",
+        "frame_grids": [
+          {
+            "start": 0,
+            "end": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "initial suffix 9",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "note",
+        "status": "success",
+        "note_path": "synthetic.md"
+      }
+    },
+    {
+      "name": "initial suffix 10",
+      "method": "preferredInitialTask",
+      "args": [
+        [
+          {
+            "id": "other",
+            "status": "cancelled"
+          },
+          {
+            "id": "failed",
+            "status": "failed"
+          },
+          {
+            "id": "failed-note",
+            "status": "failed",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "queued",
+            "status": "queued"
+          },
+          {
+            "id": "plain",
+            "status": "success"
+          },
+          {
+            "id": "frames",
+            "status": "success",
+            "frame_grids": [
+              {
+                "start": 0,
+                "end": 10
+              }
+            ]
+          },
+          {
+            "id": "visual",
+            "status": "success",
+            "visual_windows": [
+              {
+                "id": "W001"
+              }
+            ]
+          },
+          {
+            "id": "reuse",
+            "status": "success",
+            "reuse": {
+              "media_available": true
+            }
+          },
+          {
+            "id": "media",
+            "status": "success",
+            "media_path": "synthetic.mp4"
+          },
+          {
+            "id": "note",
+            "status": "success",
+            "note_path": "synthetic.md"
+          },
+          {
+            "id": "running",
+            "status": "running"
+          }
+        ]
+      ],
+      "expected": {
+        "id": "running",
+        "status": "running"
+      }
+    },
+    {
+      "name": "search empty",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search   ",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "  "
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search 当前页直取",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "当前页直取"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search HLS",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "HLS"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search COURSE.EXAMPLE",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "COURSE.EXAMPLE"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search current_page",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "current_page"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search synthetic_error",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "synthetic_error"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search fixture detail",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "fixture detail"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search drm eme",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "drm eme"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search org.example.fixture cenc",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "org.example.fixture cenc"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search demo.m3u8",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "demo.m3u8"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search fixture-source",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "fixture-source"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "search no-match",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": "no-match"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter all/false",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": false,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter all/true",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "all",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter running/false",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": false,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "running",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter running/true",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "running",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter queued/false",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": false,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "queued",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter queued/true",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "queued",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter success/false",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": false,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "success",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter success/true",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "success",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter failed/false",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": false,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "failed",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter failed/true",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "id": "search",
+          "title": "????",
+          "source_type": "current_page",
+          "status": "queued",
+          "awaiting_confirmation": true,
+          "page_url": "https://course.example.test/lecture",
+          "error_code": "SYNTHETIC_ERROR",
+          "error_detail": "Fixture Detail",
+          "drm_detected": true,
+          "drm_signals": [
+            {
+              "key_system": "org.example.fixture",
+              "init_data_type": "cenc"
+            }
+          ],
+          "selected_resource": {
+            "url": "https://media.example.test/demo.m3u8",
+            "source": "fixture-source",
+            "kind": "hls"
+          }
+        },
+        {
+          "statusFilter": "failed",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "filter active running",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "status": "running"
+        },
+        {
+          "statusFilter": "running",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter active cancelling",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "status": "cancelling"
+        },
+        {
+          "statusFilter": "running",
+          "query": ""
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "filter active cancelled",
+      "method": "taskMatchesFilters",
+      "args": [
+        {
+          "status": "cancelled"
+        },
+        {
+          "statusFilter": "running",
+          "query": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "fingerprint base",
+      "method": "taskListFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 10,
+            "updated_at": "first"
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",\"running\",\"transcribing\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]]"
+    },
+    {
+      "name": "live fingerprint base",
+      "method": "taskListLiveFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 10,
+            "updated_at": "first"
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",10,\"first\"]]"
+    },
+    {
+      "name": "fingerprint live",
+      "method": "taskListFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 11,
+            "updated_at": "second"
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",\"running\",\"transcribing\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]]"
+    },
+    {
+      "name": "live fingerprint live",
+      "method": "taskListLiveFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 11,
+            "updated_at": "second"
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",11,\"second\"]]"
+    },
+    {
+      "name": "fingerprint structural",
+      "method": "taskListFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 10,
+            "updated_at": "first",
+            "title": "新标题",
+            "note_path": "synthetic.md",
+            "media_path": "synthetic.mp4",
+            "transcript_path": "synthetic.json",
+            "source_task_id": "root",
+            "error_code": "fixture",
+            "evidence_quality": {
+              "video_evidence": "present"
+            }
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",\"running\",\"transcribing\",\"新标题\",\"synthetic.md\",\"synthetic.mp4\",\"synthetic.json\",\"root\",\"fixture\",\"present\"]]"
+    },
+    {
+      "name": "live fingerprint structural",
+      "method": "taskListLiveFingerprint",
+      "args": [
+        [
+          {
+            "id": "fingerprint",
+            "status": "running",
+            "phase": "transcribing",
+            "progress": 10,
+            "updated_at": "first",
+            "title": "新标题",
+            "note_path": "synthetic.md",
+            "media_path": "synthetic.mp4",
+            "transcript_path": "synthetic.json",
+            "source_task_id": "root",
+            "error_code": "fixture",
+            "evidence_quality": {
+              "video_evidence": "present"
+            }
+          }
+        ]
+      ],
+      "expected": "[[\"fingerprint\",10,\"first\"]]"
+    },
+    {
+      "name": "time today",
+      "method": "recentTaskTime",
+      "args": [
+        {
+          "updated_at": "2026-10-09T08:05:00Z"
+        },
+        "2026-10-09T12:00:00.000Z"
+      ],
+      "expected": "08:05"
+    },
+    {
+      "name": "time yesterday",
+      "method": "recentTaskTime",
+      "args": [
+        {
+          "updated_at": "2026-10-08T23:59:00Z"
+        },
+        "2026-10-09T12:00:00.000Z"
+      ],
+      "expected": "昨天"
+    },
+    {
+      "name": "time older",
+      "method": "recentTaskTime",
+      "args": [
+        {
+          "created_at": "2026-08-03T10:00:00Z"
+        },
+        "2026-10-09T12:00:00.000Z"
+      ],
+      "expected": "8月3日"
+    },
+    {
+      "name": "time invalid",
+      "method": "recentTaskTime",
+      "args": [
+        {
+          "updated_at": "invalid",
+          "created_at": "2026-10-09T08:05:00Z"
+        },
+        "2026-10-09T12:00:00.000Z"
+      ],
+      "expected": ""
+    },
+    {
+      "name": "time empty",
+      "method": "recentTaskTime",
+      "args": [
+        {},
+        "2026-10-09T12:00:00.000Z"
+      ],
+      "expected": ""
+    },
+    {
+      "name": "version child-b",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "child-b",
+          "source_task_id": "root",
+          "created_at": "2026-10-03"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 3,
+        "total": 4
+      }
+    },
+    {
+      "name": "version grandchild",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "grandchild",
+          "source_task_id": "child-b",
+          "created_at": "2026-10-04"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 4,
+        "total": 4
+      }
+    },
+    {
+      "name": "version root",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "root",
+          "created_at": "2026-10-01"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 1,
+        "total": 4
+      }
+    },
+    {
+      "name": "version child-a",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "child-a",
+          "source_task_id": "root",
+          "created_at": "2026-10-02"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 2,
+        "total": 4
+      }
+    },
+    {
+      "name": "version separate",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "separate"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "separate",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version empty",
+      "method": "noteVersionInfo",
+      "args": [
+        {},
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version absent",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "absent"
+        },
+        [
+          {
+            "id": "child-b",
+            "source_task_id": "root",
+            "created_at": "2026-10-03"
+          },
+          {
+            "id": "grandchild",
+            "source_task_id": "child-b",
+            "created_at": "2026-10-04"
+          },
+          {
+            "id": "root",
+            "created_at": "2026-10-01"
+          },
+          {
+            "id": "child-a",
+            "source_task_id": "root",
+            "created_at": "2026-10-02"
+          },
+          {
+            "id": "separate"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "absent",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version missing root/orphan",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "orphan",
+          "source_task_id": "missing"
+        },
+        [
+          {
+            "id": "orphan",
+            "source_task_id": "missing"
+          },
+          {
+            "id": "sibling",
+            "source_task_id": "missing"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "missing",
+        "index": 1,
+        "total": 2
+      }
+    },
+    {
+      "name": "version missing root/sibling",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "sibling",
+          "source_task_id": "missing"
+        },
+        [
+          {
+            "id": "orphan",
+            "source_task_id": "missing"
+          },
+          {
+            "id": "sibling",
+            "source_task_id": "missing"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "missing",
+        "index": 2,
+        "total": 2
+      }
+    },
+    {
+      "name": "version cycle/a",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "a",
+          "source_task_id": "b"
+        },
+        [
+          {
+            "id": "a",
+            "source_task_id": "b"
+          },
+          {
+            "id": "b",
+            "source_task_id": "a"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "a",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version cycle/b",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "b",
+          "source_task_id": "a"
+        },
+        [
+          {
+            "id": "a",
+            "source_task_id": "b"
+          },
+          {
+            "id": "b",
+            "source_task_id": "a"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "b",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version self/self",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "self",
+          "source_task_id": "self"
+        },
+        [
+          {
+            "id": "self",
+            "source_task_id": "self"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "self",
+        "index": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "version equal dates/root",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "root"
+        },
+        [
+          {
+            "id": "root"
+          },
+          {
+            "id": "child",
+            "source_task_id": "root"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 1,
+        "total": 2
+      }
+    },
+    {
+      "name": "version equal dates/child",
+      "method": "noteVersionInfo",
+      "args": [
+        {
+          "id": "child",
+          "source_task_id": "root"
+        },
+        [
+          {
+            "id": "root"
+          },
+          {
+            "id": "child",
+            "source_task_id": "root"
+          }
+        ]
+      ],
+      "expected": {
+        "rootId": "root",
+        "index": 2,
+        "total": 2
+      }
+    },
+    {
+      "name": "media 126",
+      "method": "hasExportableMedia",
+      "args": [
+        {}
+      ],
+      "expected": false
+    },
+    {
+      "name": "media name 127",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {}
+      ],
+      "expected": "media.mp4"
+    },
+    {
+      "name": "media 128",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "media_path": "C:\\synthetic\\course.mp4?range=1"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "media name 129",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "media_path": "C:\\synthetic\\course.mp4?range=1"
+        }
+      ],
+      "expected": "course.mp4"
+    },
+    {
+      "name": "media 130",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "reuse": {
+            "media_available": true,
+            "media_path_recorded": "/synthetic/recorded.webm#t=1"
+          }
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "media name 131",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "reuse": {
+            "media_available": true,
+            "media_path_recorded": "/synthetic/recorded.webm#t=1"
+          }
+        }
+      ],
+      "expected": "recorded.webm"
+    },
+    {
+      "name": "media 132",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "source_media_path": "/synthetic/source.mp4"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "media name 133",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "source_media_path": "/synthetic/source.mp4"
+        }
+      ],
+      "expected": "source.mp4"
+    },
+    {
+      "name": "media 134",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "reuse": {
+            "source_media_path": "/synthetic/reuse.mp4"
+          }
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "media name 135",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "reuse": {
+            "source_media_path": "/synthetic/reuse.mp4"
+          }
+        }
+      ],
+      "expected": "reuse.mp4"
+    },
+    {
+      "name": "media 136",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "media_path": "/"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "media name 137",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "media_path": "/"
+        }
+      ],
+      "expected": "media.mp4"
+    },
+    {
+      "name": "media 138",
+      "method": "hasExportableMedia",
+      "args": [
+        {
+          "media_path": "first.mp4",
+          "source_media_path": "second.mp4"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "media name 139",
+      "method": "taskMediaDisplayName",
+      "args": [
+        {
+          "media_path": "first.mp4",
+          "source_media_path": "second.mp4"
+        }
+      ],
+      "expected": "first.mp4"
+    },
+    {
+      "name": "windows 140",
+      "method": "visualWindows",
+      "args": [
+        {}
+      ],
+      "expected": []
+    },
+    {
+      "name": "windows 141",
+      "method": "visualWindows",
+      "args": [
+        {
+          "visual_windows": [
+            {
+              "id": "custom",
+              "start": 1
+            }
+          ],
+          "frame_grids": [
+            {
+              "start": 2
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "id": "custom",
+          "start": 1
+        }
+      ]
+    },
+    {
+      "name": "windows 142",
+      "method": "visualWindows",
+      "args": [
+        {
+          "visual_windows": [],
+          "frame_grids": [
+            {
+              "start": 0,
+              "end": 10,
+              "frame_count": 3,
+              "url": "/fixture-grid.jpg"
+            },
+            {
+              "start": 10,
+              "end": 20,
+              "frame_count": 2,
+              "frame_timestamps": [
+                10,
+                15
+              ],
+              "url": "/fixture-grid2.jpg"
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "id": "W001",
+          "index": 1,
+          "start": 0,
+          "end": 10,
+          "frame_count": 3,
+          "frame_timestamps": [],
+          "grid_url": "/fixture-grid.jpg",
+          "transcript_excerpt": ""
+        },
+        {
+          "id": "W002",
+          "index": 2,
+          "start": 10,
+          "end": 20,
+          "frame_count": 2,
+          "frame_timestamps": [
+            10,
+            15
+          ],
+          "grid_url": "/fixture-grid2.jpg",
+          "transcript_excerpt": ""
+        }
+      ]
+    }
+  ]
+}

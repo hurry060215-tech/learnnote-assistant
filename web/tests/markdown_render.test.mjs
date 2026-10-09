@@ -200,6 +200,7 @@ assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\
 vm.runInContext(markdownCode, context);
 vm.runInContext(await readFile(new URL("../task-format.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../task-list.js", import.meta.url), "utf8"), context);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 
@@ -443,7 +444,7 @@ assert.match(stylesCss, /\.recovery-decision\s*\{/);
 assert.match(stylesCss, /\.recovery-decision-metrics\s*\{/);
 assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*\.recovery-decision\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
 assert.match(matureCss, /@media \(max-width: 680px\)[\s\S]*body\.settings-mode \.nav-rail[\s\S]*top:\s*auto !important;[\s\S]*height:\s*58px !important;/);
-assert.match(webCode, /function isActiveTask\(task\)[\s\S]*ACTIVE_TASK_STATUSES\.has/);
+assert.equal(context.isActiveTask({ status: "cancelling" }), true);
 assert.match(webCode, /function extensionVersionMatches\(data = lastHealthData\)/);
 assert.equal(context.extensionVersionMatches({ app_version: "0.1.35", extension_version: "0.1.35" }), true);
 assert.equal(context.extensionVersionMatches({ app_version: "0.1.35", extension_version: "0.1.34" }), false);

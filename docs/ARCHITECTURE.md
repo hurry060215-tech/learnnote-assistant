@@ -63,6 +63,7 @@ API routers (routers/*.py)
 - `web/i18n.js` 只提供版本化的界面文案资源；应用脚本通过 `LearnNoteI18n` 读取文案，缺失资源时回退到 HTML 默认中文，不阻断任务流程。
 - `web/markdown.js` 负责 Markdown 渲染、笔记目录和浏览器页上下文清理；`app.js` 通过兼容调用使用它，不让渲染规则继续扩散到任务编排代码。
 - `web/task-links.js` 负责任务导出、恢复、重跑和 QA URL 构造；任务链接必须统一编码任务 ID 和窗口 ID。
+- `web/task-list.js` 只负责任务列表的标题/媒体投影、初始选择、稳定排序、筛选、变更指纹和笔记版本族。它依赖 `task-format.js` / `task-display.js`；当前任务、筛选、任务历史和时钟由 `app.js` 在每次调用时显式传入，不读取 DOM、存储或网络。迁移图、公开契约、原实现快照和合计预算见 [2026-10-09 任务列表拆分记录](ISSUE_ARCHITECTURE_TASK_LIST_20261009.md)。
 - `extension/` 只负责用户触发的当前页采集和本地交接；不执行转写、总结或后台录屏。
 - `integrations/` 只能通过版本化 manifest 和导出端点读取任务；不得读取 LearnNote 内部路径。
 

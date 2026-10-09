@@ -79,14 +79,20 @@ class ArchitectureGraphTests(unittest.TestCase):
         extension.mkdir()
         for name in architecture.EXTENSION_CAPTURE_SCRIPTS:
             (extension / name).write_text("abc")
+        web = root.parent / "web"
+        web.mkdir()
+        for name in architecture.CLASSIC_TASK_SCRIPTS:
+            (web / name).write_text("line\n" * 2)
         with patch.object(architecture, "APP", root), patch.object(architecture, "ROOT", root.parent), \
              patch.object(architecture, "EXTRACTED_BACKEND_MODULES", ("one", "two")), \
              patch.object(architecture, "EXTRACTED_BACKEND_BUDGET", 5), \
-             patch.object(architecture, "EXTENSION_SCRIPT_BUDGET_BYTES", 8):
+             patch.object(architecture, "EXTENSION_SCRIPT_BUDGET_BYTES", 8), \
+             patch.object(architecture, "CLASSIC_TASK_SCRIPT_BUDGET", 7):
             errors = architecture.aggregate_size_violations()
-        self.assertEqual(len(errors), 2)
+        self.assertEqual(len(errors), 3)
         self.assertIn("6 lines", errors[0])
         self.assertIn(f"{3 * len(architecture.EXTENSION_CAPTURE_SCRIPTS)} bytes", errors[1])
+        self.assertIn(f"{2 * len(architecture.CLASSIC_TASK_SCRIPTS)} lines", errors[2])
 
     def test_repository_has_no_new_cycles_or_boundary_regressions(self):
         self.assertEqual(architecture.import_violations(), [])
