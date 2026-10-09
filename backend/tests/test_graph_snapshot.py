@@ -1,5 +1,5 @@
 """Synthetic end-to-end snapshots; no external providers or live user data."""
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from copy import deepcopy
 import hashlib
 import json
@@ -160,7 +160,7 @@ class GraphSnapshotTests(unittest.TestCase):
         add_evidence(SourceEvidence(evidence_id="review", task_id=self.task.id, title="Needs review", text="scale", source_type="video", locator="1-2s", metadata={"review_required": True}))
         outsider = create_task("local", "Wrong owner")
         add_evidence(SourceEvidence(evidence_id="wrong-owner", task_id=outsider.id, source_type="video", text="scale"))
-        with sqlite3.connect(self.root / "library.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "library.sqlite3")) as connection, connection:
             connection.execute("UPDATE library_materials SET evidence_ids_json=? WHERE material_id=?", (json.dumps([*self.material["evidence_ids"], "wrong-owner"]), self.material["material_id"]))
         value = self.export()
         self.assertEqual([row["evidence_id"] for row in value["evidence"]].count("video-original"), 1)
@@ -170,7 +170,7 @@ class GraphSnapshotTests(unittest.TestCase):
         self.assertEqual(value["sources"][2]["excluded_evidence_ids"], ["wrong-owner"])
         self.assertEqual(len(value["graph"]["edges"]), 1)
         self.assertEqual(self.preview(value).status_code, 200)
-        with sqlite3.connect(self.root / "library.sqlite3") as connection:
+        with closing(sqlite3.connect(self.root / "library.sqlite3")) as connection, connection:
             connection.execute("UPDATE library_materials SET source_uri=? WHERE material_id=?", ("local://tasks/foreign", alias["material_id"]))
         self.assertEqual(self.export()["sources"][0]["status"], "excluded")
         update_task(self.task.id, summary_source="transcript-draft")
@@ -307,7 +307,7 @@ class GraphSnapshotTests(unittest.TestCase):
         reply = self.client.get(self.base + "/graph-snapshot", params={"q": "scale", "revision": self.course["revision"]})
         self.assertEqual(reply.json()["detail"]["code"], "graph_snapshot_unavailable")
         self.assertEqual(before, self.hashes())
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection, connection:
             connection.execute("CREATE TABLE unrelated (value TEXT)")
         before = self.hashes()
         reply = self.client.get(self.base + "/graph-snapshot", params={"q": "scale", "revision": self.course["revision"]})
