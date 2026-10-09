@@ -1,5 +1,5 @@
 """Synthetic clocks prove stage boundaries without provider or media access."""
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -108,7 +108,7 @@ class QueueTimingTests(TimingFixtures):
         update_task(private.id, status="running")
         start_pipeline_attempt(local.id)
         record_stage_duration(local.id, "download", 0, ended_at=4)
-        with queue.connect() as db:
+        with closing(queue.connect()) as db, db:
             for task, requires_context in ((local, 0), (private, 1)):
                 db.execute("INSERT INTO jobs(task_id,kind,requires_context,state,updated_at) VALUES (?,?,?,'running',1)",
                            (task.id, "local" if not requires_context else "page", requires_context))
@@ -387,7 +387,7 @@ class LocalCheckTimingTests(TimingFixtures):
         self.assertEqual(get_task(task.id).status, "success")
         self.assertEqual(self.stage(task.id, "verify")["duration_ms"], 5000)
         self.assertEqual(self.metrics(task.id)["attempts"][-1]["status"], "completed")
-        self.assertEqual(Path(get_task(task.id).note_path).read_text(),
+        self.assertEqual(Path(get_task(task.id).note_path).read_text(encoding="utf-8"),
                          "# Synthetic\n\n> 证据来源：已保存的音频转写；本次未分析画面。\n\nOriginal source.\n")
 
 
