@@ -96,7 +96,7 @@ def summary_error_reason(value: object) -> str:
 
 
 _EVENT_STAGES = {"configuration", "client_import", "client_init", "grounding_repair", "grounding_validation",
-    "vision_batch", "vision_cache", "vision_merge", "text_summary", "summary"}
+    "vision_batch", "vision_cache", "vision_merge", "text_summary", "summary", "provider_compatibility"}
 _EVENT_CODES = {"ok", "success", "cache_hit", "api_error", "mojibake_blocked", "missing_api_key",
     "missing_openai_sdk", "client_init_failed", "repair_required", "repaired", "partial_recovery", "rejected", "llm_unavailable", "offline_fixture", "unclassified"}
 
@@ -108,6 +108,20 @@ def safe_summary_events(events: list[dict] | None) -> list[dict]:
             continue
         safe = {"stage": event.get("stage") if isinstance(event.get("stage"), str) and event["stage"] in _EVENT_STAGES else "unknown",
                 "code": event.get("code") if isinstance(event.get("code"), str) and event["code"] in _EVENT_CODES else "unclassified"}
+        if event.get("stage") == "provider_compatibility":
+            # Compatibility provenance is an allowlisted category only. Never
+            # preserve a provider body, raw message, endpoint or arbitrary field.
+            if type(event.get("original_status")) is int and event["original_status"] in {400, 422}:
+                safe["original_status"] = event["original_status"]
+            for key, allowed in {
+                "original_code": {"unsupported_parameter"}, "parameter": {"temperature"},
+                "retry_outcome": {"success", "failed", "cancelled"},
+                "request_stage": {"grounding_repair", "vision_batch", "vision_merge", "text_summary"},
+            }.items():
+                if isinstance(event.get(key), str) and event[key] in allowed:
+                    safe[key] = event[key]
+            result.append(safe)
+            continue
         if event.get("message"):
             safe["message"] = summary_error_reason(event["message"])
         for key in ("batch", "duration_ms", "omitted_passages", "issue_count"):
