@@ -61,6 +61,46 @@ class CatalogRecoveryTests(unittest.TestCase):
     def apply(self, client, token, backup=None):
         return client.post("/api/library/catalog/recovery/apply", data={"preview_token": token}, files={"file": ("selected.sqlite3", (backup or self.backup).read_bytes(), "application/vnd.sqlite3")})
 
+    def test_backup_discloses_extracted_text_and_excludes_separate_private_files(self):
+        note = self.root / "indexed-note.md"
+        note.write_text("Indexed task text is included", encoding="utf-8")
+        task = TaskRecord(id="disclosure-task", source_type="local", mode="local", title="Synthetic task",
+            note_path=str(note), created_at="2026-10-09T00:00:00+00:00", updated_at="2026-10-09T00:00:00+00:00")
+        library.index_task(task)
+        excluded = {self.root / "uploads" / "original.mp4": b"synthetic-original-video-not-in-snapshot",
+                    self.root / "personal-notes" / "revision.json": b"synthetic-personal-revision-not-in-snapshot"}
+        for path, content in excluded.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        review_text = "synthetic-review-text-not-in-snapshot"
+        self.sql("CREATE TABLE review_private(text TEXT)", path=self.root / "study.sqlite3")
+        self.sql("INSERT INTO review_private VALUES(?)", (review_text,), path=self.root / "study.sqlite3")
+        with TestClient(app) as client:
+            response = client.post("/api/library/backup")
+            self.assertEqual(response.status_code, 200, response.text)
+            metadata = response.json()
+            self.assertEqual(metadata["scope"], "library_catalog_snapshot")
+            self.assertEqual(metadata["default_restore_scope"], "task_index_only")
+            self.assertEqual(metadata["contents"], ["task_and_material_catalog", "indexed_original_and_note_text"])
+            self.assertEqual(metadata["excluded_contents"], ["original_video_files", "original_document_files", "personal_revisions", "review_database"])
+            self.assertIn("私密学习资料", metadata["privacy_notice"])
+            download = client.get(metadata["download_url"])
+            self.assertEqual(download.status_code, 200)
+        selected = self.root / "downloaded.sqlite3"
+        selected.write_bytes(download.content)
+        self.assertEqual(self.sql("PRAGMA integrity_check", path=selected), [("ok",)])
+        self.assertIn("Indexed task text is included", self.sql("SELECT content FROM library_tasks WHERE task_id=?", (task.id,), path=selected)[0][0])
+        self.assertEqual(self.sql("SELECT material_id FROM library_materials", path=selected), [(self.material["material_id"],)])
+        self.assertEqual(self.sql("SELECT evidence_id,text FROM source_evidence ORDER BY evidence_id", path=selected),
+                         sorted([(item["evidence_id"], item["text"]) for item in self.anchors]
+                                + [("task-disclosure-task-note", "Indexed task text is included")]))
+        for content in [self.raw, review_text.encode(), *excluded.values()]:
+            self.assertNotIn(content, download.content)
+        self.assertEqual(self.source.read_bytes(), self.raw)
+        for path, content in excluded.items():
+            self.assertEqual(path.read_bytes(), content)
+        self.assertEqual(self.sql("SELECT text FROM review_private", path=self.root / "study.sqlite3"), [(review_text,)])
+
     def test_actual_lifespan_reports_intact_missing_and_corrupt_without_false_rebuild_success(self):
         for state in ("healthy", "missing", "corrupt"):
             with self.subTest(state=state):
@@ -140,6 +180,7 @@ class CatalogRecoveryTests(unittest.TestCase):
             restored = client.post("/api/library/restore", files={"file": ("tasks.sqlite3", self.backup.read_bytes())})
             self.assertEqual(restored.status_code, 200, restored.text)
             self.assertEqual(restored.json()["backup_scope"], "task_index_only")
+            self.assertEqual(restored.json()["restore_scope"], "task_index_only")
             self.assertEqual(len(library.list_materials()), 2)
 
     def test_unchanged_has_no_false_success_or_need_to_apply(self):

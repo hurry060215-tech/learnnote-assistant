@@ -429,7 +429,11 @@ def api_library_backup() -> dict:
         "name": path.name,
         "download_url": f"/api/library/backup/{path.name}",
         "bytes": path.stat().st_size,
-        "scope": "task_index_only",
+        "scope": "library_catalog_snapshot",
+        "default_restore_scope": "task_index_only",
+        "contents": ["task_and_material_catalog", "indexed_original_and_note_text"],
+        "excluded_contents": ["original_video_files", "original_document_files", "personal_revisions", "review_database"],
+        "privacy_notice": "包含任务与资料目录、已索引的原文/笔记文字；请按私密学习资料保管。",
     }
 
 

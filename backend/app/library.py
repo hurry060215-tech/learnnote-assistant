@@ -576,7 +576,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
         temporary.unlink(missing_ok=True)
         raise
     status = library_status()
-    status.update({"backup_scope": "task_index_only", "rollback_snapshot_created": rollback_created})
+    status.update({"backup_scope": "task_index_only", "restore_scope": "task_index_only", "rollback_snapshot_created": rollback_created})
     return status
 
 

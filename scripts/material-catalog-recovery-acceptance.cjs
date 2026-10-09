@@ -146,6 +146,15 @@ async function main() {
     await page.waitForFunction(() => document.querySelector("#welcome")?.dataset.ready === "true");
     assert.match(await page.title(), /LearnNote/);
     await openStorage();
+    const storageDisclosure = await page.locator("#toolBody").innerText();
+    assert.match(storageDisclosure, /包含任务与资料目录、已索引的原文\/笔记文字/);
+    assert.match(storageDisclosure, /不含原始视频\/文档文件、个人修订和复习数据库/);
+    assert.match(storageDisclosure, /按私密学习资料保管/);
+    assert.doesNotMatch(storageDisclosure, /不包含视频、文档正文/);
+    report.checks.push("Backup disclosure includes indexed original and note text, excludes original files and separate personal/review data, and explains private handling");
+    await page.locator('#toolBody [data-action="backup"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(out, "backup-disclosure-desktop.png"), animations: "disabled", fullPage: true });
+    report.screenshots.push("backup-disclosure-desktop.png");
     assert.match(await page.locator("#materialCatalogStatus").innerText(), /目录：缺失/);
     assert.equal(await page.locator("#materialCatalogSnapshot").inputValue(), "");
     assert(await page.locator("#materialCatalogApply").isDisabled());

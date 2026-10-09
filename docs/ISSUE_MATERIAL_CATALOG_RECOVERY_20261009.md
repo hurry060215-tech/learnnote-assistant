@@ -4,7 +4,20 @@ The storage dialog now offers **恢复学习资料目录** separately from task-
 restore. Select a SQLite snapshot, inspect its preview, then explicitly apply
 that same snapshot. Nothing silently selects a backup or reimports original
 documents with new identities. The existing task restore still has
-`backup_scope=task_index_only`.
+`backup_scope=task_index_only` for compatibility and explicitly reports
+`restore_scope=task_index_only`. These describe the restore operation, not all
+contents of the selected backup.
+
+The existing SQLite backup contains task indexes and their indexed text,
+material metadata and source-evidence text, including generated note excerpts.
+The backup API reports
+`scope=library_catalog_snapshot`, `contents`, `excluded_contents` and
+`default_restore_scope=task_index_only`. It does not contain the original
+video/document files, personal revisions or the separate review database.
+Storage, classic settings and assistant help disclose that the snapshot must
+be kept as private learning material; a complete backup requires copying the
+whole data folder. The database format and default task-only restore are
+unchanged.
 
 ## Recovery contract
 
