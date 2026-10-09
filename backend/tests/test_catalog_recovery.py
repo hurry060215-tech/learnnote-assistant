@@ -320,7 +320,7 @@ class CatalogRecoveryTests(unittest.TestCase):
                 result = apply_recovery(self.backup, preview["preview_token"])
             self.assertEqual(result["status"], "pass")
             self.assertEqual(connection.execute("SELECT * FROM healthy_history").fetchall(), [("keep",)])
-            manifest = json.loads((self.root / "exports" / result["rollback_directory"] / "preserved.json").read_text())
+            manifest = json.loads((self.root / "exports" / result["rollback_directory"] / "preserved.json").read_text(encoding="utf-8"))
             for name, digest in manifest["files"].items():
                 if digest != "directory":
                     self.assertEqual(hashlib.sha256((self.root / "exports" / result["rollback_directory"] / name).read_bytes()).hexdigest(), digest)
