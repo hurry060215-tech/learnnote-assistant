@@ -58,6 +58,12 @@ async function main(){
     await page.setViewportSize({width:1440,height:900});await cdp.send("Emulation.clearDeviceMetricsOverride");await page.evaluate(()=>document.body.classList.remove("dark"));await openStudio();
     await page.locator('[data-action="start-review"]').focus();await page.keyboard.press("Enter");await page.locator("#reviewReflection").waitFor();
     await page.locator("#reviewReflection").fill("My own explanation stays local.");await page.locator("#recordReflection").focus();await page.keyboard.press("Enter");await page.locator("#answer").waitFor({state:"visible"});
+    await page.locator(`#reviewSources [data-evidence="${evidence.evidence_id}"]`).click();
+    const sourceTarget=page.locator(`#sourceContent [data-evidence-id="${evidence.evidence_id}"]`);
+    await sourceTarget.waitFor({state:"visible"});assert.match(await sourceTarget.innerText(),/Learning rate controls/);
+    assert.match(await page.locator("#sourceContent").innerText(),/学习原文第 60 段/);
+    await page.locator("#closeSource").click();await openStudio();await page.locator('[data-action="start-review"]').click();await page.locator("#skipReflection").click();
+    report.document_source={exact_evidence_id:true,complete_original_retained:true};
     await page.locator("#editReviewCard").click();await page.locator("#reviewCardFront").fill(`Edited ${marker}`);await page.locator("#reviewCardBack").fill("My original correction 保持原文");await page.locator("#reviewCardForm button").click();await page.locator("#reviewContent h3").getByText(`Edited ${marker}`,{exact:true}).waitFor();
     const edited=(await api("/api/study/cards?limit=500")).cards.find(item=>item.front===`Edited ${marker}`);assert(edited);assert.deepEqual(edited.source_evidence_ids,[evidence.evidence_id]);
     await page.locator("#skipReflection").click();const deletion=page.waitForResponse(response=>response.request().method()==="DELETE"&&response.url().includes(`/api/study/cards/${edited.card_id}`));await page.locator("#deleteReviewCard").click();assert.equal((await deletion).status(),200);assert(!(await api("/api/study/cards?limit=500")).cards.some(item=>item.card_id===edited.card_id));
