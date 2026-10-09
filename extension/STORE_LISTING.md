@@ -47,13 +47,20 @@ Unknown provider diagnostics retain their original wording.
 - English support: [HELP.en.md](HELP.en.md)
 - 简体中文帮助：[HELP.zh-CN.md](HELP.zh-CN.md)
 
-The bilingual runtime and support text are prepared. Windows CI has rendered
-18 Chinese/English viewport/zoom conditions. The earlier screenshot candidates
-were inspected and rejected because they cropped the course context and showed
-test placeholders. Separate store scenes now prepare four corresponding locale
-images with representative synthetic course content. Their rendered review and
-durable archive remain pending; see the [asset checklist](store-assets/README.md)
-and [localization acceptance record](../docs/EXTENSION_LOCALIZATION.md).
+The bilingual runtime, support text and four corresponding locale images have
+repository acceptance evidence. Windows Edge passed all 18 locale/viewport/scale
+conditions in [run 37941628048](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37941628048).
+Codex inspected each replacement image and full-panel capture at original
+resolution on 2026-10-09; the exact bytes and separate AI assistant review are
+now [archived](store-assets/README.md). This is not store approval.
+
+- English: [notes](store-assets/a400df83e450004253d6386847a1bfc5a473e00e/store-en-US-summary-1280x800.png)
+  and [transcript](store-assets/a400df83e450004253d6386847a1bfc5a473e00e/store-en-US-transcript-1280x800.png)
+- 简体中文：[笔记](store-assets/a400df83e450004253d6386847a1bfc5a473e00e/store-zh-CN-summary-1280x800.png)
+  和[字幕](store-assets/a400df83e450004253d6386847a1bfc5a473e00e/store-zh-CN-transcript-1280x800.png)
+
+See the [localization acceptance record](../docs/EXTENSION_LOCALIZATION.md) for
+all six issue #144 criteria and the separate installation/permission boundaries.
 
 Store images explicitly label separate rendered panel views and synthetic
 course/service responses. They show the shipped UI with authored demo notes;
@@ -92,4 +99,4 @@ Authenticated-page testing requires a reviewer-owned account. LearnNote does not
 
 详细描述：在用户主动操作时读取当前页面的视频、字幕和媒体线索，并交给本机 LearnNote 客户端。可访问的视频由本机客户端下载，字幕、画面和笔记保存在本地。转写与模型生成的可用能力取决于用户安装的本地模型或主动配置的服务；外部模型调用遵循客户端配置。扩展不录制标签页，不绕过 DRM、付费墙或站点权限，不修改课程学习进度。
 
-本轮面向已有 Google Chrome Web Store 条目准备素材，条目链接见上文；当前公开版本与审核状态不在本次素材验收范围内，不创建新条目或提交商店。截图明确标注并列展示的独立侧栏视图与合成课程、服务响应；示例笔记为预先编写，未实际调用模型或安装原生扩展。同一英文示例课程在两种界面语言下均保留原文，不含真实用户标题、Cookie、签名 URL 或个人资料。替换图片经实际渲染、逐张审阅并归档后，才能计入双语素材验收。
+本轮面向已有 Google Chrome Web Store 条目准备素材，条目链接见上文；当前公开版本与审核状态不在本次素材验收范围内，不创建新条目或提交商店。截图明确标注并列展示的独立侧栏视图与合成课程、服务响应；示例笔记为预先编写，未实际调用模型或安装原生扩展。同一英文示例课程在两种界面语言下均保留原文，不含真实用户标题、Cookie、签名 URL 或个人资料。替换图片已由 Windows Edge 实际渲染，于 2026-10-09 经 Codex AI 助手逐张审阅，并连同原图、哈希与审阅记录归档；这是仓库双语素材验收，不代表商店批准或真实浏览器权限弹窗验收。

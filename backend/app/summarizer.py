@@ -98,6 +98,41 @@ def chat_completion_provider_kwargs(base_url: str) -> dict:
     return {"temperature": 0.2}
 
 
+def _compatible_completion(client, *, events: list[dict] | None, stage: str,
+                           cancel_check: Callable[[], None] | None = None, **kwargs):
+    """One same-request retry for an explicitly unsupported sampling option.
+
+    Never infer compatibility from exception prose, and never remove output
+    budgets, thinking controls, safety fields or source data. Each actual
+    attempt keeps the existing provider-reported usage accounting.
+    """
+    try:
+        return tracked_completion(client, **kwargs)
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        body = getattr(exc, "body", None)
+        error = body.get("error", body) if isinstance(body, dict) else None
+        if (type(status) is not int or status not in {400, 422} or not isinstance(error, dict)
+                or error.get("code") != "unsupported_parameter" or error.get("param") != "temperature"
+                or "temperature" not in kwargs):
+            raise
+        event = {"stage": "provider_compatibility", "code": "api_error", "request_stage": stage,
+                 "original_status": status, "original_code": "unsupported_parameter",
+                 "parameter": "temperature", "retry_outcome": "failed"}
+        if events is not None:
+            events.append(event)
+        compatible = {key: value for key, value in kwargs.items() if key != "temperature"}
+        try:
+            if cancel_check is not None:
+                cancel_check()
+            response = tracked_completion(client, **compatible)
+        except SummarizationCancelled:
+            event["retry_outcome"] = "cancelled"
+            raise
+        event.update(code="repaired", retry_outcome="success")
+        return response
+
+
 def llm_model_supports_vision(base_url: str, model: str) -> bool:
     provider = llm_provider_name(base_url)
     normalized = str(model or "").strip().lower()
@@ -529,7 +564,7 @@ def _repair_grounded_note(
     title: str = "",
 ) -> str:
     try:
-        response = tracked_completion(client,
+        response = _compatible_completion(client, events=events, stage="grounding_repair",
             model=model,
             messages=[{
                 "role": "user",
@@ -1364,7 +1399,7 @@ def summarize_with_llm(
                 acquire_provider_slot()
                 try:
                     check_cancel()
-                    response = tracked_completion(client,
+                    response = _compatible_completion(client, events=events, stage="vision_batch", cancel_check=check_cancel,
                         model=model,
                         messages=[{"role": "user", "content": content}],
                         **provider_kwargs,
@@ -1477,7 +1512,7 @@ def summarize_with_llm(
                 check_cancel()
                 acquire_provider_slot()
                 try:
-                    response = tracked_completion(client,
+                    response = _compatible_completion(client, events=events, stage="vision_merge", cancel_check=check_cancel,
                         model=model,
                         messages=[
                             {
@@ -1576,7 +1611,7 @@ def summarize_with_llm(
         check_cancel()
         acquire_provider_slot()
         try:
-            response = tracked_completion(client,
+            response = _compatible_completion(client, events=events, stage="text_summary", cancel_check=check_cancel,
                 model=model,
                 messages=[{"role": "user", "content": content}],
                 **provider_kwargs,

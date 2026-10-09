@@ -126,9 +126,8 @@ for (const failure of [false, true]) {
     const route = h.route({ content_mode: "visual", visual_understanding: true, transcriber,
       llm_base_url: "https://text-provider.invalid/v1", llm_model: "fixture" });
     const [audioRoute, textRoute] = route.split("。");
-    assert.match(audioRoute, transcriber.startsWith("groq") ? /所选 Groq 转写服务配置的地址/ : /所选 OpenAI 兼容 转写服务配置的地址/);
-    assert.match(audioRoute, /未确认实际转写地址/);
-    assert.doesNotMatch(audioRoute, /text-provider\.invalid/, "A distinct text-model host must not be presented as the effective ASR destination");
+    assert.match(audioRoute, /将音频发送到 text-provider\.invalid 的音频转写接口/);
+    assert.match(audioRoute, /与文字模型共用地址/, "The transcriber uses llm_base_url even when the option is Groq");
     assert.match(textRoute, /字幕与选定画面.*text-provider\.invalid.*fixture/);
   }
 }

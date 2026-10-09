@@ -16,10 +16,13 @@ def plan_route(
     *,
     local_asr_available: bool = False,
     model_configured: bool = False,
+    asr_configured: bool | None = None,
     vision_configured: bool = False,
     source_available_offline: bool = False,
+    capability_catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected = options or TaskOptions()
+    asr_configured = model_configured if asr_configured is None else asr_configured
     local_model = urlparse(selected.llm_base_url or "").hostname in {"localhost", "127.0.0.1", "::1"}
     remote_asr = str(selected.transcriber or "").strip().lower() in REMOTE_ASR_NAMES
     text_routes = [
@@ -36,7 +39,7 @@ def plan_route(
             "id": "remote_asr" if remote_asr else "local_asr",
             "label": "配置的音频转写服务" if remote_asr else "本地语音识别",
             "kind": "remote" if remote_asr and not local_model else "local",
-            "ready": bool(model_configured) if remote_asr else bool(local_asr_available),
+            "ready": bool(asr_configured) if remote_asr else bool(local_asr_available),
             "network": ("none" if local_model else "required") if remote_asr else "offline_after_model_ready",
             "data_types": ["audio"] if remote_asr else [],
             "conditional": "only_when_verified_subtitles_are_unavailable",
@@ -82,6 +85,7 @@ def plan_route(
         "offline_ready": bool(source_available_offline) and all(item["ready"] and item["network"] != "required" for item in requested_routes),
         "offline_source_confirmed": bool(source_available_offline),
         "readiness_scope": "Configuration and cached files only; no network or model probe was performed. A local gateway may itself forward requests.",
+        "capability_catalog": capability_catalog or {},
         "data_leaving_device": sorted({value for item in requested_routes if item["kind"] == "remote" for value in item.get("data_types", [])}),
         "local_fallback": {
             "content_mode": "subtitles",
@@ -91,8 +95,10 @@ def plan_route(
         },
         "estimates": {
             "cost": None, "duration_seconds": None, "context_limit": None, "image_limit": None,
+            "cost_range": None, "duration_seconds_range": None,
             "status": "unknown_until_source_and_provider_limits_are_known",
-            "detail": "费用、时长与模型限制取决于输入、设备和服务商；当前不提供未经测量的数字。",
+            "uncertainty": "unmeasured",
+            "detail": "费用与耗时区间：未知。尚无当前输入、设备及服务商的可用测量依据，无法给出可靠区间；不代表免费或立即完成。",
         },
         "blocking_reasons": blocking,
         "policy": "local-first; remote calls require explicit configured provider; no account is required",

@@ -171,16 +171,14 @@ export function createMaterialBatch({ api, changed = () => {}, previewVideo = pr
 
 // Display the same options the queue will submit. Do not send credentials or
 // filenames to a remote route planner merely to explain the local selection.
-export function batchVideoRoute(options, health = {}) {
-  if (options.content_mode === "subtitles") return "视频：仅提取内嵌字幕，不调用转写或总结模型；没有字幕时停止。";
+export function batchVideoRoute(options, health = {}, { localFile = true } = {}) {
+  if (options.content_mode === "subtitles") return `视频：仅提取${localFile ? "内嵌" : "可用"}字幕，不调用转写或总结模型；没有字幕时停止。${localFile ? "" : "来源站点仍需联网。"}`;
   let host = "当前配置的服务";
   try { host = new URL(options.llm_base_url || health.default_llm_base_url).host; } catch {}
   const model = options.llm_model || health.default_llm_model || "尚未配置";
   const transcriber = String(options.transcriber || "").trim().toLowerCase();
   const remoteAsr = ["openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"].includes(transcriber);
-  const provider = ["groq", "groq-asr"].includes(transcriber) ? "Groq" : "OpenAI 兼容";
-  // The public task options do not expose a separately resolved ASR endpoint.
-  // Name the selected service without presenting the text-model host as proof
-  // of the effective audio destination, which may be resolved by configuration.
-  return `视频：优先内嵌字幕；没有字幕时${remoteAsr ? `将音频发送到所选 ${provider} 转写服务配置的地址（此处未确认实际转写地址）` : "在本机转写（模型需准备完成）"}。必要的字幕${options.visual_understanding ? "与选定画面" : ""}将交给 ${host} 的 ${model} 模型；本机网关也可能转发。费用、处理时间及额外缓存空间尚不能确定。`;
+  // All compatible ASR choices, including Groq, use the same llm_base_url
+  // as text generation. Display only its parsed host, never URL credentials.
+  return `视频：优先${localFile ? "内嵌" : "可用"}字幕；没有字幕时${remoteAsr ? `将音频发送到 ${host} 的音频转写接口（与文字模型共用地址）` : "在本机转写（模型需准备完成）"}。必要的字幕${options.visual_understanding ? "与选定画面" : ""}、整理要求将交给 ${host} 的 ${model} 模型；本机网关也可能转发。无 Key 时可选择仅提取字幕；不会自动改用远程服务。模型上下文和图片上限未知；费用与耗时区间未知，缺少当前输入、设备与服务商的测量依据。额外缓存空间也尚不能确定。`;
 }
