@@ -1,3 +1,4 @@
+import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { renderEditionStable } from "/web/reader-progress.js";
 import {
@@ -414,7 +415,7 @@ async function loadEdition(epoch) {
   state.revision = edition.revision;
   state.edition = edition;
   renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
-    `${edition.revision}:${selected.summary_source || ""}`, renderNote);
+    `${edition.revision}:${selected.summary_source || ""}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
 }
 function renderNote() {
   // Keep the edition hash alongside the rendered document so annotations and
@@ -459,7 +460,15 @@ function renderNote() {
       ? excerptOnly
         ? `<p class="muted">这里暂时保留的是字幕摘录。上方可以重新生成总结，原始字幕也可随时核对。</p><details class="transcript-draft"><summary>查看已保留的字幕摘录</summary>${LearnNoteMarkdown.markdownToHtml(state.text.replace(/^# .+\n/, ""))}</details>`
         : LearnNoteMarkdown.markdownToHtml(state.text)
-      : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
+      : canOcrMaterial(state.selected)
+        ? '<p class="muted">扫描 PDF 尚无可读的文字。可在上方查看 OCR 状态，并打开原始 PDF 核对。</p>'
+        : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
+  const ocrSelection = state.selected, ocrEpoch = state.epoch;
+  mountMaterialOcr($("document"), {
+    material: ocrSelection, api,
+    isCurrent: () => ocrEpoch === state.epoch && !state.editing && state.selected?.id === ocrSelection.id && state.selected?.kind === ocrSelection.kind,
+    onUpdated: async () => { await refresh(); },
+  });
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
   if (state.selected.kind === "task")
     for (const code of $("document").querySelectorAll("code")) {

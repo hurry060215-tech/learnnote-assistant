@@ -80,6 +80,17 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertEqual(["_internal/web/desk-material-encoding.js"], result["missing_bundled"])
 
+    def test_missing_material_ocr_module_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/material-ocr.js").unlink()
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/material-ocr.js"], result["missing_bundled"])
+
 
 if __name__ == "__main__":
     unittest.main()
