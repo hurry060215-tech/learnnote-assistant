@@ -75,3 +75,20 @@ test("latest card reference wins even when an older lookup replies first", async
   requests.get("/api/knowledge/evidence/abandoned")({ evidence: { metadata: { material_id: "a" } } });
   await abandoned; assert.equal(calls.length, 2);
 });
+
+test("mistake backlinks use the same canonical resolver and explain a missing source", async () => {
+  const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
+  const block = tools.slice(tools.indexOf("    if (dashboard?.mistakes?.length) {"), tools.indexOf("    backAction = courseId"));
+  for (const missing of [false, true]) {
+    const body = new Element(), calls = [], notices = [];
+    const context = vm.createContext({ document, $: () => body,
+      dashboard: { mistakes: [{ question: "Question", answer: "Answer", source_evidence_ids: ["canonical-id"] }] },
+      dialog: { close: () => calls.push("closed") }, notice: text => notices.push(text),
+      ctx: { openEvidence: async id => { calls.push(id); if (missing) throw new Error("Source no longer exists"); } },
+    });
+    vm.runInContext(block, context);
+    await body.children[0].children[1].children[1].onclick();
+    assert.deepEqual(calls, ["closed", "canonical-id"]);
+    assert.deepEqual(notices, missing ? ["Source no longer exists"] : []);
+  }
+});
