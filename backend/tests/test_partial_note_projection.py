@@ -155,6 +155,18 @@ class PartialNoteProjectionTests(unittest.TestCase):
             self.assertNotIn(private_value, response.text)
             self.assertNotIn(private_value, public_error)
 
+    def test_partial_exception_messages_never_become_public_reason_codes(self):
+        from app.partial_note_projection import _UnavailablePartial
+
+        private_error = "Synthetic private diagnostic: /private/task-owner/model-config.json"
+        for error, reason in ((_UnavailablePartial(private_error), "source_mismatch"),
+                              (ValueError(private_error), "invalid_artifact")):
+            with self.subTest(error=type(error).__name__):
+                with patch("app.partial_note_projection._partial_sections", side_effect=error):
+                    result = self.assert_unavailable(reason)
+                self.assertNotIn(private_error, json.dumps(result))
+                self.assertNotIn("/private/task-owner", json.dumps(result))
+
     def test_missing_draft_and_inactive_pointer_are_unavailable(self):
         for changes in ({"note_path": ""}, {"note_path": str(self.work / "draft.md")},
                         {"note_path": str(self.work / "note.md")}, {"status": "queued"},

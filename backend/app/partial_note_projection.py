@@ -20,7 +20,7 @@ _TASK_PROVENANCE = {"id", "created_at", "status", "retry_count", "source_identit
 
 
 class _UnavailablePartial(ValueError):
-    """A bounded public reason, never a path or raw diagnostic."""
+    """Saved partial source mismatch; exception details remain internal."""
 
 
 def partial_revision(value) -> str:
@@ -188,8 +188,8 @@ def _generated_partial(root: Path, task, attempt: str, transcript: TranscriptRes
         if not ready:
             return {**result, **provenance, "reason": "publication_pending"}
         return {**provenance, "sections": sections, "revision": document["revision"], "reason": "ready"}
-    except _UnavailablePartial as exc:
-        return {**result, "reason": str(exc)}
+    except _UnavailablePartial:
+        return {**result, "reason": "source_mismatch"}
     except (OSError, ValueError, TypeError, KeyError, OverflowError, RuntimeError):
         return {**result, "reason": "invalid_artifact"}
 
