@@ -1074,6 +1074,13 @@ def register_task_material(record: TaskRecord) -> dict[str, object]:
     with _lock:
         connection, _ = _connect()
         try:
+            # Evidence loading releases the process lock. Recheck after taking
+            # the SQLite write reservation so concurrent registrations also
+            # converge when they arrive through different processes.
+            connection.execute("BEGIN IMMEDIATE")
+            existing = _find_material_by_sha(connection, digest)
+            if existing is not None:
+                return _material_row(existing, deduplicated=True)
             connection.execute(
                 """INSERT INTO library_materials
                    (material_id, schema_version, title, filename, source_type, content_type,
