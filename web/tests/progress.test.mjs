@@ -203,3 +203,48 @@ test("log text is escaped and duration formatting handles long steps", () => {
   );
   assert.equal(elapsedLabel(3660000), "1 小时 1 分");
 });
+
+test("required detailed timings are shown without inventing missing historical durations", () => {
+  const keys = ["queue", "download", "transcript", "frames", "vision", "merge", "verify"];
+  const events = keys.map((key, index) => timing(key, "completed", (index + 1) * 1000));
+  const rows = taskTimeline({ status: "success" }, events);
+  keys.forEach((key, index) => assert.equal(rows.find((s) => s.key === key).detail, `已完成 · ${index + 1} 秒`));
+  for (const key of ["queue", "frames", "vision", "merge", "verify"]) {
+    assert.equal(taskTimeline({ status: "success" }, [timing("visual", "completed", 1000), timing("summary", "completed", 5000)]).find((s) => s.key === key).detail, "未记录");
+  }
+  const html = timelineHtml({ id: "fixture", status: "success" }, events);
+  assert.match(html, /本地 OCR/);
+  assert.match(html, /不代表事实已核验/);
+  assert.match(html, /请勿相加/);
+});
+test("queued retry hides old attempt timings immediately at its admission event", () => {
+  const rows = taskTimeline({ status: "queued", phase: "queued" }, [
+    { event: "pipeline_attempt_started" }, timing("queue", "completed", 4000),
+    timing("verify", "completed", 5000), { event: "task_enqueued" },
+  ]);
+  assert.equal(rows.find((s) => s.key === "queue").state, "active");
+  assert.equal(rows.find((s) => s.key === "queue").detail.includes("4 秒"), false);
+  assert.equal(rows.find((s) => s.key === "verify").detail, "等待记录");
+});
+test("new stage failures and cancellations retain measured intervals", () => {
+  for (const key of ["frames", "vision", "merge", "verify"]) {
+    for (const status of ["failed", "cancelled"]) {
+      const row = taskTimeline({ status }, [timing(key, status, 3000)]).find((s) => s.key === key);
+      assert.equal(row.state, "stopped");
+      assert.equal(row.detail, "未完成 · 3 秒");
+    }
+  }
+});
+test("event log keeps invalid or absent measured durations unknown", () => {
+  for (const duration of [undefined, null, -1, "", NaN]) {
+    assert.match(eventLogHtml([{ ...timing("merge", "failed", duration), timestamp: "2026-10-09T00:00:00Z" }]), /耗时未记录/);
+  }
+});
+test("a queued retry with a missing optional admission event never reuses previous durations", () => {
+  const rows = taskTimeline({ status: "queued", phase: "queued" }, [
+    { event: "pipeline_attempt_started" }, timing("queue", "completed", 4000), timing("verify", "completed", 5000),
+  ]);
+  assert.equal(rows.find((s) => s.key === "queue").state, "active");
+  assert.equal(rows.find((s) => s.key === "queue").detail.includes("4 秒"), false);
+  assert.equal(rows.find((s) => s.key === "verify").detail, "等待记录");
+});
