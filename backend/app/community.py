@@ -116,6 +116,38 @@ def set_community_enabled(enabled: bool) -> dict[str, object]:
     return community_settings()
 
 
+_EMAIL_TOKEN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-@")
+_EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+
+
+def _redact_email_tokens(text: str) -> str:
+    """Scan disjoint maximal ASCII tokens once; never restart a regex at each '%'.
+
+    Tokenization, partitioning and validation each visit at most O(n) characters.
+    Redacting the whole token also avoids retaining malformed multi-@ identities.
+    Sentence-final periods stay outside the replacement.
+    """
+    output: list[str] = []
+    start = 0
+    while start < len(text):
+        end = start + 1
+        email_token = text[start] in _EMAIL_TOKEN_CHARS
+        while end < len(text) and (text[end] in _EMAIL_TOKEN_CHARS) == email_token:
+            end += 1
+        token = text[start:end]
+        candidate = token.rstrip(".") if email_token else ""
+        local, separator, domain = candidate.rpartition("@")
+        host, dot, suffix = domain.rpartition(".")
+        if (separator and local and host and dot and len(suffix) >= 2
+                and suffix.isascii() and suffix.isalpha()
+                and all(char in _EMAIL_DOMAIN_CHARS for char in domain)):
+            output.append("[邮箱已省略]" + token[len(candidate):])
+        else:
+            output.append(token)
+        start = end
+    return "".join(output)
+
+
 def _filter_community_text(value: str) -> str:
     """Conservative local filtering, never used to rewrite transcript evidence."""
     text = " ".join(str(value or "")[:8000].split()).strip()[:2000]
@@ -126,7 +158,7 @@ def _filter_community_text(value: str) -> str:
         return ""
     if re.search(r"(?:加[微vV]|加群|扫码|代写|刷单|返利|优惠券|推广链接|buy now|promo code|earn money|subscribe to my)", normalized):
         return ""
-    text = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[邮箱已省略]", text)
+    text = _redact_email_tokens(text)
     text = re.sub(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)", "[联系方式已省略]", text)
     text = re.sub(r"(?i)(?:https?://|www\.)\S+", "[链接已省略]", text)
     text = re.sub(r"(?<!\w)@[\w.\-]{2,}", "[用户已省略]", text)

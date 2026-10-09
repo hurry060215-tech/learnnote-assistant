@@ -17,7 +17,7 @@ module.exports = async function courseDeletionAcceptance(context, base, out) {
     return response.json();
   };
   const task = async (name, { active = false, url = "https://example.com/synthetic-course-deletion/" + marker, handoff = "" } = {}) => {
-    const result = await api("/api/tasks/from-current-page?defer=true", { method: "POST", data: { title: `${name} ${marker}`, page_url: url, handoff_id: handoff } });
+    const result = await api("/api/tasks/from-current-page?defer=true", { method: "POST", data: { title: `${name} ${marker}`, page_url: url, handoff_id: handoff, options: { content_mode: "text", visual_understanding: false } } });
     tasks.push(result.task_id);
     if (!active) await api(`/api/tasks/${result.task_id}/cancel`, { method: "POST" });
     return result.task_id;

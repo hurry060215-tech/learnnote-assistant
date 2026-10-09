@@ -164,8 +164,8 @@ def compare_course(course_id: str, query: str, *, source_id: str = "", source_ki
         hits = [term for term in terms if term in text.casefold()]
         if not hits:
             continue
-        start = min(text.casefold().find(term) for term in hits)
-        excerpt = text[max(0, start - 80):start + 440]
+        match_offset = min(text.casefold().find(term) for term in hits)
+        excerpt = text[max(0, match_offset - 80):match_offset + 440]
         source = item["course_source"]
         key = f"{source['kind']}:{source['id']}"
         groups.setdefault(key, {"id": key, "title": source["title"], "evidence_ids": [], "terms": [], "term_evidence": {}})
