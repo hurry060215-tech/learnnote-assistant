@@ -133,6 +133,8 @@ def _event_exists(task_id: str, event_name: str, phase: str, attempt_id: str = "
 def record_stage_duration(task_id: str, stage: str, started_at: float | None, status: str = "completed", *, ended_at: float | None = None, expected_attempt_id=UNSET_ATTEMPT, **safe_details) -> dict:
     """Persist one monotonic interval per stage/attempt; absent starts stay unknown."""
 
+    if expected_attempt_id is None:
+        return {}
     if started_at is not None and ended_at is None:
         ended_at = time.monotonic()
     with _task_data_lock:
@@ -141,7 +143,7 @@ def record_stage_duration(task_id: str, stage: str, started_at: float | None, st
             raise ValueError("invalid_pipeline_stage")
         payload = _metrics(task_id)
         attempt_id = str(payload.get("current_attempt_id") or "")
-        if expected_attempt_id is None or (expected_attempt_id is not UNSET_ATTEMPT and attempt_id != expected_attempt_id):
+        if expected_attempt_id is not UNSET_ATTEMPT and attempt_id != expected_attempt_id:
             return {}
         stages = payload["stages"]
         entry = stages.get(normalized_stage)
@@ -250,9 +252,11 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
     target = task_dir(task_id) / "draft.md"
     atomic_write_text(target, "\n".join(lines))
 
+    if expected_attempt_id is None:
+        return target
     with _task_data_lock:
         payload = _metrics(task_id)
-        if expected_attempt_id is None or payload["current_attempt_id"] != expected_attempt_id:
+        if payload["current_attempt_id"] != expected_attempt_id:
             return target
         draft = payload.get("draft")
         if not isinstance(draft, dict) or not draft:

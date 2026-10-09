@@ -1075,7 +1075,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         emit_timing(timing_callback, "frames", None, "skipped")
         if request.options.content_mode == "subtitles":
             from .caption_extraction import finish_caption_extraction
-            finish_caption_extraction(task_id, request.title, transcript, subtitle_path)
+            finish_caption_extraction(task_id, request.title, transcript, subtitle_path, attempt_id=attempt_id)
             return
         finish_transcript_note(task_id, request.title, request.page_url, transcript, request.options,
             duration=duration, media_skipped=True, attempt_id=attempt_id,
@@ -1148,7 +1148,7 @@ def process_local_video_task(
         from .caption_extraction import finish_caption_extraction
         try:
             _check_cancel(task_id)
-            start_pipeline_attempt(task_id)
+            attempt_id = start_pipeline_attempt(task_id)
             update_task(task_id, status="running", phase="detecting", progress=10, message="检查本地视频中的已有字幕，不转写音频。")
             subtitle = subtitle_path
             transcript = parse_subtitle_or_none(subtitle, source=subtitle_source or "page-subtitle") if subtitle else None
@@ -1164,7 +1164,7 @@ def process_local_video_task(
                 _fail(task_id, "subtitles_unavailable", "没有找到本地视频内嵌字幕；可切换为文字笔记进行音频转写。")
                 return
             _check_cancel(task_id)
-            finish_caption_extraction(task_id, title, transcript, str(subtitle))
+            finish_caption_extraction(task_id, title, transcript, str(subtitle), attempt_id=attempt_id)
         except TaskCancelled:
             return
         except Exception:
