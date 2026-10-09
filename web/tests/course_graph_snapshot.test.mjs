@@ -30,7 +30,7 @@ const snapshot = () => ({
   graph: graph(), digest: "a".repeat(64),
 });
 
-function harness() {
+function harness(sourceText = source) {
   const h = { current: true, requests: [], downloads: [], blobs: [], revoked: [], focused: [], scrolled: [] };
   const camel = value => value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
   class Element {
@@ -80,7 +80,7 @@ function harness() {
   const document = { createElement: tag => new Element(tag), createElementNS: (_, tag) => new Element(tag), createTextNode: text => Object.assign(new Element("#text"), { textContent: text }) };
   document.getElementById = id => h.root.querySelectorAll("*").find(node => node.id === id);
   h.context = vm.createContext({ document, Blob, URLSearchParams, URL: { createObjectURL: blob => { h.blobs.push(blob); return `blob:${h.blobs.length}`; }, revokeObjectURL: url => h.revoked.push(url) }, setTimeout: callback => callback() });
-  vm.runInContext(concepts.replaceAll("export function", "function") + "\n" + source.replace(/^import .*;\n/, "").replaceAll("export function", "function"), h.context);
+  vm.runInContext(concepts.replaceAll("export function", "function") + "\n" + sourceText.replace(/^import .*;\r?\n/, "").replaceAll("export function", "function"), h.context);
   h.api = (path, options = {}) => { const request = deferred(); h.requests.push({ path, options, ...request }); return request.promise; };
   h.nodes = selector => h.root.querySelectorAll(selector);
   h.find = selector => h.root.querySelector(selector);
@@ -110,6 +110,14 @@ function harness() {
   h.status = () => h.nodes('[role="status"]').map(node => node.textContent).join("\n");
   return h;
 }
+
+test("snapshot harness loads LF and Windows CRLF modules", () => {
+  for (const newline of ["\n", "\r\n"]) {
+    const h = harness(source.replace(/\r?\n/g, newline));
+    h.importer();
+    assert(h.find("[data-graph-snapshot-file]"));
+  }
+});
 
 test("exports capture exact submitted query, every filter and revision; repeated clicks and downloads stay safe", async () => {
   const h = harness(), scope = new URLSearchParams("q=++SCALE+++scale++&source_kind=material&source_id=source%2F1&start=0&end=12.5"), course = { id: "course/one", revision: 7 };
