@@ -43,6 +43,15 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     course = (await api("/api/courses", { method: "POST", data: { title: `Concept fixture ${marker}`, sources: materials.map(item => ({ kind: "material", id: item.material_id })) } })).course;
     const anchors = await Promise.all(materials.map(item => api(`/api/library/materials/${item.material_id}/anchors`)));
     const ids = anchors.map(value => value.anchors.find(item => item.text.includes("scale")).evidence_id);
+    // API seeding bypasses the reader import flow's refresh. Load the complete
+    // fixture into the reader before testing its canonical source resolver;
+    // otherwise this depends on the unrelated five-second library poll.
+    await page.goto(base);
+    for (const item of [restoreMaterial, ...materials]) {
+      await page.locator(`#notes [data-kind="material"][data-id="${item.material_id}"]`).waitFor({ state: "attached" });
+    }
+    await page.locator(`#notes [data-kind="material"][data-id="${restoreMaterial.material_id}"]`).click();
+    await page.waitForFunction(id => document.querySelector("#document")?.dataset.readerSource === `material:${id}`, restoreMaterial.material_id);
     await open();
     assert.equal(await page.locator(".relationship-edge").count(), 3);
     assert.equal(await page.locator('.relationship-edge[stroke-dasharray="6 4"]').count(), 3);

@@ -319,6 +319,24 @@ function originForUrl(value = "") {
   }
 }
 
+function requestHeadersForUrl(resource = {}, url = "") {
+  const headers = { ...(resource.request_headers || {}) };
+  const origins = [resource.url, url].map(value => {
+    try {
+      if (!/^https?:\/\/[^/?#\\\s@]+(?:[/?#]|$)/i.test(value || "") || /[\u0000-\u0020\\]/.test(value)) return "";
+      return new URL(value).origin;
+    } catch {
+      return "";
+    }
+  });
+  if (!origins[0] || origins[0] !== origins[1]) {
+    for (const name of Object.keys(headers)) {
+      if (name.toLowerCase() === "authorization") delete headers[name];
+    }
+  }
+  return headers;
+}
+
 function addActiveVideoRequestContext(resource = {}, page = {}, tab = {}) {
   if (resource.source !== "activeVideo") return resource;
   if (!/^https?:\/\//i.test(String(resource.url || ""))) return resource;
@@ -1280,6 +1298,7 @@ function addResource(tabId, resource, notify = true) {
     addResource(tabId, {
       ...normalized,
       url: inferredUrl,
+      request_headers: requestHeadersForUrl(normalized, inferredUrl),
       source: "inferred-manifest",
       kind: inferredKind,
       mime: inferredKind === "hls" ? "application/vnd.apple.mpegurl" : "application/dash+xml",
@@ -1294,6 +1313,7 @@ function addResource(tabId, resource, notify = true) {
       addResource(tabId, {
         ...normalized,
         url: guessedUrl,
+        request_headers: requestHeadersForUrl(normalized, guessedUrl),
         source: "manifest-guess",
         kind: guessedKind,
         mime: guessedKind === "hls" ? "application/vnd.apple.mpegurl" : "application/dash+xml",
@@ -1452,6 +1472,7 @@ function addResolvedMediaResource(tabId, resource = {}) {
   addResource(tabId, {
     ...resource,
     url: resolvedUrl,
+    request_headers: requestHeadersForUrl(resource, resolvedUrl),
     resolved_url: "",
     source: "webRequestResolved",
     kind: resolvedKind,

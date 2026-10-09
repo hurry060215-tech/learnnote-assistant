@@ -1,4 +1,4 @@
-"""Synthetic source snapshots captured from ba9ea04 before the #143 extraction."""
+"""Pre-#143 synthetic snapshots, with #269 global credential removal applied."""
 from __future__ import annotations
 
 import json

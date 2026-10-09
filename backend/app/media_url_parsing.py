@@ -6,6 +6,7 @@ This module never resolves DNS, fetches URLs, or persists browser data.
 from __future__ import annotations
 
 import html
+import ipaddress
 import re
 from base64 import b64decode, urlsafe_b64decode
 from urllib.parse import unquote, urljoin, urlparse
@@ -248,3 +249,38 @@ def _decode_js_string_escapes(value: str) -> str:
 
 def _is_http_url(url: str) -> bool:
     return bool(re.match(r"^https?://", url or "", re.I))
+
+
+def _url_origin(url: str) -> tuple[str, str, int] | None:
+    """Return a strict HTTP origin for credential scope, without resolving DNS."""
+    try:
+        if not url or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url):
+            return None
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        # Preserve browser host spelling; trailing-dot aliases fail validation.
+        host = parsed.hostname.lower()
+        try:
+            host = ipaddress.ip_address(host).compressed
+        except ValueError:
+            ascii_host = host.encode("idna").decode("ascii")
+            if not host.isascii() and ascii_host.encode("ascii").decode("idna") != host:
+                return None
+            host = ascii_host
+            if len(host) > 253 or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in host.split(".")):
+                return None
+        port = parsed.port if parsed.port is not None else (443 if scheme == "https" else 80)
+        if not 1 <= port <= 65535 or "%" in host:
+            return None
+        return scheme, host, port
+    except (TypeError, UnicodeError, ValueError):
+        return None
+
+
+def same_http_origin(left: str, right: str) -> bool:
+    origin = _url_origin(left)
+    return origin is not None and origin == _url_origin(right)

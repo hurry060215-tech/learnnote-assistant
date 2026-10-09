@@ -22,7 +22,7 @@ class SubtitleDecodeProvenanceTests(unittest.TestCase):
 
     def download(self, raw, content_type):
         response = SimpleNamespace(status_code=200, content=raw, headers={"Content-Type": content_type})
-        with patch("app.downloader.requests.get", return_value=response) as request:
+        with patch("app.downloader.request_media", return_value=response) as request:
             output = self.downloader._download_text_file(self.candidate, [], "https://example.test/course", "Synthetic")
         request.assert_called_once()
         return output
