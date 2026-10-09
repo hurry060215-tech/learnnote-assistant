@@ -89,8 +89,13 @@ async function main() {
           assert.equal(request.method(), "GET");
           const target = path.resolve(root, pathname === "/" ? "web/index.html" : decodeURIComponent(pathname.slice(1)));
           assert(target.startsWith(path.join(root, "web") + path.sep));
-          assert(fs.statSync(target).isFile());
-          return route.fulfill({ body: fs.readFileSync(target), contentType: { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2" }[path.extname(target)] || "application/octet-stream" });
+          const descriptor = fs.openSync(target, "r");
+          let body;
+          try {
+            assert(fs.fstatSync(descriptor).isFile());
+            body = fs.readFileSync(descriptor);
+          } finally { fs.closeSync(descriptor); }
+          return route.fulfill({ body, contentType: { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2" }[path.extname(target)] || "application/octet-stream" });
         }
         report.requests.push(`${request.method()} ${pathname}`);
         if (request.method() === "GET") {
