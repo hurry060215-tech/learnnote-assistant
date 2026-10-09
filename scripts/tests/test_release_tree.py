@@ -58,16 +58,18 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertEqual(1, len(result["forbidden"]))
 
-    def test_missing_release_notes_fail(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            self.populate_extension(root)
-            self.populate_legal_files(root)
-            self.populate_bundled_files(root)
-            (root / "_internal/web/release-notes.json").unlink()
-            result = MODULE.audit_release_tree(root)
-            self.assertFalse(result["passed"])
-            self.assertEqual(["_internal/web/release-notes.json"], result["missing_bundled"])
+    def test_missing_release_notes_or_claim_timeline_fail(self):
+        for relative in (Path("_internal/web/release-notes.json"), Path("_internal/web/claim-timeline.js")):
+            with self.subTest(required_file=relative), tempfile.TemporaryDirectory() as temp_dir:
+                self.assertIn(relative, MODULE.REQUIRED_BUNDLED_FILES)
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
 
 
 if __name__ == "__main__":

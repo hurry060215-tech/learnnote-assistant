@@ -57,6 +57,7 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk-summary-versions.js"),
     Path("_internal/web/desk-profile.js"),
     Path("_internal/web/source-video.js"),
+    Path("_internal/web/claim-timeline.js"),
     Path("_internal/web/markdown.js"),
 
 }

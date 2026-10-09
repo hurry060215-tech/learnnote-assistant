@@ -315,19 +315,10 @@ export function installProductWorkspace(ctx) {
     }
     block.querySelectorAll("[data-citation]").forEach((b) => {
       b.type = "button";
-      b.onclick = () => {
-        const index = Number(b.dataset.citation);
-        const citation = result.citations[index] || {};
-        const targetSource = citation.source_id && citation.source_kind
-          ? { ...(messageSource || {}), id: citation.source_id, kind: citation.source_kind, title: citation.title || messageSource?.title || "来源" }
-          : messageSource;
-        if (targetSource && (typeof citation.start === "number" || citation.source_kind === "material")) {
-          // Citations locate in the main reader; the assistant answer stays
-          // compact and never expands a second copy of the source excerpt.
-          openInlineSource?.(typeof citation.start === "number" ? citation.start : undefined, targetSource, typeof citation.end === "number" ? citation.end : undefined);
-        } else {
-          notice("这条回答没有可靠的来源定位，未猜测高亮位置。");
-        }
+      b.onclick = async () => {
+        const citation = result.citations[Number(b.dataset.citation)] || {};
+        try { await ctx.openCitation(citation, messageSource); }
+        catch (error) { notice(error.message || "这条回答没有可靠的来源定位。"); }
       };
     });
     block.querySelector(".save-ai-note").onclick = async (e) => {

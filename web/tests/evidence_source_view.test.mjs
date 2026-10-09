@@ -60,7 +60,7 @@ test("document navigation selects the canonical ID while retaining the complete 
 test("latest card reference wins even when an older lookup replies first", async () => {
   const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8"), calls = [], requests = new Map();
   const state = { epoch: 1, selected: null, items: [{ kind: "material", id: "a" }, { kind: "task", id: "b" }] };
-  const context = vm.createContext({ state, evidenceAnchor,
+  const context = vm.createContext({ state, evidenceAnchor, guard: () => true,
     api: path => new Promise(resolve => requests.set(path, resolve)),
     openItem: async item => { calls.push(["item", item.id]); state.selected = item; state.epoch++; },
     openSource: async (seconds, item, target) => { calls.push(["source", item.id, seconds, target.evidenceId, target.windowId]); },
@@ -69,7 +69,7 @@ test("latest card reference wins even when an older lookup replies first", async
   const older = context.openEvidence("old"), latest = context.openEvidence("new");
   requests.get("/api/knowledge/evidence/old")({ evidence: { metadata: { material_id: "a" }, locator: "page 1" } });
   await older; assert.deepEqual(calls, []);
-  requests.get("/api/knowledge/evidence/new")({ evidence: { task_id: "b", locator: "10-20s", metadata: { window_id: "second" } } });
+  requests.get("/api/knowledge/evidence/new")({ evidence: { evidence_id: "new", task_id: "b", locator: "10-20s", metadata: { window_id: "second" } } });
   await latest; assert.deepEqual(calls, [["item", "b"], ["source", "b", 10, "new", "second"]]);
   const abandoned = context.openEvidence("abandoned"); state.epoch++;
   requests.get("/api/knowledge/evidence/abandoned")({ evidence: { metadata: { material_id: "a" } } });

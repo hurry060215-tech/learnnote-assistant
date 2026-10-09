@@ -11,7 +11,8 @@ import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { createTranscriptWindow } from "/web/transcript-window.js";
-import { evidenceAnchor } from "/web/evidence-anchor.js";
+import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
+import { createClaimTimeline, claimTimelineModel, claimStatus } from "/web/claim-timeline.js";
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
@@ -48,6 +49,24 @@ const state = {
   model: {},
   health: {},
 };
+const claimContainer = document.createElement("section");
+claimContainer.id = "sourceClaims";
+claimContainer.className = "claim-timeline";
+claimContainer.hidden = true;
+$("sourceContent").before(claimContainer);
+const claimTimeline = createClaimTimeline({
+  note: $("document"), container: claimContainer, timestamp,
+  readMap: taskId => api(`/api/tasks/${encodeURIComponent(taskId)}/claims`),
+  current: snapshot => snapshot.epoch === state.epoch && snapshot.revision === state.revision &&
+    state.selected?.kind === "task" && state.selected.id === snapshot.taskId && !state.editing,
+  onOpen: (evidence, taskId) => openClaimEvidence(evidence, taskId).catch(failure),
+});
+function loadClaimTimeline() {
+  const selected = state.selected;
+  if (!selected) { claimTimeline.reset(); return; }
+  return claimTimeline.load({ kind: selected.kind, taskId: selected.id, epoch: state.epoch,
+    revision: state.revision, text: state.text, hasMap: Boolean(selected.claim_evidence?.path) });
+}
 const presets = {
   deepseek: ["https://api.deepseek.com", "deepseek-flash"],
   kimi: ["https://api.moonshot.cn/v1", "moonshot-v1-8k"],
@@ -360,6 +379,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
     state.navigation = state.navigation.slice(-30);
   }
   window.dispatchEvent(new Event("learnnote:navigation"));
+  claimTimeline.reset();
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
@@ -388,7 +408,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
   state.annotationQuoteReanchored = false;
   $("annotationQuote").textContent = "";
   $("cancelAnnotationEdit").hidden = true;
-  closeSource();
+  closeSource({ cancelEvidence: false });
   document.body.classList.remove("menu-open");
   $("menu").setAttribute("aria-expanded", "false");
   history.replaceState(
@@ -458,7 +478,7 @@ function renderNote() {
     (state.text.trim()
       ? excerptOnly
         ? `<p class="muted">这里暂时保留的是字幕摘录。上方可以重新生成总结，原始字幕也可随时核对。</p><details class="transcript-draft"><summary>查看已保留的字幕摘录</summary>${LearnNoteMarkdown.markdownToHtml(state.text.replace(/^# .+\n/, ""))}</details>`
-        : LearnNoteMarkdown.markdownToHtml(state.text)
+        : LearnNoteMarkdown.markdownToHtml(state.text, { sourceOffsets: true })
       : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
   if (state.selected.kind === "task")
@@ -509,6 +529,7 @@ function renderNote() {
       node.replaceWith(fragment);
     }
   }
+  loadClaimTimeline();
   window.dispatchEvent(new Event("learnnote:document"));
 }
 const taskEvents = new Map();
@@ -622,47 +643,25 @@ function renderStatus(reload = true) {
       if (!details.open || details.dataset.loaded) return;
       details.dataset.loaded = "true";
       try {
+        const epoch = state.epoch, revision = state.revision;
         const mapped = await api("/api/tasks/" + t.id + "/claims");
+        if (!details.isConnected || epoch !== state.epoch || revision !== state.revision || state.editing) return;
+        const model = claimTimelineModel(mapped, { taskId: t.id, revision, text: state.text });
+        if (!model) { body.textContent = "来源映射与当前笔记版本不一致，已停用旧定位。"; return; }
         const list = document.createElement("ol");
-        for (const claim of mapped.claims || []) {
+        for (const { claim, targets } of model.entries) {
           const item = document.createElement("li");
           const text = document.createElement("span");
-          const verificationLabel = ({
-            "direct": "直接支持",
-            "located_only": "仅定位",
-            "inference": "推断",
-            "pending_review": "待核对",
-          })[claim.verification] || "待核对";
-          const sourceLabel = ({
-            "transcript": "字幕",
-            "visual": "画面",
-            "document": "文档",
-          })[claim.claim_type] || "";
-          text.textContent = `${verificationLabel}${sourceLabel ? ` · ${sourceLabel}` : ""} · ${claim.text}`;
+          text.textContent = `${claimStatus(claim.verification)} · ${claim.text}`;
           item.append(text);
-          const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
-          for (const candidate of evidence.slice(0, 3)) {
-            if (candidate.kind === "document" && candidate.material_id) {
-              const locate = document.createElement("button");
-              locate.type = "button";
-              locate.textContent = `打开文档 ${candidate.locator || "出处"}`;
-              locate.onclick = async () => {
-                const material = state.items.find((entry) => entry.kind === "material" && entry.id === candidate.material_id);
-                if (!material) {
-                  notice("这份文档不在当前资料库中，无法打开出处。");
-                  return;
-                }
-                await openEvidenceSource(material, undefined, { evidenceId: candidate.evidence_id }).catch(failure);
-              };
-              item.append(locate);
-              continue;
-            }
-            const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
-            if (!match || t.kind !== "task") continue;
+          for (const candidate of targets) {
             const locate = document.createElement("button");
             locate.type = "button";
-            locate.textContent = "定位 " + candidate.locator;
-            locate.onclick = () => openEvidenceSource(t, Number(match[1]), { windowId: candidate.window_id || "" }).catch(failure);
+            locate.textContent = `${candidate.candidate ? "候选来源 · " : "来源 · "}${candidate.locator || "出处"}`;
+            locate.onclick = () => {
+              if (epoch !== state.epoch || revision !== state.revision || state.editing) return;
+              openClaimEvidence(candidate, t.id).catch(failure);
+            };
             item.append(locate);
           }
           list.append(item);
@@ -707,8 +706,10 @@ async function loadAnnotations(epoch) {
   };
 }
 let sourceRequest = 0;
-function closeSource() {
+function closeSource({ cancelEvidence = true } = {}) {
+  if (cancelEvidence) evidenceRequest++;
   sourceRequest++;
+  claimTimeline.clearActive();
   $("sourcePanel").hidden = true;
   document.body.classList.remove("source-open");
   $("player").pause();
@@ -808,6 +809,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   panel.hidden = false;
   document.body.classList.add("source-open");
   const seek = () => {
+    if (s.kind === "task" && s.id === state.selected?.id) claimTimeline.sync(seconds ?? Number(player.currentTime || 0), { scroll: false });
     sourceWindowRender?.(seconds ?? Number(player.currentTime || 0), target.windowId || "");
     if (s.kind === "material" && target.evidenceId && !highlightMaterialSource($("sourceContent"), target.evidenceId)) {
       notice("保存的出处索引缺失，无法精确定位；可从笔记工具重建资料索引。");
@@ -953,7 +955,9 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
 }
 $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
-  if ($("sourcePanel").dataset.contentMode === "transcript") sourceWindowRender?.(time);
+  if ($("sourcePanel").hidden || $("player").hidden || $("sourcePanel").dataset.contentMode !== "transcript") return;
+  sourceWindowRender?.(time);
+  claimTimeline.sync(time);
   if (sourceCueRender && $("followTranscript")?.checked) sourceCueRender(time);
   const index = renderedCues.findLastIndex(
     (c) => Number(c.dataset.time) <= time,
@@ -999,8 +1003,10 @@ $("refresh").onclick = () => {
 };
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
-$("closeSource").onclick = closeSource;
+$("closeSource").onclick = () => closeSource();
 $("edit").onclick = () => {
+  evidenceRequest++;
+  claimTimeline.reset();
   state.editing = true;
   $("noteText").value = state.text;
   $("document").hidden = true;
@@ -1012,6 +1018,7 @@ $("discard").onclick = () => {
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
+  loadClaimTimeline();
 };
 $("save").onclick = async () => {
   const s = state.selected,
@@ -1412,18 +1419,39 @@ $("theme").onclick = () => {
 };
 let evidenceRequest = 0;
 async function openEvidenceSource(source, seconds, target = {}, request = ++evidenceRequest) {
-  await openItem(source);
-  if (request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
+  const same = state.selected?.kind === source.kind && state.selected?.id === source.id;
+  let epoch = state.epoch;
+  if (!same || state.editing) {
+    if (!guard()) return;
+    const loading = openItem(source, { check: false });
+    epoch = state.epoch;
+    await loading;
+  }
+  if (epoch !== state.epoch || request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
   await openSource(seconds, source, target);
 }
 async function openEvidence(evidenceId) {
   const request = ++evidenceRequest;
   const epoch = state.epoch;
-  const result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`);
+  let result;
+  try { result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`); }
+  catch (error) { if (epoch !== state.epoch || request !== evidenceRequest) return; throw error; }
   if (epoch !== state.epoch || request !== evidenceRequest) return;
+  if (result.evidence?.evidence_id !== evidenceId) throw new Error("出处索引不一致，无法可靠定位。");
   const anchor = evidenceAnchor(result.evidence, state.items);
   if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
   await openEvidenceSource(anchor.source, anchor.start, { evidenceId, windowId: result.evidence.metadata?.window_id || "" }, request);
+}
+async function openClaimEvidence(evidence, taskId) {
+  const anchor = claimEvidenceAnchor(evidence, taskId, state.items);
+  if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
+  await openEvidenceSource(anchor.source, anchor.start, { evidenceId: evidence.evidence_id, windowId: evidence.window_id || "" });
+}
+async function openCitation(citation, messageSource) {
+  if (citation.evidence_id) return openEvidence(citation.evidence_id);
+  const anchor = citationAnchor(citation, messageSource, state.items);
+  if (!anchor) throw new Error("这条回答没有可靠的来源定位，未猜测高亮位置。");
+  await openEvidenceSource(anchor.source, anchor.start, { windowId: citation.window_id || "" });
 }
 
 async function drawReview() {
@@ -1729,6 +1757,7 @@ installProductWorkspace({
   openItem,
   openSource,
   openInlineSource,
+  openCitation,
   refresh,
   notice,
   guard,

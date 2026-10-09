@@ -284,7 +284,7 @@ small,
   font-weight: var(--reader-weight, 500);
 }
 .encoding-provenance-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 9px 12px; color: var(--muted); font-size: .88rem; }
-.document .source-evidence-target, #sourceContent .source-evidence-target { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
+.document .source-evidence-target, #sourceContent .source-evidence-target, .document .note-claim-active { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
 .document h1 {
   font-size: clamp(24px, 2.1vw, 30px);
   font-weight: 700;
@@ -2247,3 +2247,16 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 .study-activity-grid li[data-level="2"] { border-bottom:3px solid var(--accent); }
 .study-activity-grid li[data-level="3"] { border-bottom:5px solid var(--accent); }
 @media (forced-colors: active) { .study-activity-grid li { border-color:CanvasText; } }
+
+/* Playback only highlights persisted claim spans; scrolling is opt-in. */
+.claim-timeline { padding: 12px 16px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.claim-timeline-list { max-height: 240px; overflow: auto; padding-left: 24px; overscroll-behavior: contain; }
+.claim-timeline-list p { margin: 8px 0; }
+.claim-timeline-list button { margin: 3px; white-space: normal; text-align: left; }
+.claim-timeline-list small { display: block; }
+.note-claim-marker { margin: 4px 6px; white-space: normal; user-select: none; }
+.note-claim-marker[aria-current="true"] { border-color: var(--accent, #496960); font-weight: 650; }
+@media (max-width: 600px) {
+  .claim-timeline { padding: 10px; }
+  .claim-timeline-list { max-height: 180px; }
+}
