@@ -165,9 +165,9 @@ export function installTools(ctx) {
     }), { reading: 0, answer: 0, selfAssessment: 0, review: 0 });
     const progress = document.createElement("section"); progress.className = "study-progress-summary";
     const progressTitle = document.createElement("h3"); progressTitle.textContent = "近 14 天的本地学习活动";
-    const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
+    const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 未评分作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
     const mastery = dashboard.progress?.mastery || {};
-    const masteryText = document.createElement("p"); masteryText.textContent = `全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
+    const masteryText = document.createElement("p"); masteryText.textContent = `FSRS 复习稳定度（来自记忆自评）：全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
     const heatmap = document.createElement("ol"); heatmap.className = "study-activity-grid";
     heatmap.setAttribute("aria-label", "近 14 天本地复习记录，按计划时区统计");
     for (const day of dashboard.progress?.activity || []) {
@@ -178,12 +178,14 @@ export function installTools(ctx) {
       const value = document.createElement("strong"); value.textContent = String(count);
       cell.append(date, value); heatmap.append(cell);
     }
-    progress.append(progressTitle, activityText, masteryText, heatmap); $("toolBody").append(progress);
+    const measures = document.createElement("p"); measures.className = "study-measures"; measures.textContent = globalThis.LearnNoteQuiz.measuresText(dashboard.progress?.measures);
+    const meaning = document.createElement("p"); meaning.className = "muted"; meaning.textContent = "看过、答对、自评和复习稳定度分开记录；稳定度不是正确率。已有评分只保留自评含义，不补算答对。";
+    progress.append(progressTitle, activityText, measures, masteryText, meaning, heatmap); $("toolBody").append(progress);
     const backupPanel = document.createElement("details");
     backupPanel.className = "study-backup";
     const backupSummary = document.createElement("summary"); backupSummary.textContent = "备份与恢复";
     const backupHint = document.createElement("p"); backupHint.className = "muted";
-    backupHint.textContent = "包含评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
+    backupHint.textContent = "包含填空作答、评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
     const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
     const exportBackup = document.createElement("a"); exportBackup.textContent = "导出学习备份"; exportBackup.href = "/api/study/backup"; exportBackup.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
     const restoreButton = document.createElement("button"); restoreButton.type = "button"; restoreButton.textContent = "选择备份并恢复";
@@ -208,22 +210,23 @@ export function installTools(ctx) {
     const deleteStudy = document.createElement("button"); deleteStudy.type = "button"; deleteStudy.className = "danger";
     deleteStudy.textContent = "永久删除学习记录";
     deleteStudy.onclick = async () => {
-      if (!confirm("永久删除全部卡片、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
+      if (!confirm("永久删除全部卡片、填空作答、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
       deleteStudy.disabled = true;
       try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId,taskId); }
       catch (error) { status(error.message); deleteStudy.disabled = false; }
     };
     backupPanel.append(deleteStudy);
     $("toolBody").append(backupPanel);
-    if (dashboard?.mistakes?.length) {
+    const mistakes = [...(dashboard?.objective_mistakes || []), ...(dashboard?.mistakes || [])];
+    if (mistakes.length) {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
-      summary.textContent = "错题回看 · " + dashboard.mistakes.length + " 条";
+      summary.textContent = "填空错题与自评重温 · " + mistakes.length + " 条";
       details.append(summary);
-      for (const mistake of dashboard.mistakes) {
+      for (const mistake of mistakes) {
         const item = document.createElement("article");
         item.className = "record";
-        item.textContent = mistake.question + " · 上次评分 " + mistake.reviewed_at;
+        item.textContent = (mistake.basis === "objective_answer" ? "填空未匹配原文（作答时的题目） · " : "自评忘记（非客观答错） · ") + mistake.question + " · " + mistake.reviewed_at;
         const answer = document.createElement("details");
         const answerSummary = document.createElement("summary");
         answerSummary.textContent = "显示答案与复习提示";

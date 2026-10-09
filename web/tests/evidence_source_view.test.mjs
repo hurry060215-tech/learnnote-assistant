@@ -78,7 +78,7 @@ test("latest card reference wins even when an older lookup replies first", async
 
 test("mistake backlinks use the same canonical resolver and explain a missing source", async () => {
   const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
-  const block = tools.slice(tools.indexOf("    if (dashboard?.mistakes?.length) {"), tools.indexOf("    backAction = courseId"));
+  const block = tools.slice(tools.indexOf("    const mistakes = ["), tools.indexOf("    backAction = courseId"));
   for (const missing of [false, true]) {
     const body = new Element(), calls = [], notices = [];
     const context = vm.createContext({ document, $: () => body,

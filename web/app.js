@@ -920,6 +920,7 @@ function showAppView(view = "workspace") {
   const settingsMode = requestedView === "settings";
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
   const normalizedView = ["workspace", "notes", "study", "settings"].includes(requestedView) ? requestedView : "workspace";
+  if (normalizedView !== "study") studyViewRequestGeneration++;
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   syncLayoutForView(normalizedView);
   document.body?.classList?.toggle("settings-mode", settingsMode);
@@ -5746,10 +5747,12 @@ async function loadStudyView() {
         if (generation !== studyViewRequestGeneration) { if (document.body.dataset.appView === "study") loadStudyView(); return {view_changed: true}; }
         return courseId ? {...fresh, due_count: remaining} : fresh;
       },
-      onSelfAssessment: async (cardId) => fetchJson(apiUrl("/api/study/activity"), {
+      quizRequest: (path, options) => fetchJson(apiUrl(path), options ? {...options, headers: {"Content-Type": "application/json"}} : undefined),
+      isCurrent: () => generation === studyViewRequestGeneration && document.body.dataset.appView === "study",
+      onSelfAssessment: async (cardId, key) => fetchJson(apiUrl("/api/study/activity"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "self_assessment", source_id: `card:${cardId}` }),
+        body: JSON.stringify({ kind: "self_assessment", source_id: `card:${cardId}`, idempotency_key: key }),
       }),
       onSource: openLearningEvidence,
       onCreate: () => showAppView("notes"),
@@ -5757,6 +5760,7 @@ async function loadStudyView() {
     });
     globalThis.LearnNoteLearning.renderStudyHistory({dashboard, onSource: openLearningEvidence});
   } catch (error) {
+    if (generation !== studyViewRequestGeneration) return;
     els.studyViewDueList.textContent = error?.message || "无法读取本地复习记录，请重试。";
   } finally {
     if (generation === studyViewRequestGeneration) els.studyViewDashboard?.setAttribute?.("aria-busy", "false");

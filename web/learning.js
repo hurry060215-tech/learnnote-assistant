@@ -140,7 +140,7 @@
       }
     } catch (error) { body.textContent = error?.message || "原文不可用，请重新关联。"; }
   }
-  function renderStudy({els, cards, summary, plan, onReview, onSelfAssessment, onSource, onCreate, onPlan}) {
+  function renderStudy({els, cards, summary, plan, onReview, onSelfAssessment, onSource, onCreate, onPlan, quizRequest, isCurrent = () => true}) {
     const reviewed = Number(summary.reviewed_today || 0), target = Math.max(1, Number(plan.daily_target || 10));
     const paused = Boolean(plan.paused), due = Number(summary.due_count || 0);
     els.studyViewSummary.innerHTML = `<span><b>${due}</b><small>${summary.course_scope?'本次课程卡片':'张到期卡片'}</small></span><span><b>${reviewed}</b><small>今日已复习（全部资料）</small></span><span><b>${target}</b><small>每日目标</small></span>`;
@@ -155,35 +155,42 @@
       button.textContent = paused ? "管理学习计划" : "选择学习资料"; button.onclick = paused ? onPlan : onCreate;
       container.append(p, button); return;
     }
-    let index = 0;
+    let index = 0, quiz = null;
     const show = () => {
+      quiz?.dispose();
       container.replaceChildren(); const card = cards[index];
       if (!card) { const p = document.createElement("p"); p.textContent = "本次复习已完成。"; container.append(p); return; }
       const article = document.createElement("article"); article.className = "study-card";
       const count = document.createElement("small"); count.textContent = `第 ${index + 1} / ${cards.length} 张`;
-      const front = document.createElement("h3"); front.textContent = card.front;
+      const front = document.createElement("h3"); front.textContent = card.front; front.hidden = Boolean(quizRequest);
+      const quizContainer = document.createElement("div");
       const reflection = document.createElement("textarea"); reflection.rows = 3; reflection.maxLength = 2000; reflection.placeholder = "先用自己的话解释要点；回答不会发送给模型。"; reflection.setAttribute("aria-label", "自我解释");
       const answer = document.createElement("p"); answer.textContent = card.back; answer.hidden = true; answer.className = "study-answer";
       const reveal = document.createElement("button"); reveal.type = "button"; reveal.textContent = "记录解释并显示出处答案"; reveal.className = "primary action-button";
       const skipReflection = document.createElement("button"); skipReflection.type = "button"; skipReflection.textContent = "跳过解释";
       const controls = document.createElement("div"); controls.className = "study-card-actions"; controls.hidden = true;
-      const showAnswer = () => { answer.hidden = false; controls.hidden = false; reveal.hidden = true; skipReflection.hidden = true; reflection.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      const current = () => article.isConnected && isCurrent();
+      const showAnswer = () => { if (!current()) return; quiz?.reveal(); answer.hidden = false; controls.hidden = false; reveal.hidden = true; skipReflection.hidden = true; reflection.hidden = true; answer.tabIndex = -1; answer.focus(); };
+      const reflectionKey = globalThis.crypto.randomUUID();
       reveal.onclick = async () => {
+        if (reveal.disabled || !current()) return;
         if (!reflection.value.trim()) { status.textContent = "请写下一句解释，或跳过本次解释。"; return; }
-        reveal.disabled = true; skipReflection.disabled = true;
-        try { await onSelfAssessment?.(card.card_id); status.textContent = "已记录自我解释动作；解释文本未保存。"; showAnswer(); }
-        catch (error) { status.textContent = error?.message || "自我解释记录失败，请重试。"; reveal.disabled = false; skipReflection.disabled = false; }
+        reveal.disabled = true; skipReflection.disabled = true; quiz?.reveal();
+        try { await onSelfAssessment?.(card.card_id, reflectionKey); if (!current()) return; status.textContent = "已记录自我解释动作；解释文本未保存。"; showAnswer(); }
+        catch (error) { if (!current()) return; status.textContent = error?.message || "自我解释记录失败，请重试。"; reveal.disabled = false; skipReflection.disabled = false; }
       };
       skipReflection.onclick = () => { status.textContent = "本次未记录自我解释。"; showAnswer(); };
+      let reviewSubmission = null;
       for (const [rating, label] of [[1,"重来"],[2,"困难"],[3,"记住"],[4,"简单"]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
         // Retrying after an uncertain response reuses this logical submission.
-        const idempotencyKey = globalThis.crypto.randomUUID();
         button.onclick = async () => {
+          if (button.disabled || !current()) return;
+          reviewSubmission ||= {rating, key: globalThis.crypto.randomUUID()};
           controls.querySelectorAll("button").forEach(b => b.disabled = true);
           try {
-            const fresh = await onReview(card.card_id, rating, idempotencyKey);
-            if (fresh?.view_changed) return;
+            const fresh = await onReview(card.card_id, reviewSubmission.rating, reviewSubmission.key);
+            if (!current() || fresh?.view_changed) return;
             const completed = Number(fresh?.reviewed_today || reviewed + index + 1);
             els.studyViewProgressLabel.textContent = `${completed} / ${target}`;
             const percentage = Math.min(100, Math.round(completed * 100 / target));
@@ -195,13 +202,15 @@
             els.studyViewProgressHint.textContent = completed >= target ? "今日目标已完成" : "复习记录已保存";
             index++; show();
           }
-          catch (error) { status.textContent = error.message || "提交失败，可重试。"; controls.querySelectorAll("button").forEach(b => b.disabled = false); }
+          catch (error) { if (!current()) return; status.textContent = error.message || "提交失败，可重试。"; controls.querySelectorAll("button").forEach(b => b.disabled = false); }
         }; controls.append(button);
       }
       const sources = document.createElement("div"); sources.className = "study-card-sources";
-      for (const id of card.source_evidence_ids || []) { const b = document.createElement("button"); b.type = "button"; b.textContent = "查看原文出处"; b.onclick = () => onSource(id); sources.append(b); }
+      for (const id of card.source_evidence_ids || []) { const b = document.createElement("button"); b.type = "button"; b.textContent = "查看原文出处"; b.onclick = () => { quiz?.reveal(); onSource(id); }; sources.append(b); }
       const status = document.createElement("p"); status.setAttribute("role", "status");
-      article.append(count, front, reflection, reveal, skipReflection, answer, controls, sources, status); container.append(article);
+      const ratingHint = document.createElement("p"); ratingHint.textContent = "记忆自评只调整 FSRS 复习时间，不计客观答对。";
+      article.append(count, front, quizContainer, reflection, reveal, skipReflection, answer, ratingHint, controls, sources, status); container.append(article);
+      if (quizRequest) quiz = globalThis.LearnNoteQuiz.mount({container: quizContainer, cardId: card.card_id, request: quizRequest, isCurrent: current, onSource: id => { quiz?.reveal(); onSource(id); }, onQuestionState: active => { if (current()) front.hidden = active; }});
     }; show();
   }
   function renderStudyHistory({dashboard,onSource}) {
@@ -210,10 +219,13 @@
     const label=document.createElement('p');label.textContent='最近14天的全部本地复习记录；评分来自你的自评，不代表课程平台进度或考试成绩。';
     const activity=document.createElement('div');activity.className='study-activity';
     for(const day of dashboard.progress?.activity||[]){const cell=document.createElement('span');cell.textContent=String(day.review_count);cell.title=`${day.date}：复习 ${day.review_count} 张`;cell.setAttribute('aria-label',cell.title);cell.style.opacity=day.review_count?'.95':'.45';activity.append(cell)}
-    const heading=document.createElement('h3');heading.textContent=dashboard.course_id?'此课程中曾选择“重来”的卡片':'曾选择“重来”的卡片';
-    details.append(summary,label,activity,heading);
-    for(const item of dashboard.mistakes||[]){const article=document.createElement('article'),question=document.createElement('strong'),answer=document.createElement('p');question.textContent=item.question;answer.textContent=item.answer;article.append(question,answer);for(const id of item.source_evidence_ids||[]){const button=document.createElement('button');button.type='button';button.textContent='回原文重温';button.onclick=()=>onSource(id);article.append(button)}details.append(article)}
-    if(!dashboard.mistakes?.length){const empty=document.createElement('p');empty.textContent='当前范围没有“重来”记录。';details.append(empty)}root.append(details);
+    const heading=document.createElement('h3');heading.textContent='原文填空错题与记忆自评重温';
+    const measures=document.createElement('p');measures.className='study-measures';measures.textContent=globalThis.LearnNoteQuiz.measuresText(dashboard.progress?.measures);
+    const stability=document.createElement('p');stability.textContent=`FSRS 复习稳定度来自记忆自评：稳定 ${Number(dashboard.progress?.mastery?.retained||0)} 张；不代表正确率。历史自评不补算答对。`;
+    details.append(summary,label,measures,stability,activity,heading);
+    const mistakes=[...(dashboard.objective_mistakes||[]),...(dashboard.mistakes||[])];
+    for(const item of mistakes){const article=document.createElement('article'),question=document.createElement('strong'),answer=document.createElement('p');question.textContent=(item.basis==="objective_answer"?"填空未匹配原文（作答时的题目） · ":"自评重来（非客观答错） · ")+item.question;answer.textContent=item.answer;article.append(question,answer);for(const id of item.source_evidence_ids||[]){const button=document.createElement('button');button.type='button';button.textContent='回原文重温';button.onclick=()=>onSource(id);article.append(button)}details.append(article)}
+    if(!mistakes.length){const empty=document.createElement('p');empty.textContent='当前范围没有填空错题或“重来”记录。';details.append(empty)}root.append(details);
   }
   globalThis.LearnNoteLearning = {markdownChunks, renderMaterial, renderStudy, renderStudyHistory, openEvidence, collapseContext, attachOcr};
 })();
