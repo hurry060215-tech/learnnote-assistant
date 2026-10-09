@@ -1,5 +1,5 @@
 """Recover real local document projections while keeping canonical references."""
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from io import BytesIO
 import json
 from pathlib import Path
@@ -41,7 +41,7 @@ class MaterialRebuildTests(unittest.TestCase):
         self.stack.enter_context(patch("app.library.TASK_DIR", self.root / "tasks"))
 
     def sql(self, command, parameters=()):
-        with sqlite3.connect(self.root / "library.sqlite3") as db:
+        with closing(sqlite3.connect(self.root / "library.sqlite3")) as db, db:
             return db.execute(command, parameters).fetchall()
 
     def erase_evidence(self, material):
