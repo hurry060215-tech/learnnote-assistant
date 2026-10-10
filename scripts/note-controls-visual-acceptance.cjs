@@ -1,0 +1,131 @@
+// Synthetic generated summary only. Model/provider requests are never needed.
+const { chromium } = require("playwright");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+
+(async () => {
+  const base = new URL(process.argv[2] || "http://127.0.0.1:8765");
+  assert(base.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(base.hostname));
+  const out = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-note-controls-"));
+  fs.mkdirSync(out, { recursive: true });
+  const browser = await chromium.launch({ channel: "msedge", headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+    page.setDefaultTimeout(12000);
+    const errors = [], writes = [];
+    page.on("pageerror", error => errors.push(error.message));
+    const task = { id: "note-controls-fixture", kind: "task", title: "合成总结 · 目录与正文编辑", status: "success", phase: "completed", summary_source: "text-llm", options: {}, created_at: "2026-10-10T08:00:00Z", updated_at: "2026-10-10T08:01:00Z" };
+    const original = "# 合成总结\n\n" + Array.from({ length: 28 }, (_, i) => `## 第 ${i + 1} 节：这是用来验证自动换行和层级的合成章节标题\n\n合成内容，用于检查目录宽度、间距和编辑。\n\n### 核对步骤 ${i + 1}\n\n保留原始生成稿，另存个人修订。`).join("\n\n");
+    let edition = { text: original, revision: "r0", edited: false }, releaseSave, saveStarted, holdSave = false, failSave = false;
+    await page.route("**/api/tasks", route => route.fulfill({ json: { tasks: [task] } }));
+    await page.route("**/api/library/materials?*", route => route.fulfill({ json: { materials: [] } }));
+    await page.route("**/api/tasks/note-controls-fixture", route => route.fulfill({ json: { task } }));
+    await page.route("**/api/tasks/note-controls-fixture/events?*", route => route.fulfill({ json: { events: [] } }));
+    await page.route("**/api/personal/task/note-controls-fixture", route => route.fulfill({ json: { annotations: [] } }));
+    await page.route("**/api/tasks/editions/task/note-controls-fixture", async route => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON();
+        writes.push(body);
+        assert.equal(body.revision, edition.revision);
+        if (failSave) return route.fulfill({ status: 409, json: { detail: "Synthetic save conflict" } });
+        if (holdSave) await new Promise(resolve => { releaseSave = resolve; saveStarted(); });
+        edition = { text: body.text, revision: `r${writes.length}`, edited: true };
+      }
+      return route.fulfill({ json: edition });
+    });
+    await page.goto(base.href);
+    await page.locator('#notes [data-id="note-controls-fixture"]').click();
+    await page.locator("#document h2").first().waitFor();
+    await page.locator("#openOutline").click();
+    const dialog = page.locator("#outlineDialog");
+    assert.equal(await dialog.locator(".outline-settings").evaluate(node => node.open), false);
+    const initial = await dialog.boundingBox();
+    const handle = page.locator("#outlineResize"), grip = await handle.boundingBox();
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down(); await page.mouse.move(grip.x + grip.width / 2 + 80, grip.y + grip.height / 2, { steps: 8 }); await page.mouse.up();
+    const resized = await dialog.boundingBox();
+    assert(Math.abs(resized.width - initial.width - 160) < 3, "right edge follows the drag");
+    await handle.focus(); await page.keyboard.press("ArrowLeft");
+    const keyboardWidth = (await dialog.boundingBox()).width;
+    assert(Math.abs(keyboardWidth - resized.width + 24) < 2);
+    await dialog.locator(".outline-settings > summary").click();
+    await page.locator("#outlineGap").focus(); await page.keyboard.press("Home");
+    await page.locator("#outlineSize").focus(); await page.keyboard.press("End");
+    assert.equal(await dialog.locator(".outline-tree").evaluate(node => getComputedStyle(node).rowGap), "0px");
+    assert.equal(await dialog.locator(".outline-tree button").first().evaluate(node => getComputedStyle(node).fontSize), "20px");
+    await page.screenshot({ path: path.join(out, "outline-settings-light.png") });
+    await dialog.locator("header button").click(); await page.locator("#openOutline").click();
+    assert(Math.abs((await dialog.boundingBox()).width - keyboardWidth) < 2);
+    assert.equal(await page.locator("#outlineGap").inputValue(), "0");
+    await dialog.locator(".outline-tree button").nth(2).click();
+    assert.equal(await dialog.isVisible(), false);
+
+    await page.locator("#editSummary").click();
+    const draft = "# 合成总结\n\n## 已修订章节\n\n手动编辑后的总结正文。";
+    await page.locator("#noteText").fill(draft);
+    await page.locator("#edit").click();
+    assert.equal(await page.locator("#noteText").inputValue(), draft, "repeated Edit must not reset draft");
+    await page.locator("#noteText").evaluate(node => { const start = node.value.indexOf("手动编辑"); node.setSelectionRange(start, start + 4); });
+    await page.locator("#noteBold").click();
+    const formatted = draft.replace("手动编辑", "**手动编辑**");
+    assert.equal(await page.locator("#noteText").inputValue(), formatted);
+    await page.locator("#toggleNotePreview").click();
+    assert.equal(await page.locator("#notePreview strong").innerText(), "手动编辑");
+    await page.locator("#readingLayout").click();
+    assert(await page.locator('[data-settings-page="appearance"]').isVisible());
+    await page.locator("#prefLeading").selectOption("2.1");
+    await page.locator("#prefReaderSize").selectOption("20");
+    await page.locator("#prefWidth").selectOption("760");
+    await page.locator("#savePreferences").click();
+    await page.locator("#settingsDialog header button").click();
+    assert.equal(await page.locator("#noteText").inputValue(), formatted);
+    const typography = await page.locator("#notePreview").evaluate(node => { const s = getComputedStyle(node); return { size: s.fontSize, leading: parseFloat(s.lineHeight) / parseFloat(s.fontSize) }; });
+    assert.equal(typography.size, "20px"); assert(Math.abs(typography.leading - 2.1) < 0.02);
+    await page.screenshot({ path: path.join(out, "summary-edit-preview.png") });
+    await page.locator("#toggleNotePreview").click();
+
+    holdSave = true;
+    const started = new Promise(resolve => { saveStarted = resolve; });
+    await page.locator("#save").click();
+    let startedTimeout;
+    await Promise.race([started, new Promise((_, reject) => {
+      startedTimeout = setTimeout(() => reject(new Error("Synthetic edition save did not start")), 12000);
+    })]).finally(() => clearTimeout(startedTimeout));
+    await page.waitForFunction(() => document.getElementById("save").disabled);
+    const newer = formatted + "\n\n保存期间补写的句子。";
+    await page.locator("#noteText").fill(newer);
+    assert.equal(typeof releaseSave, "function"); releaseSave(); holdSave = false;
+    await page.getByText("上一份修改已保存；新输入的内容仍待保存。", { exact: true }).waitFor();
+    assert.equal(await page.locator("#noteText").inputValue(), newer);
+    await page.locator("#save").click(); await page.locator("#editor").waitFor({ state: "hidden" });
+    assert.equal(edition.text, newer); assert.equal(writes[1].revision, "r1");
+    await page.reload(); await page.locator("#document").getByText("保存期间补写的句子。", { exact: true }).waitFor();
+    await page.locator("#editSummary").click();
+    failSave = true; await page.locator("#noteText").fill(newer + "\n\n待重试修改"); await page.locator("#save").click();
+    await page.locator("#saveStatus").getByText("Synthetic save conflict", { exact: false }).waitFor();
+    assert.match(await page.locator("#noteText").inputValue(), /待重试修改/);
+    failSave = false; await page.locator("#save").click(); await page.locator("#editor").waitFor({ state: "hidden" });
+
+    await page.locator("#theme").click(); await page.locator("#openOutline").click();
+    await page.screenshot({ path: path.join(out, "outline-dark.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobile = await dialog.boundingBox();
+    assert(mobile.x >= 0 && mobile.x + mobile.width <= 390);
+    assert(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    await page.screenshot({ path: path.join(out, "outline-mobile.png") });
+    await page.keyboard.press("Escape"); assert.equal(await dialog.isVisible(), false);
+    await page.reload(); await page.locator("#document h2").first().waitFor(); await page.locator("#openOutline").click();
+    assert.equal(await page.locator("#outlineSize").inputValue(), "20");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const effects = await dialog.evaluate(node => { const s = getComputedStyle(node); return { radius: s.borderRadius, shadow: s.boxShadow, animation: s.animationName }; });
+    assert(parseFloat(effects.radius) > 0); assert.notEqual(effects.shadow, "none"); assert.equal(effects.animation, "dialog-arrive");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    assert.equal(await dialog.evaluate(node => getComputedStyle(node).animationName), "none");
+    assert.deepEqual(errors, []);
+    const report = { passed: true, fixture: "synthetic summary, mocked edition writes", writes: writes.length, typography, effects, checks: ["TOC drag and keyboard width", "hidden settings, density and font persistence", "TOC navigation", "repeated Edit preserves draft", "formatting and rendered preview", "reading typography from editor", "typing during save", "save conflict retains draft and retries", "revision survives reload", "dark/mobile bounds", "rounded shadow and reduced-motion behavior"] };
+    fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
+    console.log(JSON.stringify(report, null, 2));
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

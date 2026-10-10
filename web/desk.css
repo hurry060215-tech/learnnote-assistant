@@ -896,6 +896,7 @@ button:has(svg) {
 }
 .reader-strip > div:last-child {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   flex-shrink: 0;
   max-width: 100%;
@@ -1230,7 +1231,7 @@ body.assistant-visible .workspace {
 }
 .outline-tree {
   display: grid;
-  gap: 8px;
+  gap: var(--outline-gap, 4px);
 }
 .outline-tree button {
   margin-left: calc(var(--level) * 16px);
@@ -1238,7 +1239,45 @@ body.assistant-visible .workspace {
   border-left: 1px solid var(--line);
   background: transparent;
   white-space: normal;
+  font-size: var(--outline-size, 14px);
+  line-height: 1.5;
+  padding-block: var(--outline-padding, 6px);
+  overflow-wrap: anywhere;
 }
+.outline-tree button:hover, .outline-tree button:focus-visible {
+  background: var(--tint);
+  border-left-color: var(--accent);
+}
+.outline-tree button:active { background: var(--panel); }
+#outlineDialog {
+  max-width: calc(100vw - 28px);
+  padding: 26px 30px;
+  overflow: hidden;
+}
+#outlineDialog[open] { display: flex; flex-direction: column; }
+#outlineDialog > header { flex-shrink: 0; margin-bottom: 12px; }
+#outlineDialog > p { margin: 0 0 10px; }
+#outlineDialog .outline-tree { min-height: 0; overflow: auto; padding: 4px; }
+.outline-settings { flex-shrink: 0; margin-bottom: 14px; }
+.outline-settings > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
+.outline-settings > div { padding: 2px 14px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+.outline-settings label { display: flex; justify-content: space-between; }
+.outline-settings input[type="range"] { padding: 0; accent-color: var(--accent); }
+.outline-settings button { margin-top: 8px; font-size: 12px; }
+#outlineResize { position: absolute; inset: 20px 1px 20px auto; width: 14px; cursor: ew-resize; touch-action: none; border-radius: 8px; }
+#outlineResize::after { content: ""; position: absolute; inset: 35% 5px; border-radius: 3px; background: var(--line); transition: background-color .14s ease; }
+#outlineResize:hover::after, #outlineResize:focus-visible::after { background: var(--accent); }
+.resizing-outline, .resizing-outline * { cursor: ew-resize !important; user-select: none !important; }
+.note-format-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.note-format-tools button { border: 1px solid var(--line); font-size: 13px; }
+.note-format-tools [aria-pressed="true"] { background: var(--tint); border-color: var(--accent); }
+.editor { max-width: var(--reader-width, 940px); }
+.editor .note-preview { padding: 18px; min-height: 45vh; border: 1px solid var(--line); border-radius: 8px; }
+@media (max-width: 600px) {
+  #outlineDialog { padding: 20px; }
+  #outlineDialog header h2 { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { #outlineResize::after { transition: none; } }
 .version-row {
   display: block;
   width: 100%;

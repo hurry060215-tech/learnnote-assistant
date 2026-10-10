@@ -154,8 +154,9 @@ def module_size_violations() -> list[str]:
     styles = list((ROOT / "web").glob("*.css"))
     runtime_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name in active_names)
     legacy_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name not in active_names)
-    if runtime_lines > 2250:
-        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 2250")
+    # Bounded TOC resize/settings and note editor controls retain the existing visual effects.
+    if runtime_lines > 2310:
+        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 2310")
     if legacy_lines > 23000:
         violations.append(f"Historical web CSS has {legacy_lines} lines; budget is 23000")
     return violations

@@ -88,6 +88,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
             node scripts/ui-readability-acceptance.cjs http://127.0.0.1:8765 build/readability-ui
             if ($LASTEXITCODE -ne 0) { throw "Reading typography and navigation gate failed" }
+            node scripts/note-controls-visual-acceptance.cjs http://127.0.0.1:8765 build/note-controls-ui
+            if ($LASTEXITCODE -ne 0) { throw "TOC controls and summary editing gate failed" }
             node scripts/sidepanel-progressive-acceptance.cjs build/sidepanel-progressive-ui
             if ($LASTEXITCODE -ne 0) { throw "Sidepanel progressive reading gate failed" }
             node scripts/captions-panel-acceptance.cjs
@@ -164,6 +166,7 @@ jobs:
             build/layout-ui
             build/workspace-ux
             build/readability-ui
+            build/note-controls-ui
             build/captions-panel
             build/model-catalog
             build/workspace-recovery
