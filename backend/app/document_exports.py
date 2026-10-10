@@ -663,7 +663,8 @@ def _content_blocks(markdown: str, title: str) -> list[_Block]:
         return re.sub(r"\s+", " ", _clean_inline_markdown(value)).strip().casefold()
 
     return [block for block in blocks if not (
-        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title))]
+        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title)
+        and not any(token.kind == "link" for token in export_inline_tokens(block.text)))]
 
 
 
@@ -1427,7 +1428,7 @@ def build_html_export(
             heading_occurrences[stable_base] = heading_occurrences.get(stable_base, 0) + 1
             anchor = section_anchor_id(block.text, heading_occurrences[stable_base])
             level = max(1, min(int(block.level), 4))
-            text = html.escape(_clean_inline_markdown(block.text))
+            text = html.escape(_sanitize_export_text(_clean_inline_markdown(block.text)))
             body.append(f'<h{level} id="{anchor}">{inline(block.text)}</h{level}>')
             if settings["include_toc"] and level <= 3:
                 toc.append(f'<li class="toc-level-{level}"><a href="#{anchor}">{text}</a></li>')

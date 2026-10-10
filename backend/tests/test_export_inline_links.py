@@ -132,6 +132,20 @@ class ExportInlineLinkTests(TestCase):
         tokens = list(export_inline_tokens("**Before [link](https://example.org/body) after.**"))
         self.assertTrue(all(token.bold for token in tokens if token.text))
 
+    def test_title_deduplication_preserves_a_source_bearing_heading(self):
+        note = f"# [{self.task.title}](https://example.org/source)\n\nBody."
+        for kind, links, text in self.artifacts(note):
+            with self.subTest(format=kind):
+                self.assertIn("https://example.org/source", links)
+                self.assertIn("Body.", text)
+
+    def test_html_heading_and_toc_apply_existing_text_projection(self):
+        note = "## [https://example.org/label?token=DUMMY](https://example.org/source)\n\nBody."
+        artifact = build_html_export(self.task, note, export_options={"include_toc": True})
+        root = etree.HTML(artifact.content)
+        self.assertNotIn("DUMMY", "".join(root.itertext()))
+        self.assertIn("https://example.org/source", root.xpath("//a/@href"))
+
     def test_owned_unicode_anchors_and_independent_parse_state(self):
         source = r"[来源 \[一\]](#section-来源)"
         expected = export_links(source)
