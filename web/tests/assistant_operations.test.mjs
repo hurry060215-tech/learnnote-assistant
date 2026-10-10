@@ -7,7 +7,7 @@ import vm from "node:vm";
 // The DOM implements the selectors/events used by the controller, including
 // disabled buttons and the difference between textContent and parsed HTML.
 const controller = readFileSync(new URL("../assistant-operations.js", import.meta.url), "utf8")
-  .replace(/^import .*;\n/, "").replace("export function", "function");
+  .replace(/^import .*;\r?\n/, "").replace("export function", "function");
 const readingSource = readFileSync(new URL("../reading-settings.js", import.meta.url), "utf8");
 const { createReadingSettingsAdapter, READING_STORAGE_KEY } = await import(`data:text/javascript;base64,${Buffer.from(readingSource).toString("base64")}`);
 const endpoint = "/api/assistant/operations";
