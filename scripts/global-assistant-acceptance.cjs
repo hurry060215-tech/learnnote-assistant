@@ -61,7 +61,7 @@ const fs = require("fs");
     await p.locator(".assistant-options > summary").click();
     await p.locator("#skillCatalog").click();
     await p.waitForSelector(".skill-catalog");
-    assert.equal(await p.locator("[data-pick-skill]").count(), 7);
+    assert.equal(await p.locator("[data-pick-skill]").count(), 8);
     await p.screenshot({ path: `${out}/skill-catalog.png` });
     await p.keyboard.press("Escape");
     await p.locator("#closeAssistant").click();
@@ -71,7 +71,7 @@ const fs = require("fs");
       name: "全局助手验收.md",
       mimeType: "text/markdown",
       buffer: Buffer.from(
-        "# 全局助手验收\n\n学习率控制参数更新步长，并影响训练过程的稳定性。",
+        "# 全局助手验收\n\n## 学习率与稳定性\n\n学习率控制参数更新步长，并影响训练过程的稳定性。",
       ),
     });
     await p.locator("#createSubmit").click();
@@ -84,6 +84,14 @@ const fs = require("fs");
       "true",
     );
     await p.locator("#aiAssistant").click();
+    await send("笔记生成目录");
+    assert.match(await p.locator(".assistant-turn").last().textContent(), /note.outline/);
+    assert.match(await p.locator(".assistant-turn").last().innerText(), /学习率与稳定性/);
+    assert.match(await p.locator(".assistant-turn").last().innerText(), /未改写笔记或调用模型/);
+    await p.locator("#aiQuestion").fill("尚未发送的合成草稿");
+    await p.getByRole("button", { name: "新话题", exact: true }).click();
+    assert.equal(await p.locator("#aiQuestion").inputValue(), "尚未发送的合成草稿");
+    assert.match(await p.locator("#aiStatus").innerText(), /已开始新话题/);
     await send("这份内容中学习率控制什么？");
     assert.match(
       await p.locator(".assistant-turn").last().textContent(),
@@ -129,7 +137,8 @@ const fs = require("fs");
           ok: true,
           global_help_without_note: true,
           skill_trace: true,
-          skills: 7,
+          skills: 8,
+          selected_note_outline: true,
           backdrop_close: true,
           unsaved_guard: true,
           pinned: true,

@@ -436,6 +436,7 @@ class AssistantSkillRequest(BaseModel):
     skill: str = Field(default="auto",max_length=80)
     has_source: bool = False
     previous_skill: str = Field(default="",max_length=80)
+    conversation_id: str = Field(default="",max_length=64,pattern=r"^[A-Za-z0-9_-]*$")
     options: TaskOptions | None = None
 
 @system_router.get("/api/assistant/skills")
@@ -455,7 +456,7 @@ def assistant_skill_route(request: AssistantSkillRequest):
 def assistant_skill_execute(request: AssistantSkillRequest):
     from ..assistant_skills import execute_global
     try:
-        return execute_global(request.skill,request.question,request.options)
+        return execute_global(request.skill,request.question,request.options,conversation_id=request.conversation_id)
     except ValueError as exc:
         raise HTTPException(422,"该 Skill 需要先选择来源并使用对应的内容接口。") from exc
 
@@ -472,8 +473,18 @@ def assistant_skill_stream(request: AssistantSkillRequest):
     if request.skill not in BY_ID or BY_ID[request.skill]["requires_source"]:
         raise HTTPException(422, "请先选择来源并使用对应的内容接口。")
     return assistant_stream_response(lambda emit, control: execute_global(
-        request.skill, request.question, request.options, emit=emit, control=control,
+        request.skill, request.question, request.options, emit=emit, control=control, conversation_id=request.conversation_id,
     ))
+
+
+@system_router.get("/api/assistant/outline/{kind}/{source_id}")
+def assistant_note_outline(kind: str, source_id: str, revision: str = ""):
+    from ..assistant_outline import read_outline
+    if kind not in {"task", "material"} or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", source_id):
+        raise HTTPException(422, "请先选择有效的笔记或资料。")
+    if revision and not re.fullmatch(r"[0-9a-f]{64}", revision):
+        raise HTTPException(422, "笔记版本无效，请重新打开。")
+    return read_outline(kind, source_id, revision)
 
 @system_router.delete("/api/assistant/history")
 def assistant_clear_history(confirm: str=""):

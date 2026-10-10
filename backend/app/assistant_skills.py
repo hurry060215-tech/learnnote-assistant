@@ -18,6 +18,7 @@ SKILLS = [
     {"id":"library.search","name":"搜索资料","description":"在本地资料与视频证据中查找关键词。","scope":"library","execution":"local","requires_source":False},
     {"id":"note.qa","name":"内容问答","description":"围绕选中的笔记或资料回答问题。","scope":"source","execution":"configured_model_or_extract","requires_source":True},
     {"id":"note.summary","name":"总结内容","description":"归纳当前来源的重点并保留出处。","scope":"source","execution":"configured_model_or_extract","requires_source":True},
+    {"id":"note.outline","name":"笔记目录","description":"读取当前保存的笔记标题，列出真实目录。","scope":"source","execution":"local","requires_source":True},
     {"id":"study.quiz","name":"自测练习","description":"根据当前来源生成可核对的自测问题。","scope":"source","execution":"configured_model_or_extract","requires_source":True},
     {"id":"general.chat","name":"通用问答","description":"调用已配置的文字模型；不自动读取笔记库。","scope":"conversation","execution":"configured_model","requires_source":False},
 ]
@@ -57,6 +58,7 @@ def resolve_skill(question: str, requested: str, has_source: bool, previous_skil
         elif re.search(r"界面|弹窗|关闭|工作台|主题|夜间|深色|字号|字体|外观|按钮|打不开|找不到|报错|卡住|没反应|连接不上|删除|清理|导出|导入|怎么用|如何使用|怎么操作|如何操作|在哪里|在哪[里儿]?|设置|配置|软件|客户端|功能|skill|怎么导出|如何导出|怎么导入|怎么删除|如何清理|返回|登录|账号",q): chosen="product.help"
         elif re.search(r"搜索资料|搜索笔记|资料库搜索|查找资料",q): chosen="library.search"
         elif previous_skill in BY_ID and re.fullmatch(r"(那|然后|接下来|下一步|继续|为什么|怎么弄|怎么做|再详细一点|说详细点)[呢啊吗？?！!。 .]*",q.strip()): chosen=previous_skill
+        elif re.search(r"(?:笔记|资料|内容)(?:生成|整理|列出|提取|做|的)?(?:一[份个])?(?:目录|大纲)|(?:生成|整理|列出|提取)(?:当前|这份|这篇)?(?:笔记|资料|内容)?(?:的)?(?:目录|大纲)",q): chosen="note.outline"
         elif has_source and _source_related_question(q) and re.search(r"总结|概括|摘要|主要讲|核心内容",q): chosen="note.summary"
         elif has_source and _source_related_question(q) and re.search(r"自测|测验|出题|考考",q): chosen="study.quiz"
         elif has_source and _source_related_question(q): chosen="note.qa"
@@ -79,8 +81,10 @@ def history() -> list[dict]:
         value=json.loads(path.read_text(encoding="utf-8"))
         return value.get("turns",[])[-80:]
 
-def record_turn(question: str, result: dict) -> dict:
+def record_turn(question: str, result: dict, *, conversation_id: str = "") -> dict:
     item={"id":uuid4().hex,"created_at":datetime.now(timezone.utc).isoformat(),"question":sanitize_export_text(question[:1000]),"answer":sanitize_export_text(result.get("answer","")[:24000]),"skill":result["skill"],"source":result.get("source","local"),"actions":result.get("actions",[]),"citations":result.get("citations",[]),"execution":result.get("execution",{})}
+    if conversation_id:
+        item["conversation_id"] = conversation_id
     with _lock:
         items=history()+[item]
         atomic_write_text(DATA_DIR/"assistant-history.json",json.dumps({"schema_version":1,"turns":items[-80:]},ensure_ascii=False))
@@ -107,13 +111,15 @@ GUIDES=[
     (r"返回|关闭|退出", "返回与关闭", "窗口支持返回按钮、右上角关闭、Esc 和点击窗口外的遮罩。尚未保存的重要编辑会先提醒；助手的功能按钮只打开相应界面，不会自动执行删除等操作。", "home"),
 ]
 
-def execute_global(skill_id: str, question: str, options=None, *, emit=None, control=None) -> dict:
+def execute_global(skill_id: str, question: str, options=None, *, emit=None, control=None, conversation_id: str = "") -> dict:
     if skill_id not in BY_ID or BY_ID[skill_id]["requires_source"]:raise ValueError("source_skill_requires_existing_endpoint")
     result={"skill":BY_ID[skill_id],"source":"local","actions":[],"citations":[],"execution":{"state":"completed","automatic_actions":False}}
     if skill_id=="product.help":
         matches=[entry for entry in GUIDES if re.search(entry[0],question,re.I)][:2]
         if not matches and re.fullmatch(r"(那|然后|接下来|下一步|继续|为什么|怎么弄|怎么做|再详细一点|说详细点)[呢啊吗？?！!。 .]*",question.strip()):
-            previous=next((t for t in reversed(history()) if t.get("skill",{}).get("id")=="product.help"),None)
+            from .assistant_context import conversation_turns
+            turns = conversation_turns(history(), conversation_id, "product.help")
+            previous = turns[-1] if turns else None
             if previous:matches=[entry for entry in GUIDES if re.search(entry[0],previous["question"],re.I)][:2]
         if matches:
             result["answer"]="\n\n".join(f"### {title}\n{text}" for _,title,text,_ in matches)
@@ -154,7 +160,8 @@ def execute_global(skill_id: str, question: str, options=None, *, emit=None, con
             from openai import OpenAI
             model=getattr(options,"llm_model",None) or LLM_MODEL
             base=getattr(options,"llm_base_url",None) or LLM_BASE_URL
-            previous=[t for t in history() if t.get("skill",{}).get("id") in {"general.chat","product.help"}][-4:]
+            from .assistant_context import conversation_turns
+            previous=conversation_turns(history(), conversation_id, "general.chat")
             messages=[{"role":"system","content":"你是 LearnNote 的全局助手。当前是通用问答，没有读取用户笔记或文件，也没有浏览网页或执行操作的工具。不要声称已经执行、下载、删除或修改。涉及软件操作时，只根据下面的功能说明回答，未列出的能力不要编造；可以建议使用帮助 Skill 打开操作入口。\n软件功能：\n" + "\n".join(title+"："+text for _,title,text,_ in GUIDES)}]
             for turn in previous:
                 messages.extend([{"role":"user","content":turn["question"]},{"role":"assistant","content":turn["answer"][:4000]}])
@@ -175,7 +182,7 @@ def execute_global(skill_id: str, question: str, options=None, *, emit=None, con
     if control is not None:
         control.check()
     try:
-        record_turn(question,result)
+        record_turn(question,result,conversation_id=conversation_id)
     except (OSError, ValueError):
         result["warning"]="回答已生成，但全局对话历史未能保存。原历史文件未被覆盖。"
     return result
