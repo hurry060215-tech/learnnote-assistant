@@ -1105,6 +1105,14 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         if task_dir(task_id).resolve() not in target.parents or not target.is_file():
             raise ContentMismatchError("找不到此任务已保存的字幕，请重新获取内容。")
         transcript = TranscriptResult.model_validate_json(target.read_text(encoding="utf-8"))
+        if transcript.source == "screen-ocr" and (transcript.provenance.get("status") != "ready" or transcript.provenance.get("coverage", {}).get("complete") is not True):
+            raise ContentMismatchError("画面字幕尚未完整提取，请先恢复画面字幕任务。")
+        if transcript.source == "screen-ocr":
+            from .screen_subtitles import media_hash
+            expected = task.screen_subtitles_media_sha256
+            media = Path(task.media_path)
+            if not expected or expected != transcript.provenance.get("media_sha256") or not media.is_file() or media_hash(media, lambda: _check_cancel(task_id)) != expected:
+                raise ContentMismatchError("画面字幕关联的媒体已变化或无法确认；原文字保留，请重新提取后再生成笔记。")
         if not transcript.segments or not transcript.full_text.strip():
             raise ContentMismatchError("已保存的字幕为空，不能重新总结。")
         from .summary_versions import snapshot_summary
