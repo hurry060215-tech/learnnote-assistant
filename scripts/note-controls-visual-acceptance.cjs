@@ -8,7 +8,7 @@ const os = require("node:os");
 (async () => {
   const base = new URL(process.argv[2] || "http://127.0.0.1:8765");
   assert(base.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(base.hostname));
-  const out = process.argv[3] || path.join(os.tmpdir(), "learnnote-note-controls");
+  const out = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-note-controls-"));
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   try {
