@@ -58,14 +58,14 @@ export function timestampRanges(text) {
   };
   return [
     ...String(text).matchAll(
-      /\[(\d{1,3}:\d{2}(?::\d{2})?)\s*[–—~～-]\s*(\d{1,3}:\d{2}(?::\d{2})?)\]/g,
+      /\[(\d{1,3}:\d{2}(?::\d{2})?)(?:\s*[–—~～-]\s*(\d{1,3}:\d{2}(?::\d{2})?))?\]/g,
     ),
   ]
     .map((match) => ({
       index: match.index,
       label: match[0],
       start: parse(match[1]),
-      end: parse(match[2]),
+      end: parse(match[2] || match[1]),
     }))
     .filter(
       (range) =>
