@@ -1,5 +1,6 @@
 import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
+import { collapseSourceReviews } from "/web/source-review.js";
 import { renderEditionStable } from "/web/reader-progress.js";
 import { createSectionReader } from "/web/reader-sections.js";
 import {
@@ -510,6 +511,7 @@ function renderNote() {
     onUpdated: async () => { await refresh(); },
   });
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
+  collapseSourceReviews($("document"));
   decorateSourceTimes($("document"));
   window.dispatchEvent(new Event("learnnote:document"));
 }

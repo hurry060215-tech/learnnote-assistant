@@ -1233,6 +1233,10 @@ body.assistant-visible .workspace {
   display: grid;
   gap: var(--outline-gap, 4px);
 }
+.source-review-panel { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.source-review-panel > summary { cursor: pointer; color: var(--muted); }
+.source-review-panel section { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.source-review-link { font-size: .76em; vertical-align: baseline; }
 .outline-tree button {
   margin-left: calc(var(--level) * 16px);
   text-align: left;

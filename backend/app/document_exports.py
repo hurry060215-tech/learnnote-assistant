@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
 from .document_citations import project_claim_citations
+from .review_presentation import project_source_reviews
 from .export_inline import export_inline_tokens, export_protected_spans
 from .pdf_unicode import emoji_font_for
 from .note_document import section_anchor_id, strip_note_frontmatter
@@ -288,6 +289,9 @@ def build_structured_export(
     note, citation_warnings = project_claim_citations(task, str(note or ""), claim_map, settings,
         safe_url=_safe_hyperlink, timed_url=_timestamp_source_url, sanitize=sanitize_export_text, transcript=transcript,
         heading_texts=[block.text for block in _content_blocks(strip_note_frontmatter(note), title) if block.kind == "heading"])
+    source_reviews = project_source_reviews(note if settings["include_note"] else "")
+    if settings["include_note"]:
+        note = source_reviews["markdown"]
     parts: list[str] = []
     if settings["include_note"]:
         notice = evidence_review_notice(task)
@@ -340,6 +344,7 @@ def build_structured_export(
         "warnings": warnings,
         "markdown": body,
         "options": settings,
+        "source_review_anchor": source_reviews["anchor"],
     }
 
 
@@ -1408,6 +1413,7 @@ def build_html_export(
     toc: list[str] = []
     heading_occurrences: dict[str, int] = {}
     list_stack: list[str] = []
+    review_open = False
     def close_list() -> None:
         while list_stack: body.append(f"</li></{list_stack.pop()}>")
     def list_item(block: _Block) -> None:
@@ -1429,6 +1435,13 @@ def build_html_export(
             anchor = section_anchor_id(block.text, heading_occurrences[stable_base])
             level = max(1, min(int(block.level), 4))
             text = html.escape(_sanitize_export_text(_clean_inline_markdown(block.text)))
+            if review_open and block.level <= 2:
+                body.append("</details>")
+                review_open = False
+            if anchor == structured["source_review_anchor"]:
+                body.append(f'<details class="source-review" id="{anchor}"><summary>{text}</summary>')
+                review_open = True
+                continue
             body.append(f'<h{level} id="{anchor}">{inline(block.text)}</h{level}>')
             if settings["include_toc"] and level <= 3:
                 toc.append(f'<li class="toc-level-{level}"><a href="#{anchor}">{text}</a></li>')
@@ -1464,6 +1477,8 @@ def build_html_export(
             close_list()
             body.append(f"<p>{inline(block.text).replace(chr(10), '<br>')}</p>")
     close_list()
+    if review_open:
+        body.append("</details>")
     rendered = body
 
     font_path = Path(__file__).resolve().parents[2] / "site" / "assets" / "fonts" / "learnnote-site-sans.woff2"
@@ -1485,7 +1500,8 @@ def build_html_export(
 *{{box-sizing:border-box}}body{{margin:0;background:#f4f7f5;color:var(--ink);font-family:LearnNoteEmbedded,"Microsoft YaHei","Noto Sans SC",sans-serif;font-size:{settings['font_size']}pt;line-height:{settings['line_height']};}}
 main{{max-width:860px;margin:0 auto;background:var(--paper);min-height:100vh;padding:{settings['margin_top']}mm {settings['margin_right']}mm {settings['margin_bottom']}mm {settings['margin_left']}mm;}}
 h1{{font-size:2em;line-height:1.3;margin:0 0 1.2em}}h2{{font-size:1.45em;margin:1.5em 0 .55em}}h3,h4{{margin:1.2em 0 .45em}}p{{margin:{settings['paragraph_before']}pt 0 {settings['paragraph_after']}pt}}.meta{{color:var(--muted);font-size:.85em}}a{{color:var(--accent)}}blockquote{{border-left:3px solid var(--line);padding:.2em 1em;color:var(--muted)}}.math{{text-align:center;white-space:pre-wrap;margin:1em 0}}pre{{background:#f1f5f3;border:1px solid var(--line);padding:1em;overflow:auto;font-family:Consolas,monospace}}code{{font-family:Consolas,monospace}}table{{width:100%;border-collapse:collapse;margin:1em 0}}th,td{{border:1px solid var(--line);padding:.55em;text-align:left;vertical-align:top}}th{{background:#edf4f1}}img{{max-width:100%;height:auto}}figure{{margin:1.1em 0}}figcaption,.image-note{{color:var(--muted);font-size:.82em}}.toc{{border:1px solid var(--line);padding:1em;margin:1em 0}}.toc ol{{margin:.5em 0 0;padding-left:1.5em}}.toc-level-3{{margin-left:1em}}footer{{margin-top:2em;color:var(--muted);font-size:.8em;border-top:1px solid var(--line);padding-top:1em}}"""
-    document = f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body><main><h1>{title}</h1>{source_html}{toc_html}{"".join(rendered)}<footer>由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。</footer></main></body></html>'
+    review_script = """<script>document.addEventListener('click',function(event){const link=event.target.closest('a[href^="#"]');if(!link)return;let target;try{target=document.getElementById(decodeURIComponent(link.hash.slice(1)))}catch{return}for(let node=target;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;});</script>""" if structured["source_review_anchor"] else ""
+    document = f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body><main><h1>{title}</h1>{source_html}{toc_html}{"".join(rendered)}<footer>由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。</footer></main>{review_script}</body></html>'
     return DocumentExport(
         content=document.encode("utf-8"),
         media_type="text/html; charset=utf-8",

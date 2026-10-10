@@ -4213,13 +4213,14 @@ def api_export_markdown(task_id: str, include_annotations: bool = False) -> Plai
     if not note.strip():
         raise HTTPException(status_code=404, detail="Note not found")
     filename = markdown_filename(task.id, task.title)
-    from .document_exports import evidence_review_notice
+    from .document_exports import evidence_review_notice, project_source_reviews
     notice = evidence_review_notice(task)
     if notice:
         note = notice + "\n\n" + note
     if include_annotations:
         from .personal_notes import annotation_markdown
         note += annotation_markdown("task", task_id)
+    note = project_source_reviews(note)["markdown"]
     headers = {
         "Content-Disposition": (
             f'attachment; filename="learnnote-{task.id}.md"; '

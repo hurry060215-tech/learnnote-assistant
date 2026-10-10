@@ -17,6 +17,15 @@ test("multiple bracket ranges and hour timestamps retain independent text offset
   assert.equal(result[0].start, 3723);
   assert.equal(result[1].start, 730);
 });
+test("single bracket timestamps remain clickable in statements and source review records", () => {
+  const text = "出处 [00:12]，长视频 [1:02:03]，范围 [00:20–00:25]";
+  assert.deepEqual(timestampRanges(text), [
+    { index: text.indexOf("[00:12]"), label: "[00:12]", start: 12, end: 12 },
+    { index: text.indexOf("[1:02:03]"), label: "[1:02:03]", start: 3723, end: 3723 },
+    { index: text.indexOf("[00:20"), label: "[00:20–00:25]", start: 20, end: 25 },
+  ]);
+  assert.deepEqual(timestampRanges("[00:99] [1:60:00] [引用12]"), []);
+});
 test("invalid seconds, reversed ranges, and ordinary bracket text stay untouched", () => {
   assert.deepEqual(
     timestampRanges(
