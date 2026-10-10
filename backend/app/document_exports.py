@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
 from .document_citations import project_claim_citations
+from .export_inline import export_inline_tokens, export_protected_spans
 from .pdf_unicode import emoji_font_for
 from .note_document import section_anchor_id, strip_note_frontmatter
 from .markdown_structure import structural_lines
@@ -22,7 +23,6 @@ from .math_text import inline_math_expressions, math_source_requires_fallback, r
 
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
-_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _RAW_URL_RE = re.compile(r"https?://[^\s<>\]\[\"']+", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)\b(cookie|set-cookie|authorization|proxy-authorization|password|secret|"
@@ -550,7 +550,7 @@ _EXPORT_TIMESTAMP_RE = re.compile(
     r"(?<![\d:])(?P<start>(?:\d{1,2}:)?\d{1,2}:\d{2})"
     r"(?:\s*(?:-|–|—|~|至)\s*(?:\d{1,2}:)?\d{1,2}:\d{2})?(?![\d:])"
 )
-_TIMESTAMP_EXCLUSIONS_RE = re.compile(r"`[^`]*`|!?\[[^\]]+\]\([^)]+\)|https?://[^\s]+", re.I)
+_TIMESTAMP_EXCLUSIONS_RE = re.compile(r"https?://[^\s]+", re.I)
 
 
 def _timestamp_to_seconds(value: str) -> int:
@@ -575,7 +575,32 @@ def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
     """Make visible prose timecodes return to the source video position."""
 
     output = []
-    for line, prose in structural_lines(str(markdown or "").splitlines()):
+    source = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = list(structural_lines(source.splitlines()))
+    # Inline links may wrap within prose, but cannot cross a blank paragraph
+    # or a fenced/indented code boundary. Offsets refer to unchanged source.
+    protected = []
+    run, run_start, offset = [], 0, 0
+
+    def flush_run():
+        if run:
+            protected.extend((run_start + start, run_start + end)
+                             for start, end in export_protected_spans("\n".join(run)))
+            run.clear()
+
+    for line, prose in lines:
+        if not prose or not line.strip():
+            flush_run()
+        else:
+            if not run:
+                run_start = offset
+            run.append(line)
+        offset += len(line) + 1
+    flush_run()
+    protected_index = offset = 0
+    for line, prose in lines:
+        line_start = offset
+        offset += len(line) + 1
         if not prose or not line:
             output.append(line)
             continue
@@ -584,6 +609,11 @@ def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
         cursor = 0
         linked = False
         for match in _EXPORT_TIMESTAMP_RE.finditer(line):
+            absolute = line_start + match.start()
+            while protected_index < len(protected) and protected[protected_index][1] <= absolute:
+                protected_index += 1
+            if protected_index < len(protected) and protected[protected_index][0] <= absolute:
+                continue
             if any(start <= match.start() < end for start, end in excluded):
                 continue
             target = _timestamp_source_url(source_url, match.group(0))
@@ -621,11 +651,8 @@ _sanitize_export_text = sanitize_export_text
 
 
 def _clean_inline_markdown(value: str) -> str:
-    text = str(value or "")
-    text = re.sub(r"`([^`]+)`", r"\1", text)
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-    text = re.sub(r"__([^_]+)__", r"\1", text)
-    return text
+    return "".join(render_math_text(token.text) if token.kind == "math" else token.text
+                   for token in export_inline_tokens(value))
 
 
 def _content_blocks(markdown: str, title: str) -> list[_Block]:
@@ -704,7 +731,7 @@ def _docx_numbering_sequence(document, start: int) -> int:
     numbering.append(num)
     return num_id
 
-def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
+def _add_docx_hyperlink(paragraph, text: str, url: str, *, bold: bool = False, italic: bool = False) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
@@ -721,7 +748,7 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     from docx.text.paragraph import Paragraph as WordParagraph
     scratch = WordParagraph(OxmlElement("w:p"), paragraph._parent)
     scratch.style = paragraph.style
-    _add_docx_text(scratch, text)
+    _add_docx_text(scratch, text, bold=bold, italic=italic)
     for run in scratch.runs:
         properties = run._element.get_or_add_rPr()
         color = OxmlElement("w:color"); color.set(qn("w:val"), "0F766E")
@@ -731,7 +758,7 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     paragraph._p.append(hyperlink)
 
 
-def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str = "") -> None:
+def _add_docx_text(paragraph, value: str, *, bold: bool = False, italic: bool = False, font_name: str = "") -> None:
     """Use a dedicated host emoji font for non-BMP runs in editable Word output."""
 
     from docx.oxml.ns import qn
@@ -742,6 +769,8 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
         run = paragraph.add_run(part)
         if bold:
             run.bold = True
+        if italic:
+            run.italic = True
         if font_name:
             run.font.name = font_name
         if re.search(r"[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]", part):
@@ -771,29 +800,22 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
 
 
 def _add_docx_inline(paragraph, value: str, *, anchors: dict[str, str] | None = None) -> None:
-    cursor = 0
-    text = str(value or "")
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
-    for match in token_re.finditer(text):
-        if match.start() > cursor:
-            _add_docx_text(paragraph, _sanitize_export_text(text[cursor:match.start()]))
-        if match.group(1) is not None:
-            label, raw_url = match.group(1), match.group(2)
+    for token in export_inline_tokens(value):
+        style = {"bold": token.bold, "italic": token.italic}
+        if token.kind == "link":
+            label, raw_url = token.text, token.destination
             url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else _sanitize_export_text(label)
-                _add_docx_hyperlink(paragraph, display_label, url)
+                _add_docx_hyperlink(paragraph, display_label, url, **style)
             else:
-                _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）")
-        elif match.group(3) is not None or match.group(4) is not None:
-            _add_docx_text(paragraph, _sanitize_export_text(match.group(3) or match.group(4)), bold=True)
-        elif match.group(6) is not None:
-            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(match.group(6))))
+                _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）", **style)
+        elif token.kind == "math":
+            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(token.text)), **style)
+        elif token.kind == "code":
+            _add_docx_text(paragraph, _sanitize_export_text(token.text), font_name="Consolas", **style)
         else:
-            _add_docx_text(paragraph, _sanitize_export_text(match.group(5) or ""), font_name="Consolas")
-        cursor = match.end()
-    if cursor < len(text):
-        _add_docx_text(paragraph, _sanitize_export_text(text[cursor:]))
+            _add_docx_text(paragraph, _sanitize_export_text(token.text), **style)
 
 
 def build_docx_export(
@@ -1124,26 +1146,20 @@ def _pdf_escape_text(value: str) -> str:
 def _pdf_inline(value: str, *, pdf_safe: bool = True, anchors: dict[str, str] | None = None) -> str:
     compatible = _pdf_compatible_text if pdf_safe else str
     escape_text = _pdf_escape_text if pdf_safe else html.escape
-    source = str(value or "")
     parts: list[str] = []
-    cursor = 0
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
-    for match in token_re.finditer(source):
-        parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:match.start()]))))
-        if match.group(1) is not None:
-            label, raw_url = match.group(1), match.group(2)
+    for token in export_inline_tokens(value):
+        if token.kind == "link":
+            label, raw_url = token.text, token.destination
             url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else compatible(_sanitize_export_text(label))
                 parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{escape_text(display_label)}</u></a>')
             else:
                 parts.append(escape_text(f"{compatible(_sanitize_export_text(label))}（链接已移除）"))
-        elif match.group(3) is not None or match.group(4) is not None:
-            parts.append(f"<strong>{escape_text(compatible(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
-        elif match.group(6) is not None:
-            parts.append(escape_text(compatible(render_math_text(_sanitize_export_text(match.group(6))))))
-        else:
-            code_text = compatible(_sanitize_export_text(match.group(5) or ""))
+        elif token.kind == "math":
+            parts.append(escape_text(compatible(render_math_text(_sanitize_export_text(token.text)))))
+        elif token.kind == "code":
+            code_text = compatible(_sanitize_export_text(token.text))
             escaped = escape_text(code_text)
             if not pdf_safe:
                 parts.append(f"<code>{escaped}</code>")
@@ -1152,8 +1168,12 @@ def _pdf_inline(value: str, *, pdf_safe: bool = True, anchors: dict[str, str] | 
             else:
                 # Courier cannot render CJK. Inherit the selected CJK font.
                 parts.append(escaped)
-        cursor = match.end()
-    parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:]))))
+        else:
+            parts.append(escape_text(compatible(_sanitize_export_text(token.text))))
+        if token.bold:
+            parts[-1] = f"<strong>{parts[-1]}</strong>"
+        if token.italic:
+            parts[-1] = f"<i>{parts[-1]}</i>"
     return "".join(parts)
 
 
@@ -1408,7 +1428,7 @@ def build_html_export(
             anchor = section_anchor_id(block.text, heading_occurrences[stable_base])
             level = max(1, min(int(block.level), 4))
             text = html.escape(_clean_inline_markdown(block.text))
-            body.append(f'<h{level} id="{anchor}">{text}</h{level}>')
+            body.append(f'<h{level} id="{anchor}">{inline(block.text)}</h{level}>')
             if settings["include_toc"] and level <= 3:
                 toc.append(f'<li class="toc-level-{level}"><a href="#{anchor}">{text}</a></li>')
         elif block.kind == "table":
