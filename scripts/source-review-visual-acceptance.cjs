@@ -21,8 +21,9 @@ const { execFileSync } = require("node:child_process"), { chromium } = require("
     assert.equal(await review.evaluate(node => node.open), false);
     assert.equal(await page.locator("#document .source-review-link").count(), 40);
     assert.match(await review.locator("summary").innerText(), /40 条定位提示/);
-    const bodyWarnings = page.locator("#document strong").filter({ hasText: "仅定位到来源" });
-    assert.equal(await bodyWarnings.count(), 0, "location-only notices are collected without repetitive warning pills");
+    const bodyWarnings = await page.locator("#document strong").evaluateAll(nodes => nodes.filter(node =>
+      node.textContent.includes("仅定位到来源") && !node.closest("code, pre, blockquote, a, h1, h2, h3, h4, h5, h6")).length);
+    assert.equal(bodyWarnings, 0, "location-only prose notices are collected without changing literal code examples");
     await page.locator("#document strong").filter({ hasText: "未找到支持来源" }).waitFor();
     await page.locator("#document strong").filter({ hasText: "推断：需回源核对" }).waitFor();
     assert.match(await page.locator("#document code").last().innerText(), /仅定位到来源/, "literal code examples stay intact");
