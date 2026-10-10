@@ -101,6 +101,25 @@ test("new attempts remove old sections, generation changes retain only the same 
   assert(!section.isConnected);
 });
 
+test("scroll compensation respects both native scroll anchoring and browsers without it", () => {
+  for (const nativeAnchoring of [false, true]) {
+    const h = harness(), one = outline("one", 0, 10), two = outline("two", 20, 30);
+    h.reader.render(projection([one, two, batch("second", 20, 30)]), task, {});
+    const section = h.element.querySelectorAll("[data-reader-section]")[1];
+    h.doc.selected = section.children[1].children[0].children[1];
+    let documentY = 1000;
+    section.getBoundingClientRect = () => ({ top: documentY - h.scroller.scrollTop });
+    const create = h.doc.createElement;
+    h.doc.createElement = tag => {
+      if (tag === "article") { documentY += 150; if (nativeAnchoring) h.scroller.scrollTop += 150; }
+      return create(tag);
+    };
+    h.reader.render(projection([one, two, batch("first", 0, 10), batch("second", 20, 30)]), task, {});
+    assert.equal(h.scroller.scrollTop, 650, `native anchoring: ${nativeAnchoring}`);
+    assert.equal(section.getBoundingClientRect().top, 500);
+  }
+});
+
 test("only exact task-owned grids supplement evidence; unrelated and external assets are excluded", () => {
   const h = harness();
   const mediaTask = { ...task, frame_grids: [{ start: 0, end: 10, url: "/api/tasks/synthetic/frames/good.jpg" },

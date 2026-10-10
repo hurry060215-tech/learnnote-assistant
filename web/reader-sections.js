@@ -160,7 +160,11 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
     sync(groups, desired); sync(overflow, plan.unmatched.map(batchNode));
     for (const [id, entry] of outlines) if (!liveOutlines.has(id)) { entry.node.remove(); outlines.delete(id); changed = true; }
     for (const [id, entry] of batches) if (!liveBatches.has(id)) { entry.node.remove(); batches.delete(id); changed = true; }
-    if (same && scroller) scroller.scrollTop = top + (anchor?.isConnected ? anchor.getBoundingClientRect().top - offset : 0);
+    // The browser may already have anchored the retained DOM during layout.
+    // Correct the current scroll offset; restoring the old one would undo that
+    // native compensation and jump backwards by the inserted batch's height.
+    if (same && scroller) scroller.scrollTop = anchor?.isConnected
+      ? scroller.scrollTop + anchor.getBoundingClientRect().top - offset : top;
     if (changed) doc.defaultView.dispatchEvent(new Event("learnnote:document"));
     return true;
   }
