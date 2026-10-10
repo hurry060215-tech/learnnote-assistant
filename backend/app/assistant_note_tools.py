@@ -48,7 +48,8 @@ def edit_text(before: str, arguments: dict) -> str:
 
 
 def prepare_edit(source: dict, arguments: dict):
-    before = selected_edition(source)["text"]
+    selected = selected_edition(source)
+    before = selected["text"]
     if len(before.encode("utf-8")) > 1024 * 1024:
         raise HTTPException(422, "这份正文超出助手单次编辑范围，请使用正文编辑器。")
     after = edit_text(before, arguments)
@@ -56,7 +57,8 @@ def prepare_edit(source: dict, arguments: dict):
                                       fromfile="当前保存版本", tofile="拟保存版本", n=3))
     if len(diff) > 64000:
         raise HTTPException(422, "差异过长，请缩小本次修改范围。")
-    return {"before": before, "after": after, "before_revision": digest(before), "after_revision": digest(after)}, {
+    return {"before": before, "after": after, "before_revision": digest(before), "after_revision": digest(after),
+            "before_write_id": selected.get("write_id")}, {
         "diff": diff, "changed": before != after, "notice": "应用后只保存个人修订。用于撤销的前后正文副本仅保存在本机；不会改动原始资料。"}
 
 

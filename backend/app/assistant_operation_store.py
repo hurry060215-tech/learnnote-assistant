@@ -101,6 +101,11 @@ def load(operation_id: str):
             if (digest(edit["before"]) != edit["before_revision"] or digest(edit["after"]) != edit["after_revision"]
                     or edit["before_revision"] != value["source"]["revision"]):
                 raise ValueError("changed_edit")
+            if "after_write_id" in edit and (edit["after_write_id"] != operation_id
+                    or "before_write_id" not in edit
+                    or (edit["before_write_id"] is not None and (not isinstance(edit["before_write_id"], str)
+                        or re.fullmatch(r"[A-Za-z0-9_-]{8,64}", edit["before_write_id"]) is None))):
+                raise ValueError("changed_edit_marker")
         if value.get("artifact"):
             artifact = value["artifact"]
             if (artifact["name"] not in {operation_id + "." + suffix for suffix in ("md", "docx", "pdf", "html")}

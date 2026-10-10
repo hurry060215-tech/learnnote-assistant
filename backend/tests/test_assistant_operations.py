@@ -331,6 +331,80 @@ class AssistantOperationTests(unittest.TestCase):
         self.assertEqual(operations.undo(uuid4().hex,completed["id"])["status"],"completed")
         self.assertEqual(self.current()["text"],self.text)
 
+    def test_lost_receipt_never_replays_over_a_later_manual_revert(self):
+        request = self.request(); operations.prepare(request)
+        original_save = journal.save
+        def fail_receipt(value):
+            if value["status"] == "completed": raise OSError("synthetic receipt failure")
+            return original_save(value)
+        with patch.object(journal, "save", side_effect=fail_receipt):
+            self.assertEqual(operations.execute(request.operation_id)["status"], "completed")
+        notes.put_edition("task", self.task.id, notes.EditionRequest(text=self.text, revision=self.current()["revision"]))
+        with patch.object(operations, "save_edition_locked", wraps=operations.save_edition_locked) as save:
+            result = operations.execute(request.operation_id)
+        self.assertEqual(result["status"], "conflict")
+        save.assert_not_called()
+        self.assertEqual(self.current()["text"], self.text)
+        self.assertEqual(self.original.read_bytes(), self.bytes)
+
+    def test_lost_receipt_does_not_adopt_a_later_same_result_manual_save(self):
+        request = self.request(); operations.prepare(request)
+        original_save = journal.save
+        def fail_receipt(value):
+            if value["status"] == "completed": raise OSError("synthetic receipt failure")
+            return original_save(value)
+        with patch.object(journal, "save", side_effect=fail_receipt):
+            operations.execute(request.operation_id)
+        current = self.current()
+        notes.put_edition("task", self.task.id, notes.EditionRequest(text=current["text"], revision=current["revision"]))
+        self.assertEqual(operations.get_operation(request.operation_id)["status"], "conflict")
+        with self.assertRaises(HTTPException): operations.undo(uuid4().hex, request.operation_id)
+        self.assertEqual(self.current()["text"], current["text"])
+
+    def test_prepared_edit_and_undo_detect_same_text_newer_manual_saves(self):
+        request = self.request(); operations.prepare(request)
+        notes.put_edition("task", self.task.id, notes.EditionRequest(text=self.text, revision=self.current()["revision"]))
+        self.assertEqual(operations.execute(request.operation_id)["status"], "conflict")
+        completed = self.edit()
+        current = self.current()
+        notes.put_edition("task", self.task.id, notes.EditionRequest(text=current["text"], revision=current["revision"]))
+        with self.assertRaises(HTTPException): operations.undo(uuid4().hex, completed["id"])
+        self.assertEqual(self.current()["text"], current["text"])
+
+    def test_legacy_interrupted_edit_cannot_infer_a_commit_from_text_alone(self):
+        request = self.request(); operations.prepare(request)
+        value = journal.load(request.operation_id); value["status"] = "running"
+        value["edit"].pop("before_write_id", None); value["edit"].pop("after_write_id", None)
+        journal.save(value)
+        with patch.object(operations, "save_edition_locked", wraps=operations.save_edition_locked) as save:
+            self.assertEqual(operations.execute(request.operation_id)["status"], "conflict")
+        save.assert_not_called()
+        self.assertEqual(self.current()["text"], self.text)
+
+    def test_corrupt_source_text_is_not_mistaken_for_an_absent_source_during_forget(self):
+        request = self.request(); operations.prepare(request)
+        value = journal.load(request.operation_id); value["status"] = "running"; journal.save(value)
+        receipt = journal.path_for(request.operation_id).read_bytes()
+        self.original.write_text("\ufffd" * 20, encoding="utf-8")
+        self.assertEqual(storage.get_task(self.task.id).id, self.task.id)
+        with self.assertRaises(HTTPException): operations.forget(request.operation_id)
+        self.assertEqual(journal.path_for(request.operation_id).read_bytes(), receipt)
+
+    def test_confirmed_forget_cleans_stranded_copy_after_source_cleanup_failure(self):
+        from app.main import app
+        request = self.request(); operations.prepare(request)
+        with patch.object(journal, "_purge_paths", side_effect=OSError("synthetic cleanup failure")):
+            with self.assertRaises(HTTPException) as error: storage.delete_task(self.task.id)
+        self.assertEqual(error.exception.status_code, 503)
+        with self.assertRaises(FileNotFoundError): storage.get_task(self.task.id)
+        self.assertTrue(journal.path_for(request.operation_id).is_file())
+        client = TestClient(app); url = "/api/assistant/operations/" + request.operation_id
+        self.assertEqual(client.request("DELETE", url, json={}).status_code, 422)
+        self.assertTrue(journal.path_for(request.operation_id).is_file())
+        response = client.request("DELETE", url, json={"confirm": True})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(journal.load(request.operation_id))
+
     def test_orphan_atomic_copies_are_removed_under_lock_without_touching_unknown_files(self):
         operation_id=uuid4().hex; directory=journal.root()
         temporary=directory/("."+operation_id+".json."+uuid4().hex+".tmp")

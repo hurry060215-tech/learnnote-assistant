@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 import hashlib
 import json
 import threading
+import re
+from uuid import uuid4
 from contextlib import contextmanager
 from pydantic import BaseModel, Field
 from ..config import DATA_DIR
@@ -110,7 +112,9 @@ def _edition_state(kind: str, source_id: str):
             if (not isinstance(state, dict) or not isinstance(state.get("text"), str)
                     or not isinstance(state.get("revision"), str)
                     or state["revision"] != hashlib.sha256(state["text"].encode()).hexdigest()
-                    or state.get("edited") is not True):
+                    or state.get("edited") is not True
+                    or ("write_id" in state and (not isinstance(state["write_id"], str)
+                        or re.fullmatch(r"[A-Za-z0-9_-]{8,64}", state["write_id"]) is None))):
                 raise ValueError("Invalid saved edition")
             return state
         except (OSError, ValueError, TypeError) as exc:
@@ -135,12 +139,17 @@ def put_edition(kind: str, source_id: str, request: EditionRequest):
         raise HTTPException(404, "Source unavailable") from exc
 
 
-def save_edition_locked(kind: str, source_id: str, text: str, revision: str):
+def save_edition_locked(kind: str, source_id: str, text: str, revision: str, write_id: str | None = None):
     """Caller holds edition_transaction; preserve the existing revision contract."""
     current = _edition_state(kind, source_id)
     if current["revision"] != revision:
         raise HTTPException(409, "笔记已在其他页面更新。请先复制当前修改，再重新打开笔记。")
-    state = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": True}
+    # A content hash alone cannot distinguish a later manual return to old text.
+    # This marker is committed atomically with the body, without migrating originals.
+    marker = write_id or uuid4().hex
+    if re.fullmatch(r"[A-Za-z0-9_-]{8,64}", marker) is None:
+        raise ValueError("Invalid edition write marker")
+    state = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": True, "write_id": marker}
     atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
     return state
 

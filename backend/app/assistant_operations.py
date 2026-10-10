@@ -40,6 +40,7 @@ def prepare(request: OperationRequest):
         selected_edition(value["source"])
         if request.tool == "edit_note":
             value["edit"], value["preview"] = prepare_edit(value["source"], arguments)
+            value["edit"]["after_write_id"] = value["id"]
         else:
             value["preview"] = {"arguments": arguments, "notice": "只处理当前保存版本；不会改动原始资料。"}
         store.save(value)  # Failure here must leave the note untouched.
@@ -76,12 +77,13 @@ def _recover(value):
         source, edit = value["source"], value["edit"]
         with edition_transaction():
             current = get_edition(source["kind"], source["id"])
-            if current["revision"] == edit["after_revision"]:
+            marked = edit.get("after_write_id") == value["id"] and "before_write_id" in edit
+            if marked and current.get("write_id") == value["id"] and current["revision"] == edit["after_revision"]:
                 value.update(status="completed", result={"revision": edit["after_revision"], "changed": edit["before"] != edit["after"], "recovered": True})
-            elif current["revision"] == edit["before_revision"]:
+            elif marked and current.get("write_id") == edit["before_write_id"] and current["revision"] == edit["before_revision"]:
                 value["status"] = "prepared"
             else:
-                value.update(status="conflict", error="正文已有其他修改，保留现状与撤销副本。")
+                value.update(status="conflict", error="正文已有后续保存或旧操作缺少写入标记，不能仅凭相同文字重放；已保留现状与撤销副本。")
     elif value.get("artifact"):
         artifact = value["artifact"]
         path = store.root() / artifact["name"]
@@ -173,7 +175,11 @@ def execute(operation_id: str):
                 with edition_transaction():
                     _check_cancel(value)
                     edit = value["edit"]
-                    saved = save_edition_locked(source["kind"], source["id"], edit["after"], edit["before_revision"])
+                    current = get_edition(source["kind"], source["id"])
+                    if (edit.get("after_write_id") != value["id"] or "before_write_id" not in edit
+                            or current.get("write_id") != edit["before_write_id"]):
+                        raise HTTPException(409, "正文有后续保存或操作版本信息不足，请重新预览；未覆盖当前修改。")
+                    saved = save_edition_locked(source["kind"], source["id"], edit["after"], edit["before_revision"], value["id"])
                     value["result"] = {"revision": saved["revision"], "changed": edit["before"] != edit["after"]}
                 # A cancellation after this commit cannot pretend the write vanished.
             elif value["tool"] == "read_note":
@@ -229,13 +235,16 @@ def undo(operation_id: str, target_id: str):
         else:
             edit = target["edit"]
             source = {**target["source"], "revision": edit["after_revision"]}
-            selected_edition(source)
+            current = selected_edition(source)
+            if current.get("write_id") != target_id or edit.get("after_write_id") != target_id:
+                raise HTTPException(409, "正文已有后续保存，不能覆盖这次人工修改；撤销副本仍保留。")
             now = datetime.now(timezone.utc).isoformat()
             value = {"schema_version": 1, "id": operation_id, "tool": "edit_note", "source": source,
                      "status": "prepared", "created_at": now, "updated_at": now,
                      "request_digest": store.digest(identity), "undo_of": target_id,
                      "edit": {"before": edit["after"], "after": edit["before"],
-                              "before_revision": edit["after_revision"], "after_revision": edit["before_revision"]}}
+                              "before_revision": edit["after_revision"], "after_revision": edit["before_revision"],
+                              "before_write_id": target_id, "after_write_id": operation_id}}
             target["undone_by"] = operation_id
             store.save(target)
             store.save(value)
@@ -254,6 +263,25 @@ def artifact_path(operation_id: str):
         return path, info
 
 
+def _source_metadata_missing(source):
+    # A corrupt/unreadable note can also produce a 404 during recovery. Only
+    # definitive metadata absence permits disposal of an unfinished orphan.
+    from .storage import get_task
+    from .library import get_material
+    try:
+        if source["kind"] == "task":
+            get_task(source["id"])
+        else:
+            get_material(source["id"])
+    except FileNotFoundError:
+        return source["kind"] == "task"
+    except ValueError as exc:
+        return source["kind"] == "material" and str(exc) == "material_not_found"
+    except (OSError, sqlite3.Error):
+        return False
+    return False
+
+
 def forget(operation_id: str):
     """Explicitly discard a completed record pair and its local undo/export copies."""
     with store.locked():
@@ -267,7 +295,14 @@ def forget(operation_id: str):
             if child:
                 records.append(child)
         for record in records:
-            recovered = _recover(record) if record["status"] == "running" else record
+            try:
+                recovered = _recover(record) if record["status"] in {"running", "prepared"} else record
+            except HTTPException as exc:
+                if exc.status_code != 404 or not _source_metadata_missing(record["source"]):
+                    raise
+                # Explicit confirmed disposal under the lease is allowed when
+                # a source is absent; absence never triggers automatic purging.
+                continue
             if recovered["status"] in {"running", "prepared"}:
                 raise HTTPException(409, "请先完成或取消操作，再删除记录。")
         for record in reversed(records):

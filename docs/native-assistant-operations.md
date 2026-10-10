@@ -37,6 +37,11 @@ of what that operation did, not a claim that later user work has not changed it.
 
 A process-wide lock and an OS-backed lease serialize executions and deletions.
 Manual and assistant edition writes also share a version check and edition lease.
+Each personal save atomically carries a write marker: a fresh ID for manual saves,
+and the operation ID for assistant saves. Recovery and Undo compare this marker
+as well as the body hash, so a later manual return to identical text is protected.
+Older editions remain readable without migration; an interrupted old operation
+without enough marker evidence becomes a conflict rather than being replayed.
 The lock order is operation store, edition, then source storage/index. Deletion
 acquires the operation lock before the source locks, including task-linked
 material registrations. Windows uses the existing named-mutex lease implementation.
@@ -50,14 +55,16 @@ reservation. The user can delete terminal records to reclaim their local copies.
 
 Cancellation is effective before the commit boundary. Once a note or artifact
 is committed, a late cancellation reports the actual completed result. After an
-interruption, exact before/after hashes reconcile the note; newer user content is
+interruption, exact before/after hashes and write markers reconcile the note; newer user content is
 never rolled back speculatively. Disk failure after a commit returns a truthful
 result with a persistence warning, retaining the prior record for reconciliation.
 An interrupted undo-link write restores a usable Undo action.
 
 Undo is one guarded inverse operation with its own stable ID and reserved record.
-It succeeds only while the current revision matches the original result. A
-conflict preserves later work. Undo receipts cannot themselves be undone by this
+It succeeds only while the current revision and write marker match the original
+result. A conflict preserves later work, including a later save of identical text.
+This is not a stacked undo system: undoing a newer edit writes a new marker, so
+an earlier operation does not regain Undo authority automatically. Undo receipts cannot themselves be undone by this
 slice. Closing the dialog stops waiting on model planning, but does not claim to
 roll back a backend operation; actual status remains available in the journal.
 
@@ -74,7 +81,9 @@ material aliases of a deleted task. Lease-protected cleanup also removes only
 strictly named abandoned atomic-write temporary files. Unknown user files are
 preserved. If source metadata is missing or damaged, records are not served and
 recovery copies are preserved; absence alone is never treated as permission to
-destroy a backup. Corrupt journal data or failed cleanup returns an explicit error.
+destroy a backup. Explicitly confirmed record disposal can still remove a stranded
+copy after its source was deleted, under the operation lease. Corrupt journal data
+or failed cleanup returns an explicit error.
 
 Reading settings use the existing browser preference JSON with atomic receipt
 storage and Web Locks for cooperating tabs. See [reading-settings-api.md](reading-settings-api.md)
