@@ -103,8 +103,9 @@ export function installProductWorkspace(ctx) {
     const topicScope = source ? `${source.kind}:${source.id}` : "global";
     conversations.reset(topicScope);
     previousSkill = "";
-    await loadHistory();
-    if (visibleSource !== topicScope) return;
+    const loading = loadHistory(), epoch = assistantEpoch;
+    await loading;
+    if (visibleSource !== topicScope || epoch !== assistantEpoch) return;
     $("aiStatus").textContent = "已开始新话题，历史记录和未发送草稿仍保留。";
     $("aiQuestion").focus();
   };

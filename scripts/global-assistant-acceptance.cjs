@@ -90,6 +90,7 @@ const fs = require("fs");
     assert.match(await p.locator(".assistant-turn").last().innerText(), /未改写笔记或调用模型/);
     await p.locator("#aiQuestion").fill("尚未发送的合成草稿");
     await p.getByRole("button", { name: "新话题", exact: true }).click();
+    await p.waitForFunction(() => document.querySelector("#aiStatus").textContent.includes("已开始新话题"));
     assert.equal(await p.locator("#aiQuestion").inputValue(), "尚未发送的合成草稿");
     assert.match(await p.locator("#aiStatus").innerText(), /已开始新话题/);
     await send("这份内容中学习率控制什么？");
