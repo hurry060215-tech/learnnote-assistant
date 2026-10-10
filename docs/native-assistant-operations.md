@@ -4,8 +4,9 @@ The desk assistant's **操作软件** button opens real local tools for the sele
 saved note. This is the first execution slice, not a complete autonomous agent.
 It supports reading bounded lines, editing a personal revision, generating a
 Markdown/HTML/Word/PDF file, and changing eight browser reading preferences.
-Courses, task lifecycle, reusable templates and multi-step workflows are not yet
-in this tool vocabulary. Existing source files and generated notes remain intact.
+Courses, task lifecycle and reusable templates are not yet in this tool vocabulary.
+A separate [bounded note workflow](native-assistant-runs.md) can sequence reading,
+a reviewed edit, verified readback and export. Existing source files and generated notes remain intact.
 
 ## Proposal and execution
 

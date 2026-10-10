@@ -1,16 +1,15 @@
 """Bounded local operation records; no provider credentials or model prompts."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
-from uuid import uuid4
 import re
 import threading
 
 from fastapi import HTTPException
 from .config import DATA_DIR
 from .worker_lease import worker_lease, has_worker_lease
+from .assistant_run_persistence import atomic_write_text, digest
 
 _lock = threading.RLock()
 _cancelled: dict[str, threading.Event] = {}
@@ -18,15 +17,6 @@ MAX_BYTES = 16 * 1024 * 1024
 MAX_RECORD_BYTES = 3 * 1024 * 1024
 HEADROOM = 256 * 1024
 MAX_SLOTS = 64
-
-
-def atomic_write_text(path, text):
-    temporary = path.with_name("." + path.name + "." + uuid4().hex + ".tmp")
-    try:
-        temporary.write_text(text, encoding="utf-8")
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def root(data_dir=None) -> Path:
@@ -65,11 +55,6 @@ def locked(data_dir=None):
                     except OSError:
                         raise HTTPException(503, "助手暂存副本无法清理，请恢复本机存储后重试。") from None
             yield
-
-
-def digest(value) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def load(operation_id: str):
@@ -170,6 +155,8 @@ def _purge_paths(directory, operation_id):
 def source_deletion(kind, source_id, data_dir):
     """Take the operation lock BEFORE source locks; deletion removes its copies."""
     with locked(data_dir):
+        from . import assistant_run_store
+        run_ids = assistant_run_store.matching_sources(kind, source_id, data_dir)
         directory = root(data_dir)
         matches = []
         for path in directory.glob("*.json"):
@@ -188,6 +175,8 @@ def source_deletion(kind, source_id, data_dir):
         try:
             for operation_id in matches:
                 _purge_paths(directory, operation_id)
+            for run_id in run_ids:
+                assistant_run_store.purge(run_id, data_dir)
         except OSError:
             raise HTTPException(503, "来源已删除，但关联助手副本清理未完成；请保留此提示并重试清理。") from None
 

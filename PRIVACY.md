@@ -63,6 +63,17 @@ version-history feature.
 
 ## Native assistant operations
 
+The optional bounded note workflow requires an explicit per-workflow sharing choice.
+It sends the current requirement, fixed selected source and actual read results to
+the selected text model; subsequent decisions may resend those results and incur
+provider charges. It does not include prior chat or upload extra session logs.
+Local `assistant-runs` records retain the user's requirement and references to the
+operation journal, which can include read text, full edit backups and export files.
+Deleting a workflow record leaves those separately managed operation copies and
+the current note intact. Deleting its source removes related workflow records.
+Model connection keys/options are not stored in workflow records.
+See [bounded note workflows](docs/native-assistant-runs.md) for exact limits.
+
 The **Operate software** panel can read, edit or export the explicitly selected
 saved note and change this browser's reading appearance. The local forms do not
 call a model. Submitting a natural-language request sends that request, the

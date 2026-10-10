@@ -125,9 +125,9 @@
         }
       }
     },
-    "openapi_sha256": "4bf6459e4e7992de9972ba6cc6b19fcd0a4727d9a0419b8718c634e356c54fbd",
+    "openapi_sha256": "e179c53c587e6de4835b9d14374a4f56da4ca1a35568285a249e8ff4d75cff91",
     "task_schema_sha256": "69e8dadffd3b6de4480fbd8dc1a8e8c9cfa12109c7f8523e42f1fb0e135685aa",
-    "routes_sha256": "767d384785b7a45fdce20bbac9b5afb093f177ee6b5b24e3b010f209dd520b5d"
+    "routes_sha256": "92d1c178d02ba0c035edaab89fa6f1ebc2cf0ce9eec11913dcb5a70c0f668563"
   },
   "archives": {
     "('bundle', True, False)": {

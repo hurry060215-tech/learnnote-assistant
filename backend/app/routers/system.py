@@ -26,6 +26,8 @@ from ..summarizer import chat_completion_provider_kwargs, llm_model_supports_vis
 system_router = APIRouter(tags=["system"])
 from .assistant_operations import router as assistant_operations_router
 system_router.include_router(assistant_operations_router)
+from .assistant_runs import router as assistant_runs_router
+system_router.include_router(assistant_runs_router)
 _update_intents_lock = threading.Lock()
 
 
