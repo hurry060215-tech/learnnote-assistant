@@ -29,10 +29,13 @@ class AssistantOperationTests(unittest.TestCase):
         self.stack.enter_context(patch.object(storage, "ensure_dirs", lambda: None))
         self.task = storage.create_task("local", "Synthetic source")
         self.original = storage.task_dir(self.task.id) / "note.md"
-        self.original.write_text("# Original title\n\nPRIVATE_SYNTHETIC_SENTENCE\n\nTarget paragraph.\n", encoding="utf-8")
-        self.bytes = self.original.read_bytes()
+        self.text = "# Original title\n\nPRIVATE_SYNTHETIC_SENTENCE\n\nTarget paragraph.\n"
+        # Raw CRLF source bytes stay untouched; edition revisions cover normalized text.
+        # Use explicit bytes so both Linux and Windows exercise this boundary.
+        self.bytes = self.text.replace("\n", "\r\n").encode("utf-8")
+        self.original.write_bytes(self.bytes)
         storage.update_task(self.task.id, status="success", note_path=str(self.original))
-        self.source = {"kind": "task", "id": self.task.id, "revision": journal.digest(self.bytes.decode())}
+        self.source = {"kind": "task", "id": self.task.id, "revision": journal.digest(self.text)}
 
     def request(self, tool="edit_note", arguments=None, operation_id=None):
         return OperationRequest(operation_id=operation_id or uuid4().hex, source=self.source, tool=tool,
@@ -57,7 +60,7 @@ class AssistantOperationTests(unittest.TestCase):
         undo_id = uuid4().hex
         undone = operations.undo(undo_id, request.operation_id)
         self.assertEqual(undone["status"], "completed")
-        self.assertEqual(self.current()["text"].encode(), self.bytes)
+        self.assertEqual(self.current()["text"], self.text)
         self.assertEqual(operations.undo(undo_id, request.operation_id), undone)
         self.assertEqual(self.original.read_bytes(), self.bytes)
 
@@ -98,7 +101,7 @@ class AssistantOperationTests(unittest.TestCase):
         self.assertEqual(operations.cancel(request.operation_id)["status"], "cancelled")
         journal._cancelled.clear()
         self.assertEqual(operations.execute(request.operation_id)["status"], "cancelled")
-        self.assertEqual(self.current()["text"].encode(), self.bytes)
+        self.assertEqual(self.current()["text"], self.text)
 
     def test_cancel_after_the_actual_write_cannot_report_rollback(self):
         request = self.request(); operations.prepare(request)
@@ -146,7 +149,7 @@ class AssistantOperationTests(unittest.TestCase):
         request = self.request()
         with patch.object(journal, "atomic_write_text", side_effect=OSError("synthetic path")):
             with self.assertRaises(HTTPException): operations.prepare(request)
-        self.assertEqual(self.current()["text"].encode(), self.bytes)
+        self.assertEqual(self.current()["text"], self.text)
         operations.prepare(request); value=journal.load(request.operation_id);value["status"]="running";journal.save(value)
         self.assertEqual(operations.get_operation(request.operation_id)["status"], "prepared")
         value["status"]="running";journal.save(value)
@@ -189,7 +192,7 @@ class AssistantOperationTests(unittest.TestCase):
         self.assertEqual(client.post(url+"/prepare",json=data).status_code,422)
         self.assertEqual(client.post(url+"/prepare",json=request.model_dump()).status_code,200)
         self.assertEqual(client.post(url+"/"+request.operation_id+"/execute",json={}).status_code,422)
-        self.assertEqual(self.current()["text"].encode(),self.bytes)
+        self.assertEqual(self.current()["text"],self.text)
 
     def model_response(self,name="export_note",arguments=None,calls=1):
         tool=SimpleNamespace(type="function",function=SimpleNamespace(name=name,arguments=json.dumps(arguments or {"format":"pdf"})))
@@ -204,7 +207,7 @@ class AssistantOperationTests(unittest.TestCase):
             result=plan(request.model_copy(update={"share_source":True}))
             self.assertGreater(result["shared_characters"],0)
             self.assertIn("PRIVATE_SYNTHETIC_SENTENCE",json.dumps(complete.call_args.kwargs["messages"]))
-        self.assertEqual(self.current()["text"].encode(),self.bytes)
+        self.assertEqual(self.current()["text"],self.text)
         self.assertEqual(list(journal.root().glob("*.json")),[])
 
     def test_model_unknown_parallel_and_extra_parameter_calls_cannot_mutate(self):
@@ -213,7 +216,7 @@ class AssistantOperationTests(unittest.TestCase):
             with patch("openai.OpenAI"),patch("app.summarizer._compatible_completion",return_value=response):
                 with self.assertRaises(HTTPException) as error:plan(request)
                 self.assertEqual(error.exception.status_code,502)
-        self.assertEqual(self.current()["text"].encode(),self.bytes)
+        self.assertEqual(self.current()["text"],self.text)
 
     def test_custom_endpoint_cannot_inherit_default_credential(self):
         request=PlanRequest(question="Set dark mode",options=TaskOptions(llm_base_url="https://custom.example.test/v1",llm_model="dummy"))
@@ -244,7 +247,7 @@ class AssistantOperationTests(unittest.TestCase):
                 self.assertEqual(result["status"], "completed")
                 undo_id = uuid4().hex
                 self.assertEqual(operations.undo(undo_id, request.operation_id)["status"], "completed")
-                self.assertEqual(self.current()["text"].encode(), self.bytes)
+                self.assertEqual(self.current()["text"], self.text)
                 self.assertEqual(len(list(journal.root().glob("*.json"))), 4)
                 with self.assertRaises(HTTPException): operations.undo(uuid4().hex, request.operation_id)
                 with self.assertRaises(HTTPException): operations.undo(uuid4().hex, undo_id)
@@ -256,7 +259,7 @@ class AssistantOperationTests(unittest.TestCase):
         undo_id=uuid4().hex; operations.undo(undo_id,request.operation_id)
         self.assertTrue(operations.forget(undo_id)["deleted"])
         self.assertIsNone(journal.load(request.operation_id));self.assertIsNone(journal.load(undo_id))
-        self.assertEqual(self.current()["text"].encode(),self.bytes)
+        self.assertEqual(self.current()["text"],self.text)
 
     def test_deleting_task_removes_read_edit_undo_and_export_copies(self):
         edit = self.edit(); self.source["revision"] = edit["result"]["revision"]
@@ -326,7 +329,7 @@ class AssistantOperationTests(unittest.TestCase):
         recovered=operations.get_operation(completed["id"])
         self.assertNotIn("undone_by",recovered)
         self.assertEqual(operations.undo(uuid4().hex,completed["id"])["status"],"completed")
-        self.assertEqual(self.current()["text"].encode(),self.bytes)
+        self.assertEqual(self.current()["text"],self.text)
 
     def test_orphan_atomic_copies_are_removed_under_lock_without_touching_unknown_files(self):
         operation_id=uuid4().hex; directory=journal.root()
