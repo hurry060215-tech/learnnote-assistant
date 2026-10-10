@@ -10,6 +10,7 @@ const TASK_ID = "progressive-sections-ui-fixture";
 const SCENARIOS = [
   { name: "vision", kind: "vision_batch", title: "合成验收：渐进图文章节", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
   { name: "text", kind: "text_chunk", title: "合成验收：文字分段草稿", first: "文字分段 1", second: "文字分段 2" },
+  { name: "enrichment", kind: "vision_batch", title: "合成验收：字幕原位补入图文", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
 ];
 const SECOND_CLAIM = "Synthetic batch 2: the reference transcript says the square is blue.";
 const TRANSCRIPT = [
@@ -59,9 +60,25 @@ function createFixture(scenario) {
       created_at: new Date(clock).toISOString(), updated_at: new Date(clock).toISOString(),
       summary_source: "partial-draft", transcript_path: "transcript.json", note_path: "draft.partial.md",
       message: `Synthetic fixture only: ${HOSTILE_TEXT}`,
-      options: { content_mode: scenario.name === "text" ? "text" : "visual", visual_understanding: scenario.name === "vision", generate_questions: false },
+      options: { content_mode: scenario.name === "text" ? "text" : "visual", visual_understanding: scenario.name !== "text", generate_questions: false },
+      frame_grids: [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
       artifact_status: { draft_available: true, partial_draft_available: true, transcript_ready: true },
     },
+  };
+  fixture.projection = () => {
+    if (scenario.name !== "enrichment" || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
+    const outlines = TRANSCRIPT.map((cue, index) => ({ ...cue, id: `draft-time-${index * 10}`, kind: "temporal_outline",
+      revision: digest(JSON.stringify(cue)), status: "draft", verified: false, summary_generated: false,
+      source_cue_count: 1, heading_excerpt: cue.text, excerpts: [{ ...cue, source_cue_index: index }] }));
+    const generated = (fixture.phase === "second-batch" ? [2] : [1, 2]).map(number => ({
+      id: `vision-${number}`, kind: "vision_batch", status: "evidence_pending", verified: false,
+      markdown: batch(number, scenario), revision: digest(batch(number, scenario)), start: (number - 1) * 10, end: number * 10,
+      source_windows: [{ index: number - 1, start: (number - 1) * 10, end: number * 10 }],
+    }));
+    return { schema_version: 1, task_id: TASK_ID, task_updated_at: fixture.task.updated_at,
+      status: "draft", reason: "ready", verified: false, attempt_id: "abcdef123456",
+      source_revision: digest(JSON.stringify(TRANSCRIPT)), generation_revision: digest("synthetic-vision-run"),
+      revision: digest(JSON.stringify([...outlines, ...generated])), sections: [...outlines, ...generated] };
   };
   function record(event, details = {}) {
     clock += 1000;
@@ -280,6 +297,8 @@ async function runScenario(scenario, out) {
           if (url.pathname === `${taskRoot}/events`) return await json({ events: fixture.events });
           if (url.pathname === `${taskRoot}/qa`) return await json({ items: [] });
           if (url.pathname === `${taskRoot}/transcript`) return await json({ segments: TRANSCRIPT });
+          if (url.pathname === `${taskRoot}/partial-note`) return await json(fixture.projection());
+          if (url.pathname === `${taskRoot}/frames/synthetic-grid.png`) return await route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64") });
           if (url.pathname === `/api/tasks/editions/task/${TASK_ID}`) {
             report.editionRequests.push({ revision: fixture.edition.revision, status: fixture.task.status, summary_source: fixture.task.summary_source, updated_at: fixture.task.updated_at });
             return await json(fixture.edition);
@@ -332,6 +351,17 @@ async function runScenario(scenario, out) {
     await screenshot("01-running-batch-2.png");
     report.checks.push("Completed synthetic batch 2 is readable while task and summary stage remain running");
 
+    if (scenario.name === "enrichment") {
+      await page.evaluate(() => {
+        const section = document.querySelector('[data-reader-section="draft-time-10"]');
+        const excerpt = section.querySelector("li").lastChild;
+        const selection = window.getSelection(), range = document.createRange();
+        range.selectNodeContents(excerpt); selection.removeAllRanges(); selection.addRange(range);
+        window.__sourceDraftProbe = { section, excerpt, selectionText: selection.toString(), anchor: selection.anchorNode, focus: selection.focusNode };
+      });
+      assert.match(await page.locator("#document").innerText(), /不是 AI 主题总结/);
+    }
+
     // Use the actual root scroller. Core points initially has one occurrence;
     // an earlier batch will take its old occurrence-based Markdown heading ID.
     const before = await page.evaluate(({ heading, claim }) => {
@@ -355,7 +385,20 @@ async function runScenario(scenario, out) {
         claimTop: [...document.querySelectorAll("#document p")].find(node => node.textContent === claim).getBoundingClientRect().top };
     }, { heading: SECOND_HEADING, claim: SECOND_CLAIM });
     assert(report.editionRequests.length > requestsBeforeInsert, "A ready event with a new updated_at must reload the edition");
-    assert.notEqual(after.coreId, before.coreId, "The earlier duplicate heading must take the original occurrence-based ID");
+    if (scenario.name === "enrichment") {
+      assert.equal(after.coreId, before.coreId, "Independent source batches must retain stable, unique heading IDs");
+      const stable = await page.evaluate(() => {
+        const probe = window.__sourceDraftProbe, selection = window.getSelection();
+        return probe.section === document.querySelector('[data-reader-section="draft-time-10"]') && probe.excerpt.isConnected
+          && selection.anchorNode === probe.anchor && selection.focusNode === probe.focus && selection.toString() === probe.selectionText;
+      });
+      assert(stable, "A new visual batch must retain the original subtitle DOM and active selection");
+      assert.equal(await page.locator('[data-reader-section="draft-time-0"] [data-reader-batch="vision-1"]').count(), 1);
+      assert.equal(await page.locator('[data-reader-section="draft-time-10"] [data-reader-batch="vision-2"]').count(), 1);
+      await page.locator('[data-reader-batch="vision-1"] > details > summary').click();
+      assert.equal(await page.locator('[data-reader-batch="vision-1"] > details > img').getAttribute("src"), `/api/tasks/${TASK_ID}/frames/synthetic-grid.png`);
+      report.checks.push("Source excerpts and active selection survive a newly inserted visual batch; exact-range owned image and source controls are available in place");
+    } else assert.notEqual(after.coreId, before.coreId, "The earlier duplicate heading must take the original occurrence-based ID");
     assert(Math.abs(after.sectionTop - before.sectionTop) <= 3, `Source section jumped: ${JSON.stringify({ before, after })}`);
     assert(Math.abs(after.claimTop - before.claimTop) <= 3, "The same batch-2 passage must retain its viewport position");
     assert(after.scrollTop > before.scrollTop + 500, "Root scroll must compensate for the inserted earlier batch");

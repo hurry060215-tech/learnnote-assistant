@@ -1,6 +1,7 @@
 import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { renderEditionStable } from "/web/reader-progress.js";
+import { createSectionReader } from "/web/reader-sections.js";
 import {
   installConnections,
   loadModelConnection,
@@ -412,17 +413,49 @@ async function openItem(item, { remember = true, check = true } = {}) {
   )
     await openSource();
 }
+let editionRequest = 0;
+const sectionReader = createSectionReader({
+  element: $("document"), scroller: document.scrollingElement, timestamp,
+  renderMarkdown: (node, text) => { node.innerHTML = LearnNoteMarkdown.markdownToHtml(text); },
+  decorate: (node, sectionId) => {
+    // Each independently rendered batch starts its own Markdown heading IDs.
+    // Prefix them so later arrivals cannot steal an existing source anchor.
+    for (const heading of node.querySelectorAll("[id]")) heading.id = `${sectionId}-${heading.id}`;
+    for (const link of node.querySelectorAll('a[href^="#"]')) link.setAttribute("href", `#${sectionId}-${link.getAttribute("href").slice(1)}`);
+    decorateSourceTimes(node);
+  },
+  openSource: start => openSource(start).catch(failure), asset: taskAsset,
+});
 async function loadEdition(epoch) {
   const selected = state.selected;
-  const edition = await api(sourcePath(selected));
-  if (epoch !== state.epoch || state.editing) return;
+  const request = ++editionRequest;
+  const progressive = selected.kind === "task" && selected.options?.visual_understanding
+    && ["running", "cancelling", "failed", "cancelled"].includes(selected.status)
+    && (selected.artifact_status?.draft_available || selected.artifact_status?.partial_draft_available);
+  const [edition, projection] = await Promise.all([
+    api(sourcePath(selected)),
+    progressive ? api(`/api/tasks/${encodeURIComponent(selected.id)}/partial-note`).catch(() => null) : null,
+  ]);
+  if (epoch !== state.epoch || request !== editionRequest || state.editing
+      || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind
+      || state.selected?.updated_at !== selected.updated_at) return;
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
+  $("document").dataset.sourceRevision = state.revision || "";
+  $("annotations").dataset.sourceRevision = state.revision || "";
+  LearnNoteMarkdown.configure({ safeNoteMediaUrl: value => selected.kind === "task" ? taskAsset(value, selected.id) : "" });
+  if (sectionReader.render(projection, selected, edition)) {
+    $("document").dataset.readerSource = `${selected.kind}:${selected.id}`;
+    $("document").dataset.readerRevision = `${edition.revision}:${selected.summary_source || ""}:`;
+    return;
+  }
+  if ($("document").querySelector("[data-progressive-reader]")) delete $("document").dataset.readerRevision;
   renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
     `${edition.revision}:${selected.summary_source || ""}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
 }
 function renderNote() {
+  sectionReader.clear();
   // Keep the edition hash alongside the rendered document so annotations and
   // source repair can distinguish a stable anchor from an outdated selection.
   $("document").dataset.sourceRevision = state.revision || "";
@@ -476,8 +509,12 @@ function renderNote() {
     onUpdated: async () => { await refresh(); },
   });
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
+  decorateSourceTimes($("document"));
+  window.dispatchEvent(new Event("learnnote:document"));
+}
+function decorateSourceTimes(root) {
   if (state.selected.kind === "task")
-    for (const code of $("document").querySelectorAll("code")) {
+    for (const code of root.querySelectorAll("code")) {
       if (code.closest("pre")) continue;
       const match = code.textContent.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
       if (!match) continue;
@@ -492,7 +529,7 @@ function renderNote() {
     }
   if (state.selected.kind === "task") {
     const walker = document.createTreeWalker(
-      $("document"),
+      root,
       NodeFilter.SHOW_TEXT,
     );
     const textNodes = [];
@@ -524,7 +561,6 @@ function renderNote() {
       node.replaceWith(fragment);
     }
   }
-  window.dispatchEvent(new Event("learnnote:document"));
 }
 const taskEvents = new Map();
 const taskEventHub = createTaskEventHub({
