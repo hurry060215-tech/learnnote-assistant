@@ -22,6 +22,11 @@ hiddenimports += collect_submodules("app")
 hiddenimports += collect_submodules("fastapi")
 hiddenimports += collect_submodules("starlette")
 hiddenimports += collect_submodules("uvicorn")
+for package in ("markdown_it", "mdurl"):
+    package_datas, package_binaries, package_imports = collect_all(package)
+    datas += package_datas
+    binaries += package_binaries
+    hiddenimports += package_imports
 
 for optional_package in ("webview", "imageio_ffmpeg", "faster_whisper", "tzdata"):
     try:

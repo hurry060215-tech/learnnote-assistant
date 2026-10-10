@@ -26,6 +26,9 @@ tmp_ret = collect_all('rapidocr_onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('faster_whisper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+for package in ('markdown_it', 'mdurl'):
+    package_datas, package_binaries, package_imports = collect_all(package)
+    datas += package_datas; binaries += package_binaries; hiddenimports += package_imports
 
 
 a = Analysis(
