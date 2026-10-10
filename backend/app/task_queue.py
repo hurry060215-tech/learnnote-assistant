@@ -329,7 +329,6 @@ def schedule_processing(background_tasks, function, task_id: str, *args, **kwarg
     # for existing clients and tests without owning the processing lifetime.
     background_tasks.add_task(wait_for_result)
 
-
 def recover_processing(root: Path) -> dict[str, int]:
     with ExitStack() as stack:
         for lane in LANES:
@@ -337,7 +336,6 @@ def recover_processing(root: Path) -> dict[str, int]:
                 if not stack.enter_context(worker_lease(root, blocking=False, lane=lane, slot=slot)):
                     return {"recovered": 0, "waiting_for_context": 0, "another_worker_active": 1}
         return _recover_processing(root)
-
 
 def _recover_processing(root: Path) -> dict[str, int]:
     from .storage import get_task, update_task, mark_task_cancelled
@@ -371,14 +369,17 @@ def _recover_processing(root: Path) -> dict[str, int]:
         if row["kind"] == "summary":
             from .processor import process_saved_transcript_task
             callback = lambda task=task: process_saved_transcript_task(task.id, task.options)
-        elif row["kind"] in {"local", "range", "local_light"} or (row["kind"] == "light" and task.source_type == "local"):
+        elif row["kind"] in {"local", "range", "local_light", "screen_ocr"} or (row["kind"] == "light" and task.source_type == "local"):
             path = Path(task.source_media_path or task.media_path or "")
             if not path.is_file() or not path.resolve().is_relative_to(Path(root).resolve()):
                 queue.set_state(task.id, "waiting_context")
                 update_task(task.id, status="failed", phase="failed", error_code="resume_source_required", message="原媒体不在当前数据目录，请重新选择原文件恢复。")
                 waiting += 1
                 continue
-            if row["kind"] == "range":
+            if row["kind"] == "screen_ocr":
+                from .screen_subtitle_tasks import process_screen_subtitle_task
+                callback = lambda task=task, path=path: process_screen_subtitle_task(task.id, path, task.options)
+            elif row["kind"] == "range":
                 from .range_learning import process_range_task
                 callback = lambda task=task, path=path: process_range_task(task.id, path, task.title, task.options)
             else:

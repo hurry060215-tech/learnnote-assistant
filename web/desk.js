@@ -660,7 +660,7 @@ function renderStatus(reload = true) {
     const locatedOnlyCount = Number(quality.located_only_count || 0);
     const inferenceCount = Number(quality.inference_count || 0);
     const pendingReviewCount = Number(quality.pending_review_count || 0);
-    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · 直接支持 ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
+    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · ${t.mode === "screen_subtitles" ? "逐字匹配（OCR 未人工核验）" : "直接支持"} ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
     if (locatedOnlyCount || inferenceCount || pendingReviewCount || quality.unsupported_count) {
       const warning = document.createElement("p");
       warning.className = "muted";
@@ -681,20 +681,21 @@ function renderStatus(reload = true) {
         for (const claim of mapped.claims || []) {
           const item = document.createElement("li");
           const text = document.createElement("span");
-          const verificationLabel = ({
+          const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
+          const isScreenOcr = evidence.some(candidate => candidate.source === "screen-ocr" && (claim.verification !== "direct" || (claim.evidence_ids || []).includes(candidate.evidence_id)));
+          const verificationLabel = isScreenOcr && claim.verification === "direct" ? "逐字匹配" : ({
             "direct": "直接支持",
             "located_only": "仅定位",
             "inference": "推断",
             "pending_review": "待核对",
           })[claim.verification] || "待核对";
-          const sourceLabel = ({
+          const sourceLabel = isScreenOcr ? "画面字幕 OCR · 未人工核验" : ({
             "transcript": "字幕",
             "visual": "画面",
             "document": "文档",
           })[claim.claim_type] || "";
           text.textContent = `${verificationLabel}${sourceLabel ? ` · ${sourceLabel}` : ""} · ${claim.text}`;
           item.append(text);
-          const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
           for (const candidate of evidence.slice(0, 3)) {
             if (candidate.kind === "document" && candidate.material_id) {
               const locate = document.createElement("button");
@@ -715,7 +716,7 @@ function renderStatus(reload = true) {
             if (!match || t.kind !== "task") continue;
             const locate = document.createElement("button");
             locate.type = "button";
-            locate.textContent = "定位 " + candidate.locator;
+            locate.textContent = (candidate.source === "screen-ocr" ? "定位画面字幕 OCR（未核验） " : "定位 ") + candidate.locator;
             locate.onclick = () => openEvidenceSource(t, Number(match[1]), { windowId: candidate.window_id || "" }).catch(failure);
             item.append(locate);
           }

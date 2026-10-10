@@ -25,6 +25,9 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         attempt_id = current_pipeline_attempt(task_id)
     timing_callback = stage_duration_recorder(task_id, attempt_id)
     check_cancel(task_id)
+    is_screen_ocr = transcript.source == "screen-ocr"
+    if is_screen_ocr and (transcript.provenance.get("status") != "ready" or transcript.provenance.get("coverage", {}).get("complete") is not True):
+        raise ValueError("画面字幕提取未完成，不能生成完整笔记。")
     if preserve_transcript_review_draft(task_id, title, transcript,
             task_dir=task_dir, write_json=write_json, update_task=update_task):
         return
@@ -50,6 +53,8 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         generated = has_generated_summary(source)
         stage_status = "completed" if generated else "failed"
         span = max(0.0, max((s.end for s in transcript.segments), default=0) - min((s.start for s in transcript.segments), default=0))
+        if is_screen_ocr:
+            span = sum(max(0, s.end - s.start) for s in transcript.segments)
         ratio = min(1.0, span / duration) if duration > 0 else 0.0
         coverage = EvidenceCoverage(status="ready", can_summarize=True, transcript_source=transcript.source,
             transcript_char_count=len(transcript.full_text), transcript_covered_seconds=span,
@@ -60,7 +65,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         diagnostics = build_diagnostics(task_id=task_id, title=title, page_url=page_url, options=options,
             grids=[], visual_windows=[], summary_source=source, summary_warning=warning, llm_events=events)
         diagnostics.update({"source_kind": "subtitle_only" if media_skipped else "saved_transcript",
-            "source_quality": "high", "evidence_quality": "subtitle" if "subtitle" in transcript.source else "transcript",
+            "source_quality": "unreviewed" if is_screen_ocr else "high", "evidence_quality": "screen_ocr" if is_screen_ocr else "subtitle" if "subtitle" in transcript.source else "transcript",
             "transcript_source": transcript.source, "video_evidence": "not_downloaded" if media_skipped else "saved_media",
             "can_claim_video_content": False, "subtitle_coverage_ratio": ratio,
             "browser_subtitle_count": len(transcript.segments) if transcript.source == "browser-subtitle" else 0,
@@ -78,8 +83,15 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
                 checkpoint="transcript_ready", failed_phase="summarizing", summary_diagnostics=diagnostics,
                 summary_diagnostics_path=str(diag_path), **{**fields, "summary_warning": detail})
             return
-        source_label = "浏览器平台字幕" if transcript.source == "browser-subtitle" else "平台字幕" if "subtitle" in transcript.source else "已保存的音频转写"
-        provenance = f"> 证据来源：{source_label}；本次未分析画面。"
+        source_label = "画面字幕 OCR（未人工核验）" if is_screen_ocr else "浏览器平台字幕" if transcript.source == "browser-subtitle" else "平台字幕" if "subtitle" in transcript.source else "已保存的音频转写"
+        provenance = f"> 证据来源：{source_label}；" + ("时间来自画面抽样，可能漏字或误识别，不等于讲者原话或已验证事实。" if is_screen_ocr else "本次未分析画面。")
+        if is_screen_ocr:
+            if transcript.provenance.get("learning_range"):
+                provenance += f" 本片段时间从 0 秒起，对应原视频 {float(transcript.provenance.get('original_time_offset', 0)):g} 秒。"
+            warning = "；".join(filter(None, [warning, transcript.warning]))
+            fields["summary_warning"] = warning
+            diagnostics["source_kind"] = "screen_ocr"
+            diagnostics["screen_ocr_coverage"] = transcript.provenance.get("coverage", {})
         if provenance not in note:
             first, sep, rest = note.lstrip().partition("\n")
             note = f"{first}\n\n{provenance}\n\n{rest.lstrip()}" if first.startswith("# ") and sep else f"{provenance}\n\n{note}"

@@ -2317,6 +2317,8 @@ class MediaDownloader:
             "+faststart",
             str(output),
         ]
+        if output.exists() and output.stat().st_nlink > 1:
+            output.unlink()
         result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
@@ -2503,6 +2505,8 @@ class MediaDownloader:
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
         self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
+        if output.exists() and output.stat().st_nlink > 1:
+            output.unlink()
         result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()

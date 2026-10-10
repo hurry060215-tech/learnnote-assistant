@@ -78,6 +78,8 @@ from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_mode
 from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 from .routers.support import router as support_router
 from .routers.queue import router as queue_router
+from .screen_subtitle_routes import router as screen_subtitle_router
+from .task_inputs import merge_task_options, require_ready_note_model, task_media_path
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -108,6 +110,7 @@ app.include_router(learning_space_router)
 app.include_router(range_router)
 app.include_router(support_router)
 app.include_router(queue_router)
+app.include_router(screen_subtitle_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -305,28 +308,6 @@ def cleanup_expired_staged_uploads(now: float | None = None) -> int:
     return removed
 
 
-def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) -> TaskOptions:
-    merged = (base or TaskOptions()).model_dump(mode="json")
-    if overrides is not None:
-        explicit_fields = getattr(overrides, "model_fields_set", set()) or set()
-        override_values = overrides.model_dump(mode="json")
-        for field in explicit_fields:
-            if field in override_values:
-                merged[field] = override_values[field]
-    return resolve_model_options(TaskOptions.model_validate(merged))
-
-
-def require_ready_note_model(options: TaskOptions) -> None:
-    """Explicit AI work must not spend minutes extracting before finding no key."""
-    if options.content_mode not in {"text", "visual"}:
-        return  # Existing auto-mode integrations keep their source-first behavior.
-    from .summarizer import _model_key
-    if not _model_key(resolve_model_options(options)):
-        raise HTTPException(409, {"code": "model_required", "message": "还没有可用的模型连接。请先配置模型，或选择仅提取字幕；本次尚未下载或转写。"})
-    if options.content_mode == "visual" and not llm_model_supports_vision(options.llm_base_url or LLM_BASE_URL, options.llm_model or LLM_MODEL):
-        raise HTTPException(409, {"code": "visual_model_required", "message": "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。"})
-
-
 def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
     active = request.active_video
     has_video = bool(active and (active.src or active.src_object_video_tracks > 0))
@@ -393,19 +374,6 @@ def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) ->
     if isinstance(body, RerunFromMediaRequest):
         return body.options
     return body
-
-
-def task_media_path(task: TaskRecord) -> Path | None:
-    for raw_path in (task.media_path, task.source_media_path):
-        if not raw_path:
-            continue
-        try:
-            path = Path(raw_path)
-        except (OSError, ValueError):
-            continue
-        if path.is_file():
-            return path
-    return None
 
 
 def task_media_file_exists(task: TaskRecord) -> bool:
@@ -3601,6 +3569,13 @@ def create_from_existing_media(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
+    if source.mode == "screen_subtitles" and source.options.screen_subtitles is not None:
+        from .screen_subtitle_routes import create_screen_subtitles, ScreenSubtitleRequest
+        next_options = merge_task_options(source.options, rerun_options_from_body(request), resolve_connection=False)
+        return create_screen_subtitles(task_id, ScreenSubtitleRequest(
+            settings=next_options.screen_subtitles or source.options.screen_subtitles,
+            generate_note=next_options.content_mode != "subtitles", options=next_options), background_tasks)
+
     media_path = task_media_path(source)
     if not media_path:
         raw_media_path = source.media_path or source.source_media_path
@@ -3743,6 +3718,12 @@ def resume_task_from_checkpoint(
     background_tasks: BackgroundTasks,
     request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
+    from .screen_subtitle_routes import resume_screen_subtitles
+    try:
+        if get_task(task_id).mode == "screen_subtitles":
+            return resume_screen_subtitles(task_id, background_tasks, rerun_options_from_body(request))
+    except FileNotFoundError:
+        pass
     try:
         source = get_task(task_id)
     except FileNotFoundError as exc:

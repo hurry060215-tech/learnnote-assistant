@@ -124,6 +124,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Evidence source and frame navigation failed" }
             node scripts/source-review-visual-acceptance.cjs http://127.0.0.1:8765 build/source-review-ui
             if ($LASTEXITCODE -ne 0) { throw "Source review presentation and export navigation failed" }
+            node scripts/screen-subtitle-visual-acceptance.cjs http://127.0.0.1:8765 build/screen-subtitle-ui
+            if ($LASTEXITCODE -ne 0) { throw "Screen subtitle preview and resume controls failed" }
             node scripts/course-question-acceptance.cjs http://127.0.0.1:8765 build/course-question-ui
             if ($LASTEXITCODE -ne 0) { throw "Course question scope and navigation failed" }
             node scripts/pdf-ocr-acceptance.cjs http://127.0.0.1:8765 build/pdf-ocr-ui
@@ -189,6 +191,7 @@ jobs:
             build/study-product-ui
             build/evidence-source-ui
             build/source-review-ui
+            build/screen-subtitle-ui
             build/personal-anchors-acceptance/report.json
             build/personal-anchors-acceptance/personal-anchors.png
             build/course-question-ui
