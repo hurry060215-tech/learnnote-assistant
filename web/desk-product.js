@@ -2,6 +2,7 @@ import { assistantStream } from "/web/desk-chat-stream.js";
 import { createDraftStore } from "/web/desk-drafts.js";
 import { createAssistantConversations } from "/web/assistant-session.js";
 import { installSummaryVersions } from "/web/desk-summary-versions.js";
+import { createOutlineControls } from "/web/desk-note-controls.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -681,8 +682,13 @@ export function installProductWorkspace(ctx) {
   readerNav.className = "reader-strip";
   readerNav.id = "readerStrip";
   readerNav.hidden = true;
-  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
+  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="editSummary" type="button">编辑正文</button><button id="readingLayout" type="button">正文排版</button><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
   toolbar.after(readerNav);
+  $("editSummary").onclick = () => $("edit").click();
+  $("readingLayout").onclick = () => {
+    $("settings").click();
+    document.querySelector('[data-settings-section="appearance"]').click();
+  };
   const pageContents = document.createElement("nav");
   pageContents.id = "pageContents";
   pageContents.setAttribute("aria-label", "当前笔记章节");
@@ -723,6 +729,7 @@ export function installProductWorkspace(ctx) {
   const outline = document.createElement("dialog");
   outline.id = "outlineDialog";
   document.body.append(outline);
+  const outlineControls = createOutlineControls(outline);
   function updateReadingContext() {
     const s = state.selected;
     readerNav.hidden = !s;
@@ -797,7 +804,10 @@ export function installProductWorkspace(ctx) {
       (b) =>
         (b.onclick = () => {
           outline.close();
-          headings[Number(b.dataset.heading)].scrollIntoView({
+          const heading = headings[Number(b.dataset.heading)];
+          for (let parent = heading.parentElement; parent; parent = parent.parentElement)
+            if (parent.tagName === "DETAILS") parent.open = true;
+          heading.scrollIntoView({
             behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
               ? "instant"
               : "smooth",
@@ -805,6 +815,7 @@ export function installProductWorkspace(ctx) {
           });
         }),
     );
+    outlineControls.mount();
     outline.showModal();
   };
   installSummaryVersions({ state, openItem, notice });

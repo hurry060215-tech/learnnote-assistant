@@ -60,8 +60,15 @@
         </section>
         <article id="document" tabindex="-1" class="document"></article>
         <section id="editor" class="editor" hidden>
-          <label for="noteText">编辑笔记 · Markdown</label
-          ><textarea id="noteText" spellcheck="false"></textarea>
+          <label for="noteText">编辑笔记正文 · Markdown</label>
+          <div class="note-format-tools" role="group" aria-label="正文格式">
+            <button type="button" id="noteHeading">小标题</button>
+            <button type="button" id="noteBold">加粗</button>
+            <button type="button" id="noteList">项目列表</button>
+            <button type="button" id="toggleNotePreview" aria-pressed="false" aria-controls="notePreview">预览排版</button>
+          </div>
+          <textarea id="noteText" spellcheck="false"></textarea>
+          <article id="notePreview" class="document note-preview" aria-label="未保存正文预览" hidden></article>
           <footer>
             <span id="saveStatus" role="status"
               >修改独立保存，原始生成稿会保留。</span

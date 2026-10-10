@@ -9,6 +9,7 @@ import {
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
+import { installNoteEditor } from "/web/desk-note-controls.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
@@ -1055,45 +1056,16 @@ $("refresh").onclick = () => {
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
 $("closeSource").onclick = closeSource;
-$("edit").onclick = () => {
-  state.editing = true;
-  $("noteText").value = state.text;
-  $("document").hidden = true;
-  $("editor").hidden = false;
-  $("noteText").focus();
-};
-$("discard").onclick = () => {
-  if (!guard()) return;
-  state.editing = false;
-  $("editor").hidden = true;
-  $("document").hidden = false;
-};
-$("save").onclick = async () => {
-  const s = state.selected,
-    epoch = state.epoch;
-  $("save").disabled = true;
-  try {
-    const result = await api(sourcePath(s), {
-      method: "PUT",
-      body: JSON.stringify({
-        text: $("noteText").value,
-        revision: state.revision,
-      }),
-    });
-    if (epoch !== state.epoch) return;
-    state.text = result.text;
-    state.revision = result.revision;
-    state.editing = false;
-    renderNote();
-    $("editor").hidden = true;
-    $("document").hidden = false;
-    notice("修改已保存，原始生成稿仍保留。");
-  } catch (error) {
-    $("saveStatus").textContent = error.message;
-  } finally {
-    $("save").disabled = false;
-  }
-};
+installNoteEditor({
+  state, $, guard, notice, renderNote,
+  saveNote: (selected, body) => api(sourcePath(selected), {
+    method: "PUT", body: JSON.stringify(body),
+  }),
+  renderMarkdown: (text) => {
+    LearnNoteMarkdown.configure({ safeNoteMediaUrl: (value) => state.selected?.kind === "task" ? taskAsset(value, state.selected.id) : "" });
+    return LearnNoteMarkdown.markdownToHtml(text);
+  },
+});
 $("export").onclick = () => {
   const blob = new Blob([state.editing ? $("noteText").value : state.text], {
     type: "text/markdown;charset=utf-8",
