@@ -589,6 +589,9 @@ def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
             target = _timestamp_source_url(source_url, match.group(0))
             if not target:
                 continue
+            # A valid URL path can contain parentheses; generated Markdown
+            # destinations must escape them before the inline renderer parses it.
+            target = target.replace("(", "%28").replace(")", "%29")
             pieces.append(line[cursor:match.start()])
             pieces.append(f"[{match.group(0)}]({target})")
             cursor = match.end()
