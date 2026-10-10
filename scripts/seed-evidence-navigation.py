@@ -39,7 +39,14 @@ with wave.open(str(media), "wb") as output:
     output.setnchannels(1); output.setsampwidth(2); output.setframerate(16000)
     output.writeframes(b"\0\0" * 16000 * 21)
 note, transcript = root / "note.md", root / "transcript.json"
-note.write_text("# Synthetic source navigation\n\nFirst window at 0 seconds; second window at 10 seconds.", encoding="utf-8")
+note_text = "# Synthetic source navigation\n\nFirst window at 0 seconds; second window at 10 seconds."
+if "--source-review" in sys.argv:
+    note_text = "# 合成来源核对笔记\n\n## 正文\n\n" + "\n\n".join(
+        f"**【待核对：仅定位到来源】** 第{i + 1}条合成表述，需核对出处。[00:12]"
+        for i in range(40))
+    note_text += "\n\n**【待核对：未找到支持来源】** 缺少证据的数字。\n\n**【推断：需回源核对】** 合成推断。"
+    note_text += "\n\n`**【待核对：仅定位到来源】**` 是代码示例。"
+note.write_text(note_text, encoding="utf-8")
 transcript.write_text(json.dumps({"full_text": "First window. Second window.", "segments": [
     {"start": 0, "end": 10, "text": "First synthetic window."}, {"start": 10, "end": 20, "text": "Second synthetic window."},
 ]}), encoding="utf-8")

@@ -137,7 +137,8 @@ def export_edition(kind: str, source_id: str, format: str, include_annotations: 
     if include_annotations:
         text += annotation_markdown(kind, source_id)
     if format == "markdown":
-        return Response(sanitize_export_text(text), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="note.md"'})
+        from ..review_presentation import project_source_reviews
+        return Response(sanitize_export_text(project_source_reviews(text)["markdown"]), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="note.md"'})
     task = get_task(source_id) if kind == "task" else SimpleNamespace(id=source_id, title=get_material(source_id)["title"], page_url="")
     try:
         result = build_docx_export(task, text) if format == "docx" else build_pdf_export(task, text)
