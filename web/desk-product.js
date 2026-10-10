@@ -3,6 +3,7 @@ import { createDraftStore } from "/web/desk-drafts.js";
 import { createAssistantConversations } from "/web/assistant-session.js";
 import { installSummaryVersions } from "/web/desk-summary-versions.js";
 import { createOutlineControls } from "/web/desk-note-controls.js";
+import { installAssistantOperations } from "/web/assistant-operations.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -93,6 +94,7 @@ export function installProductWorkspace(ctx) {
   pane.hidden = true;
   pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><span id="assistantSourceTag" class="assistant-source-tag">自由提问</span><div><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><header><span>可以试试</span><button id="hideAssistantPrompts" type="button" title="隐藏快捷建议">隐藏</button></header><div class="assistant-prompt-items"><span class="assistant-prompt-item"><button data-prompt="你有哪些功能？怎么使用？" data-prompt-key="help">使用帮助</button><button data-dismiss-prompt="help" aria-label="关闭使用帮助建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="总结这份内容的核心观点，并给出对应出处" data-prompt-key="summary">总结要点</button><button data-dismiss-prompt="summary" aria-label="关闭总结要点建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="解释这份内容中最重要的概念和它们的关系" data-prompt-key="explain">解释概念</button><button data-dismiss-prompt="explain" aria-label="关闭解释概念建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处" data-prompt-key="quiz">帮我自测</button><button data-dismiss-prompt="quiz" aria-label="关闭帮我自测建议">×</button></span></div></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向全局助手提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus" role="status"></small><button id="aiStop" type="button" hidden>停止</button><button id="aiSend" class="primary">发送</button></footer></form>`;
   document.body.append(pane);
+  installAssistantOperations(ctx);
   const conversations = createAssistantConversations();
   const newTopic = document.createElement("button");
   newTopic.type = "button";

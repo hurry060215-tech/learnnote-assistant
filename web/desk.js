@@ -1379,10 +1379,7 @@ $("settingsForm").onsubmit = async (e) => {
     $("savePreferences").disabled = false;
   }
 };
-$("theme").onclick = () => {
-  const dark = document.body.classList.toggle("dark");
-  localStorage.setItem("learnnote.desk.theme", dark ? "dark" : "light");
-};
+$("theme").onclick = null; // installSettings wires the shared reading settings adapter.
 let reviewSession = 0, reviewRender = 0, reviewQuiz = null;
 $("reviewDialog").addEventListener("close", () => {
   if ($("reviewDialog").open) return; // A queued close event may follow a newer open.

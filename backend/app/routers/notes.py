@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 import hashlib
 import json
 import threading
+from contextlib import contextmanager
 from pydantic import BaseModel, Field
 from ..config import DATA_DIR
 from ..storage import atomic_write_text
@@ -68,6 +69,21 @@ __all__ = ["notes_router"]
 
 _edition_lock = threading.RLock()
 
+
+@contextmanager
+def edition_transaction():
+    """Serialize manual and assistant saves across threads and local workers."""
+    from ..worker_lease import worker_lease
+    with _edition_lock:
+        root = DATA_DIR / "user-editions"
+        if root.is_symlink():
+            raise HTTPException(409, "个人修订目录不可用，未改动正文。")
+        root.mkdir(parents=True, exist_ok=True)
+        with worker_lease(root) as acquired:
+            if not acquired:
+                raise HTTPException(409, "个人修订正在保存，请稍后重试。")
+            yield
+
 class EditionRequest(BaseModel):
     text: str = Field(max_length=5_000_000)
     revision: str = Field(max_length=64)
@@ -113,15 +129,20 @@ def get_edition(kind: str, source_id: str):
 @notes_router.put("/editions/{kind}/{source_id}")
 def put_edition(kind: str, source_id: str, request: EditionRequest):
     try:
-        with _edition_lock:
-            current = _edition_state(kind, source_id)
-            if current["revision"] != request.revision:
-                raise HTTPException(409, "笔记已在其他页面更新。请先复制当前修改，再重新打开笔记。")
-            state = {"text": request.text, "revision": hashlib.sha256(request.text.encode()).hexdigest(), "edited": True}
-            atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
-            return state
+        with edition_transaction():
+            return save_edition_locked(kind, source_id, request.text, request.revision)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(404, "Source unavailable") from exc
+
+
+def save_edition_locked(kind: str, source_id: str, text: str, revision: str):
+    """Caller holds edition_transaction; preserve the existing revision contract."""
+    current = _edition_state(kind, source_id)
+    if current["revision"] != revision:
+        raise HTTPException(409, "笔记已在其他页面更新。请先复制当前修改，再重新打开笔记。")
+    state = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": True}
+    atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
+    return state
 
 
 @notes_router.get("/editions/{kind}/{source_id}/exports/{format}")
