@@ -11,7 +11,7 @@ const source = readFileSync(
   new URL("../desk-progress.js", import.meta.url),
   "utf8",
 ).replace('"/web/desk-api.js"', JSON.stringify(apiUrl));
-const { taskTimeline, timelineHtml, taskExplanation, eventLogHtml, elapsedLabel } =
+const { taskTimeline, timelineHtml, taskExplanation, eventLogHtml, elapsedLabel, durationEstimateHtml } =
   await import(
     "data:text/javascript;base64," + Buffer.from(source).toString("base64")
   );
@@ -20,6 +20,68 @@ const timing = (phase, status, duration_ms) => ({
   phase,
   status,
   details: { duration_ms },
+});
+
+const measuredTask = (changes = {}) => ({ id: "synthetic-duration", status: "running", phase: "summarizing",
+  duration_estimate: { schema_version: 1, scope: "after_transcript_ready", status: "estimated", attempt_id: "current",
+    duration_seconds_range: [75, 175], remaining_seconds_range: [45, 145], elapsed_seconds: 30,
+    sample_count: 5, uncertainty: "empirical_not_probability", observed_at_unix_ms: 1000000, ...changes } });
+test("measured duration UI names its boundary, independent samples and uncertainty", () => {
+  const html = durationEstimateHtml(measuredTask(), [], 1000000);
+  assert.match(html, /data-duration-estimate="estimated"/);
+  assert.match(html, /字幕就绪后的处理参考：1 分 15 秒–2 分 55 秒/);
+  assert.match(html, /当前剩余参考：45 秒–2 分 25 秒/);
+  assert.match(html, /本地 5 个相近的成功任务/);
+  assert.match(html, /不含之前的排队、下载或转写/);
+  assert.match(html, /实际可能超出/);
+});
+test("overrun drops remaining countdown instead of freezing at zero", () => {
+  for (const changes of [{ status: "overrun", remaining_seconds_range: null, elapsed_seconds: 175 }, { elapsed_seconds: 200 }]) {
+    const html = durationEstimateHtml(measuredTask(changes), [], 1000000);
+    assert.match(html, /data-duration-estimate="overrun"/);
+    assert.match(html, /已超出历史参考上限，剩余时间未知/);
+    assert(!html.includes("当前剩余参考"));
+  }
+});
+test("unknown, insufficient and old API payloads never imply zero seconds", () => {
+  const unknown = durationEstimateHtml({ status: "running" });
+  assert.match(unknown, /剩余时间未知/);
+  assert(!unknown.includes("0 秒"));
+  const few = durationEstimateHtml(measuredTask({ status: "unknown", reason: "insufficient_compatible_history", sample_count: 4 }), [], 1000000);
+  assert.match(few, /只有 4 个相近的成功任务，需要至少 5 个/);
+});
+test("cancelled, queued, failed and finished tasks cannot reuse an active range", () => {
+  for (const status of ["cancelled", "cancelling", "failed", "queued", "success"]) {
+    const html = durationEstimateHtml({ ...measuredTask(), status }, [], 1000000);
+    assert(!html.includes("当前剩余参考"));
+    assert(!html.includes('data-duration-estimate="estimated"'));
+  }
+  assert.match(durationEstimateHtml({ ...measuredTask(), cancel_requested: true }, [], 1000000), /剩余时间未知/);
+});
+test("stale estimates and mismatched attempt events are unknown", () => {
+  assert.match(durationEstimateHtml(measuredTask(), [], 1060001), /data-duration-estimate="unknown"/);
+  assert.match(durationEstimateHtml(measuredTask(), [], 998999), /data-duration-estimate="unknown"/);
+  for (const event of [{ event: "task_enqueued" }, { event: "pipeline_attempt_started", details: { attempt_id: "new-attempt" } }])
+    assert.match(durationEstimateHtml(measuredTask(), [event], 1000000), /data-duration-estimate="unknown"/);
+  assert.match(durationEstimateHtml(measuredTask(), [{ event: "pipeline_attempt_started", details: { attempt_id: "current" } }], 1000000), /data-duration-estimate="estimated"/);
+});
+test("malformed estimate fields are never interpolated as provider text or false durations", () => {
+  for (const changes of [{ remaining_seconds_range: [0, 0] }, { duration_seconds_range: [175, 75] },
+    { duration_seconds_range: [null, 100] }, { remaining_seconds_range: [NaN, 100] },
+    { sample_count: 4 }, { sample_count: 31 }, { scope: "whole_task" }, { status: "<img onerror=alert(1)>" },
+    { attempt_id: null }, { elapsed_seconds: -1 }, { observed_at_unix_ms: null }, { uncertainty: "certain" }]) {
+    const html = durationEstimateHtml(measuredTask(changes), [], 1000000);
+    assert.match(html, /data-duration-estimate="unknown"/, JSON.stringify(changes));
+    assert(!html.includes("onerror"));
+  }
+});
+test("legacy editorial ETA treats absent values as unknown before numeric coercion", () => {
+  const editorial = readFileSync(new URL("../editorial.js", import.meta.url), "utf8");
+  const declaration = editorial.match(/function etaText\(seconds\) \{[^]*?\n  \}/)[0];
+  const etaText = new Function(`${declaration}; return etaText;`)();
+  assert.equal(etaText(null), "剩余时间未知");
+  assert.equal(etaText(undefined), "剩余时间未知");
+  assert.equal(etaText(120), "2 分钟");
 });
 
 test("subtitle-only steps distinguish skipped downloads from measured work", () => {

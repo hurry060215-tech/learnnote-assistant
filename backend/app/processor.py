@@ -1261,6 +1261,8 @@ def _process_video_file(
     mark_checkpoint(task_id, "transcript_ready")
     record_stage_duration(task_id, "transcript", transcript_started_at, expected_attempt_id=attempt_id)
     draft_path = write_progressive_draft(task_id, title, transcript, expected_attempt_id=attempt_id)
+    from .duration_estimates import begin_remaining_measurement
+    begin_remaining_measurement(task_id, attempt_id, options, transcript, integrity.duration, route="media_to_note")
     previous_note = get_task(task_id).note_path
     if draft_path and (not previous_note or not Path(previous_note).is_file()):
         update_task(

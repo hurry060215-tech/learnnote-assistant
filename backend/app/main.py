@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
 from .task_artifacts import public_summary_task
+from .duration_estimates import duration_estimate
 from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
     build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
 from . import qa_evidence, qa_history
@@ -2142,12 +2143,12 @@ def task_workflow_stage(task: TaskRecord) -> str:
     return "compose_note"
 
 
-def task_eta_seconds(task: TaskRecord) -> int:
+def task_eta_seconds(task: TaskRecord) -> int | None:
     if task.status in {"success", "failed", "cancelled"}:
         return 0
-    duration = float(task.media_integrity.duration or 0)
-    estimated_total = max(30, round(duration * 0.65 + 45))
-    return max(0, round(estimated_total * (100 - max(0, min(100, task.progress))) / 100))
+    # A whole-task point ETA is unsupported. The additive scoped projection
+    # below exposes empirical ranges only when compatible evidence exists.
+    return None
 
 
 def task_payload(task: TaskRecord) -> dict:
@@ -2159,6 +2160,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["source_identity"] = task.source_identity.model_dump(mode="json")
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
+    payload["duration_estimate"] = duration_estimate(task)
     source_quality, evidence_quality = task_source_evidence_quality(task)
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
