@@ -101,7 +101,7 @@ const result = () => ({ status: ocr.status === "success" ? "ready" : "cancelled"
     assert.equal(tasks.length,1); await page.waitForFunction(()=>!document.querySelector('[data-start-screen]').disabled);
     report.cases.push('unsupported media retention shows actionable retry without creating a task');
     await page.locator('[data-start-screen]').click(); await page.waitForFunction(()=>location.hash==='#task/ocr-result');
-    const created=report.requests.filter(item=>item.path==='/api/tasks/source/screen-subtitles');assert.equal(created.length,2);assert(created.every(item=>item.body.generate_note===false&&item.body.options===null));
+    const created=report.requests.filter(item=>item.method==='POST'&&item.path==='/api/tasks/source/screen-subtitles');assert.equal(created.length,2);assert(created.every(item=>item.body.generate_note===false&&item.body.options===null));
     report.cases.push('explicit start creates a separate result without model opt-in');
     await openPanel(); await page.locator('[data-resume-screen]').click(); await page.locator('[data-screen-result]').getByText('抽样处理完成，识别结果待核对',{exact:true}).waitFor();
     assert.equal(report.requests.filter(item=>item.path.endsWith('/screen-subtitles/resume')).length,1);

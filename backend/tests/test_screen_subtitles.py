@@ -98,7 +98,7 @@ class ScreenSubtitleTests(unittest.TestCase):
 
         self.assertEqual(result['invalid_cache_windows'], [1])
         self.assertEqual(len(self.calls), 120)
-        payload = json.loads(files[0].read_text())
+        payload = json.loads(files[0].read_text(encoding="utf-8"))
         payload['samples'][0]['lines'][0]['text'] = 'changed silently'
         files[0].write_text(json.dumps(payload))
         result = self.run_extract()
@@ -151,8 +151,8 @@ class ScreenSubtitleTests(unittest.TestCase):
             filtered = self.run_extract(settings=ScreenSubtitleSettings(language='zh'))
         self.assertEqual(filtered['status'], 'empty')
         window = next((self.root / 'cache' / filtered['fingerprint']).glob('window-*.json'))
-        self.assertEqual(json.loads(window.read_text())['samples'][0]['lines'][0]['text'], 'English')
-        self.assertFalse(json.loads(window.read_text())['samples'][0]['lines'][0]['selected'])
+        self.assertEqual(json.loads(window.read_text(encoding="utf-8"))['samples'][0]['lines'][0]['text'], 'English')
+        self.assertFalse(json.loads(window.read_text(encoding="utf-8"))['samples'][0]['lines'][0]['selected'])
 
     def test_blank_gaps_changes_and_uncertainty_survive_merge(self):
         samples = []
@@ -199,8 +199,8 @@ class ScreenSubtitleTaskTests(unittest.TestCase):
         self.assertEqual(task.source_task_id, self.source.id)
         self.assertEqual(schedule.call_args.kwargs['_queue_kind'], 'screen_ocr')
         self.assertEqual(get_task(self.source.id).note_path, str(self.note))
-        self.assertEqual(self.note.read_text(), 'Original note')
-        self.assertEqual(json.loads(self.transcript.read_text())['full_text'], 'Original ASR')
+        self.assertEqual(self.note.read_text(encoding="utf-8"), 'Original note')
+        self.assertEqual(json.loads(self.transcript.read_text(encoding="utf-8"))['full_text'], 'Original ASR')
 
     def test_resume_dispatches_ocr_and_rejects_settings_change(self):
         from app.screen_subtitle_routes import create_screen_subtitles, ScreenSubtitleRequest, resume_screen_subtitles
@@ -255,7 +255,7 @@ class ScreenSubtitleTaskTests(unittest.TestCase):
             process_saved_transcript_task(self.source.id,TaskOptions(content_mode='text'))
         summarize.assert_not_called()
         self.assertEqual(get_task(self.source.id).status,'failed')
-        self.assertEqual(self.note.read_text(),'Original note')
+        self.assertEqual(self.note.read_text(encoding="utf-8"),'Original note')
 
     def test_offline_queue_recovery_uses_ocr_processor(self):
         from app.task_queue import LocalTaskQueue, recover_processing, queue_for
@@ -307,8 +307,8 @@ class ScreenSubtitleProcessorTests(unittest.TestCase):
         task=get_task(self.task.id)
         self.assertEqual(task.status,'success');self.assertEqual(task.mode,'screen_subtitles')
         self.assertEqual(task.summary_source,'screen-ocr-extract')
-        self.assertIn('OCR',Path(task.note_path).read_text())
-        self.assertEqual(json.loads(Path(task.transcript_path).read_text())['source'],'screen-ocr')
+        self.assertIn('OCR',Path(task.note_path).read_text(encoding="utf-8"))
+        self.assertEqual(json.loads(Path(task.transcript_path).read_text(encoding="utf-8"))['source'],'screen-ocr')
         self.assertTrue((task_dir(task.id)/'resource_usage.json').exists())
 
     def test_empty_or_partial_are_failed_and_cannot_call_model(self):
@@ -332,10 +332,10 @@ class ScreenSubtitleProcessorTests(unittest.TestCase):
         with patch('app.screen_subtitle_tasks.extract',return_value=self.report()):
             process_screen_subtitle_task(self.task.id,self.media,self.options)
         task=get_task(self.task.id)
-        transcript=json.loads(Path(task.transcript_path).read_text())
+        transcript=json.loads(Path(task.transcript_path).read_text(encoding="utf-8"))
         self.assertEqual(transcript['provenance']['source_task_id'],'original-ocr')
         self.assertEqual(transcript['provenance']['original_time_offset'],70)
-        self.assertIn('原视频 70 秒',Path(task.note_path).read_text())
+        self.assertIn('原视频 70 秒',Path(task.note_path).read_text(encoding="utf-8"))
 
     def test_ocr_prompt_and_generated_note_keep_uncertainty_and_source(self):
         from app.screen_subtitles import as_transcript
@@ -352,7 +352,7 @@ class ScreenSubtitleProcessorTests(unittest.TestCase):
         self.assertEqual(task.status,'success')
         self.assertEqual(task.summary_diagnostics['source_quality'],'unreviewed')
         self.assertEqual(task.summary_diagnostics['evidence_quality'],'screen_ocr')
-        note=Path(task.note_path).read_text()
+        note=Path(task.note_path).read_text(encoding="utf-8")
         self.assertIn('画面字幕 OCR（未人工核验）',note)
         self.assertNotIn('已保存的音频转写',note)
 

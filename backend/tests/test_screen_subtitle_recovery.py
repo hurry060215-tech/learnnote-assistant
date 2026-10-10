@@ -55,7 +55,7 @@ class ScreenSubtitleRecoveryTests(unittest.TestCase):
         self.assertEqual(self.run_task().status, "success")
         backups = list(self.report_path.parent.glob("screen_subtitles.corrupt-*.json"))
         self.assertEqual(len(backups), 1); self.assertEqual(backups[0].read_bytes(), b"{broken\xff")
-        self.assertEqual(json.loads(self.report_path.read_text())["status"], "ready")
+        self.assertEqual(json.loads(self.report_path.read_text(encoding="utf-8"))["status"], "ready")
 
     def test_missing_report_cannot_rebind_a_changed_media_file(self):
         original = self.run_task().screen_subtitles_media_sha256
@@ -71,7 +71,7 @@ class ScreenSubtitleRecoveryTests(unittest.TestCase):
         self.assertEqual(self.run_task().status, "failed"); self.assertEqual(self.report_path.read_bytes(), original)
         storage.update_task(self.task.id, screen_subtitles_media_sha256="")
         self.report_path.write_text("{broken")
-        self.assertEqual(self.run_task().status, "failed"); self.assertEqual(self.report_path.read_text(), "{broken")
+        self.assertEqual(self.run_task().status, "failed"); self.assertEqual(self.report_path.read_text(encoding="utf-8"), "{broken")
 
     def test_first_ocr_does_not_confuse_original_input_hash_with_normalized_media_hash(self):
         storage.update_task(self.task.id, media_integrity=MediaIntegrity(sha256="b" * 64))
@@ -128,7 +128,7 @@ class ScreenSubtitleRecoveryTests(unittest.TestCase):
         from app.range_learning import create_range_task
         storage.update_task(self.task.id, learning_range={"start": 60, "end": 120})
         task = self.run_task()
-        self.assertEqual(json.loads(Path(task.transcript_path).read_text())["provenance"]["original_time_offset"], 60)
+        self.assertEqual(json.loads(Path(task.transcript_path).read_text(encoding="utf-8"))["provenance"]["original_time_offset"], 60)
         task = storage.update_task(task.id, media_integrity=MediaIntegrity(duration=60))
         with patch("app.range_learning.DATA_DIR", self.root), patch("app.range_learning.schedule_processing"):
             child = create_range_task(task.id, 10, 20, self.options, BackgroundTasks())
