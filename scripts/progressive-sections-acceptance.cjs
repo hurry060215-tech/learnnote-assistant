@@ -63,6 +63,9 @@ function createFixture(scenario) {
       options: { content_mode: scenario.name === "text" ? "text" : "visual", visual_understanding: scenario.name !== "text", generate_questions: false },
       frame_grids: [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
       artifact_status: { draft_available: true, partial_draft_available: true, transcript_ready: true },
+      duration_estimate: { schema_version: 1, scope: "after_transcript_ready", status: "estimated", attempt_id: "synthetic-attempt",
+        sample_count: 5, uncertainty: "empirical_not_probability", observed_at_unix_ms: Date.now(),
+        duration_seconds_range: [75, 175], remaining_seconds_range: [45, 145], elapsed_seconds: 30 },
     },
   };
   fixture.projection = () => {
@@ -106,6 +109,8 @@ function createFixture(scenario) {
   fixture.progressOnly = () => {
     assert.equal(fixture.phase, "both-batches");
     fixture.task.progress = 81;
+    Object.assign(fixture.task.duration_estimate, { status: "overrun", remaining_seconds_range: null,
+      elapsed_seconds: 176, observed_at_unix_ms: Date.now() });
     return record("task_updated");
   };
   fixture.failMetadata = () => {
@@ -123,6 +128,8 @@ function createFixture(scenario) {
     fixture.phase = "retry-running";
     fixture.retryCalls++;
     Object.assign(fixture.task, { status: "running", phase: "summarizing", summary_source: "partial-draft", progress: 82 });
+    fixture.task.duration_estimate = { schema_version: 1, scope: "after_transcript_ready", status: "unknown",
+      reason: "insufficient_compatible_history", sample_count: 0, duration_seconds_range: null, remaining_seconds_range: null };
     delete fixture.task.failed_phase;
     delete fixture.task.error_code;
     delete fixture.task.artifact_status.failure_phase;
@@ -203,10 +210,15 @@ async function selfTestScenario(scenario) {
   assert(html.includes("&lt;img") && html.includes("&lt;script&gt;"));
   assert(!/<(?:img|script)\b/.test(html));
   const partialHash = digest(fixture.edition.text);
-  fixture.progressOnly(); fixture.failMetadata();
+  assert.equal(fixture.task.duration_estimate.status, "estimated");
+  fixture.progressOnly();
+  assert.equal(fixture.task.duration_estimate.status, "overrun");
+  assert.equal(fixture.task.duration_estimate.remaining_seconds_range, null);
+  fixture.failMetadata();
   assert.equal(fixture.task.summary_source, "local-template");
   assert.equal(fixture.task.artifact_status.partial_draft_available, true);
   fixture.retry();
+  assert.equal(fixture.task.duration_estimate.status, "unknown");
   assert.equal(digest(fixture.edition.text), partialHash);
   assert.equal(fixture.explicitSuccess, false);
   fixture.completeSuccess();
@@ -340,6 +352,7 @@ async function runScenario(scenario, out) {
     await assertNoFinal();
     await assertEscaped();
     assert.match(await page.locator("#taskStatus").innerText(), /分段草稿可读/);
+    assert.match(await page.locator('#taskStatus [data-duration-estimate="estimated"]').innerText(), /字幕就绪后的处理参考.*当前剩余参考.*本地 5 个.*实际可能超出/);
     if (scenario.name === "text") {
       assert(!(await page.locator("#document").innerText()).includes("图文章节"));
       assert.match(await page.locator("#document").innerText(), /待最终来源检查/);
@@ -447,6 +460,7 @@ async function runScenario(scenario, out) {
     await waitEdition();
     assert(report.editionRequests.length > requestsBeforeProgress, "A newer progress event must reload metadata and the unchanged edition");
     await assertStable("new_progress_same_revision");
+    assert.match(await page.locator('#taskStatus [data-duration-estimate="overrun"]').innerText(), /已超出历史参考上限，剩余时间未知/);
     await page.evaluate(() => window.__progressiveReaderProbe.observer.disconnect());
     await screenshot("03-duplicate-event-selection.png");
     report.checks.push("Duplicate event and newer progress-only event preserve reader DOM, selection, and scroll");
@@ -455,6 +469,7 @@ async function runScenario(scenario, out) {
     await emit(fixture.failMetadata());
     await waitEdition();
     assert.equal(await page.locator("#taskStatus").getAttribute("data-status"), "needs-summary");
+    assert.equal(await page.locator('#taskStatus [data-duration-estimate="estimated"]').count(), 0);
     assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*分段仍以草稿保留/s);
     assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated source chunks must not collapse into a transcript-only draft");
     assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), 2);
@@ -469,6 +484,7 @@ async function runScenario(scenario, out) {
     await page.waitForFunction(() => document.getElementById("taskStatus")?.dataset.status === "running");
     await waitEdition();
     assert.equal(fixture.retryCalls, 1);
+    assert.match(await page.locator('#taskStatus [data-duration-estimate="unknown"]').innerText(), /只有 0 个相近的成功任务/);
     assert.equal(digest(fixture.edition.text), partialHash);
     await assertNoFinal();
     await emit(fixture.events.at(-1));

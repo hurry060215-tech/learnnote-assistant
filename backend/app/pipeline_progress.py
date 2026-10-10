@@ -193,6 +193,8 @@ def finish_pipeline_attempt(task_id: str, status: str = "completed", *, expected
                     attempt["status"] = status
                     attempt["finished_at_unix_ms"] = round(time.time() * 1000)
                     write_json(task_id, "pipeline_metrics.json", payload)
+                    from .duration_estimates import finish_remaining_measurement
+                    finish_remaining_measurement(task_id, expected_attempt_id, status)
                     break
         except Exception:
             pass  # Final note publication must not fail because optional metrics failed.

@@ -36,6 +36,39 @@ export function elapsedLabel(ms) {
       ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
       : `${Math.floor(seconds / 3600)} 小时 ${Math.floor(seconds / 60) % 60} 分`;
 }
+export function durationEstimateHtml(task, events = [], now = Date.now()) {
+  const unknown = (detail = "等待当前字幕来源、处理方式和足够的相近历史记录。") =>
+    `<p class="muted" data-duration-estimate="unknown">剩余时间未知。${detail}</p>`;
+  if (task.status === "success") return "";
+  if (["failed", "cancelled", "cancelling"].includes(task.status))
+    return unknown("本次处理未继续，旧区间已停用。");
+  if (task.status !== "running" || task.awaiting_confirmation || task.cancel_requested)
+    return unknown("尚未进入可测量的处理阶段。");
+  const value = task.duration_estimate;
+  const range = item => Array.isArray(item) && item.length === 2 && item.every(n => Number.isFinite(n) && n >= 0) && item[0] <= item[1];
+  const latestStart = events.findLast(e => ["pipeline_attempt_started", "task_enqueued"].includes(e.event));
+  if (!value || value.schema_version !== 1 || value.scope !== "after_transcript_ready") return unknown();
+  if (value.status === "unknown") {
+    if (value.reason === "insufficient_compatible_history" && Number.isInteger(value.sample_count) && value.sample_count >= 0 && value.sample_count < 5)
+      return unknown(`目前只有 ${value.sample_count} 个相近的成功任务，需要至少 5 个。`);
+    return unknown();
+  }
+  if (!["estimated", "overrun"].includes(value.status) || value.uncertainty !== "empirical_not_probability" ||
+      typeof value.attempt_id !== "string" || !value.attempt_id ||
+      !Number.isInteger(value.sample_count) || value.sample_count < 5 || value.sample_count > 30 ||
+      !range(value.duration_seconds_range) || value.duration_seconds_range[1] <= 0 ||
+      !Number.isFinite(value.elapsed_seconds) || value.elapsed_seconds < 0 ||
+      !Number.isFinite(value.observed_at_unix_ms) || now - value.observed_at_unix_ms > 60000 || value.observed_at_unix_ms - now > 1000 ||
+      (latestStart && (latestStart.event !== "pipeline_attempt_started" || latestStart.details?.attempt_id !== value.attempt_id)))
+    return unknown("当前测量记录已变化或暂不可用。");
+  const label = item => `${elapsedLabel(item[0] * 1000)}–${elapsedLabel(item[1] * 1000)}`;
+  const reference = `字幕就绪后的处理参考：${label(value.duration_seconds_range)}。`;
+  const detail = `依据本地 ${value.sample_count} 个相近的成功任务；不含之前的排队、下载或转写。区间是历史参考，实际可能超出。`;
+  if (value.status === "overrun" || value.elapsed_seconds >= value.duration_seconds_range[1])
+    return `<p class="muted" data-duration-estimate="overrun">${reference}本次已超出历史参考上限，剩余时间未知。${detail}</p>`;
+  if (!range(value.remaining_seconds_range) || value.remaining_seconds_range[1] <= 0) return unknown();
+  return `<p class="muted" data-duration-estimate="estimated">${reference}当前剩余参考：${label(value.remaining_seconds_range)}。${detail}</p>`;
+}
 export function taskTimeline(task, events = [], now = Date.now()) {
   const start = events.findLastIndex(
     (e) => ["task_enqueued", "pipeline_attempt_started"].includes(e.event),
@@ -152,7 +185,7 @@ export function timelineHtml(
   const checkpoint = artifacts.checkpoint || task.checkpoint;
   const artifactHint = artifacts.draft_available ? (artifacts.partial_draft_available ? " · 分段草稿可读" : " · 字幕草稿已保留") : artifacts.transcript_ready ? " · 字幕已就绪" : "";
   const failureHint = artifacts.failure_phase ? ` · 失败阶段：${phaseName(artifacts.failure_phase)}` : "";
-  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
+  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary>${durationEstimateHtml(task, events)}<ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
     task,
     events,
   )
