@@ -17,22 +17,11 @@ from typing import Callable
 from .worker_lease import worker_lease
 from .pipeline_timing import queued_callback
 from .observability import record_task_event
-from .queue_policy import LANES, lane_budgets
+from .queue_policy import LANES, LANE_PENDING_LIMIT, LIGHT_TASK_KINDS, QueueFull, lane_budgets, task_lane
+from .queue_journal import cancel_queued_processing, queue_status, read_queue_entries, read_queue_job
 from .queue_controls import initialize_queue_schema, ordered_entries, queue_candidates
 
 MAX_PENDING_TASKS = 24
-LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light"}
-LANE_PENDING_LIMIT = 12
-
-
-def task_lane(kind: str) -> str:
-    if kind == "page_download":
-        return "download"
-    return "light" if kind in LIGHT_TASK_KINDS else "heavy"
-
-
-class QueueFull(ValueError):
-    pass
 
 
 class LocalTaskQueue:
@@ -268,170 +257,12 @@ def queue_for(root: Path) -> LocalTaskQueue:
         return current
 
 
-def read_queue_entries(root: Path) -> tuple[list[dict], bool | None]:
-    """Read durable evidence without creating a queue, schema, directory or worker."""
-    path = Path(root) / "task-queue.sqlite3"
-    if not path.exists():
-        return [], None
-    try:
-        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)) as db:
-            db.row_factory = sqlite3.Row
-            rows = [dict(row) for row in db.execute("SELECT * FROM jobs ORDER BY sequence")]
-            for row in rows:
-                if not {"task_id", "sequence", "kind", "state", "updated_at"}.issubset(row) or row["state"] not in {
-                        "queued", "running", "done", "failed", "cancelled", "recovering", "waiting_context"}:
-                    return [{"state": "unknown"}], None
-            try:
-                setting = db.execute("SELECT paused FROM queue_settings WHERE id=1").fetchone()
-                paused = bool(setting[0]) if setting else None
-            except sqlite3.Error:
-                paused = None
-            return rows, paused
-    except sqlite3.Error:
-        return [{"state": "unknown"}], None
-
-
-def read_queue_job(root: Path, task_id: str) -> dict | None:
-    rows, _ = read_queue_entries(root)
-    if rows and rows[0].get("state") == "unknown":
-        return rows[0]
-    return next((row for row in rows if row.get("task_id") == task_id), None)
-
-
-def cancel_queued_processing(root: Path, task_id: str, *, expected_generation: str | None = None,
-                             operation_id: str = "") -> bool:
-    # Do not depend on this process owning a callback/cache. The queued->running
-    # claim and queued->cancelled cancellation compete in the same SQLite row.
-    path = Path(root) / "task-queue.sqlite3"
-    if not path.exists():
-        return False
-    try:
-        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True, timeout=30)) as db:
-            db.execute("BEGIN IMMEDIATE")
-            columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
-            if expected_generation is not None and "generation" not in columns:
-                return False  # Legacy evidence cannot identify the attempted generation.
-            if expected_generation is None:
-                changed = db.execute("UPDATE jobs SET state='cancelled',updated_at=? WHERE task_id=? AND state='queued'",
-                                     (time.time(), task_id)).rowcount
-            else:
-                changed = db.execute("UPDATE jobs SET state='cancelled',updated_at=?,cancel_operation_id=?,callback_finished=0 WHERE task_id=? AND state='queued' AND generation=?",
-                                     (time.time(), operation_id, task_id, expected_generation)).rowcount
-            db.commit()
-            return bool(changed)
-    except sqlite3.Error:
-        return False
-
-
-def queue_status(root: Path, task_id: str) -> dict[str, object]:
-    """Return a durable, privacy-safe queue snapshot for one task."""
-
-    rows, paused = read_queue_entries(root)
-    if rows and rows[0].get("state") == "unknown":
-        return {"state": "unknown", "position": 0, "queued_count": 0, "running_count": 0, "kind": ""}
-    entries = ordered_entries(rows)
-    active = [row for row in entries if row["state"] in {"queued", "running", "recovering"}]
-    current = next((row for row in active if row["task_id"] == task_id), None)
-    if current is None:
-        return {
-            "state": next((row["state"] for row in entries if row["task_id"] == task_id), "none"),
-            "position": 0,
-            "queued_count": sum(row["state"] == "queued" for row in active),
-            "running_count": sum(row["state"] == "running" for row in active),
-            "kind": next((row["kind"] for row in entries if row["task_id"] == task_id), ""),
-        }
-    position = (1 + sum(row["state"] == "queued" and task_lane(row["kind"]) == task_lane(current["kind"]) for row in active[:active.index(current)])) if current["state"] == "queued" else 0
-    return {
-        "state": current["state"],
-        "position": position,
-        "queued_count": sum(row["state"] == "queued" for row in active),
-        "running_count": sum(row["state"] == "running" for row in active),
-        "kind": current["kind"],
-        "lane": task_lane(current["kind"]),
-        "lane_pending_limit": LANE_PENDING_LIMIT,
-        "lane_concurrency": lane_budgets()[task_lane(current["kind"])],
-        "lane_budgets": dict(lane_budgets()),
-        "paused": paused,
-        "priority": current.get("priority", 0),
-    }
-
-
 def schedule_processing(background_tasks, function, task_id: str, *args, **kwargs):
-    from .models import CurrentPageTaskRequest, TaskOptions
-    from .storage import get_task, task_dir, update_task, mark_task_cancelled, task_state_transaction
-    from .task_control_state import task_generation
-    from fastapi import HTTPException
-    from .processor_state import TaskCancelled
-
+    from .storage import task_dir
+    from .task_dispatch import dispatch_processing
     queue = queue_for(task_dir(task_id).parent.parent)
-    source = args[0] if args else None
-    explicit_kind = kwargs.pop("_queue_kind", "")
-    kind = explicit_kind or ("page" if isinstance(source, CurrentPageTaskRequest) else "local")
-    options = source.options if kind == "page" else next((value for value in args if isinstance(value, TaskOptions)), None)
-    needs_context = bool(options and options.llm_api_key)
-    if kind == "page":
-        needs_context = needs_context or bool(source.cookies or source.resources or source.page_text)
-    if not explicit_kind:
-        if isinstance(source, CurrentPageTaskRequest) and source.mode == "download_only":
-            kind = "page_download"
-        elif (isinstance(source, CurrentPageTaskRequest) and source.mode == "subtitle_only") or (options and options.content_mode == "subtitles"):
-            kind = "page_light" if isinstance(source, CurrentPageTaskRequest) else "local_light"
+    return dispatch_processing(queue, background_tasks, function, task_id, *args, **kwargs)
 
-    generation = task_generation(get_task(task_id))
-
-    def work():
-        try:
-            task = get_task(task_id)
-            if task_generation(task) != generation:
-                return
-            if task.cancel_requested or task.status == "cancelled":
-                mark_task_cancelled(task_id)
-                return
-            function(task_id, *args, **kwargs)
-            if get_task(task_id).cancel_requested:
-                mark_task_cancelled(task_id, expected_generation=generation)
-        except FileNotFoundError:
-            return  # Deleting an unstarted task also cancels its queued work.
-        except TaskCancelled:
-            mark_task_cancelled(task_id)
-            return
-        except Exception:
-            latest = get_task(task_id)
-            if latest.cancel_requested or latest.status == "cancelled":
-                mark_task_cancelled(task_id)
-                return
-            update_task(task_id, status="failed", phase="failed", error_code="queued_task_failed", message="处理失败，已保留本地进度，请查看诊断后恢复。")
-            raise
-
-    try:
-        with task_state_transaction():
-            latest = get_task(task_id)
-            if task_generation(latest) != generation:
-                return
-            if latest.cancel_requested:
-                row = read_queue_job(queue.root, task_id)
-                if row is None or (row.get("generation") != generation and row.get("state") in {"done", "failed", "cancelled", "waiting_context"}):
-                    from .models import TaskCancellationReceipt, now_iso
-                    receipt = latest.cancellation_receipt.model_copy(deep=True)
-                    if receipt.generation != generation:
-                        receipt = TaskCancellationReceipt(generation=generation, requested_at=latest.cancel_requested_at)
-                    receipt.dispatch_prevented_at = now_iso()
-                    update_task(task_id, status="cancelled", phase="cancelled", cancelled_at=now_iso(),
-                                message="已在提交处理前取消，现有文件保留", cancellation_receipt=receipt)
-                return
-            future = queue.enqueue(task_id, kind, work, requires_context=needs_context, generation=generation)
-    except QueueFull as exc:
-        update_task(task_id, status="failed", phase="failed", error_code="task_queue_full", message=str(exc))
-        raise HTTPException(status_code=429, detail={"code": "task_queue_full", "message": str(exc)}) from exc
-
-    def wait_for_result():
-        try:
-            future.result()
-        except Exception:
-            pass  # Failure is persisted on the task and displayed by the UI.
-    # The worker owns execution; this preserves response-lifecycle compatibility
-    # for existing clients and tests without owning the processing lifetime.
-    background_tasks.add_task(wait_for_result)
 
 def recover_processing(root: Path) -> dict[str, int]:
     with ExitStack() as stack:

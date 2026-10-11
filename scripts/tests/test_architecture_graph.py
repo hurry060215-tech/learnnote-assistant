@@ -97,6 +97,7 @@ class ArchitectureGraphTests(unittest.TestCase):
     def test_repository_has_no_new_cycles_or_boundary_regressions(self):
         self.assertEqual(architecture.import_violations(), [])
         self.assertEqual(architecture.aggregate_size_violations(), [])
+        self.assertEqual(architecture.module_size_violations(), [])
 
 
 if __name__ == "__main__":
