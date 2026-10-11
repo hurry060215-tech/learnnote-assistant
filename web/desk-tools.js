@@ -1,5 +1,6 @@
 import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountSupportSummary } from "/web/support-summary.js";
+import { mountScreenSubtitles } from "/web/screen-subtitles.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
@@ -623,6 +624,13 @@ export function installTools(ctx) {
     courseTools.dataset.action = "courses";
     courseTools.textContent = "课程与提问";
     $("toolBody").querySelector(".tool-menu").append(courseTools);
+    if (s.kind === "task") {
+      const subtitlesButton = document.createElement("button");
+      subtitlesButton.type = "button";
+      subtitlesButton.dataset.action = "screen-subtitles";
+      subtitlesButton.textContent = "提取已保存视频的画面字幕";
+      $("toolBody").querySelector(".tool-menu").append(subtitlesButton);
+    }
     if (canOcrMaterial(s)) {
       const ocrButton = document.createElement("button");
       ocrButton.dataset.action = "run-material-ocr";
@@ -826,6 +834,19 @@ export function installTools(ctx) {
     },
     "range-position": () => {
       $("rangeStart").value = Math.floor($("player").currentTime || 0);
+    },
+    "screen-subtitles": async () => {
+      const source = current();
+      const epoch = state.epoch;
+      const token = show("提取画面字幕", "");
+      await mountScreenSubtitles($("toolBody"), {
+        source, api: request, options, refresh, status,
+        isCurrent: () => token === generation && dialog.open && state.epoch === epoch && state.selected?.id === source.id,
+        openTask: async result => {
+          dialog.close();
+          await openItem({ ...result.task, id: result.task_id, kind: "task" });
+        },
+      });
     },
     "run-ocr": async () => {
       if (!confirm("使用缓存视频创建一份开启本地 OCR 的新笔记？")) return;

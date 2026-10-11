@@ -6,6 +6,7 @@ import json
 import math
 import re
 import subprocess
+import tempfile
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -278,29 +279,36 @@ def normalize_video(input_path: Path, output_path: Path) -> Path:
     ffmpeg = ffmpeg_bin()
     if input_path.resolve() == output_path.resolve():
         return input_path
-    _run(
-        [
-            ffmpeg,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(input_path),
-            "-map",
-            "0:v:0?",
-            "-map",
-            "0:a:0?",
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ],
-        "视频标准化失败",
-    )
+    # Atomically replace the directory entry: retained OCR hardlinks must
+    # keep their original inode even when this task normalizes again.
+    with tempfile.TemporaryDirectory(prefix=".normalize-", dir=output_path.parent) as temporary_dir:
+        temporary = Path(temporary_dir) / output_path.name
+        _run(
+            [
+                ffmpeg,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(input_path),
+                "-map",
+                "0:v:0?",
+                "-map",
+                "0:a:0?",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(temporary),
+            ],
+            "视频标准化失败",
+        )
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            raise MediaProcessingError("视频标准化未生成有效文件")
+        temporary.replace(output_path)
     return output_path
 
 

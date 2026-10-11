@@ -470,10 +470,12 @@ def _evidence_duration_seconds(transcript: TranscriptResult, grids: list[FrameGr
 
 def _evidence_contract(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
     duration = _evidence_duration_seconds(transcript, grids)
+    ocr_boundary = "来源为画面字幕 OCR（screen-ocr），尚未人工核验，不是已确认的讲者原话或事实。保留专有名词、公式和低置信度文字的不确定性，不擅自纠正或补写。抽样可能漏字，引用时间仅为观察估计。" if transcript.source == "screen-ocr" else ""
     return (
         f"证据边界：视频有效时长约 {_format_ts(duration)}（{duration:.1f} 秒），"
         f"字幕 {len(transcript.segments)} 段，画面窗口 {len(grids)} 个。"
         "不得把窗口数量、页数或模板编号误写成课程时长。"
+        + ocr_boundary
     )
 
 
@@ -1598,7 +1600,7 @@ def summarize_with_llm(
         for index, block in enumerate(blocks, 1):
             check_cancel()
             partial = summarize_with_llm(
-                title, TranscriptResult(full_text=block), [],
+                title, TranscriptResult(full_text=block, source=transcript.source, warning=transcript.warning, provenance=transcript.provenance), [],
                 options.model_copy(update={"visual_understanding": False}),
                 page_url=page_url, page_context=page_context,
                 events=events, cancel_check=cancel_check,
