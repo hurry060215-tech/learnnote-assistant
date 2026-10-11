@@ -803,6 +803,8 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "active_frame_id": active.frame_id if active else None,
             "active_time_seconds": active.current_time if active else None,
             "browser_subtitle_count": len(task.browser_subtitles or []),
+            "subtitle_probe": task.subtitle_probe.model_dump() if task.subtitle_probe else None,
+            "extension_version": task.extension_version,
             "cookie_domain_count": int(cookie_summary.get("domain_count") or 0),
             "cookie_count": int(cookie_count or 0),
             "partitioned_cookie_count": int(cookie_summary.get("partitioned_count") or 0),
@@ -2363,6 +2365,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     direct = direct_extraction_evidence(task)
     selected_direct = direct.get("selected_candidate") or {}
     browser_context = direct.get("browser_context") or {}
+    lines.append(f"- Platform subtitle probe: {(task.subtitle_probe.status if task.subtitle_probe else 'not_recorded')} / extension {task.extension_version or 'not_recorded'}")
     download_direct = direct.get("download") or {}
     processing_direct = direct.get("processing") or {}
     playback_direct = playback_evidence(task)
@@ -3325,12 +3328,13 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                     detail={"code": "handoff_id_conflict", "message": "This handoff id belongs to a different source."},
                 )
             if defer and existing.awaiting_confirmation:
+                existing = update_task(existing.id, subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
                 _deferred_handoffs[existing.id] = request.model_copy(deep=True)
                 write_json(existing.id, "deferred_preflight.json", redacted_request_dump(request))
             return _handoff_response(existing, deduplicated=True)
 
         task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range)
+        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range, subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
