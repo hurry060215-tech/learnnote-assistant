@@ -3,7 +3,7 @@ from pathlib import Path
 import math
 
 from .config import DATA_DIR
-from .media import extract_video_clip
+from .media import extract_video_clip, media_cancellation
 from .models import TaskOptions
 from .storage import get_task, create_task, update_task, task_dir, read_json, atomic_write_text
 from .task_queue import schedule_processing
@@ -42,9 +42,19 @@ def process_range_task(task_id: str, source_path: Path, title: str, options: Tas
     clip = task_dir(task_id) / "selected-range.mp4"
     if not clip.is_file():
         temporary = clip.with_name("selected-range.partial.mp4")
-        extract_video_clip(source_path, temporary, selected["start"], selected["end"])
+        with media_cancellation(lambda: check_cancel(task_id)):
+            extract_video_clip(source_path, temporary, selected["start"], selected["end"])
         temporary.replace(clip)
     check_cancel(task_id)
+    if options.screen_subtitles is not None:
+        from .screen_subtitle_tasks import process_screen_subtitle_task
+        ocr_options = options.model_copy(update={
+            "content_mode": "subtitles" if options.content_mode == "subtitles" else "text",
+            "visual_understanding": False, "local_ocr": False})
+        update_task(task_id, mode="screen_subtitles", media_path=str(clip), source_media_path=str(clip),
+            checkpoint="screen_subtitles_range_ready", options=ocr_options.model_copy(update={"llm_api_key": None}))
+        process_screen_subtitle_task(task_id, clip, ocr_options)
+        return
     subtitle = source_range_subtitles(task.source_task_id, selected["start"], selected["end"])
     subtitle_path = task_dir(task_id) / "selected-range.srt" if subtitle else None
     if subtitle_path:
@@ -54,16 +64,24 @@ def process_range_task(task_id: str, source_path: Path, title: str, options: Tas
 
 def create_range_task(source_id: str, start: float, end: float, options: TaskOptions, background_tasks):
     source = get_task(source_id)
+    if source.mode == "screen_subtitles" and source.options.screen_subtitles is not None:
+        options = options.model_copy(update={"screen_subtitles": source.options.screen_subtitles,
+            "content_mode": "subtitles" if options.content_mode == "subtitles" else "text",
+            "visual_understanding": False, "local_ocr": False})
     duration = source.media_integrity.duration
     if not all(math.isfinite(value) for value in (start, end)) or start < 0 or end <= start or duration <= 0 or end > duration + .01:
         raise ValueError("invalid_learning_range")
     path = Path(source.media_path or source.source_media_path or "").resolve()
     if not path.is_file() or not path.is_relative_to(DATA_DIR.resolve()):
         raise ValueError("range_source_media_missing")
-    base = source.learning_range.get("original_start", 0.0)
+    base = source.learning_range.get("original_start", source.learning_range.get("start", 0.0))
     original_start, original_end = base + start, base + end
     title = f"{source.title} · 片段 {original_start:g}–{original_end:g}秒"
-    task = create_task("local", title, page_url=source.page_url, options=options, mode="rerun_from_media")
-    task = update_task(task.id, source_task_id=source.id, source_media_path=str(path), source_identity=source.source_identity.model_copy(update={"media_sha256": "", "resource_fingerprint": ""}), learning_range={"start": start, "end": end, "original_start": original_start, "original_end": original_end})
+    if options.screen_subtitles is not None:
+        from .screen_subtitle_media import create_retained_ocr_task
+        task, path = create_retained_ocr_task(source, path, options, title=title, range_pending=True)
+    else:
+        task = create_task("local", title, page_url=source.page_url, options=options, mode="rerun_from_media")
+    task = update_task(task.id, source_task_id=source.id, source_media_path=str(path), checkpoint="screen_subtitles_range_pending" if options.screen_subtitles is not None else "", source_identity=source.source_identity.model_copy(update={"media_sha256": "", "resource_fingerprint": ""}), learning_range={"start": start, "end": end, "original_start": original_start, "original_end": original_end})
     schedule_processing(background_tasks, process_range_task, task.id, path, title, options, _queue_kind="range")
     return task
