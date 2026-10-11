@@ -6,7 +6,7 @@ const source = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
 function harness() {
   const selected = { id: "task-a", kind: "task", updated_at: "t1", status: "running", summary_source: "partial-draft",
     options: { visual_understanding: true }, artifact_status: { partial_draft_available: true } };
-  const state = { selected, epoch: 1, editing: false }, pending = [], applied = [], ordinary = [];
+  const state = { selected, epoch: 1, editing: false }, pending = [], applied = [], ordinary = [], timelines = [];
   const nodes = new Map();
   const $ = id => { if (!nodes.has(id)) nodes.set(id, { dataset: {}, querySelector: () => null }); return nodes.get(id); };
   const context = vm.createContext({ state, $, document: { scrollingElement: {} }, timestamp: value => value,
@@ -14,13 +14,14 @@ function harness() {
     sourcePath: value => `/editions/${value.id}`, api: path => new Promise((resolve, reject) => pending.push({ path, resolve, reject })),
     createSectionReader: () => ({ render: (projection, task, edition) => { applied.push({ projection, task, edition }); return !!projection?.accepted && !edition.edited; }, clear() {} }),
     renderEditionStable: (...args) => ordinary.push(args), renderNote() {},
+    claimTimeline: { reset: () => timelines.push("reset") }, loadClaimTimeline: () => timelines.push("load"),
   });
   vm.runInContext(source.slice(source.indexOf("let editionRequest ="), source.indexOf("function renderNote()")), context);
   const complete = (start, revision, accepted = true, edited = false) => {
     pending[start].resolve({ revision, text: revision, edited });
     pending[start + 1].resolve({ accepted });
   };
-  return { context, state, pending, applied, ordinary, $, complete };
+  return { context, state, pending, applied, ordinary, timelines, $, complete };
 }
 
 test("same-selection overlapping reads only apply the most recent edition and projection", async () => {
@@ -28,6 +29,7 @@ test("same-selection overlapping reads only apply the most recent edition and pr
   h.complete(2, "new"); await second; h.complete(0, "old"); await first;
   assert.equal(h.state.text, "new"); assert.equal(h.applied.length, 1);
   assert.equal(h.$("document").dataset.readerRevision, "new:partial-draft:");
+  assert.deepEqual(h.timelines, ["reset"], "progressive sections cannot retain a full-note map");
 });
 
 test("navigation, editing, or refreshed metadata rejects an older draft response", async () => {
