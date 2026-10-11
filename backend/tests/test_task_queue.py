@@ -65,13 +65,14 @@ class TaskQueueTests(unittest.TestCase):
                 db.commit()
             records = {key: TaskRecord(id=key, title="任务", source_type="local", source_media_path=str(media), created_at="2026-09-06", updated_at="2026-09-06", status="running") for key in ("local", "private")}
             records["cancelled"] = records["local"].model_copy(update={"id": "cancelled", "cancel_requested": True, "status": "cancelling"})
-            with patch("app.storage.get_task", side_effect=records.__getitem__), patch("app.storage.update_task") as update, patch("app.storage.mark_task_cancelled") as cancel, patch("app.processor.process_local_video_task") as process:
+            with patch("app.storage.get_task", side_effect=records.__getitem__), patch("app.storage.update_task") as update, patch("app.storage.mark_task_cancelled") as cancel, patch("app.storage.mark_task_recovery_stopped") as recovered_cancel, patch("app.processor.process_local_video_task") as process:
                 result = recover_processing(root)
                 queue_for(root).stop()
                 self.assertEqual(result, {"recovered": 1, "waiting_for_context": 1})
                 process.assert_called_once()
-                self.assertEqual(update.call_args.kwargs["error_code"], "resume_context_required")
-                cancel.assert_called_once_with("cancelled")
+                self.assertTrue(any(call.kwargs.get("error_code") == "resume_context_required" for call in update.call_args_list))
+                recovered_cancel.assert_called_once_with("cancelled")
+                cancel.assert_not_called()
 
     def test_cancel_pending_releases_capacity_without_waiting_for_active_job(self):
         with tempfile.TemporaryDirectory() as directory:

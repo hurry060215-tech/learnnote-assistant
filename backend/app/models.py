@@ -483,6 +483,17 @@ class DownloadAttempt(BaseModel):
     companion_audio_mime: str = ""
 
 
+class TaskCancellationReceipt(BaseModel):
+    """The last committed cancellation, retained across a same-ID retry."""
+    generation: str = ""
+    operation_id: str = Field(default="", max_length=128)
+    requested_at: str = ""
+    queued_cancelled_at: str = ""
+    dispatch_prevented_at: str = ""
+    recovery_stopped_at: str = ""
+    acknowledged_at: str = ""
+
+
 class TaskRecord(BaseModel):
     schema_version: int = Field(default=TASK_SCHEMA_VERSION, ge=1)
     id: str
@@ -501,6 +512,9 @@ class TaskRecord(BaseModel):
     error_detail: str = ""
     failed_phase: str = ""
     retry_count: int = 0
+    control_generation: str = ""
+    control_retry_count: int = -1
+    cancellation_receipt: TaskCancellationReceipt = Field(default_factory=TaskCancellationReceipt)
     checkpoint: str = ""
     screen_subtitles_media_sha256: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
     checkpoint_updated_at: str = ""

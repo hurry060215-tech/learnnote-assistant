@@ -126,6 +126,7 @@ def screen_subtitle_result(task_id: str):
 
 
 def resume_screen_subtitles(task_id, background_tasks, overrides=None):
+    from .task_control import admit_retry
     source, path = _source(task_id, allow_pending_range=True)
     if source.mode != "screen_subtitles" or source.options.screen_subtitles is None:
         raise HTTPException(409, "此任务不是可恢复的画面字幕任务。")
@@ -138,9 +139,9 @@ def resume_screen_subtitles(task_id, background_tasks, overrides=None):
         require_ready_note_model(options)
     else:
         options = options.model_copy(update={"llm_api_key": None, "use_saved_connection": False})
-    task = update_task(task_id, status="queued", phase="queued", progress=0, cancel_requested=False,
+    task = admit_retry(source, status="queued", phase="queued", progress=0, cancel_requested=False,
         cancel_requested_at="", cancelled_at="", error_code="", error_detail="", failed_phase="",
-        options=options.model_copy(update={"llm_api_key": None}), retry_count=source.retry_count + 1,
+        options=options.model_copy(update={"llm_api_key": None}),
         message="正在校验并恢复画面字幕窗口，不下载或转写音频。")
     if source.checkpoint == "screen_subtitles_range_pending":
         from .range_learning import process_range_task

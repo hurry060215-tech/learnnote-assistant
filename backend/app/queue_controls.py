@@ -3,18 +3,53 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 import time
+import uuid
 
 AGE_INTERVAL_SECONDS = 60
 
 
+def _backup_legacy_queue(db):
+    columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+    if not columns or {"priority", "generation", "cancel_operation_id", "callback_finished"}.issubset(columns):
+        return
+    filename = next((row[2] for row in db.execute("PRAGMA database_list") if row[1] == "main"), "")
+    if not filename:
+        return  # In-memory fixtures have no persistent database to migrate.
+    source = Path(filename)
+    backup = source.with_name(source.name + ".pre-control-" + uuid.uuid4().hex + ".bak")
+    temporary = backup.with_suffix(".tmp")
+    try:
+        # SQLite's backup API includes committed WAL pages, unlike file copying.
+        with closing(sqlite3.connect(temporary)) as target:
+            db.backup(target)
+            if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise sqlite3.DatabaseError("Queue migration backup failed integrity check")
+        temporary.replace(backup)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def initialize_queue_schema(db):
-    db.execute("BEGIN IMMEDIATE")
-    db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL, priority INTEGER NOT NULL DEFAULT 0)")
-    if "priority" not in {row[1] for row in db.execute("PRAGMA table_info(jobs)")}:
-        db.execute("ALTER TABLE jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
-    db.execute("CREATE TABLE IF NOT EXISTS queue_settings (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL)")
-    db.execute("INSERT OR IGNORE INTO queue_settings VALUES(1,0)")
-    db.commit()
+    # Fail before any schema mutation when a recoverable snapshot cannot be made.
+    if db.in_transaction:
+        raise sqlite3.ProgrammingError("Queue migration requires an idle connection")
+    _backup_legacy_queue(db)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("CREATE TABLE IF NOT EXISTS jobs (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL, priority INTEGER NOT NULL DEFAULT 0)")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+        for name, definition in (("priority", "INTEGER NOT NULL DEFAULT 0"),
+                                 ("generation", "TEXT NOT NULL DEFAULT ''"),
+                                 ("cancel_operation_id", "TEXT NOT NULL DEFAULT ''"),
+                                 ("callback_finished", "INTEGER")):
+            if name not in columns:
+                db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
+        db.execute("CREATE TABLE IF NOT EXISTS queue_settings (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL)")
+        db.execute("INSERT OR IGNORE INTO queue_settings VALUES(1,0)")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def ordered_entries(rows, now=None):

@@ -3684,6 +3684,7 @@ def api_summary_version(task_id: str, version_id: str) -> dict:
 
 @app.post("/api/tasks/{task_id}/retry-summary")
 def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: TaskOptions | None = Body(default=None)) -> dict:
+    from .task_control import admit_retry
     from .models import TranscriptResult
     from .processor import process_saved_transcript_task
     try:
@@ -3708,9 +3709,8 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: Task
         raise HTTPException(409, {"code": "visual_resume_required", "message": "图文笔记需要同时分析画面。请从本地视频继续处理，或明确切换为文字笔记后仅根据字幕总结。"})
     require_ready_note_model(options)
     _snapshot_before_retry(task_id)
-    task = update_task(task_id, status="queued", phase="queued", progress=0, error_code="", error_detail="", failed_phase="",
-        cancel_requested=False, cancel_requested_at="", cancelled_at="", awaiting_confirmation=False,
-        message="使用已保存字幕重新生成总结，不下载视频、不重新转写。", retry_count=source.retry_count+1,
+    task = admit_retry(source, error_code="", error_detail="", failed_phase="", awaiting_confirmation=False,
+        message="使用已保存字幕重新生成总结，不下载视频、不重新转写。",
         options=options.model_copy(update={"llm_api_key":None}))
     schedule_processing(background_tasks, process_saved_transcript_task, task_id, options, _queue_kind="summary")
     return {"task_id": task_id, "task": task_payload(task)}
@@ -3723,6 +3723,7 @@ def resume_task_from_checkpoint(
     request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
     from .screen_subtitle_routes import resume_screen_subtitles
+    from .task_control import admit_retry
     try:
         if get_task(task_id).mode == "screen_subtitles":
             return resume_screen_subtitles(task_id, background_tasks, rerun_options_from_body(request))
@@ -3758,8 +3759,8 @@ def resume_task_from_checkpoint(
         except (OSError, ValueError):
             pass
     _snapshot_before_retry(task_id)
-    task = update_task(
-        task_id,
+    task = admit_retry(
+        source,
         status="queued",
         phase="queued",
         progress=0,
@@ -3778,7 +3779,6 @@ def resume_task_from_checkpoint(
         summary_diagnostics_path="",
         summary_diagnostics={},
         options=parsed_options.model_copy(update={"llm_api_key": None}),
-        retry_count=source.retry_count + 1,
     )
     source_transcript_source = ""
     try:
@@ -4053,7 +4053,8 @@ def api_retry_task(
                 "message": "需要重新从当前播放页发起，才能刷新登录状态和视频地址。",
             },
         )
-    update_task(task_id, retry_count=source.retry_count + 1)
+    from .task_control import admit_retry
+    admit_retry(source, clone=True)
     return create_from_existing_media(task_id, background_tasks, request)
 
 
