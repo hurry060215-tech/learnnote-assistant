@@ -180,7 +180,7 @@ export function installAssistantOperations(ctx) {
         if(current())render(result);
         if(current()&&result.status==="completed"&&result.tool==="edit_note"&&!dirty()&&state.selected?.id===result.source.id&&state.selected?.kind===result.source.kind)await openItem(state.selected);
       }
-      if(current())status("执行结果已更新；可查看正文、文件或撤销。");
+      if(current())status(controlTools.has(value.tool)?"执行回执已更新；可刷新实际状态。":"执行结果已更新；可查看正文、文件或撤销。");
     }),"agentApply");
     if (["prepared","running"].includes(value.status)) button("取消操作",async()=>{
       const token=epoch;const stillCurrent=()=>dialog.open&&epoch===token&&active?.id===value.id;

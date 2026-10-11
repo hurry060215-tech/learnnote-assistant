@@ -536,6 +536,7 @@ test('task cancellation displays request and worker evidence independently',asyn
   const {h,task}=controlHarness({executeResult:{historical_request:{recorded:true,generation:observation.generation},observation}});await h.open();await selectControl(h,'task_control',task.id);
   await h.preview('cancel_task');await h.click('[data-agent-apply]');
   assert.match(h.card().textContent,/历史取消请求：已记录/);assert.match(h.card().textContent,/执行器确认取消：未确认/);assert.match(h.card().textContent,/未结束或没有启动/);assert.equal(h.$('[data-agent-undo]'),null);
+  assert.match(h.status(),/刷新实际状态/);assert.doesNotMatch(h.status(),/撤销/);
 });
 test('changing control target discards approval and late state cannot restore it',async()=>{
   const pending=deferred();let requests=0;

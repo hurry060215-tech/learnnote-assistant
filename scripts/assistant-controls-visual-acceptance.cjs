@@ -60,6 +60,7 @@ async function until(check,label,timeout=15000){const end=Date.now()+timeout;whi
   await until(()=>task().status==='cancelled','real worker acknowledgement');await until(async()=>{await card().getByRole('button',{name:'刷新实际状态',exact:true}).click();return /执行回调结束：已确认/.test(await card().innerText());},'real queue callback completion');
   assert.match(await card().innerText(),/执行器确认取消：是/);assert.equal(await card().locator('[data-agent-undo]').count(),0);assert.deepEqual(fs.readFileSync(originalPath),original);
   report.actual_worker_cancelled=true;report.original_bytes_preserved=true;report.no_undo_for_cancel=true;
+  assert.doesNotMatch(await dialog().locator('[data-agent-status]').innerText(),/撤销/);report.no_undo_promise_for_controls=true;
   await p.screenshot({path:path.join(out,'desktop-controls.png')});await p.setViewportSize({width:390,height:844});await p.screenshot({path:path.join(out,'mobile-controls.png')});assert(await dialog().evaluate(el=>el.getBoundingClientRect().width<=390));report.narrow_width=390;
   assert.deepEqual(report.errors,[]);assert.deepEqual(report.blocked_requests,[]);report.ok=true;
  }catch(error){report.errors.push(error.stack||error.message);process.exitCode=1;}
