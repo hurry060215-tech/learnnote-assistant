@@ -75,12 +75,15 @@ _edition_lock = threading.RLock()
 @contextmanager
 def edition_transaction():
     """Serialize manual and assistant saves across threads and local workers."""
-    from ..worker_lease import worker_lease
+    from ..worker_lease import worker_lease, has_worker_lease
     with _edition_lock:
         root = DATA_DIR / "user-editions"
         if root.is_symlink():
             raise HTTPException(409, "个人修订目录不可用，未改动正文。")
         root.mkdir(parents=True, exist_ok=True)
+        if has_worker_lease(root, "heavy"):
+            yield
+            return
         with worker_lease(root) as acquired:
             if not acquired:
                 raise HTTPException(409, "个人修订正在保存，请稍后重试。")

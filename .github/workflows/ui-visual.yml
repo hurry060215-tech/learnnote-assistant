@@ -9,6 +9,7 @@ on:
       - "extension/**"
       - "backend/app/**"
       - "scripts/*visual*.cjs"
+      - "scripts/assistant-runs-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
@@ -25,6 +26,7 @@ on:
       - "web/**"
       - "extension/**"
       - "scripts/*visual*.cjs"
+      - "scripts/assistant-runs-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
@@ -76,6 +78,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Global assistant and navigation gate failed" }
             node scripts/assistant-operations-visual-acceptance.cjs http://127.0.0.1:8765 build/assistant-operations-ui
             if ($LASTEXITCODE -ne 0) { throw "Native assistant operations and undo gate failed" }
+            node scripts/assistant-runs-visual-acceptance.cjs build/assistant-runs-ui
+            if ($LASTEXITCODE -ne 0) { throw "Bounded assistant workflow Edge/API/disk gate failed" }
             node scripts/chat-stream-acceptance.cjs http://127.0.0.1:8765 build/chat-stream-ui
             if ($LASTEXITCODE -ne 0) { throw "Streaming assistant gate failed" }
             node scripts/layout-visual-acceptance.cjs http://127.0.0.1:8765 build/layout-ui
@@ -169,6 +173,7 @@ jobs:
           path: |
             build/global-ui
             build/assistant-operations-ui
+            build/assistant-runs-ui
             build/chat-stream-ui
             build/layout-ui
             build/workspace-ux
