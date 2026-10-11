@@ -12,6 +12,7 @@ from ..community import add_community_context, clear_all_community_context, clea
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_html_export, build_pdf_export, build_structured_export, normalize_export_options
 from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text_with_metadata, preserve_raw_import, redecode_evidence, remove_evidence, search_evidence
+from ..personal_storage import RECOVERY_MESSAGE, PersonalRecoveryRequired
 from ..learning_backup import export_learning_backup, restore_learning_backup
 from ..models import SourceEvidence, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest
 from ..study import activity_summary, clear_study_data, due_cards, export_study_data, get_study_plan, list_cards, propose_cards, record_activity, review_card, review_history, save_cards, set_card_position, set_card_status, study_dashboard, study_summary, update_study_plan
@@ -430,6 +431,16 @@ def api_restore_learning_backup(payload: dict | None = Body(default=None)) -> di
         raise HTTPException(status_code=413, detail={"code": "learning_backup_too_large", "message": "学习备份超过 100 MB，未写入任何数据。"})
     try:
         return {"ok": True, "merge": restore_learning_backup(value)}
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "personal_restore_recovery_required",
+            "message": RECOVERY_MESSAGE,
+        }) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail={
+            "code": "learning_restore_write_failed",
+            "message": "恢复写入失败，本次文件和学习记录已回退，请检查本地存储空间后重试。",
+        }) from exc
     except ValueError as exc:
         code = str(exc)
         raise HTTPException(

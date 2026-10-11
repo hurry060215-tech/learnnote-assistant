@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 import hashlib
 import json
-import threading
 import re
 from uuid import uuid4
 from contextlib import contextmanager
@@ -20,6 +19,7 @@ from ..storage import get_task
 from ..storage import read_json
 from ..task_artifacts import read_task_note
 from ..partial_note_projection import read_partial_note
+from ..personal_storage import RECOVERY_MESSAGE, PersonalStorageError, PersonalRecoveryRequired, lock as _edition_lock, personal_transaction
 
 
 notes_router = APIRouter(prefix="/api/tasks", tags=["notes"])
@@ -69,25 +69,20 @@ __all__ = ["notes_router"]
 # User editions are independent of generated task artifacts and source evidence.
 # Optimistic revision checks prevent a stale tab from replacing a newer edit.
 
-_edition_lock = threading.RLock()
-
-
 @contextmanager
 def edition_transaction():
-    """Serialize manual and assistant saves across threads and local workers."""
-    from ..worker_lease import worker_lease, has_worker_lease
-    with _edition_lock:
-        root = DATA_DIR / "user-editions"
-        if root.is_symlink():
-            raise HTTPException(409, "个人修订目录不可用，未改动正文。")
-        root.mkdir(parents=True, exist_ok=True)
-        if has_worker_lease(root, "heavy"):
+    """Serialize manual/assistant saves with annotation and backup writes."""
+    try:
+        with personal_transaction(DATA_DIR):
+            root = DATA_DIR / "user-editions"
+            if root.is_symlink():
+                raise PersonalStorageError("personal_storage_unavailable")
+            root.mkdir(parents=True, exist_ok=True)
             yield
-            return
-        with worker_lease(root) as acquired:
-            if not acquired:
-                raise HTTPException(409, "个人修订正在保存，请稍后重试。")
-            yield
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
+    except PersonalStorageError as exc:
+        raise HTTPException(409, "个人资料暂不可写入，请检查本地存储后重试。") from exc
 
 class EditionRequest(BaseModel):
     text: str = Field(max_length=5_000_000)

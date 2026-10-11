@@ -893,7 +893,7 @@ def validate_study_backup(payload: dict) -> dict[str, object]:
     }
 
 
-def restore_study_data(payload: dict) -> dict[str, int]:
+def restore_study_data(payload: dict, *, before_commit=None) -> dict[str, int]:
     """Idempotently merge validated cards, review history, activity and plan."""
 
     snapshot = validate_study_backup(payload)
@@ -973,6 +973,8 @@ def restore_study_data(payload: dict) -> dict[str, int]:
                  imported_plan.timezone, imported_plan.created_at, imported_plan.updated_at, int(imported_plan.timezone_initialized)),
             )
             plan_restored = 1
+        if before_commit is not None:
+            before_commit()
         connection.commit()
     except Exception:
         connection.rollback()
