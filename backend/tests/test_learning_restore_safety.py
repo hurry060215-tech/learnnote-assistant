@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, closing, contextmanager
 import copy
 import hashlib
 import json
@@ -34,6 +34,7 @@ class LearningRestoreSafetyTests(unittest.TestCase):
             # directories. Every path this fixture uses already lives in root.
             stack.enter_context(patch("app.study.ensure_dirs", return_value=None))
             client = TestClient(app, raise_server_exceptions=False)
+            stack.callback(client.close)
             response = client.put("/api/study/plan", json={
                 "title": "Existing local plan", "daily_target": 7,
                 "paused": False, "timezone": "Asia/Shanghai",
@@ -107,7 +108,7 @@ class LearningRestoreSafetyTests(unittest.TestCase):
             for name in ("personal-notes", "user-editions")
             for path in (root / name).rglob("*") if path.is_file()
         }
-        with sqlite3.connect(root / "study.sqlite3") as connection:
+        with closing(sqlite3.connect(root / "study.sqlite3")) as connection:
             # A logical dump includes plan, activity, cards, review history,
             # quiz rows and their sequences, without relying on SQLite page
             # layout or journal bytes remaining identical after rollback.
