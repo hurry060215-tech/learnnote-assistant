@@ -146,9 +146,59 @@ const path = require("node:path");
     assert.equal(fixed.text, intervalText); assert.equal(fixed.anchor_status.resolution, "exact");
     assert.deepEqual(fixed.anchor.cues.map(cue => [cue.start, cue.end]), [[1, 5], [3, 7]]);
     await page.screenshot({ path: path.join(output, "personal-anchors.png"), fullPage: true });
+    // These are exclusively the synthetic fixture's own local files. Exercise
+    // real browser upload/error/retry instead of substituting an API response.
+    const personalPath = path.join(output, "data/personal-notes", `task-${fixture.task_id}.json`);
+    const currentBytes = fs.readFileSync(personalPath);
+    await page.goto(`${base}/web/classic.html`, { waitUntil: "networkidle" });
+    for (const selector of ["#skipOnboardingButton", "#confirmReleaseNotesButton"]) {
+      if (await page.locator(selector).isVisible()) await page.locator(selector).click();
+    }
+    await page.locator("#settingsNav").click();
+    await page.locator('[data-settings-tab="connection"]').click();
+    await page.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
+    const backup = await (await page.request.get(`${base}/api/study/backup`)).json();
+    const studyContent = ({ exported_at, ...state }) => JSON.stringify(state);
+    const studyBefore = studyContent(backup.study);
+    const uploadBackup = async expectedStatus => {
+      const chooser = page.waitForEvent("filechooser");
+      await page.locator("#studyRestoreButton").click();
+      const response = page.waitForResponse(r => r.url() === `${base}/api/study/backup/restore` && r.request().method() === "POST");
+      page.once("dialog", dialog => dialog.accept());
+      await (await chooser).setFiles({ name: "synthetic-learning-backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });
+      const result = await response;
+      assert.equal(result.status(), expectedStatus);
+      await page.waitForFunction(() => !document.querySelector("#studyRestoreButton").disabled && document.querySelector("#studyBackupInput").value === "");
+      return result.json();
+    };
+    const future = Buffer.from(JSON.stringify({ ...JSON.parse(currentBytes), schema_version: 999, future_data: "Synthetic text must survive" }));
+    fs.writeFileSync(personalPath, future);
+    try {
+      await uploadBackup(422);
+      assert.match(await page.locator("#studyDueList").innerText(), /版本不兼容/);
+      assert.deepEqual(fs.readFileSync(personalPath), future);
+      assert.equal(studyContent((await (await page.request.get(`${base}/api/study/backup`)).json()).study), studyBefore);
+    } finally { fs.writeFileSync(personalPath, currentBytes); }
+    const recovery = path.join(output, "data/personal-state/restore-pending");
+    assert.equal(fs.existsSync(recovery), false);
+    fs.mkdirSync(recovery);
+    fs.writeFileSync(path.join(recovery, "0.original"), currentBytes);
+    try {
+      const blocked = await uploadBackup(409);
+      assert.equal(blocked.detail.code, "personal_restore_recovery_required");
+      assert.match(await page.locator("#studyDueList").innerText(), /保留.*恢复副本/);
+      assert.deepEqual(fs.readFileSync(personalPath), currentBytes);
+      assert.deepEqual(fs.readFileSync(path.join(recovery, "0.original")), currentBytes);
+      await page.locator("#studyDueList").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(output, "learning-restore-blocked.png"), fullPage: true });
+    } finally { fs.rmSync(recovery, { recursive: true }); } // Own synthetic marker only.
+    const retry = await uploadBackup(200);
+    assert(Object.values(retry.merge).every(count => count === 0));
+    assert.deepEqual(fs.readFileSync(personalPath), currentBytes);
+    assert.equal(studyContent((await (await page.request.get(`${base}/api/study/backup`)).json()).study), studyBefore);
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ status: "pass", browser: "msedge", actual_backend: true,
-      synthetic_only: true, checks: ["claim-marker-prose-preserved", "claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary"] }, null, 2));
+      synthetic_only: true, checks: ["claim-marker-prose-preserved", "claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary", "restore-future-schema-rejected", "restore-recovery-copy-preserved", "restore-error-visible", "restore-safe-retry"] }, null, 2));
     console.log("Personal anchors: actual Edge/backend acceptance passed");
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -213,6 +213,7 @@ jobs:
             build/screen-subtitle-ui
             build/personal-anchors-acceptance/report.json
             build/personal-anchors-acceptance/personal-anchors.png
+            build/personal-anchors-acceptance/learning-restore-blocked.png
             build/course-question-ui
             build/model-route-ui
           if-no-files-found: warn

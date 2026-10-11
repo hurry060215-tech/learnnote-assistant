@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
+from ..personal_storage import RECOVERY_MESSAGE, PersonalRecoveryRequired
 from ..personal_notes import list_annotations, save_annotation, delete_annotation
 from ..personal_anchors import annotation_targets, transcript_interval
 
@@ -64,6 +65,8 @@ def get_annotations(kind: Literal["task", "material"], source_id: str):
 def put_annotation(kind: Literal["task", "material"], source_id: str, request: AnnotationRequest):
     try:
         return {"annotation": save_annotation(kind, source_id, request.text, request.quote, request.id, request.anchor, request.revision, request.request_id)}
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
     except (ValueError, OSError) as exc:
         status, detail = PUBLIC_ERRORS.get(str(exc), (422, "annotation_save_failed"))
         raise HTTPException(status_code=status, detail=detail) from exc
@@ -73,5 +76,7 @@ def put_annotation(kind: Literal["task", "material"], source_id: str, request: A
 def remove_annotation(kind: Literal["task", "material"], source_id: str, annotation_id: str):
     try:
         return {"deleted": delete_annotation(kind, source_id, annotation_id)}
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=404, detail="Source unavailable") from exc
