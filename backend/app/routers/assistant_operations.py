@@ -1,11 +1,12 @@
 """Native assistant operation API, independent from text-only chat."""
 from typing import Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import FileResponse
 from pydantic import Field, ValidationError
 from ..assistant_operation_types import OperationRequest, StrictModel, tool_catalog
 from ..assistant_operation_planner import PlanRequest, plan
 from .. import assistant_operations as operations
+from .. import assistant_lifecycle_tools as lifecycle
 
 router = APIRouter(prefix="/api/assistant/operations", tags=["assistant-operations"])
 
@@ -35,6 +36,17 @@ def prepare_operation(request: OperationRequest):
         return operations.prepare(request)
     except (ValidationError, ValueError):
         raise HTTPException(422, "操作参数不受支持，未执行修改。") from None
+
+
+@router.get("/targets")
+def control_targets(kind: Literal["task_control", "course"]):
+    return lifecycle.targets(kind)
+
+
+@router.get("/targets/{kind}/{source_id}")
+def control_target(kind: Literal["task_control", "course"], source_id: str = Path(pattern=r"^[A-Za-z0-9_-]{1,80}$")):
+    value = lifecycle.snapshot({"kind": kind, "id": source_id})
+    return {"source": {"kind": kind, "id": source_id, "revision": value["revision"]}, "observation": value}
 
 
 @router.get("")

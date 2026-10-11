@@ -80,6 +80,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Native assistant operations and undo gate failed" }
             node scripts/assistant-runs-visual-acceptance.cjs build/assistant-runs-ui
             if ($LASTEXITCODE -ne 0) { throw "Bounded assistant workflow Edge/API/disk gate failed" }
+            node scripts/assistant-controls-visual-acceptance.cjs build/assistant-controls-ui
+            if ($LASTEXITCODE -ne 0) { throw "Native task/course controls Edge/API/SDK/disk gate failed" }
             node scripts/chat-stream-acceptance.cjs http://127.0.0.1:8765 build/chat-stream-ui
             if ($LASTEXITCODE -ne 0) { throw "Streaming assistant gate failed" }
             node scripts/layout-visual-acceptance.cjs http://127.0.0.1:8765 build/layout-ui
@@ -174,6 +176,7 @@ jobs:
             build/global-ui
             build/assistant-operations-ui
             build/assistant-runs-ui
+            build/assistant-controls-ui
             build/chat-stream-ui
             build/layout-ui
             build/workspace-ux

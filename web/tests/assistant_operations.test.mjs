@@ -501,3 +501,58 @@ test("a failed deletion keeps the receipt visible and does not claim it was remo
   assert.equal(h.card().textContent, visible); assert.equal(h.operations.has("operation-1"), true);
   assert.match(h.status(), /deletion failed/); assert.doesNotMatch(h.status(), /已删除/);
 });
+
+function controlHarness({delayTarget,executeResult}={}){
+  const course={kind:'course',id:'c'.repeat(32),revision:1,title:'Synthetic course'};
+  const task={kind:'task_control',id:'synthetic-task',revision:'a'.repeat(64),title:'Synthetic task'};
+  const h=createHarness({handleRequest(call,h){
+    if(call.path.startsWith(endpoint+'/targets?'))return {targets:[call.path.endsWith('course')?course:task],truncated:false};
+    if(call.path.startsWith(endpoint+'/targets/')){
+      if(delayTarget)return delayTarget(call);
+      const source=call.path.includes('/course/')?course:task;
+      return {source:{kind:source.kind,id:source.id,revision:source.revision},observation:{revision:source.revision,generation:task.revision,status:'running',paused:false}};
+    }
+    if(call.path.endsWith('/execute')&&executeResult){const id=call.path.split('/').at(-2);const result={...h.operations.get(id),status:'completed',result:executeResult};h.operations.set(id,result);return result;}
+  }});
+  return {h,course,task};
+}
+async function selectControl(h,kind,id){
+  h.$('[data-agent-domain]').value=kind;await h.$('[data-agent-domain]').fire('change');
+  h.$('[data-agent-target]').value=id;await h.$('[data-agent-target]').fire('change');await flush();
+}
+test('course pause requires explicit target and execution; request does not imply tasks were stopped',async()=>{
+  const {h,course}=controlHarness({executeResult:{revision:2,paused:true,changed:true,new_tasks_started:0}});await h.open();
+  h.$('[data-agent-domain]').value='course';await h.$('[data-agent-domain]').fire('change');
+  assert.match(h.$('[data-agent-source]').textContent,/明确选择的一门课程/);assert.doesNotMatch(h.$('[data-agent-source]').textContent,/Synthetic note/);
+  await h.preview('set_course_paused',{paused:'true'});assert.match(h.status(),/明确选择/);assert.equal(h.calls.filter(c=>c.path.endsWith('/prepare')).length,0);
+  h.$('[data-agent-target]').value=course.id;await h.$('[data-agent-target]').fire('change');
+  await h.preview('set_course_paused',{paused:'true'});
+  const prepared=h.calls.find(c=>c.path.endsWith('/prepare'));assert.deepEqual(prepared.body.source,{kind:'course',id:course.id,revision:1});assert.deepEqual(prepared.body.arguments,{paused:true});
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/execute')).length,0);await h.click('[data-agent-apply]');
+  assert.match(h.card().textContent,/已有任务保持原状/);assert.equal(h.$('[data-agent-undo]'),null);assert.equal(h.opened.length,0);
+});
+test('task cancellation displays request and worker evidence independently',async()=>{
+  const observation={generation:'a'.repeat(64),status:'cancelling',cancellation_requested:true,queued_job_cancelled:false,worker_acknowledged:false,callback_finished:false};
+  const {h,task}=controlHarness({executeResult:{historical_request:{recorded:true,generation:observation.generation},observation}});await h.open();await selectControl(h,'task_control',task.id);
+  await h.preview('cancel_task');await h.click('[data-agent-apply]');
+  assert.match(h.card().textContent,/历史取消请求：已记录/);assert.match(h.card().textContent,/执行器确认取消：未确认/);assert.match(h.card().textContent,/未结束或没有启动/);assert.equal(h.$('[data-agent-undo]'),null);
+});
+test('changing control target discards approval and late state cannot restore it',async()=>{
+  const pending=deferred();let requests=0;
+  const {h,task}=controlHarness({delayTarget:()=>{requests++;return pending.promise;}});await h.open();
+  h.$('[data-agent-domain]').value='task_control';await h.$('[data-agent-domain]').fire('change');
+  h.$('[data-agent-target]').value=task.id;const selecting=h.$('[data-agent-target]').fire('change');
+  h.$('[data-agent-domain]').value='course';await h.$('[data-agent-domain]').fire('change');
+  pending.resolve({source:{kind:'task_control',id:task.id,revision:task.revision},observation:{status:'running'}});await selecting;await flush();
+  assert.equal(requests,1);await h.preview('set_course_paused',{paused:'true'});assert.match(h.status(),/明确选择/);assert.equal(h.calls.filter(c=>c.path.endsWith('/prepare')).length,0);
+});
+
+test('refreshing a course receipt keeps its historical pause and shows the current resumed state',async()=>{
+  const {h,course}=controlHarness({executeResult:{revision:2,paused:true,changed:true,new_tasks_started:0}});await h.open();await selectControl(h,'course',course.id);
+  await h.preview('set_course_paused',{paused:'true'});await h.click('[data-agent-apply]');
+  course.revision=3;
+  await h.button('刷新实际状态').fire('click');await flush();
+  assert.match(h.card().textContent,/这次操作已暂停.*课程版本 2/);
+  assert.match(h.card().textContent,/最新读取的课程状态：允许后续准备，课程版本 3/);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/execute')).length,1);
+});

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import threading
 from uuid import uuid4
 
 from .config import DATA_DIR
@@ -13,18 +12,23 @@ from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
 from .concept_identity import read_history, edit_identity
 from .course_comparison import build_comparison, is_canonical_evidence
+from . import course_state
 
-_lock = threading.RLock()
+def course_transaction():
+    """Serialize course writes and final episode admission across processes."""
+    return course_state.course_transaction(DATA_DIR)
+
+
+def course_read_lock():
+    return course_state.course_read_lock()
 
 
 def _path(course_id: str):
-    if not re.fullmatch(r"[a-f0-9]{32}", course_id):
-        raise ValueError("invalid_course_id")
-    return DATA_DIR / "courses" / f"{course_id}.json"
+    return course_state.course_path(DATA_DIR, course_id)
 
 
 def get_course(course_id: str) -> dict:
-    return json.loads(_path(course_id).read_text(encoding="utf-8"))
+    return course_state.read_course(DATA_DIR, course_id)
 
 
 def list_courses() -> list[dict]:
@@ -41,7 +45,7 @@ def list_courses() -> list[dict]:
 def save_course(title: str, sources: list[dict], paused: bool = False, course_id: str = "", revision: int = 0) -> dict:
     if not title.strip() or len(sources) > 200:
         raise ValueError("invalid_course_content")
-    with _lock:
+    with course_transaction():
         previous_sources = {}
         if course_id:
             previous = get_course(course_id)
@@ -83,10 +87,32 @@ def save_course(title: str, sources: list[dict], paused: bool = False, course_id
 
 def delete_course(course_id: str) -> None:
     # Removing a collection is not authorization to delete its source files.
-    with _lock:
+    from .assistant_operation_store import source_deletion
+    with source_deletion("course", course_id, DATA_DIR), course_transaction():
         _path(course_id).unlink()
         from .course_episodes import clear_course_episode_links
         clear_course_episode_links(course_id)
+
+
+def set_course_paused(course_id: str, revision: int, paused: bool, operation_id: str) -> dict:
+    """Commit an explicit pause value without rewriting membership or titles."""
+    if type(paused) is not bool or not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", operation_id):
+        raise ValueError("invalid_course_control")
+    with course_transaction():
+        course = get_course(course_id)
+        marker = course.get("control_operation") or {}
+        if marker.get("id") == operation_id:
+            if marker.get("before_revision") != revision or marker.get("paused") != paused:
+                raise ValueError("course_operation_conflict")
+            return course
+        if course["revision"] != revision:
+            raise ValueError("course_changed_reload_required")
+        course["control_operation"] = {"id": operation_id, "before_revision": revision,
+                                       "before_paused": course["paused"], "paused": paused}
+        course["paused"] = paused
+        course["revision"] = revision + 1
+        atomic_write_text(_path(course_id), json.dumps(course, ensure_ascii=False, indent=2))
+        return get_course(course_id)
 
 
 def _evidence_sources(course: dict, *, read_only=False) -> list[dict]:
@@ -150,9 +176,9 @@ def course_evidence_ids(course_id: str) -> set[str]:
 
 
 def ask_course(course_id: str, question: str, revision: int, limit: int = 6, mode: str = "lexical") -> dict:
-    # Keep the course revision and its membership consistent with save/delete
-    # in this process. A stale client must explicitly reload its chosen scope.
-    with _lock:
+    # Read the approved revision and its membership under the same transaction
+    # as save/delete. A stale client must explicitly reload its chosen scope.
+    with course_transaction():
         course = get_course(course_id)
         if course["revision"] != revision:
             raise ValueError("course_changed_reload_required")
@@ -171,6 +197,6 @@ def compare_course(course_id: str, query: str, *, source_id: str = "", source_ki
 
 
 def edit_course_identity(course_id: str, request_id: str, request: dict) -> dict:
-    with _lock:
+    with course_transaction():
         course = get_course(course_id)
         return edit_identity(course_id, course["revision"], course_evidence(course_id), request_id, request)

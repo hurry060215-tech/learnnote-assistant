@@ -67,10 +67,10 @@ def load(operation_id: str):
         value = json.loads(path.read_text(encoding="utf-8"))
         if value.get("schema_version") != 1 or value.get("id") != operation_id:
             raise ValueError("invalid_record")
-        from .assistant_operation_types import SourceRef, validated_arguments
-        SourceRef.model_validate(value["source"])
+        from .assistant_operation_types import CONTROL_TOOLS, validated_source, validated_arguments
+        validated_source(value["tool"], value["source"])
         _allocation(value)
-        if value["tool"] not in {"read_note", "edit_note", "export_note"} or value["status"] not in {"prepared", "running", "completed", "failed", "cancelled", "conflict"}:
+        if value["tool"] not in {"read_note", "edit_note", "export_note"} | CONTROL_TOOLS or value["status"] not in {"prepared", "running", "completed", "failed", "cancelled", "conflict"}:
             raise ValueError("invalid_operation")
         if value.get("undo_of"):
             if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", value["undo_of"]):
@@ -167,7 +167,8 @@ def source_deletion(kind, source_id, data_dir):
                 source = value["source"]
                 if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", path.stem):
                     raise ValueError("invalid_id")
-                if source["kind"] == kind and source["id"] == source_id:
+                source_kind = "task" if source["kind"] == "task_control" else source["kind"]
+                if source_kind == kind and source["id"] == source_id:
                     matches.append(path.stem)
             except (OSError, ValueError, TypeError, KeyError):
                 raise HTTPException(409, "助手记录损坏，无法确认关联副本；请先恢复记录后删除来源。来源尚未删除。") from None
