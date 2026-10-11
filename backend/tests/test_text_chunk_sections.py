@@ -167,8 +167,13 @@ class TextChunkSectionTests(unittest.TestCase):
         self.assertFalse((self.work / "note.md").exists())
 
     def test_cancellation_after_first_or_last_callback_stops_generation(self):
+        from app.storage import admit_task_retry, mark_task_cancelled
+        from app.task_control import task_generation
         for stop_after in (1, 5):
-            update_task(self.task.id, cancel_requested=False)
+            if get_task(self.task.id).cancel_requested:
+                stopped = mark_task_cancelled(self.task.id)
+                admit_task_retry(self.task.id, expected_generation=task_generation(stopped))
+                update_task(self.task.id, status="running", phase="summarizing")
             calls = []
             original = partial_section_callback(self.task.id, self.transcript)
             def callback(payload):

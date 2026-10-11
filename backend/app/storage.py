@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import shutil
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -19,8 +21,34 @@ from .source_input import clean_task_title
 from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, summary_failure_message
 from .activation import record_status
 from . import assistant_operation_store as assistant_records
+from .worker_lease import worker_lease
 
 _lock = threading.RLock()
+_state_depth = threading.local()
+
+
+@contextmanager
+def task_state_transaction():
+    """Lock order: task RLock, state lease, then queue SQLite; never wait for workers.
+
+    The separate lease directory cannot consume or deadlock a processing slot.
+    Read-only snapshots deliberately do not acquire/create this file lock.
+    """
+    with _lock:
+        depth = getattr(_state_depth, "value", 0)
+        if depth:
+            yield
+            return
+        root = TASK_DIR.parent / ".task-state"
+        root.mkdir(parents=True, exist_ok=True)
+        with worker_lease(root):
+            _state_depth.value = 1
+            try:
+                yield
+            finally:
+                _state_depth.value = 0
+
+
 STALE_TASK_AFTER = timedelta(hours=6)
 STALE_CANCELLING_AFTER = timedelta(minutes=5)
 
@@ -88,7 +116,10 @@ def create_task(
 
 
 def save_task(record: TaskRecord) -> None:
-    with _lock:
+    with task_state_transaction():
+        from .task_control_state import task_generation
+        record.control_generation = task_generation(record)
+        record.control_retry_count = record.retry_count
         record = migrate_task_record(record)
         record.updated_at = now_iso()
         atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
@@ -105,8 +136,17 @@ def get_task(task_id: str) -> TaskRecord:
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
-    with _lock:
+    with task_state_transaction():
         record = get_task(task_id)
+        from .task_control_state import task_generation
+        record.control_generation = task_generation(record)
+        record.control_retry_count = record.retry_count
+        if record.cancel_requested and changes.get("retry_count", record.retry_count) == record.retry_count:
+            # Late progress/failure/success writes cannot undo a cancellation.
+            changes.pop("cancel_requested", None)
+            if changes.get("status") in {"queued", "running", "success", "failed"}:
+                changes["status"] = record.status
+                changes["phase"] = record.phase
         previous_phase = record.phase
         previous_status = record.status
         previous_checkpoint = record.checkpoint
@@ -147,34 +187,124 @@ def update_task(task_id: str, **changes: Any) -> TaskRecord:
         return record
 
 
+def cancel_task_generation(task_id: str, *, expected_generation: str, operation_id: str) -> dict:
+    """Atomically request cancellation of the reviewed generation (there is no undo).
+
+    The one bounded receipt survives retry. Replaying it proves its historical
+    applied_generation but never mutates the replacement generation.
+    """
+    from .task_control_state import task_generation, TaskControlConflict, task_control_snapshot
+    from .models import TaskCancellationReceipt
+    from .task_queue import cancel_queued_processing, read_queue_job
+    if not isinstance(operation_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", operation_id):
+        raise ValueError("invalid_operation_id")
+    with task_state_transaction():
+        task = get_task(task_id)
+        receipt = task.cancellation_receipt
+        if receipt.operation_id == operation_id and receipt.generation == expected_generation and receipt.requested_at:
+            row = read_queue_job(TASK_DIR.parent, task_id)
+            if task_generation(task) == expected_generation and task.status == "cancelling":
+                cancel_queued_processing(TASK_DIR.parent, task_id,
+                                         expected_generation=expected_generation, operation_id=operation_id)
+                row = read_queue_job(TASK_DIR.parent, task_id)
+            # Finish an interrupted second manifest commit using the durable CAS.
+            # A historical replay must never finalize a replacement generation.
+            if task_generation(task) == expected_generation and task.status == "cancelling" and task_control_snapshot(task, row)["queued_job_cancelled"]:
+                receipt = receipt.model_copy(update={"queued_cancelled_at": receipt.queued_cancelled_at or now_iso()})
+                task = update_task(task_id, status="cancelled", phase="cancelled",
+                                           message="已取消排队，现有文件保留", cancelled_at=now_iso(),
+                                           cancellation_receipt=receipt)
+            return task_control_snapshot(task, row)
+        if task_generation(task) != expected_generation:
+            raise TaskControlConflict("stale_generation")
+        if task.awaiting_confirmation:
+            # The HTTP route also removes ephemeral handoff entries. Native
+            # callers must use that exact cleanup before supporting this mode.
+            raise TaskControlConflict("deferred_task")
+        if task.cancel_requested:
+            raise TaskControlConflict("cancellation_pending")
+        if task.status in {"success", "failed", "cancelled"}:
+            raise TaskControlConflict("task_not_active")
+        receipt = TaskCancellationReceipt(generation=expected_generation, operation_id=operation_id,
+                                          requested_at=now_iso())
+        # Persist the operation before the CAS. If interrupted after either
+        # commit, the receipt and row distinguish request from proven dispatch prevention.
+        task = update_task(task_id, cancel_requested=True, cancel_requested_at=receipt.requested_at,
+                                   status="cancelling", phase="cancelling", message="正在停止任务",
+                                   cancellation_receipt=receipt)
+        if cancel_queued_processing(TASK_DIR.parent, task_id,
+                                    expected_generation=expected_generation, operation_id=operation_id):
+            receipt.queued_cancelled_at = now_iso()
+            task = update_task(task_id, status="cancelled", phase="cancelled",
+                                       message="已取消排队，现有文件保留", cancelled_at=now_iso(),
+                                       cancellation_receipt=receipt)
+        return task_control_snapshot(task, read_queue_job(TASK_DIR.parent, task_id))
+
+
 def request_task_cancel(task_id: str) -> TaskRecord:
-    with _lock:
+    from .task_control_state import task_generation
+    with task_state_transaction():
         record = get_task(task_id)
-        if record.status in {"success", "failed", "cancelled"}:
+        if record.cancel_requested or record.status in {"success", "failed", "cancelled"}:
             return record
-        record.cancel_requested = True
-        record.cancel_requested_at = now_iso()
-        was_queued = record.status == "queued"
-        record.status = "cancelled" if was_queued else "cancelling"
-        record.phase = record.status
-        record.message = "已取消排队，现有文件保留" if was_queued else "正在停止任务"
-        if was_queued:
-            record.cancelled_at = now_iso()
-        save_task(record)
-        if was_queued:
-            from .task_queue import cancel_queued_processing
-            cancel_queued_processing(TASK_DIR.parent, task_id)
-        return record
+        cancel_task_generation(task_id, expected_generation=task_generation(record), operation_id=uuid.uuid4().hex)
+        return get_task(task_id)
 
 
-def mark_task_cancelled(task_id: str) -> TaskRecord:
-    return update_task(
-        task_id,
-        status="cancelled",
-        phase="cancelled",
-        message="任务已停止，已生成的文件仍然保留",
-        cancelled_at=now_iso(),
-    )
+def mark_task_cancelled(task_id: str, *, expected_generation: str | None = None) -> TaskRecord:
+    from .task_control_state import task_generation, TaskControlConflict
+    with task_state_transaction():
+        record = get_task(task_id)
+        generation = task_generation(record)
+        if expected_generation is not None and generation != expected_generation:
+            raise TaskControlConflict("stale_generation")
+        receipt = record.cancellation_receipt.model_copy(deep=True)
+        if receipt.generation != generation:
+            from .models import TaskCancellationReceipt
+            receipt = TaskCancellationReceipt(generation=generation, requested_at=record.cancel_requested_at)
+        receipt.acknowledged_at = now_iso()
+        return update_task(
+            task_id, status="cancelled", phase="cancelled",
+            message="任务已停止，已生成的文件仍然保留", cancelled_at=now_iso(),
+            cancellation_receipt=receipt,
+        )
+
+
+def mark_task_recovery_stopped(task_id: str) -> TaskRecord:
+    """Only startup recovery holding every worker lease may use this marker."""
+    from .task_control_state import task_generation
+    from .models import TaskCancellationReceipt
+    with task_state_transaction():
+        record = get_task(task_id)
+        generation = task_generation(record)
+        receipt = record.cancellation_receipt.model_copy(deep=True)
+        if receipt.generation != generation:
+            receipt = TaskCancellationReceipt(generation=generation, requested_at=record.cancel_requested_at)
+        receipt.recovery_stopped_at = now_iso()
+        return update_task(task_id, status="cancelled", phase="cancelled", cancelled_at=now_iso(),
+                           message="重启后已停止取消中的任务，现有文件保留", cancellation_receipt=receipt)
+
+
+def admit_task_retry(task_id: str, *, expected_generation: str, clone: bool = False, **changes: Any) -> TaskRecord:
+    """Final compare-and-set admission for same-ID resumes and clone bookkeeping."""
+    from .task_control_state import task_generation, TaskControlConflict
+    from .task_queue import read_queue_job
+    with task_state_transaction():
+        record = get_task(task_id)
+        if task_generation(record) != expected_generation:
+            raise TaskControlConflict("stale_generation")
+        if record.status in {"queued", "running", "cancelling"}:
+            raise TaskControlConflict("task_still_running")
+        row = read_queue_job(TASK_DIR.parent, task_id)
+        if row and row.get("state") in {"queued", "running", "recovering", "unknown"}:
+            raise TaskControlConflict("task_still_running")
+        if clone:
+            # /retry creates another task, but its source counter must never be
+            # computed from a detached snapshot or regress a newer generation.
+            return update_task(task_id, retry_count=record.retry_count + 1)
+        changes.update(status="queued", phase="queued", progress=0, retry_count=record.retry_count + 1,
+                       cancel_requested=False, cancel_requested_at="", cancelled_at="")
+        return update_task(task_id, **changes)
 
 
 def _directory_size(path: Path) -> int:
@@ -217,7 +347,7 @@ def storage_summary() -> dict[str, Any]:
 
 
 def delete_task(task_id: str) -> dict[str, Any]:
-    with assistant_records.source_deletion("task", task_id, DATA_DIR), _lock:
+    with assistant_records.source_deletion("task", task_id, DATA_DIR), task_state_transaction():
         record = get_task(task_id)
         if record.status in {"queued", "running", "cancelling"}:
             raise RuntimeError("active_task")
@@ -249,7 +379,7 @@ def delete_task(task_id: str) -> dict[str, Any]:
 
 
 def delete_all_tasks() -> dict[str, Any]:
-    with assistant_records.locked(DATA_DIR), _lock:
+    with assistant_records.locked(DATA_DIR), task_state_transaction():
         records = list_tasks()
         active = [task for task in records if task.status in {"queued", "running", "cancelling"}]
         if active:
@@ -315,22 +445,32 @@ def read_json(task_id: str, filename: str, default: Any = None) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
 
 
-def list_tasks() -> list[TaskRecord]:
-    ensure_dirs()
+def list_tasks_snapshot() -> list[TaskRecord]:
+    """Nonmutating manifest snapshots: no mkdir, index, reconciliation or repair."""
     records: list[TaskRecord] = []
     for path in TASK_DIR.glob("*/task.json"):
         try:
-            record = TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8"))))
-            records.append(record)
-        except Exception:
+            records.append(TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8")))))
+        except (OSError, ValueError, TypeError):
             continue
-    records = reconcile_stale_tasks(records)
-    for record in records:
-        repaired_title = clean_task_title(record.title, record.page_url)
-        if repaired_title != record.title:
-            record.title = repaired_title
-            save_task(record)
     return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+
+def list_tasks() -> list[TaskRecord]:
+    ensure_dirs()
+    records = reconcile_stale_tasks(list_tasks_snapshot())
+    repaired = []
+    for snapshot in records:
+        with task_state_transaction():
+            try:
+                record = get_task(snapshot.id)
+            except FileNotFoundError:
+                continue
+            title = clean_task_title(record.title, record.page_url)
+            if title != record.title:
+                record = update_task(record.id, title=title)
+            repaired.append(record)
+    return sorted(repaired, key=lambda item: item.created_at, reverse=True)
 
 
 def _parse_iso_datetime(value: str) -> datetime | None:
@@ -351,32 +491,20 @@ def reconcile_stale_tasks(
     cancelling_max_age: timedelta = STALE_CANCELLING_AFTER,
 ) -> list[TaskRecord]:
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    for record in records:
-        updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.cancel_requested_at) or _parse_iso_datetime(record.created_at)
-        if record.status == "cancelling":
-            if updated and current - updated > cancelling_max_age:
-                record.status = "cancelled"
-                record.phase = "cancelled"
-                record.message = "任务已停止，已生成的文件仍然保留"
-                record.cancelled_at = now_iso()
-                save_task(record)
-            continue
-        if record.status not in {"queued", "running"}:
-            continue
-        if not updated or current - updated <= max_age:
-            continue
-        has_media = any(
-            raw_path and Path(raw_path).is_file()
-            for raw_path in (record.media_path, record.source_media_path)
-        )
-        record.status = "failed"
-        record.phase = "failed"
-        record.error_code = "task_interrupted"
-        record.error_detail = (
-            "任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
-            if has_media
-            else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。"
-        )
-        record.message = record.error_detail
-        save_task(record)
-    return records
+    result = []
+    for snapshot in records:
+        with task_state_transaction():
+            try:
+                record = get_task(snapshot.id)
+            except FileNotFoundError:
+                continue
+            updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
+            # Elapsed time cannot prove that a worker observed cancellation.
+            if record.status in {"queued", "running"} and not record.cancel_requested and updated and current - updated > max_age:
+                has_media = any(raw and Path(raw).is_file() for raw in (record.media_path, record.source_media_path))
+                detail = ("任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
+                          if has_media else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。")
+                record = update_task(record.id, status="failed", phase="failed", error_code="task_interrupted",
+                                     error_detail=detail, message=detail)
+            result.append(record)
+    return result

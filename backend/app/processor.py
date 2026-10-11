@@ -36,7 +36,7 @@ from .processor_state import (
     start_task_resource_monitor,
     validate_summary_evidence,
 )
-from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
+from .storage import get_task, mark_task_cancelled, task_dir, update_task, write_json
 from .source_input import clean_task_title
 from .summarizer import SummarizationCancelled, build_visual_windows, llm_model_supports_vision, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .summary_diagnostics import build_summary_diagnostics
@@ -1308,11 +1308,8 @@ def _process_video_file(
         extraction_metrics=visual_artifacts.metrics,
     )
 
-    record = get_task(task_id)
-    record.frame_grids = grids
-    record.visual_windows = visual_windows
-    record.visual_index_path = str(visual_index_path)
-    save_task(record)
+    update_task(task_id, frame_grids=grids, visual_windows=visual_windows,
+                visual_index_path=str(visual_index_path))
     mark_checkpoint(task_id, "visual_ready")
     extraction_metrics = visual_artifacts.metrics.get("frame_extraction") or {}
     record_stage_duration(
