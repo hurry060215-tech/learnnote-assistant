@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { createHash } from "node:crypto";
+const { claimTimelineModel, claimEvidenceStatus, claimSourceLabel } = await import("data:text/javascript;base64," + Buffer.from(readFileSync(new URL('../claim-timeline.js',import.meta.url),'utf8')).toString('base64'));
 const source=readFileSync(new URL('../desk.js',import.meta.url),'utf8');
 const start=source.indexOf('  if (t.claim_evidence');
 const end=source.indexOf('  panel.dataset.status',start);
 assert(start>=0&&end>start);
 class Element {
-  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.listeners={};this.open=false;this.textContent='';}
+  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.listeners={};this.open=false;this.isConnected=true;this.textContent='';}
   append(...children){this.children.push(...children);}
   replaceChildren(...children){this.children=children;}
   addEventListener(name,fn){this.listeners[name]=fn;}
@@ -15,10 +17,17 @@ const all=node=>[node,...node.children.flatMap(all)];
 for (const mode of ['screen_subtitles','local']) {
   const panel=new Element('section');
   const t={id:'fixture',kind:'task',mode,claim_evidence:{path:'claim_evidence_map.json',quality:{claim_count:2,direct_count:1,located_only_count:1}}};
-  const evidence=[{evidence_id:'match',kind:'transcript',locator:'1.0-2.0s',...(mode==='screen_subtitles'?{source:'screen-ocr',verification:'unreviewed'}:{})}];
+  const evidence=[{evidence_id:'match',kind:'transcript',start:1,end:2,locator:'1.0-2.0s',...(mode==='screen_subtitles'?{source:'screen-ocr',verification:'unreviewed'}:{})}];
   const mapped={claims:[{text:'<literal OCR>',claim_type:'transcript',verification:'direct',evidence_ids:['match']},{text:'possibly',claim_type:'unsupported',verification:'located_only',candidate_evidence_ids:['match']}],evidence};
-  const opens=[];
-  const context=vm.createContext({t,panel,document:{createElement:tag=>new Element(tag)},api:async()=>mapped,openEvidenceSource:async(...args)=>opens.push(args),failure:()=>{}});
+  const note = '<literal OCR>\n\npossibly', revision = createHash('sha256').update(note).digest('hex');
+  Object.assign(mapped, { schema_version:6, task_id:t.id, source_revision_kind:'normalized_note_utf8_sha256', source_revision:revision });
+  let offset = 0;
+  for (const [index, claim] of mapped.claims.entries()) {
+    claim.claim_id = `claim-${index}`; claim.evidence_ids ||= []; claim.candidate_evidence_ids ||= [];
+    claim.source_span = {unit:'unicode_codepoints', start:offset, end:offset+claim.text.length}; offset += claim.text.length + 2;
+  }
+  const state = { epoch:1, revision, text:note, selected:t, editing:false }, opens=[];
+  const context=vm.createContext({t,panel,state,claimTimelineModel,claimEvidenceStatus,claimSourceLabel,document:{createElement:tag=>new Element(tag)},api:async()=>mapped,openClaimEvidence:async(...args)=>opens.push(args),failure:()=>{}});
   vm.runInContext(source.slice(start,end),context);
   const details=all(panel).find(node=>node.tag==='details');details.open=true;
   await details.listeners.toggle();
@@ -31,6 +40,6 @@ for (const mode of ['screen_subtitles','local']) {
   const button=all(panel).find(node=>node.tag==='button');
   if(mode==='screen_subtitles') assert.match(button.textContent,/OCR（未核验）/);
   await button.onclick();
-  assert.equal(opens.length,1);assert.equal(opens[0][1],1);
+  assert.equal(opens.length,1);assert.equal(opens[0][0].start,1);assert.equal(opens[0][0].evidence_id,'match');assert.equal(opens[0][1],t.id);
 }
 console.log('OCR direct matches stay labeled unreviewed; candidate links identify OCR and preserve navigation');

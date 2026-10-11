@@ -67,8 +67,18 @@
     return `<div class="markdown-table-wrap"><table><thead><tr>${header.map((cell, index) => `<th${style(index)}>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${header.map((_, index) => `<td${style(index)}>${inlineMarkdown(row[index] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   }
 
-  function markdownToHtml(markdown) {
-    const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  function markdownToHtml(markdown, options = {}) {
+    const originalLines = String(markdown || "").split(/\r\n|\r|\n/);
+    const separators = String(markdown || "").match(/\r\n|\r|\n/g) || [];
+    let offset = 0;
+    const spans = originalLines.map((line, index) => {
+      const start = offset, end = start + Array.from(line).length;
+      offset = end + (separators[index]?.length || 0);
+      return { start, end };
+    });
+    const lines = originalLines;
+    const sourceAttributes = index => options.sourceOffsets
+      ? ` data-note-start="${spans[index].start}" data-note-end="${spans[index].end}"` : "";
     const kinds = markdownLineKinds(lines);
     const html = [];
     const headingIds = new Map();
@@ -85,7 +95,7 @@
     const closeList = () => {
       while (listStack.length) closeListLevel();
     };
-    const renderListItem = match => {
+    const renderListItem = (match, lineIndex) => {
       const indent = indentation(match[1]);
       const type = /^\d/.test(match[2]) ? "ol" : "ul";
       while (listStack.length && indent < listStack.at(-1).indent) closeListLevel();
@@ -99,7 +109,7 @@
         listStack.push(list);
       }
       if (list.itemOpen) html.push("</li>");
-      html.push(`<li>${inlineMarkdown(match[3])}`);
+      html.push(`<li${sourceAttributes(lineIndex)}>${inlineMarkdown(match[3])}`);
       list.itemOpen = true;
     };
 
@@ -185,11 +195,11 @@
       }
       const item = listMatch(line);
       if (item) {
-        renderListItem(item);
+        renderListItem(item, lineIndex);
         continue;
       }
       if (listStack.length && indentation((/^([ \t]*)/.exec(line) || [])[1] || "") > listStack.at(-1).indent) {
-        html.push(`<p>${inlineMarkdown(line.trim())}</p>`);
+        html.push(`<p${sourceAttributes(lineIndex)}>${inlineMarkdown(line.trim())}</p>`);
         continue;
       }
       if (line.startsWith(">")) {
@@ -198,7 +208,7 @@
         continue;
       }
       closeList();
-      html.push(`<p>${inlineMarkdown(line)}</p>`);
+      html.push(`<p${sourceAttributes(lineIndex)}>${inlineMarkdown(line)}</p>`);
     }
     if (inCode) html.push("</code></pre>");
     closeList();

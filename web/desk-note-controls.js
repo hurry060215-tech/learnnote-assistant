@@ -121,7 +121,7 @@ export function formatNoteText(text, start, end, kind) {
   return { text: text.slice(0, first) + replacement + text.slice(tail), start: first, end: first + replacement.length };
 }
 
-export function installNoteEditor({ state, $, saveNote, renderNote, renderMarkdown, guard, notice }) {
+export function installNoteEditor({ state, $, saveNote, renderNote, renderMarkdown, guard, notice, onEnterEdit = () => {} }) {
   const textarea = $("noteText"), preview = $("notePreview");
   let saving = false;
   const previewMode = (on) => {
@@ -134,6 +134,7 @@ export function installNoteEditor({ state, $, saveNote, renderNote, renderMarkdo
   $("edit").onclick = () => {
     if (!state.selected) return;
     if (!state.editing) {
+      onEnterEdit();
       state.editing = true;
       textarea.value = state.text;
       $("saveStatus").textContent = "修改独立保存，原始生成稿会保留。";
