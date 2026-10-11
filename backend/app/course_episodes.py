@@ -11,6 +11,7 @@ import sqlite3
 from .config import DATA_DIR, ensure_dirs
 from .source_input import normalize_source_input
 from .storage import get_task, list_tasks
+from .course_state import course_transaction, read_course
 
 
 def _connect():
@@ -60,7 +61,12 @@ def course_episodes(course, *, read_only=False):
             rows = {row["episode_id"]: dict(row) for row in db.execute("SELECT * FROM course_episodes WHERE course_id=?", (course["id"],))}
     by_handoff = {}
     if any(item["url"] and not rows.get(item["episode_id"], {}).get("task_id") for item in episodes):
-        for task in list_tasks():
+        if read_only:
+            from .storage import list_tasks_snapshot
+            tasks = list_tasks_snapshot()
+        else:
+            tasks = list_tasks()
+        for task in tasks:
             if task.handoff_id:
                 by_handoff.setdefault(task.handoff_id, []).append(task)
     result = []
@@ -90,6 +96,14 @@ def _write_link(db, course_id, episode, task_id):
 
 
 def prepare_course_episode(course, episode_id):
+    with course_transaction(DATA_DIR):
+        current = read_course(DATA_DIR, course["id"])
+        if current["revision"] != course["revision"]:
+            raise ValueError("course_changed_reload_required")
+        return _prepare_course_episode(current, episode_id)
+
+
+def _prepare_course_episode(course, episode_id):
     if course["paused"]:
         raise ValueError("course_paused")
     episode = next((item for item in course_episodes(course) if item["episode_id"] == episode_id), None)
@@ -117,6 +131,11 @@ def prepare_course_episode(course, episode_id):
 
 
 def bind_course_episode(course, episode_id, task_id):
+    with course_transaction(DATA_DIR):
+        return _bind_course_episode(read_course(DATA_DIR, course["id"]), episode_id, task_id)
+
+
+def _bind_course_episode(course, episode_id, task_id):
     episodes = [_episode(course["id"], source, index) for index, source in enumerate(course["sources"]) if source["kind"] in {"url", "task"}]
     episode = next((item for item in episodes if item["episode_id"] == episode_id), None)
     if episode is None:

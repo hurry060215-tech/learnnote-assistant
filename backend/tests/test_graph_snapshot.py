@@ -296,9 +296,13 @@ class GraphSnapshotTests(unittest.TestCase):
     def test_export_is_read_only_and_never_creates_missing_catalog_schemas(self):
         self.course = save_course(self.course["title"], [*self.course["sources"], {"kind": "url", "url": "https://www.youtube.com/watch?v=synthetic"}],
                                   course_id=self.course["id"], revision=self.course["revision"])
+        # A manifest from an earlier version has no course mutation lease yet.
+        import shutil
+        shutil.rmtree(self.root / "course-state-locks")
         before = self.hashes()
         self.export()
         self.assertEqual(before, self.hashes())
+        self.assertFalse((self.root / "course-state-locks").exists())
 
         self.assertFalse((self.root / "course-episodes.sqlite3").exists())
         database = self.root / "library.sqlite3"

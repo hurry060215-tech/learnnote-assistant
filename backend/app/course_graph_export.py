@@ -79,7 +79,9 @@ def _belongs(item: dict, owner: dict) -> bool:
 
 def capture_graph_snapshot(course_id: str, query: str, revision: int, **filters) -> dict:
     filters = normalize_filters(**filters)
-    with courses._lock:
+    # Existing manifests may predate the mutation lease directory. Export must
+    # not create it; _capture rechecks revisions after cross-process changes.
+    with courses.course_read_lock():
         course = courses.get_course(course_id)
         if course["revision"] != revision:
             raise ValueError("course_changed_reload_required")

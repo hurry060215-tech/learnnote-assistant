@@ -10,6 +10,7 @@ from . import assistant_operation_store as store
 from .assistant_operation_types import OperationRequest, validated_arguments
 from .assistant_note_tools import selected_edition, prepare_edit, read_note, export_note
 from .routers.notes import edition_transaction, get_edition, save_edition_locked
+from . import assistant_lifecycle_tools as lifecycle
 
 
 class OperationCancelled(Exception):
@@ -37,11 +38,14 @@ def prepare(request: OperationRequest):
             if existing["request_digest"] != value["request_digest"]:
                 raise HTTPException(409, "这个操作 ID 已用于其他内容，请重新创建操作。")
             return store.public(_recover(existing))
-        selected_edition(value["source"])
-        if request.tool == "edit_note":
+        if lifecycle.is_control(request.tool):
+            lifecycle.prepare(value)
+        elif request.tool == "edit_note":
+            selected_edition(value["source"])
             value["edit"], value["preview"] = prepare_edit(value["source"], arguments)
             value["edit"]["after_write_id"] = value["id"]
         else:
+            selected_edition(value["source"])
             value["preview"] = {"arguments": arguments, "notice": "只处理当前保存版本；不会改动原始资料。"}
         store.save(value)  # Failure here must leave the note untouched.
         return store.public(value)
@@ -54,7 +58,9 @@ def _recover(value):
     from .library import get_material
     source = value["source"]
     try:
-        if source["kind"] == "task":
+        if source["kind"] == "course":
+            lifecycle.snapshot(source)
+        elif source["kind"] in {"task", "task_control"}:
             get_task(source["id"])
         else:
             get_material(source["id"])
@@ -73,7 +79,13 @@ def _recover(value):
         _save_receipt(value)
     if value["status"] != "running":
         return value
-    if value["tool"] == "edit_note":
+    if lifecycle.is_control(value["tool"]):
+        value["status"], result = lifecycle.recover(value)
+        if result is not None:
+            value["result"] = {**result, "recovered": True}
+        elif value["status"] == "conflict":
+            value["error"] = "任务或课程已有后续变化，不能确认旧操作结果；未重复执行，请核对当前状态。"
+    elif value["tool"] == "edit_note":
         source, edit = value["source"], value["edit"]
         with edition_transaction():
             current = get_edition(source["kind"], source["id"])
@@ -167,11 +179,14 @@ def execute(operation_id: str):
             return store.public(value)
         try:
             _check_cancel(value)
-            selected_edition(value["source"])
+            if not lifecycle.is_control(value["tool"]):
+                selected_edition(value["source"])
             value["status"] = "running"
             store.save(value)
             source = value["source"]
-            if value["tool"] == "edit_note":
+            if lifecycle.is_control(value["tool"]):
+                value["result"] = lifecycle.execute(value, lambda: _check_cancel(value))
+            elif value["tool"] == "edit_note":
                 with edition_transaction():
                     _check_cancel(value)
                     edit = value["edit"]
@@ -189,7 +204,7 @@ def execute(operation_id: str):
                 value["result"] = _save_artifact(value, export_note(source, value["arguments"]))
             value["status"] = "completed"
         except OperationCancelled:
-            value.update(status="cancelled", error="已在提交前取消，没有修改笔记。")
+            value.update(status="cancelled", error="已在提交前取消，没有执行此操作。")
         except HTTPException as exc:
             value.update(status="conflict" if exc.status_code == 409 else "failed", error=exc.detail)
         except Exception:
@@ -214,7 +229,7 @@ def cancel(operation_id: str):
             raise HTTPException(404, "来源或操作记录已删除。")
         value = _recover(stored)
         if value["status"] == "prepared":
-            value.update(status="cancelled", error="操作已取消，未修改笔记。")
+            value.update(status="cancelled", error="操作已取消，未执行此操作。")
             store.save(value)
         return store.public(value)
 
@@ -269,12 +284,15 @@ def _source_metadata_missing(source):
     from .storage import get_task
     from .library import get_material
     try:
-        if source["kind"] == "task":
+        if source["kind"] == "course":
+            from .courses import get_course
+            get_course(source["id"])
+        elif source["kind"] in {"task", "task_control"}:
             get_task(source["id"])
         else:
             get_material(source["id"])
     except FileNotFoundError:
-        return source["kind"] == "task"
+        return source["kind"] in {"task", "task_control", "course"}
     except ValueError as exc:
         return source["kind"] == "material" and str(exc) == "material_not_found"
     except (OSError, sqlite3.Error):

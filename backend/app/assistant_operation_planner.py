@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from pydantic import Field
-from .assistant_operation_types import StrictModel, SourceRef, ReadingPatch, validated_arguments, tool_catalog
+from .assistant_operation_types import StrictModel, OperationSource, ReadingPatch, validated_arguments, tool_catalog
 from .assistant_note_tools import selected_edition
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from .models import TaskOptions
@@ -12,7 +12,7 @@ from .models import TaskOptions
 
 class PlanRequest(StrictModel):
     question: str = Field(min_length=1, max_length=1000)
-    source: SourceRef | None = None
+    source: OperationSource | None = None
     reading: ReadingPatch | None = None
     share_source: bool = False
     options: TaskOptions | None = None
@@ -39,10 +39,14 @@ def plan(request: PlanRequest):
     if request.share_source:
         if not request.source:
             raise HTTPException(422, "请先选择要读取的笔记。")
-        text = selected_edition(request.source.model_dump())["text"]
+        if request.source.kind in {"course", "task_control"}:
+            from .assistant_lifecycle_tools import selected_snapshot
+            text = json.dumps(selected_snapshot(request.source.model_dump()), ensure_ascii=False)
+        else:
+            text = selected_edition(request.source.model_dump())["text"]
         if len(text) > 24000:
             raise HTTPException(422, "正文超出本次模型读取范围，请用本地精确编辑或先缩小正文。不会偷偷截断。")
-        context["untrusted_selected_note_text"] = text
+        context["untrusted_selected_status" if request.source.kind in {"course", "task_control"} else "untrusted_selected_note_text"] = text
         shared_characters = len(text)
     instructions = (
         "你是 LearnNote 的内置操作助手。为当前用户请求选择最多一个工具。工具只针对传入的固定来源，"
@@ -54,7 +58,7 @@ def plan(request: PlanRequest):
     messages = [{"role": "system", "content": instructions},
                 {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
                 {"role": "user", "content": request.question}]
-    tools = tool_catalog()
+    tools = tool_catalog(request.source.kind if request.source else None)
     if request.source is None:
         tools = [tool for tool in tools if tool["function"]["name"] == "update_reading"]
     try:
@@ -72,6 +76,8 @@ def plan(request: PlanRequest):
         if len(calls) != 1 or calls[0].type != "function":
             raise ValueError("multiple_or_unknown_calls")
         name = calls[0].function.name
+        if name not in {tool["function"]["name"] for tool in tools}:
+            raise ValueError("wrong_target_tool")
         arguments = validated_arguments(name, json.loads(calls[0].function.arguments))
         if name != "update_reading" and request.source is None:
             raise ValueError("source_required")
