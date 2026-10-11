@@ -23,6 +23,7 @@ from .media_url_parsing import (
     _mime_for_kind,
     _endpoint_kind_hint,
     _media_endpoint_hint,
+    is_telemetry_endpoint,
     normalize_media_url,
 )
 
@@ -37,6 +38,8 @@ def _json_context_mime(value: object) -> str:
 
 
 def _json_context_kind(key_path: list[str], url: str, parent: object) -> tuple[str, str]:
+    if is_telemetry_endpoint(url):
+        return "unknown", ""
     kind = classify_resource(url)
     if kind != "unknown":
         return kind, _mime_for_kind(kind)

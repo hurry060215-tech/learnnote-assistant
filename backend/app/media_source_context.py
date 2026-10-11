@@ -15,7 +15,7 @@ from .media_candidate_ranking import (
     score_candidate,
     should_guess_sibling_manifest_with_blob_boundary,
 )
-from .media_url_parsing import _is_http_url, _media_endpoint_hint, same_http_origin
+from .media_url_parsing import _is_http_url, _media_endpoint_hint, same_http_origin, is_telemetry_endpoint
 
 
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
@@ -189,7 +189,7 @@ def fallback_page_contexts(page_url: str, resources: list[ResourceCandidate]) ->
 
     def add(url: str, candidate: ResourceCandidate | None = None) -> None:
         value = _safe_header_value(url)
-        if not _is_http_url(value):
+        if not _is_http_url(value) or is_telemetry_endpoint(value):
             return
         if value in seen:
             return

@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import TASK_SCHEMA_VERSION
+from .subtitle_probe import SubtitleProbe
 
 
 TaskPhase = Literal[
@@ -193,6 +194,8 @@ class CurrentPageTaskRequest(BaseModel):
     page_preflight_report: dict[str, Any] = Field(default_factory=dict)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
+    subtitle_probe: SubtitleProbe | None = None
+    extension_version: str = Field(default="", max_length=32, pattern=r"^[0-9.]*$")
     learning_range: dict[str, float] = Field(default_factory=dict)
     resources: list[ResourceCandidate] = Field(default_factory=list)
     drm_detected: bool = False
@@ -517,6 +520,8 @@ class TaskRecord(BaseModel):
     drm_signals: list[DrmSignal] = Field(default_factory=list)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
+    subtitle_probe: SubtitleProbe | None = None
+    extension_version: str = Field(default="", max_length=32, pattern=r"^[0-9.]*$")
     media_path: str = ""
     audio_path: str = ""
     subtitle_path: str = ""

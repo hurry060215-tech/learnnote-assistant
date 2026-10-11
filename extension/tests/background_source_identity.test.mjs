@@ -49,7 +49,7 @@ const context = {
       }
     },
     action: { onClicked: listener() },
-    runtime: { sendMessage() {}, onMessage: listener("runtimeMessage") },
+    runtime: { getManifest() { return { version: "0.2.14" }; }, sendMessage() {}, onMessage: listener("runtimeMessage") },
     webNavigation: { getAllFrames(_details, callback) { callback([{ frameId: 0 }]); } },
     sidePanel: { open() {} },
     scripting: { executeScript() {} },
@@ -86,6 +86,8 @@ assert.equal(taskRequests()[0].body.source_identity.tab_id, 9);
 assert.equal(taskRequests()[0].body.source_identity.BVID, "BV1ABCDEF123");
 assert.equal(taskRequests()[0].body.source_identity.platform_video_id, "BV1ABCDEF123");
 assert.equal(taskRequests()[0].body.handoff_id, "ln-source-test-0001");
+assert.equal(taskRequests()[0].body.extension_version, "0.2.14");
+assert.equal(taskRequests()[0].body.subtitle_probe.status, "unavailable");
 
 mediaToken = "renewed";
 pageTitleSuffix = " - updated";
@@ -147,3 +149,28 @@ assert.equal(captionTask.task_id, "abc123def456");
 assert.equal(taskRequests().at(-1).body.resources.length, 0, "background must not re-add cached video resources to a subtitle-only handoff");
 assert.equal(taskRequests().at(-1).body.cookies.length, 0);
 assert.equal(taskRequests().at(-1).body.options.content_mode, "subtitles");
+
+activeBvid = "BV9PROBE0001";
+context.chrome.scripting.executeScript = async () => [{ result: {
+  status: "ready", language: "zh-CN", duration: 120,
+  cues: [{ start: 0, end: 10, text: "Synthetic subtitle" }]
+} }];
+await collect(); // Reset the previous page's capture context before probing.
+const probeContext = await collect();
+assert.equal(probeContext.page.subtitle_probe.cache_hit, false);
+const probeIdentity = context.buildSourceIdentity(probeContext.tab, probeContext.page, probeContext.resources);
+await new Promise(resolve => listeners.runtimeMessage({
+  type: "start-current-task", targetTabId: 9, sourceIdentity: probeIdentity,
+  resources: [], mode: "subtitle_only", defer: true
+}, {}, resolve));
+const probe = taskRequests().at(-1).body.subtitle_probe;
+assert.deepEqual(Object.keys(probe).sort(), ["cache_hit", "cue_count", "elapsed_ms", "language", "status"]);
+assert.equal(probe.status, "ready");
+assert.equal(probe.language, "zh-CN");
+assert.equal(probe.cue_count, 1);
+assert.equal(probe.cache_hit, true);
+assert.ok(Number.isFinite(probe.elapsed_ms) && probe.elapsed_ms >= 0);
+assert.equal(taskRequests().at(-1).body.extension_version, "0.2.14");
+await context.__learnnoteE2E.startCurrentPageTaskForTab(9, "http://127.0.0.1:8765", [], "subtitle_only");
+assert.deepEqual(taskRequests().at(-1).body.subtitle_probe, probe);
+assert.equal(taskRequests().at(-1).body.extension_version, "0.2.14");

@@ -11,6 +11,8 @@ import re
 from base64 import b64decode, urlsafe_b64decode
 from urllib.parse import unquote, urljoin, urlparse
 
+from .media_telemetry import is_telemetry_endpoint
+
 TEXT_MEDIA_HINT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd|m4s|ts|vtt|srt|ass|ssa)([?#]|[\"'\s<>]|$)", re.I)
 
 TEXT_MEDIA_SUFFIXES = (
@@ -113,6 +115,8 @@ def _mime_for_kind(kind: str) -> str:
 
 
 def _media_endpoint_hint(url: str) -> bool:
+    if is_telemetry_endpoint(url):
+        return False
     try:
         parsed = urlparse(url)
     except Exception:
