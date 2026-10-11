@@ -39,8 +39,18 @@ const path = require("node:path");
     await page.locator("#applyAnnotationAnchor").click();
   };
   try {
+    const originalNote = fs.readFileSync(notePath);
     await page.goto(`${base}/#task/${fixture.task_id}`);
-    await page.locator("#document").getByText("An exact generated claim.", { exact: true }).waitFor();
+    const generatedClaim = page.locator("#document p[data-note-start]").filter({ hasText: "An exact generated claim." });
+    await generatedClaim.waitFor();
+    await generatedClaim.locator(".note-claim-marker").waitFor();
+    // Source controls are appended to the paragraph; the authored prose must stay exact.
+    assert.equal(await generatedClaim.evaluate(node => {
+      const prose = node.cloneNode(true);
+      prose.querySelectorAll(".note-claim-marker").forEach(marker => marker.remove());
+      return prose.textContent;
+    }), "An exact generated claim.");
+    assert.deepEqual(fs.readFileSync(notePath), originalNote, "Adding claim controls must not rewrite the note");
     const literal = '\n\n  const cafe\u0301 = "🧭";\n\treturn x;\n\n';
     await choose("claim");
     await page.locator("#annotationText").fill(literal); await save();
@@ -138,7 +148,7 @@ const path = require("node:path");
     await page.screenshot({ path: path.join(output, "personal-anchors.png"), fullPage: true });
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ status: "pass", browser: "msedge", actual_backend: true,
-      synthetic_only: true, checks: ["claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary"] }, null, 2));
+      synthetic_only: true, checks: ["claim-marker-prose-preserved", "claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary"] }, null, 2));
     console.log("Personal anchors: actual Edge/backend acceptance passed");
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
