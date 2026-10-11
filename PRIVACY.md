@@ -61,6 +61,31 @@ snapshots can be previewed and downloaded without replacing the current user
 edition. They remain with the task's local files and are not uploaded by this
 version-history feature.
 
+## Native assistant operations
+
+The **Operate software** panel can read, edit or export the explicitly selected
+saved note and change this browser's reading appearance. The local forms do not
+call a model. Submitting a natural-language request sends that request, the
+selected source identifier/revision and current reading appearance to the
+selected text-model provider. Saved note text is excluded unless the user checks
+its per-request sharing option. Planning does not execute the proposed operation;
+the user reviews its preview before applying it. This feature sends no additional
+session-log upload and provides no shell, credential or installation-file tool.
+
+Operation records are stored locally in `assistant-operations`. They can contain
+read text, complete before/after note copies for undo and generated export files.
+They are separate from the original source files. The panel lets the user delete
+terminal operation records and their associated undo/export copies; doing so does
+not change the current note. Deleting the source task or material also removes
+its assistant copies. An interrupted deletion is checked again before a retained
+record can be served; damaged records or disk failures produce an explicit error.
+Copies the user downloaded or backed up remain outside this cleanup.
+
+Reading operations and their bounded undo receipts are stored with this browser's
+existing appearance preferences. Clearing site data removes that local history.
+No notification permission, provider connection or security setting is changed by
+the reading tool.
+
 ## Browser extension data
 
 The Chrome/Edge extension observes the current tab's video elements, iframe

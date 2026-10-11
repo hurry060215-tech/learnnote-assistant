@@ -18,6 +18,7 @@ from .observability import record_task_event
 from .source_input import clean_task_title
 from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, summary_failure_message
 from .activation import record_status
+from . import assistant_operation_store as assistant_records
 
 _lock = threading.RLock()
 STALE_TASK_AFTER = timedelta(hours=6)
@@ -216,7 +217,7 @@ def storage_summary() -> dict[str, Any]:
 
 
 def delete_task(task_id: str) -> dict[str, Any]:
-    with _lock:
+    with assistant_records.source_deletion("task", task_id, DATA_DIR), _lock:
         record = get_task(task_id)
         if record.status in {"queued", "running", "cancelling"}:
             raise RuntimeError("active_task")
@@ -248,7 +249,7 @@ def delete_task(task_id: str) -> dict[str, Any]:
 
 
 def delete_all_tasks() -> dict[str, Any]:
-    with _lock:
+    with assistant_records.locked(DATA_DIR), _lock:
         records = list_tasks()
         active = [task for task in records if task.status in {"queued", "running", "cancelling"}]
         if active:

@@ -92,6 +92,9 @@ const os = require("node:os");
     );
     failWrite = true;
     await p.locator("#savePreferences").click();
+    // Appearance saves now share the cross-tab Web Lock with assistant tools.
+    await p.waitForFunction(() => !document.querySelector("#savePreferences").disabled &&
+      document.querySelector("#preferencesStatus").textContent.includes("阅读与外观已保存"));
     assert.match(await status(), /阅读与外观已保存/);
     assert.equal(
       writes,
@@ -176,8 +179,11 @@ const os = require("node:os");
     assert.match(await status(), /模型连接已保存.*其他分类/);
     await section("appearance");
     await p.locator("#savePreferences").click();
+    await p.waitForFunction(() => !document.querySelector("#savePreferences").disabled &&
+      document.querySelector("#preferencesStatus").textContent.includes("阅读与外观已保存"));
     await closeClean();
     await p.locator("#theme").click();
+    await p.waitForFunction(() => document.body.classList.contains("dark"));
     assert.equal(
       await p.evaluate(() =>
         getComputedStyle(document.body).getPropertyValue("--accent").trim(),
@@ -186,6 +192,7 @@ const os = require("node:os");
       "selected accent remains meaningful in dark mode",
     );
     await p.locator("#theme").click();
+    await p.waitForFunction(() => !document.body.classList.contains("dark"));
     await p.locator("#settings").click();
     await section("notes");
     await p.locator("#prefStyle").selectOption("concise");

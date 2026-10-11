@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import hashlib
 import ipaddress
 import json
@@ -15,6 +17,7 @@ from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
 from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
+from . import assistant_operation_store as assistant_records
 
 
 LIBRARY_SCHEMA_VERSION = 3
@@ -253,31 +256,46 @@ def transcript_evidence(record: TaskRecord, raw: str):
 
 
 def remove_task(task_id: str) -> bool:
+    try:
+        # Linked material registrations disappear with their task. Keep the
+        # same outer operation lock for both identities before any DB lock.
+        with assistant_records.locked(DATA_DIR), ExitStack() as cleanup:
+            with _lock:
+                connection, _ = _connect()
+                try:
+                    linked = connection.execute("SELECT material_id FROM library_materials WHERE linked_task_id = ?", (task_id,)).fetchall()
+                finally:
+                    connection.close()
+            for row in linked:
+                cleanup.enter_context(assistant_records.source_deletion("material", row["material_id"], DATA_DIR))
+            _remove_task_index(task_id)
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def _remove_task_index(task_id: str):
     evidence_ids = [
         str(item.get("evidence_id") or "")
         for item in evidence_for_task(task_id, limit=2000)
         if str(item.get("evidence_id") or "")
     ]
-    try:
-        with _lock:
-            connection, fts_available = _connect()
-            try:
-                connection.execute("DELETE FROM library_tasks WHERE task_id = ?", (task_id,))
-                connection.execute("DELETE FROM library_materials WHERE linked_task_id = ?", (task_id,))
-                if fts_available:
-                    connection.execute("DELETE FROM library_tasks_fts WHERE task_id = ?", (task_id,))
-                connection.commit()
-            finally:
-                connection.close()
-        from .community import clear_community_context
-        from .study import remove_cards_for_evidence
+    with _lock:
+        connection, fts_available = _connect()
+        try:
+            connection.execute("DELETE FROM library_tasks WHERE task_id = ?", (task_id,))
+            connection.execute("DELETE FROM library_materials WHERE linked_task_id = ?", (task_id,))
+            if fts_available:
+                connection.execute("DELETE FROM library_tasks_fts WHERE task_id = ?", (task_id,))
+            connection.commit()
+        finally:
+            connection.close()
+    from .community import clear_community_context
+    from .study import remove_cards_for_evidence
 
-        remove_cards_for_evidence(evidence_ids)
-        clear_community_context(task_id)
-        remove_task_evidence(task_id)
-        return True
-    except sqlite3.Error:
-        return False
+    remove_cards_for_evidence(evidence_ids)
+    clear_community_context(task_id)
+    remove_task_evidence(task_id)
 
 
 def rebuild_index() -> dict[str, int | str]:
@@ -706,6 +724,11 @@ def delete_material(material_id: str) -> dict[str, object]:
     """Permanently remove one app-owned material and only its own evidence."""
 
     material_key = str(material_id or "")[:128]
+    with assistant_records.source_deletion("material", material_key, DATA_DIR):
+        return _delete_material_locked(material_key)
+
+
+def _delete_material_locked(material_key):
     with _lock:
         connection, _ = _connect()
         try:
