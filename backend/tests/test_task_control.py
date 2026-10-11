@@ -83,7 +83,7 @@ class TaskControlTests(unittest.TestCase):
         self.assertFalse(result["worker_acknowledged"])
         self.assertFalse(result["callback_finished"])
         self.assertFalse(called.is_set())
-        self.assertEqual(note.read_text(), "fixture")
+        self.assertEqual(note.read_text(encoding="utf-8"), "fixture")
         self.assertEqual(storage.get_task(task.id).status, "cancelled")
 
     def test_queue_claim_before_manifest_update_is_only_requested_until_ack_and_return(self):
@@ -225,7 +225,7 @@ class TaskControlTests(unittest.TestCase):
                 media = storage.task_file(task.id).with_name("fixture.mp4")
                 media.write_bytes(b"synthetic-media")
                 transcript = media.with_name("transcript.json")
-                transcript.write_text(TranscriptResult(full_text="synthetic saved transcript").model_dump_json())
+                transcript.write_text(TranscriptResult(full_text="synthetic saved transcript").model_dump_json(), encoding="utf-8")
                 changes = {"media_path": str(media)}
                 if route == "summary":
                     changes["transcript_path"] = str(transcript)
@@ -420,10 +420,10 @@ class TaskControlTests(unittest.TestCase):
         queue.enqueue(task.id, "local", lambda: self.fail("Cancelled callback ran"), generation=task_generation(task))
         result = self.cancel(task)
         # A crash left only the first manifest commit, but the queue CAS survived.
-        payload = json.loads(storage.task_file(task.id).read_text())
+        payload = json.loads(storage.task_file(task.id).read_text(encoding="utf-8"))
         payload.update(status="cancelling", phase="cancelling", cancelled_at="")
         payload["cancellation_receipt"]["queued_cancelled_at"] = ""
-        storage.task_file(task.id).write_text(json.dumps(payload))
+        storage.task_file(task.id).write_text(json.dumps(payload), encoding="utf-8")
         queue.stop()
         recover_processing(self.root)
         self.assertEqual(storage.get_task(task.id).status, "cancelled")
@@ -492,7 +492,7 @@ class TaskControlTests(unittest.TestCase):
     def test_read_only_status_and_snapshots_preserve_all_bytes_and_do_not_create_database(self):
         task = self.task(title="", status="running")
         path = storage.task_file(task.id)
-        payload = json.loads(path.read_text())
+        payload = json.loads(path.read_text(encoding="utf-8"))
         payload["updated_at"] = "2000-01-01T00:00:00+00:00"
         path.write_text(json.dumps(payload), encoding="utf-8")
         before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
