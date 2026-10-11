@@ -60,6 +60,12 @@ MODULE_SIZE_LIMITS = {
     "backend/app/partial_outline_projection.py": 65,
     "backend/app/text_chunk_sections.py": 80,
     "backend/app/reading_notes.py": 115,
+    "backend/app/catalog_guard.py": 120,  # Pre-open sidecar and schema-version safety checks.
+    "backend/app/catalog_health.py": 70,
+    "backend/app/catalog_snapshot.py": 180,
+    "backend/app/catalog_recovery.py": 300,
+    "backend/app/routers/catalog_recovery.py": 100,
+    "web/material-catalog-recovery.js": 160,
 }
 
 
