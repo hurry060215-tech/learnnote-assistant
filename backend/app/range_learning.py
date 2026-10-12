@@ -5,7 +5,7 @@ import math
 from .config import DATA_DIR
 from .media import extract_video_clip, media_cancellation
 from .models import TaskOptions
-from .storage import get_task, create_task, update_task, task_dir, read_json, atomic_write_text
+from .storage import get_task, create_task, update_task, task_dir, read_json, atomic_write_text, task_state_transaction, assistant_records
 from .task_queue import schedule_processing
 
 
@@ -63,7 +63,17 @@ def process_range_task(task_id: str, source_path: Path, title: str, options: Tas
 
 
 def create_range_task(source_id: str, start: float, end: float, options: TaskOptions, background_tasks):
+    # Hold the same deletion/state locks from source validation until its new
+    # dependency is durable. Otherwise a reviewed deletion can pass between
+    # reading the source and recording the range task's source_task_id.
+    with assistant_records.locked(DATA_DIR), task_state_transaction():
+        return _create_range_task(source_id, start, end, options, background_tasks)
+
+
+def _create_range_task(source_id: str, start: float, end: float, options: TaskOptions, background_tasks):
     source = get_task(source_id)
+    if source.id != source_id:
+        raise ValueError("range_source_identity_conflict")
     if source.mode == "screen_subtitles" and source.options.screen_subtitles is not None:
         options = options.model_copy(update={"screen_subtitles": source.options.screen_subtitles,
             "content_mode": "subtitles" if options.content_mode == "subtitles" else "text",

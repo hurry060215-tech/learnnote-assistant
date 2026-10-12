@@ -14,7 +14,7 @@ from typing import Any
 
 from .config import DATA_DIR, MODEL_CACHE_DIR, STATIC_DIR, TASK_DIR, TEMP_DIR, UPLOAD_DIR, ensure_dirs
 from .library import index_task, remove_task
-from .models import TaskOptions, TaskRecord, now_iso
+from .models import SourceIdentity, SubtitleProbe, TaskOptions, TaskRecord, now_iso
 from .migrations import migrate_task_record, migrate_task_payload
 from .observability import record_task_event
 from .source_input import clean_task_title
@@ -98,14 +98,25 @@ def create_task(
     page_url: str = "",
     options: TaskOptions | None = None,
     mode: str | None = None,
+    *,
+    handoff_id: str = "",
+    source_identity: SourceIdentity | None = None,
+    learning_range: dict[str, float] | None = None,
+    subtitle_probe: SubtitleProbe | None = None,
+    extension_version: str = "",
 ) -> TaskRecord:
     ensure_dirs()
     record = TaskRecord(
         id=new_task_id(),
+        handoff_id=handoff_id,
         source_type=source_type,  # type: ignore[arg-type]
         mode=mode or default_task_mode(source_type),
         title=clean_task_title(title, page_url),
         page_url=page_url,
+        source_identity=source_identity or SourceIdentity(),
+        learning_range=learning_range or {},
+        subtitle_probe=subtitle_probe,
+        extension_version=extension_version,
         options=public_task_options(options),
         created_at=now_iso(),
         updated_at=now_iso(),
@@ -368,7 +379,7 @@ def delete_task(task_id: str) -> dict[str, Any]:
                 resolved_upload = owned_upload.resolve()
                 shared = any(
                     other.id != task_id and other.source_media_path and Path(other.source_media_path).resolve() == resolved_upload
-                    for other in list_tasks()
+                    for other in list_tasks_snapshot()
                 )
                 if UPLOAD_DIR.resolve() in resolved_upload.parents and resolved_upload.is_file() and not shared:
                     upload_bytes = resolved_upload.stat().st_size
@@ -445,13 +456,18 @@ def read_json(task_id: str, filename: str, default: Any = None) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
 
 
-def list_tasks_snapshot() -> list[TaskRecord]:
+def list_tasks_snapshot(*, strict: bool = False) -> list[TaskRecord]:
     """Nonmutating manifest snapshots: no mkdir, index, reconciliation or repair."""
     records: list[TaskRecord] = []
     for path in TASK_DIR.glob("*/task.json"):
         try:
-            records.append(TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8")))))
+            record = TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8"))))
+            if strict and record.id != path.parent.name:
+                raise ValueError("course_episode_identity_conflict")
+            records.append(record)
         except (OSError, ValueError, TypeError):
+            if strict:
+                raise
             continue
     return sorted(records, key=lambda item: item.created_at, reverse=True)
 

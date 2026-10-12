@@ -1,4 +1,5 @@
 """Shared options and owned-media checks for explicit task actions."""
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -43,3 +44,17 @@ def task_media_path(task: TaskRecord) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+@contextmanager
+def media_source_admission(task_id: str, source: TaskRecord):
+    """Commit dependencies after probing, under the source deletion lock order."""
+    from .storage import assistant_records, task_state_transaction, get_task, DATA_DIR
+    with assistant_records.locked(DATA_DIR), task_state_transaction():
+        try:
+            current = get_task(task_id)
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(409, {"code": "media_source_changed", "message": "来源已改变，请刷新后重试。"}) from exc
+        if current.id != task_id or current.model_dump() != source.model_dump():
+            raise HTTPException(409, {"code": "media_source_changed", "message": "来源已改变，请刷新后重试。"})
+        yield

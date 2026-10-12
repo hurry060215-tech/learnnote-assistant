@@ -3,7 +3,14 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const source = readFileSync(new URL("../desk-material-encoding.js", import.meta.url), "utf8");
-const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
+const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const interactions = readFileSync(new URL("../desk-interactions.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const markSavedSource = interactions.slice(interactions.indexOf("  function markSaved(dialog)"), interactions.indexOf("  function canLeave(dialog)"));
+const closeProducer = interactions.slice(interactions.indexOf('  document.addEventListener(\n    "close",'), interactions.indexOf("  const back ="));
+const closeConsumerStart = tools.indexOf('  dialog.addEventListener("learnnote:dialog-closed"');
+const closeConsumer = tools.slice(closeConsumerStart, tools.indexOf('  dialog.addEventListener("cancel",', closeConsumerStart));
+assert.match(closeProducer, /markSaved\(event.target\)/);
+assert.match(closeConsumer, /generation\+\+/);
 assert.match(tools, /"material-encoding": materialEncoding/);
 assert.match(tools, /if \(canRedecodeMaterial\(s\)\)/);
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -12,21 +19,25 @@ const fixture = { kind: "material", id: "local/text", material_id: "local/text",
 const updated = () => ({ material: { ...fixture, updated_at: "new-version", metadata: { encoding: "gb18030" } } });
 
 function harness(moduleSource = source) {
-  const nodes = new Map(), calls = [], posts = [], gets = [], confirmations = [], windowEvents = new Map();
+  const nodes = new Map(), calls = [], posts = [], gets = [], confirmations = [], windowEvents = new Map(), documentEvents = new Map();
   let generation = 0, refreshes = 0;
   class Element {
     constructor() { this.listeners = new Map(); this.disabled = false; this.value = "utf-8"; this.textContent = ""; }
     set innerHTML(html) { this.html = html; for (const [, id] of html.matchAll(/id="([^"]+)"/g)) nodes.set(id, new Element()); }
     addEventListener(name, fn) { this.listeners.set(name, fn); }
+    dispatchEvent(event) { this.listeners.get(event.type)?.(event); return !event.defaultPrevented; }
     close() { this.open = false; }
   }
   const dialog = new Element();
+  dialog.tagName = "DIALOG"; dialog.dataset = {};
   const state = { selected: structuredClone(fixture), epoch: 1 };
   const $ = id => nodes.get(id);
   const h = { state, dialog, calls, posts, gets, confirmations, $, confirm: true,
-    refreshError: null, refreshPending: null, get refreshes() { return refreshes; } };
+    refreshError: null, refreshPending: null, get refreshes() { return refreshes; }, get generation() { return generation; } };
   const context = vm.createContext({
-    document: { getElementById: $ },
+    document: { getElementById: $, addEventListener: (name, fn) => documentEvents.set(name, fn) },
+    dialog, Event,
+    get generation() { return generation; }, set generation(value) { generation = value; },
     window: { addEventListener: (name, fn) => windowEvents.set(name, fn) },
     confirm: text => { confirmations.push(text); return h.confirm; },
     esc: text => String(text).replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
@@ -37,6 +48,8 @@ function harness(moduleSource = source) {
       return { material: structuredClone(fixture) };
     },
   });
+  // Exercise both production handlers and their shared dirty-state cleanup.
+  vm.runInContext(`${markSavedSource}\n${closeProducer}\n${closeConsumer}`, context);
   vm.runInContext(moduleSource.replace(/^import .*;\r?\n/, "").replaceAll("export function", "function"), context);
   const show = () => {
     generation++; dialog.open = true;
@@ -50,6 +63,7 @@ function harness(moduleSource = source) {
   h.canRedecode = context.canRedecodeMaterial;
   h.submit = () => $("materialEncodingForm").listeners.get("submit")({ preventDefault() {}, stopPropagation() {} });
   h.close = () => { generation++; dialog.close(); };
+  h.nativeClose = () => documentEvents.get("close")({ target: dialog });
   h.escape = () => { dialog.listeners.get("cancel")(); dialog.close(); };
   h.navigate = (same = false) => {
     windowEvents.get("learnnote:navigation")(); state.epoch++;
@@ -118,6 +132,40 @@ for (const leave of ["close", "escape", "navigate", "home", "same-source navigat
   h.posts[0].resolve(updated()); await work;
   assert.equal(h.refreshes, 0, "The previous visit cannot update a reopened panel");
   h.close(); await h.open(); assert.equal(h.$("materialRedecodeSubmit").disabled, false);
+}
+
+{
+  const h = harness(); await h.open(); h.close(); await h.open();
+  h.dialog.dataset.unsaved = "true";
+  const generation = h.generation;
+  h.nativeClose(); // Deliver the old visit's queued close after the new visit opens.
+  assert.equal(h.generation, generation, "An old close must not invalidate the reopened visit");
+  assert.equal(h.dialog.dataset.unsaved, "true", "An old close must not mark new edits as saved");
+  assert.equal(h.dialog.open, true);
+  assert.equal(h.posts.length, 0);
+}
+{
+  const h = harness(); await h.open(); h.close(); await h.open();
+  h.nativeClose();
+  const work = h.submit(); await h.submit();
+  assert.equal(h.posts.length, 1, "A reopened encoding visit still submits once after the old close event");
+  h.posts[0].resolve(updated()); await work;
+  assert.equal(h.refreshes, 1);
+  assert.match(h.$("materialCurrentEncoding").textContent, /gb18030/);
+  assert.match(h.$("toolStatus").textContent, /已重新解码/);
+}
+{
+  const h = harness(); await h.open(); h.dialog.dataset.unsaved = "true";
+  const work = h.submit(), generation = h.generation;
+  h.dialog.close(); h.nativeClose(); // A genuine native close still cancels this visit.
+  assert.equal(h.generation, generation + 1);
+  assert.equal(h.dialog.dataset.unsaved, undefined);
+  const status = h.$("toolStatus").textContent;
+  h.posts[0].resolve(updated()); await work; await h.submit();
+  assert.equal(h.refreshes, 0, "A reply after a genuine close cannot refresh the reader");
+  assert.equal(h.posts.length, 1, "A closed visit cannot submit another request");
+  assert.equal(h.dialog.open, false);
+  assert.equal(h.$("toolStatus").textContent, status);
 }
 
 for (const reject of [false, true]) {

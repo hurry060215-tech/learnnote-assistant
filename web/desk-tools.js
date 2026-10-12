@@ -27,6 +27,7 @@ export function installTools(ctx) {
     course = null,
     courses = [],
     courseEpisodes = [],
+    courseDeletion = null,
     proposals = [],
     batchRunning = false,
     cleanupPolicy = null,
@@ -152,6 +153,67 @@ export function installTools(ctx) {
     $("toolBody").querySelector(".tool-actions").prepend(askCourse);
     backAction = listCourses;
   }
+  const deletionReason = (reason) => ({
+    shared_task: "其他课程仍在使用，已保护",
+    dependent_task: "其他任务或视频片段仍依赖此来源，已保护",
+    active_task: "仍在排队或处理中，请先停止任务",
+    busy_task: "后台仍在使用，请稍后刷新",
+    source_missing: "任务已不存在，无需删除",
+    source_unreadable: "任务记录不可读，暂不能删除",
+    identity_conflict: "任务身份不一致，暂不能删除",
+    references_unavailable: "无法核对全部课程引用或后台状态，暂不能删除",
+    pending: "尚未生成任务",
+  }[reason] || "来源不可用，暂不能删除");
+  function updateCourseDeletionCount() {
+    const count = dialog.querySelectorAll("[data-delete-course-task]:checked").length;
+    $("courseDeletionCount").textContent = count
+      ? `已选择 ${count} 个子任务。确认后永久删除这些任务、笔记修订、相关复习卡和本机生成文件；应用内上传副本也可能被清理。`
+      : "已选择 0 个子任务。只删除课程分组，保留全部任务和笔记。";
+    $("confirmCourseDeletion").textContent = count ? `确认删除课程及 ${count} 个子任务` : "仅删除课程，保留全部任务";
+  }
+  async function reviewCourseDeletion() {
+    const id = course.id;
+    const token = show("确认删除课程", '<p class="muted">正在核对课程与子任务…</p>');
+    backAction = () => openCourse(id);
+    courseDeletion = null;
+    let result;
+    try { result = await api(`/api/courses/${id}/deletion-preview`); }
+    catch (error) { if (token === generation) status(error.message); return; }
+    if (token !== generation) return;
+    courseDeletion = { ...result, generation: token, submitting: false };
+    $("toolBody").innerHTML = `<p><strong>${esc(result.title)}</strong></p><p>默认保留全部子任务。仅勾选你明确要永久删除的任务；未勾选和受保护的任务会保留。</p><p class="muted">独立资料文档和应用数据目录外的原文件保留。确认前关闭或取消此页面不会删除内容。</p><div class="source-picker">${result.tasks.map(item => `<label class="tool-choice"><input type="checkbox" data-delete-course-task="${esc(item.task_id)}" ${item.eligible ? "" : "disabled"}><span>${esc(item.title)}<small>${esc(item.eligible ? "可以选择删除" : deletionReason(item.reason))}</small></span></label>`).join("") || '<p class="muted">没有可删除的子任务。</p>'}</div>${result.unlinked.map(item => `<p class="muted">${esc(item.title)} · ${esc(deletionReason(item.status))}</p>`).join("")}<p id="courseDeletionCount" role="status" aria-live="polite"></p><div class="tool-actions"><button data-action="cancel-delete-course">取消</button><button data-action="delete-course">重新核对删除范围</button><button class="danger" id="confirmCourseDeletion" data-action="confirm-delete-course"></button></div>`;
+    updateCourseDeletionCount();
+  }
+  async function confirmCourseDeletion() {
+    const review = courseDeletion;
+    if (!review || review.generation !== generation || review.course_id !== course?.id || review.submitting || !guard()) return;
+    const taskIds = [...dialog.querySelectorAll("[data-delete-course-task]:checked")].map(input => input.dataset.deleteCourseTask);
+    review.submitting = true;
+    const controls = [...dialog.querySelectorAll("#toolBody button, #toolBody input:not(:disabled)")];
+    controls.forEach(input => { input.disabled = true; });
+    try {
+      const result = await request(`/api/courses/${review.course_id}`, { method: "DELETE", body: JSON.stringify({ confirm: "delete_course", revision: review.revision, snapshot: review.snapshot, task_ids: taskIds }) });
+      let refreshWarning = "";
+      try { await refresh(); } catch { refreshWarning = " 资料列表暂未刷新，请稍后重新打开。"; }
+      if (review.generation !== generation) return;
+      if (state.selected?.kind === "task" && result.deleted_task_ids?.includes(state.selected.id)) ctx.showHome({ check: false });
+      if (result.deleted) {
+        course = null;
+        const listGeneration = generation + 1;
+        try { await listCourses(); }
+        catch { if (generation !== listGeneration) return; refreshWarning = " 课程列表暂不可用，请稍后重新打开。"; }
+        status(`课程已删除；删除了 ${result.deleted_task_ids?.length || 0} 个子任务，其余内容保留。${refreshWarning}`);
+      } else {
+        const names = new Map(review.tasks.map(item => [item.task_id, item.title]));
+        const details = (result.task_outcomes || []).map(item => `${names.get(item.task_id) || item.task_id}：${item.error ? (item.deleted ? "任务已移除，但清理未完成" : "清理未完成，请核对剩余内容") : "已删除"}`).join("；");
+        await reviewCourseDeletion();
+        status(`删除未全部完成，课程仍保留。${details ? details + "。" : ""}请核对剩余任务后重新选择。${refreshWarning}`);
+      }
+    } finally {
+      review.submitting = false;
+      if (review.generation === generation) controls.forEach(input => { input.disabled = false; });
+    }
+  }
   async function studySettings(courseId = "", taskId = "") {
     const token = show("复习与计划", '<p class="muted">正在读取…</p>');
     await api("/api/study/plan/initialize", {
@@ -206,7 +268,26 @@ export function installTools(ctx) {
     const backupHint = document.createElement("p"); backupHint.className = "muted";
     backupHint.textContent = "包含填空作答、评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
     const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
-    const exportBackup = document.createElement("a"); exportBackup.textContent = "导出学习备份"; exportBackup.href = "/api/study/backup"; exportBackup.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const backupFeedback = document.createElement("p"); backupFeedback.className = "muted";
+    backupFeedback.dataset.backupStatus = ""; backupFeedback.setAttribute("role", "status"); backupFeedback.hidden = true;
+    const exportBackup = document.createElement("button"); exportBackup.type = "button"; exportBackup.textContent = "导出学习备份";
+    exportBackup.onclick = () => run(exportBackup, async token => {
+      backupFeedback.hidden = true;
+      const backup = await api("/api/study/backup").catch(error => {
+        if (token === generation && dialog.open) {
+          backupFeedback.textContent = error.message; backupFeedback.hidden = false;
+          backupFeedback.scrollIntoView({ block: "nearest" });
+        }
+        throw error;
+      });
+      if (token !== generation || !dialog.open) return;
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url;
+      link.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link);
+      try { link.click(); status("学习备份已导出。"); }
+      finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    });
     const restoreButton = document.createElement("button"); restoreButton.type = "button"; restoreButton.textContent = "选择备份并恢复";
     const backupFile = document.createElement("input"); backupFile.type = "file"; backupFile.accept = "application/json,.json"; backupFile.hidden = true; backupFile.setAttribute("aria-label", "选择 LearnNote 学习备份");
     restoreButton.onclick = () => backupFile.click();
@@ -225,7 +306,7 @@ export function installTools(ctx) {
       finally { backupFile.value = ""; }
     };
     backupActions.append(exportBackup, restoreButton, backupFile);
-    backupPanel.append(backupSummary, backupHint, backupActions);
+    backupPanel.append(backupSummary, backupHint, backupActions, backupFeedback);
     const deleteStudy = document.createElement("button"); deleteStudy.type = "button"; deleteStudy.className = "danger";
     deleteStudy.textContent = "永久删除学习记录";
     deleteStudy.onclick = async () => {
@@ -658,6 +739,13 @@ export function installTools(ctx) {
     if (batchRunning) return;
     if (course.paused) throw new Error("请先继续课程。");
     const snapshot = await api(`/api/courses/${course.id}`);
+    // A legacy course or a lost bind acknowledgement may resolve by manifest
+    // alone. This explicit action durably adopts reuse before skipping it.
+    for (const episode of snapshot.episodes || []) {
+      if (episode.source_kind === "url" && episode.task_id) {
+        await api(`/api/courses/${snapshot.course.id}/episodes/${episode.episode_id}/prepare`, { method: "POST" });
+      }
+    }
     const pending = (snapshot.episodes || []).filter(item => item.source_kind === "url" && !item.task_id && item.status !== "identity_conflict").slice(0, 24);
     if (!pending.length) { status("没有待提交分集；失败或中断的分集可单独恢复。"); return; }
     if (!confirm(`将提交 ${pending.length} 个分集，字幕优先且不分析画面。每集使用当前资源预算；重复点击会复用已有任务。继续？`)) return;
@@ -817,12 +905,9 @@ export function installTools(ctx) {
       await saveCourse({ ...course, paused: !course.paused });
       courseView();
     },
-    "delete-course": async () => {
-      if (!confirm("只删除课程分组，保留其中的笔记和资料？")) return;
-      await api(`/api/courses/${course.id}`, { method: "DELETE" });
-      course = null;
-      await listCourses();
-    },
+    "delete-course": reviewCourseDeletion,
+    "cancel-delete-course": () => openCourse(courseDeletion.course_id),
+    "confirm-delete-course": confirmCourseDeletion,
     batch,
     "course-review": () => studySettings(course.id),
     "refresh-course": () => openCourse(course.id),
@@ -1063,6 +1148,9 @@ export function installTools(ctx) {
         await annotations();
         ctx.reloadAnnotations();
       });
+  });
+  dialog.addEventListener("change", (event) => {
+    if (event.target.matches("[data-delete-course-task]")) updateCourseDeletionCount();
   });
   dialog.addEventListener("submit", (event) => {
     event.preventDefault();

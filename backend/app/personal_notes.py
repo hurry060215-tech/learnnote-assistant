@@ -13,7 +13,7 @@ from .library import get_material, material_content
 from .personal_anchors import KINDS, annotation_targets, digest, normalize_anchor, read_anchor_artifact, resolve_anchor, validate_new_anchor
 
 from .personal_storage import lock as _lock, personal_transaction
-from .personal_restore import personal_restore_transaction
+from .personal_restore import _annotation_file, _edition_file, _read_existing, personal_restore_transaction
 
 
 def source_key(kind: str, source_id: str) -> str:
@@ -160,38 +160,40 @@ def annotation_markdown(kind: str, source_id: str) -> str:
 
 
 def export_personal_data() -> dict[str, list[dict]]:
-    """Export only user-authored annotations and note editions for a local backup."""
-
-    annotations = []
-    notes_root = DATA_DIR / "personal-notes"
-    if notes_root.is_dir():
-        for path in sorted(notes_root.glob("*.json")):
-            key = path.stem
-            if not re.fullmatch(r"(?:task|material)-[A-Za-z0-9_-]+", key):
-                continue
-            try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-                items = value.get("annotations") if isinstance(value, dict) else None
-                if isinstance(items, list):
-                    annotations.append({"key": key, "items": items})
-            except (OSError, TypeError, ValueError, json.JSONDecodeError):
-                continue
-
-    editions = []
-    editions_root = DATA_DIR / "user-editions"
-    if editions_root.is_dir():
-        for path in sorted(editions_root.glob("*.json")):
-            if not re.fullmatch(r"[a-f0-9]{64}", path.stem):
-                continue
-            try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-                text = value.get("text") if isinstance(value, dict) else None
-                revision = str(value.get("revision") or "") if isinstance(value, dict) else ""
-                if isinstance(text, str) and len(text) <= 5_000_000 and revision == hashlib.sha256(text.encode("utf-8")).hexdigest():
-                    editions.append({"key": path.stem, "value": {"text": text, "revision": revision, "edited": bool(value.get("edited"))}})
-            except (OSError, TypeError, ValueError, json.JSONDecodeError):
-                continue
-    return {"annotations": annotations, "editions": editions}
+    """Export all recognized personal content or fail without a partial backup."""
+    result = {"annotations": [], "editions": []}
+    total_bytes = 0
+    with personal_transaction(DATA_DIR):
+        for folder, pattern, kind in (
+            ("personal-notes", r"(?:task|material)-[A-Za-z0-9_-]+", "annotations"),
+            ("user-editions", r"[a-f0-9]{64}", "editions"),
+        ):
+            root = DATA_DIR / folder
+            if root.is_symlink() or (root.exists() and not root.is_dir()):
+                raise ValueError("personal_backup_target_unsafe")
+            paths = sorted(path for path in root.iterdir() if path.suffix == ".json") if root.exists() else []
+            for path in paths:
+                if not re.fullmatch(pattern, path.stem):
+                    continue  # Files outside the defined personal-record namespace.
+                if len(result[kind]) >= 100_000:
+                    raise ValueError("personal_backup_limit_exceeded")
+                content = _read_existing(path)
+                if content is None:
+                    raise ValueError("personal_backup_target_changed")
+                total_bytes += len(content)
+                if total_bytes > 100_000_000:
+                    raise ValueError("personal_backup_too_large")
+                if kind == "annotations":
+                    value = _annotation_file(content, path.stem, validate_personal_data)
+                    result[kind].append({"key": path.stem, "items": value["annotations"]})
+                else:
+                    _edition_file(content, path.stem, validate_personal_data)
+                    value = json.loads(content.decode("utf-8"))
+                    result[kind].append({"key": path.stem, "value": {
+                        "text": value["text"], "revision": value["revision"], "edited": value["edited"],
+                    }})
+        validate_personal_data(result)
+    return result
 
 
 def validate_personal_data(payload: dict) -> dict[str, list[dict]]:
