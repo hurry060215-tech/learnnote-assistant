@@ -63,6 +63,7 @@ class TokenUsageTests(unittest.TestCase):
             with sqlite3.connect(Path(root) / "token-usage.sqlite3") as db:
                 db.execute("UPDATE usage SET at = ? WHERE model = 'one'",
                     ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),))
+            db.close()
             report = token_usage.usage_report()
             self.assertEqual(report["totals"]["total_tokens"], 25)
             self.assertEqual(report["totals"]["measured_requests"], 1)
@@ -93,6 +94,7 @@ class TokenUsageTests(unittest.TestCase):
                 db.executemany("INSERT INTO usage VALUES (?,?,?,?,?,?,?,?,?)", [
                     ("2020-01-01T00:00:00+00:00", "old", "fixture.invalid", "note", "success", 8, 1, 9, 1),
                     ("2020-01-02T00:00:00+00:00", "old", "fixture.invalid", "note", "failed", None, None, None, 2)])
+            db.close()
             original = db_path.read_bytes()
             app = FastAPI(); app.include_router(system_router)
             with TestClient(app, base_url="http://127.0.0.1") as client:
