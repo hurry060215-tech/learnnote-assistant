@@ -273,7 +273,6 @@ small,
 .document,
 .annotations,
 .editor {
-  max-width: 830px;
   margin: 0 auto;
   padding: 32px 40px;
 }
@@ -646,14 +645,6 @@ details[open] > summary::after {
 .rating button {
   border: 1px solid var(--line);
 }
-@media (max-width: 1250px) {
-  .document,
-  .annotations,
-  .editor {
-    padding-left: 40px;
-    padding-right: 40px;
-  }
-}
 @media (max-width: 760px) {
   body {
     grid-template-columns: 1fr;
@@ -664,27 +655,19 @@ details[open] > summary::after {
     left: -280px;
     z-index: 8;
     transition: left 0.18s;
-    box-shadow: 20px 0 90px #0002;
+    box-shadow: none;
   }
   body.menu-open .sidebar {
     left: 0;
+    box-shadow: 20px 0 90px #0002;
   }
   #menu {
     display: block;
   }
   .toolbar {
     height: 62px;
-    padding: 0 12px;
-    gap: 6px;
-  }
-  #breadcrumb {
-    flex: 1;
-  }
-  .actions {
-    gap: 0;
   }
   .actions button {
-    padding: 8px;
     font-size: 12px;
   }
   .document,
@@ -694,9 +677,6 @@ details[open] > summary::after {
   }
   .document h1 {
     font-size: 27px;
-  }
-  .document {
-    font-size: 15px;
   }
   .task-status {
     margin: 16px;
@@ -1492,6 +1472,27 @@ body.assistant-visible .workspace {
   .assistant-panel {
     width: 100%;
   }
+  .assistant-panel > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+  .assistant-panel > header strong {
+    white-space: nowrap;
+  }
+  .assistant-panel > header > div {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+  }
+  .assistant-panel > header .assistant-source-tag {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: 100%;
+    justify-self: start;
+  }
   .panel-resize {
     display: none;
   }
@@ -1653,12 +1654,6 @@ body.assistant-full .assistant-panel form {
 body.dark {
   --accent-text: #b5d0a5;
 }
-.home-modes button.active,
-.settings-sections [aria-pressed="true"],
-.document .time-link {
-  color: var(--accent);
-}
-
 /* Global assistant and shared navigation behavior. */
 .assistant-skill-controls {
   padding: 12px 18px;
@@ -1819,9 +1814,6 @@ body.dark {
 .home-runtime {
   margin: 0;
   align-self: start;
-}
-.home-recent {
-  box-shadow: none;
 }
 .recent-note,
 .library-row,
@@ -2242,10 +2234,10 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 .settings-content small, .settings-content .muted, .settings-inline-actions button { font-size: 13px; line-height: 1.55; }
 .settings-workbench form > header { margin: 0; padding: 18px 24px; border-bottom: 1px solid var(--line); }
 .settings-save-bar { margin: 0 !important; padding: 12px 24px; border-top: 1px solid var(--line); background: var(--paper); font-size: 12px; }
-.sidebar footer { border-top: 1px solid var(--line); padding-top: 10px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)) 30px; gap: 3px; align-items: center; }
+.sidebar footer { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
 .sidebar footer button { padding: 8px 3px; min-width: 0; font-size: 13px; }
 .sidebar footer button:not(#theme) svg { display: none; }
-.sidebar footer #theme { padding: 6px; }
+.sidebar footer #theme { padding: 6px; margin-left: auto; }
 .document li > p { margin: 0 0 .4em; }
 .document pre, .assistant-answer pre { font-weight: 400; line-height: 1.5; }
 .assistant-answer p { margin: 8px 0; }
@@ -2303,4 +2295,16 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 @media (max-width: 600px) {
   .claim-timeline { padding: 10px; }
   .claim-timeline-list { max-height: 180px; }
+}
+@media (max-width: 360px) {
+  .assistant-panel {
+    overflow-y: auto;
+  }
+  .assistant-panel > header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assistant-panel > header > div {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
