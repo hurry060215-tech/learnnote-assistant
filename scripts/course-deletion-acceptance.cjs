@@ -5,12 +5,14 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
-// GET adds a fresh observation clock; compare every persisted/projected value
-// except that clock when asserting Cancel and stale reviews change no data.
+// GET adds fresh observation clocks; compare every persisted/projected value
+// except those clocks when asserting Cancel and stale reviews change no data.
 const stableTask = task => {
   const copy = structuredClone(task);
-  assert(Number.isInteger(copy.duration_estimate?.observed_at_unix_ms));
-  delete copy.duration_estimate.observed_at_unix_ms;
+  for (const field of ["duration_estimate", "whole_task_duration_estimate"]) {
+    assert(Number.isInteger(copy[field]?.observed_at_unix_ms));
+    delete copy[field].observed_at_unix_ms;
+  }
   return copy;
 };
 
