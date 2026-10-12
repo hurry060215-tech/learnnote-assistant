@@ -373,6 +373,7 @@ class WholeDurationTests(unittest.TestCase):
                         outside.write_bytes(b"synthetic target preserved")
                     path = self.root / task.id / module.FILENAME
                     path.symlink_to(outside)
+                    original_link_target = path.readlink()
                     attempt = start_pipeline_attempt(task.id, entry_route="subtitle_only")
                     update_task(task.id, status="running")
                     if module is legacy:
@@ -380,7 +381,7 @@ class WholeDurationTests(unittest.TestCase):
                     else:
                         module.bind_whole_measurement(task.id, attempt, self.options, self.transcript, 300, route="transcript_to_note")
                     self.assertTrue(path.is_symlink())
-                    self.assertEqual(path.readlink(), outside)
+                    self.assertEqual(path.readlink(), original_link_target)
                     if dangling:
                         self.assertFalse(outside.exists())
                     else:
