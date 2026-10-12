@@ -429,15 +429,22 @@ async function runScenario(scenario, out) {
 
     // Use the actual root scroller. Core points initially has one occurrence;
     // an earlier batch will take its old occurrence-based Markdown heading ID.
-    const before = await page.evaluate(({ heading, claim }) => {
+    const before = await page.evaluate(({ heading, claim, response }) => {
       const nodes = [...document.querySelectorAll("#document h2,#document h3")];
       const section = nodes.find(node => node.textContent === heading);
       const core = nodes[nodes.indexOf(section) + 1];
       if (!section || core?.textContent !== "Core points") throw new Error("Missing fixture source-range heading");
       document.scrollingElement.scrollTop += core.getBoundingClientRect().top + 12;
+      const passage = [...document.querySelectorAll("#document p")].find(node => node.textContent === claim);
+      if (response) {
+        const selection = window.getSelection(), range = document.createRange();
+        range.selectNodeContents(passage); selection.removeAllRanges(); selection.addRange(range);
+        window.__responsePendingProbe = { child: document.getElementById("document").firstChild, passage,
+          anchor: selection.anchorNode, focus: selection.focusNode, anchorOffset: selection.anchorOffset, focusOffset: selection.focusOffset };
+      }
       return { coreId: core.id, coreTop: core.getBoundingClientRect().top, sectionTop: section.getBoundingClientRect().top, scrollTop: document.scrollingElement.scrollTop,
-        claimTop: [...document.querySelectorAll("#document p")].find(node => node.textContent === claim).getBoundingClientRect().top };
-    }, { heading: SECOND_HEADING, claim: SECOND_CLAIM });
+        claimTop: passage.getBoundingClientRect().top, statusHeight: document.getElementById("taskStatus").getBoundingClientRect().height };
+    }, { heading: SECOND_HEADING, claim: SECOND_CLAIM, response: responseScenario(scenario) });
     assert(before.scrollTop > 0 && before.coreTop < 0, "The test must actually read below the repeated subheading");
     const requestsBeforeInsert = report.editionRequests.length;
     const responseProgress = responseScenario(scenario)
@@ -445,12 +452,19 @@ async function runScenario(scenario, out) {
     await emit(fixture.addEarlierBatch());
     if (responseProgress) await responseProgress;
     await waitEdition();
+    if (responseScenario(scenario)) {
+      // The unchanged edition hash alone cannot signal completion of the
+      // separate event-history repaint that adds an elapsed-time detail.
+      await page.waitForFunction(() => document.querySelector('#taskStatus [data-stage="summary"] small')?.textContent.includes("已用"));
+      await settle();
+    }
     const after = await page.evaluate(({ heading, claim }) => {
       const nodes = [...document.querySelectorAll("#document h2,#document h3")];
       const section = nodes.find(node => node.textContent === heading);
       const core = nodes[nodes.indexOf(section) + 1];
       return { coreId: core.id, coreTop: core.getBoundingClientRect().top, sectionTop: section.getBoundingClientRect().top, scrollTop: document.scrollingElement.scrollTop,
-        claimTop: [...document.querySelectorAll("#document p")].find(node => node.textContent === claim).getBoundingClientRect().top };
+        claimTop: [...document.querySelectorAll("#document p")].find(node => node.textContent === claim).getBoundingClientRect().top,
+        statusHeight: document.getElementById("taskStatus").getBoundingClientRect().height };
     }, { heading: SECOND_HEADING, claim: SECOND_CLAIM });
     assert(report.editionRequests.length > requestsBeforeInsert, "A ready event with a new updated_at must reload the edition");
     if (scenario.name === "enrichment") {
@@ -470,7 +484,18 @@ async function runScenario(scenario, out) {
     else assert.notEqual(after.coreId, before.coreId, "The earlier duplicate heading must take the original occurrence-based ID");
     assert(Math.abs(after.sectionTop - before.sectionTop) <= 3, `Source section jumped: ${JSON.stringify({ before, after })}`);
     assert(Math.abs(after.claimTop - before.claimTop) <= 3, "The same batch-2 passage must retain its viewport position");
-    if (responseScenario(scenario)) assert(Math.abs(after.scrollTop - before.scrollTop) <= 1);
+    if (responseScenario(scenario)) {
+      assert(Math.abs(after.scrollTop - before.scrollTop - (after.statusHeight - before.statusHeight)) <= 1,
+        "Scroll must compensate for status-panel growth above the unchanged response");
+      const stable = await page.evaluate(() => {
+        const probe = window.__responsePendingProbe, selection = window.getSelection();
+        return document.getElementById("document").firstChild === probe.child && probe.passage.isConnected
+          && selection.anchorNode === probe.anchor && selection.focusNode === probe.focus
+          && selection.anchorOffset === probe.anchorOffset && selection.focusOffset === probe.focusOffset;
+      });
+      assert(stable, "Final-check progress must retain the completed response DOM and active selection");
+      assert.equal(await page.evaluate(() => window.getSelection().toString()), SECOND_CLAIM);
+    }
     else assert(after.scrollTop > before.scrollTop + 500, "Root scroll must compensate for the inserted earlier batch");
     assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), responseScenario(scenario) ? 1 : 2);
     const order = await page.locator("#document h2").allTextContents();
@@ -490,7 +515,9 @@ async function runScenario(scenario, out) {
       const range = document.createRange();
       range.selectNodeContents(passage);
       selection.removeAllRanges(); selection.addRange(range);
-      const probe = { child: element.firstChild, passage, anchor: selection.anchorNode, focus: selection.focusNode, anchorOffset: selection.anchorOffset, focusOffset: selection.focusOffset, scrollTop: document.scrollingElement.scrollTop, mutations: 0 };
+      const probe = { child: element.firstChild, passage, anchor: selection.anchorNode, focus: selection.focusNode, anchorOffset: selection.anchorOffset, focusOffset: selection.focusOffset,
+        scrollTop: document.scrollingElement.scrollTop, claimTop: passage.getBoundingClientRect().top,
+        statusHeight: document.getElementById("taskStatus").getBoundingClientRect().height, mutations: 0 };
       probe.observer = new MutationObserver(records => { probe.mutations += records.length; });
       probe.observer.observe(element, { childList: true, subtree: true, characterData: true });
       window.__progressiveReaderProbe = probe;
@@ -502,12 +529,15 @@ async function runScenario(scenario, out) {
         const selection = window.getSelection();
         return { sameChild: document.getElementById("document").firstChild === probe.child, passageConnected: probe.passage.isConnected,
           sameSelection: selection.anchorNode === probe.anchor && selection.focusNode === probe.focus && selection.anchorOffset === probe.anchorOffset && selection.focusOffset === probe.focusOffset,
-          text: selection.toString(), mutations: probe.mutations, scrollDelta: document.scrollingElement.scrollTop - probe.scrollTop };
+          text: selection.toString(), mutations: probe.mutations, scrollDelta: document.scrollingElement.scrollTop - probe.scrollTop,
+          claimDelta: probe.passage.getBoundingClientRect().top - probe.claimTop,
+          statusDelta: document.getElementById("taskStatus").getBoundingClientRect().height - probe.statusHeight };
       });
       assert(result.sameChild && result.passageConnected && result.sameSelection, `${label}: DOM/selection changed ${JSON.stringify(result)}`);
       assert.equal(result.text, SECOND_CLAIM, `${label}: selection text`);
       assert.equal(result.mutations, 0, `${label}: reader DOM was replaced`);
-      assert(Math.abs(result.scrollDelta) <= 1, `${label}: scroll moved`);
+      assert(Math.abs(result.claimDelta) <= 3, `${label}: passage moved`);
+      assert(Math.abs(result.scrollDelta - result.statusDelta) <= 1, `${label}: scroll did not compensate for status height`);
       report.observations[label] = result;
     }
     const duplicate = fixture.events.find(event => event.event_id === 2);
@@ -523,7 +553,7 @@ async function runScenario(scenario, out) {
     assert.match(await page.locator('#taskStatus [data-duration-estimate="overrun"]').innerText(), /已超出历史参考上限，剩余时间未知/);
     await page.evaluate(() => window.__progressiveReaderProbe.observer.disconnect());
     await screenshot("03-duplicate-event-selection.png");
-    report.checks.push("Duplicate event and newer progress-only event preserve reader DOM, selection, and scroll");
+    report.checks.push("Duplicate event and newer progress-only event preserve reader DOM, selection, and passage position as status height changes");
 
     const partialHash = digest(fixture.edition.text);
     await emit(fixture.failMetadata());

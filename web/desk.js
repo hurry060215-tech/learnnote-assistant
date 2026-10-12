@@ -1,7 +1,7 @@
 import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { collapseSourceReviews } from "/web/source-review.js";
-import { renderEditionStable } from "/web/reader-progress.js";
+import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js";
 import { createSectionReader } from "/web/reader-sections.js";
 import {
   installConnections,
@@ -631,6 +631,10 @@ async function loadTaskEvents(task) {
   if (state.selected?.id === task.id) renderStatus(false);
 }
 function renderStatus(reload = true) {
+  return preserveReaderPosition($("document"), document.scrollingElement,
+    `${state.selected.kind}:${state.selected.id}`, () => renderTaskStatus(reload));
+}
+function renderTaskStatus(reload) {
   const t = state.selected;
   $("regenerate").hidden = t.kind !== "task" || t.status !== "success";
   const panel = $("taskStatus");
