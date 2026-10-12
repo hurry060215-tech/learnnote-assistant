@@ -138,9 +138,10 @@ component rather than making a new general spacing scale from every literal.
   wider annotation inset until its alignment is reviewed against fresh pixels.
 - Assistant: 430px default; 320–720px user range within available room. Above
   1100px it reserves main-column space; at <=1100px it overlays. At <=760px it is
-  full width and the header puts the source label on a separate second row. At
-  <=360px the header uses one column, actions wrap, and the panel can scroll so
-  controls remain reachable at narrow effective zoom viewports.
+  full width. At assistant-container widths <=600px, including desktop side panels,
+  the header puts the source label on a separate second row. At container widths
+  <=360px the header uses one column and actions wrap. At viewport widths <=360px
+  the panel can scroll so controls remain reachable at narrow effective zoom.
 - Desktop page contents appears only when the width and `data-contents-fit` allow
   it; do not reserve an empty column when hidden.
 - General dialog: min(540px, viewport minus 28px), maximum 90dvh, 32px padding;
@@ -203,9 +204,11 @@ against an isolated local fixture backend with actual installed Edge. It records
 1280, 1440, 768, and 390px at light/dark with the note sidebar open/closed; captures
 home, populated reader, empty search, empty assistant, create dialog, and settings;
 and checks horizontal overflow, reader centering, footer bounds, the hidden drawer
-shadow, and assistant header wrapping. Two additional assistant captures use
+shadow, and assistant header wrapping. Four additional assistant captures use
 195x422 CSS pixels for effective 200% reflow of a 390x844 area; this is not native
-browser zoom. View the PNGs. Geometry assertions are not
+browser zoom. Actual wheel input reveals the empty-history explanation and
+composer; both scroll positions are captured in each theme (68 PNGs total).
+View the PNGs. Geometry assertions are not
 an aesthetic approval. The existing study-product gate separately covers effective
 200% viewport scaling, reduced effects, forced colors, and source workflows.
 

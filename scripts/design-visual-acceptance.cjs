@@ -70,14 +70,14 @@ async function main() {
           const range = document.createRange(); range.selectNodeContents(walker.currentNode);
           for (const rect of range.getClientRects()) tops.push(rect.top);
         }
-        return { viewport: innerWidth, titleLineTops: tops,
+        return { viewport: innerWidth, panelWidth: header.parentElement.getBoundingClientRect().width, titleLineTops: tops,
           titleBottom: title.getBoundingClientRect().bottom, tagTop: tag.getBoundingClientRect().top,
           controls: [...header.querySelectorAll("button")].map(button => {
             const rect = button.getBoundingClientRect();
             return { id: button.id, left: rect.left, right: rect.right };
           }) };
       });
-      if (heading.viewport <= 760) {
+      if (heading.panelWidth <= 600) {
         assert(heading.titleLineTops.length > 0);
         assert(Math.max(...heading.titleLineTops) - Math.min(...heading.titleLineTops) < 1,
           `${name}: assistant title wraps`);
@@ -210,12 +210,41 @@ async function main() {
       await page.locator(".assistant-empty").waitFor();
       const name = `390-effective-200-${theme}-assistant`;
       const heading = await assistantHeading(name);
+      // The existing history opens at its latest message. Use actual wheel input
+      // to read the beginning and explanation, including the empty-history case.
+      await page.locator("#assistantHistory").hover();
+      await page.mouse.wheel(0, -1000);
+      await page.waitForFunction(() => document.querySelector("#assistantHistory").scrollTop === 0);
+      const explanationDelta = await page.locator("#assistantHistory").evaluate(history => {
+        const title = history.querySelector(".assistant-empty strong").getBoundingClientRect();
+        const bounds = history.getBoundingClientRect();
+        if (title.top < bounds.top || title.bottom > bounds.bottom) throw new Error("Empty-state heading is not readable at the beginning of history");
+        return Math.max(0, Math.ceil(history.querySelector(".assistant-empty p").getBoundingClientRect().bottom - bounds.bottom + 1));
+      });
+      if (explanationDelta) await page.mouse.wheel(0, explanationDelta);
+      await page.waitForFunction(() => {
+        const history = document.querySelector("#assistantHistory"), bounds = history.getBoundingClientRect();
+        return [...history.querySelectorAll(".assistant-empty strong, .assistant-empty p")].every(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.top >= Math.max(0, bounds.top) - 1 && rect.bottom <= Math.min(innerHeight, bounds.bottom) + 1;
+        });
+      });
       await capture(name, "#assistantPanel");
       report.cases.at(-1).heading = heading;
+      report.cases.at(-1).empty_history_readable_after_wheel = true;
       report.cases.at(-1).effective_viewport = "195x422 CSS px; equivalent reflow only, not native zoom";
-      // Verify the composer remains reachable when the available height is small.
-      await page.locator("#aiQuestion").scrollIntoViewIfNeeded();
+      // Wheel over the header to scroll the outer panel, then verify and capture
+      // the composer. Neither this nor the history check rewrites app content.
+      await page.mouse.move(100, 20);
+      await page.mouse.wheel(0, 2000);
+      await page.waitForFunction(() => {
+        const rect = document.querySelector("#aiQuestion").getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth;
+      });
       await page.locator("#aiQuestion").fill("Synthetic reflow check; do not send.");
+      await capture(`${name}-composer`, "#assistantPanel");
+      report.cases.at(-1).composer_reachable_after_wheel = true;
+      report.cases.at(-1).effective_viewport = "195x422 CSS px; equivalent reflow only, not native zoom";
       await page.locator("#aiQuestion").fill("");
       await page.locator("#closeAssistant").click();
     }

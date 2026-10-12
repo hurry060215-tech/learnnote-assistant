@@ -70,9 +70,12 @@ New post-fix pixels and geometry must come from the supported actual Edge job.
 
 `scripts/design-visual-acceptance.cjs` captures 64 viewport PNGs over 1280/1440/768/390,
 light/dark, open/closed navigation, home/reader, empty search/assistant, create,
-and appearance settings, plus two 195x422 CSS-pixel assistant captures for effective
-200% reflow (not native browser zoom). The narrow header stacks and action controls
-wrap; the panel can scroll to keep the composer reachable. It uses actual application clicks with one synthetic
+and appearance settings, plus four 195x422 CSS-pixel assistant captures for effective
+200% reflow (not native browser zoom), 68 PNGs total. The narrow header stacks and
+action controls wrap; actual wheel input verifies readable empty-history text and
+a reachable composer, with both scroll positions captured in each theme. The
+header responds to panel width, including the 430px desktop panel, rather than
+viewport width alone. It uses actual application clicks with one synthetic
 Markdown import, scoped list/history reads, and no external model traffic. The
 report separates browser interaction, fixture data, screenshots, and geometric
 assertions. It does not assign aesthetic scores or claim native desktop WebView
@@ -90,3 +93,21 @@ the six UI visual contract tests and the architecture budget guard. Removed only
 previously overridden/repeated CSS declarations to retain the existing 2310-line
 runtime CSS budget; the guard was not relaxed.
 The new browser runner has not run locally because of the verified IPC limit.
+
+## First complete Edge matrix review
+
+All 66 PNGs from artifact `11760631275` were inspected individually. The report
+records Edge `153.0.4234.48`, synthetic merge SHA
+`dffe1db8dd25f1b4b23cc1dda1d1305ce805867b`, no page errors, and no external requests.
+The mobile drawer shadow and footer crowding are visibly fixed in both themes.
+Home and reader columns retain balanced gutters, and dialogs retain readable
+titles, fields, and actions. The remaining defect is the assistant title wrapping
+inside the 430px panel at desktop/tablet viewport widths. The follow-up applies the
+same header layout by the assistant container width rather than viewport width.
+
+At the 195px effective viewport, history initially shows its bottom because the
+existing message loader scrolls to the latest message. That screenshot alone does
+not establish whether the beginning is accessible. The final bounded runner adds
+real wheel-based title/explanation visibility checks and two composer screenshots,
+for 68 total. Those follow-up assertions and pixels require a new exact-tree Edge
+run; the earlier 66 images are not evidence that they passed.
