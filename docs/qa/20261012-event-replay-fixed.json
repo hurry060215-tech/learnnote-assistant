@@ -1,0 +1,26 @@
+{
+  "status": "pass",
+  "scope": "Actual loopback HTTP replay of copied frozen synthetic two-hour corpus; not another two-hour soak",
+  "commit": "9b966919d6b7d96dfa6f48932eedd5221fcb1e74",
+  "tree": "478f0a65dd0ce8ad82022905f52044a00874f0ce",
+  "stored_events": 7093,
+  "checks": [
+    {
+      "last_event_id": 0,
+      "events": 7093,
+      "terminal_event_id": 7093,
+      "exact_payloads": true
+    },
+    {
+      "last_event_id": 7090,
+      "events": 3,
+      "terminal_event_id": 7093,
+      "exact_payloads": true
+    }
+  ],
+  "original_bytes_unchanged": true,
+  "model_calls": 0,
+  "external_network": "blocked",
+  "corpus_sha256": "4825c5b4cdb30aae10ef002e41af41b935f14c9d982759895c0985c4c6c0986a",
+  "server_stopped": true
+}

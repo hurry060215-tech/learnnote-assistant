@@ -1,0 +1,295 @@
+"""Bounded real-time loopback SSE soak against LearnNote's production event route."""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timedelta, timezone
+import json
+import os
+from pathlib import Path
+import runpy
+import re
+import signal
+import hashlib
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+
+def bootstrap():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--seconds", type=float, default=7200)
+    parser.add_argument("--interval", type=float, default=1)
+    parser.add_argument("--restart", type=float, default=900)
+    parser.add_argument("--disconnect-events", type=int, default=15)
+    parser.add_argument("--server-port", type=int)
+    args = parser.parse_args()
+    args.repo, args.output = args.repo.resolve(), args.output.resolve()
+    if not re.fullmatch(r"[a-f0-9]{40}", args.expected_sha):
+        parser.error("--expected-sha must be an exact commit SHA")
+    def interrupted(signum, frame):
+        raise SystemExit(f"Interrupted by signal {signum}")
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGINT, interrupted)
+    if not args.server_port and args.output.exists() and any(args.output.iterdir()):
+        parser.error("--output must be a fresh empty directory")
+    args.output.mkdir(parents=True, exist_ok=True)
+    os.chdir(args.repo)
+    os.environ.update({"LEARNNOTE_DATA_DIR": str(args.output / "data"),
+                       "LEARNNOTE_DEPLOYMENT_MODE": "desktop", "LEARNNOTE_LLM_API_KEY": "",
+                       "ORT_DISABLE_TELEMETRY": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
+                       "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
+    sys.path[:0] = [str(args.repo / "backend"), str(args.repo)]
+    guard = runpy.run_path(str(args.repo / "scripts/test-backend-offline.py"))
+    with guard["offline_network"]():
+        if args.server_port:
+            from fastapi import FastAPI
+            import uvicorn
+            from app.routers.events import events_router
+            app = FastAPI()
+            app.include_router(events_router)
+            @app.get("/health")
+            def health():
+                return {"synthetic_event_soak": True}
+            uvicorn.run(app, host="127.0.0.1", port=args.server_port, log_level="warning")
+            return 0
+        return run(args)
+
+
+def run(args):
+    import requests
+    from app.models import TaskOptions
+    from app.observability import record_task_event, read_task_events_after
+    from app.storage import create_task, get_task, update_task
+    assert args.seconds >= 5 and args.interval > 0 and args.restart >= 2
+    assert args.disconnect_events >= 1
+    actual_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    assert actual_sha == args.expected_sha, "The soak must use the exact verified commit"
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
+    subprocess.run(["git", "diff", "--quiet", "HEAD", "--"], check=True)
+    main_tree = subprocess.check_output(["git", "rev-parse", args.expected_sha + "^{tree}"], text=True).strip()
+    assert tree == main_tree, "The soak must use the verified source tree"
+    report = {"status": "running", "verified_commit_sha": args.expected_sha,
+              "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "tree": tree, "requested_seconds": args.seconds, "transport": "real loopback HTTP/SSE",
+              "scope": "production event router and task/event storage; isolated synthetic task; no full app lifecycle",
+              "external_network": "blocked by repository guard", "model_calls": 0,
+              "native_extension_tested": False, "provider_network_tested": False,
+              "connections": 0, "planned_disconnects": 0, "server_restarts": 0, "heartbeats": 0}
+    report_path = args.output / "report.json"
+    def save():
+        temporary = report_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        temporary.replace(report_path)
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    process = None
+    log = (args.output / "server.log").open("a", encoding="utf-8")
+    stopped = threading.Event()
+    errors = []
+    writer = None
+    received, received_payloads = [], []
+    started = None
+    terminal = False
+    watchdog = None
+    deadline_expired = threading.Event()
+    journal = (args.output / "received.jsonl").open("x", encoding="utf-8")
+    def persist_received(event, event_id, payload):
+        journal.write(json.dumps({"event": event, "id": event_id, "data": payload}, ensure_ascii=False) + "\n")
+        journal.flush()
+        os.fsync(journal.fileno())
+    session = requests.Session()
+    session.trust_env = False
+    def start_server():
+        nonlocal process
+        process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--repo", str(args.repo),
+                                    "--output", str(args.output), "--expected-sha", args.expected_sha, "--server-port", str(port)], stdout=log, stderr=log)
+        until = time.monotonic() + 30
+        while time.monotonic() < until:
+            if process.poll() is not None:
+                raise RuntimeError("Synthetic event server exited before readiness")
+            try:
+                if session.get(base + "/health", timeout=1).json() == {"synthetic_event_soak": True}:
+                    report["server_pid"] = process.pid
+                    return
+            except requests.RequestException:
+                pass
+            time.sleep(.1)
+        raise RuntimeError("Synthetic event server did not become ready")
+    def stop_server():
+        nonlocal process
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        process = None
+    try:
+        task = create_task("local", "Synthetic two-hour event channel", options=TaskOptions(llm_api_key=""))
+        update_task(task.id, status="running", phase="summarizing")
+        start_server()
+        started = time.monotonic()
+        deadline = started + args.seconds
+        next_restart = started + args.restart
+        started_utc = datetime.now(timezone.utc)
+        report.update(started_at=started_utc.isoformat(), expected_end_at=(started_utc + timedelta(seconds=args.seconds)).isoformat(),
+                      driver_pid=os.getpid(), server_restart_interval_seconds=args.restart,
+                      producer_interval_seconds=args.interval, reconnect_every_events=args.disconnect_events)
+        save()
+        def expire_deadline():
+            deadline_expired.set()
+            os.kill(os.getpid(), signal.SIGTERM)
+        watchdog = threading.Timer(args.seconds + 60, expire_deadline)
+        watchdog.daemon = True
+        watchdog.start()
+        def produce():
+            sequence = 0
+            try:
+                while not stopped.is_set() and time.monotonic() < deadline:
+                    sequence += 1
+                    record_task_event(task.id, "partial_section_ready", phase="summarizing", status="draft",
+                                      message="Synthetic literal text: 学习原文 <not-markup>", details={"sequence": sequence})
+                    # An occasional real idle interval exercises SSE heartbeats.
+                    pause = 22 if sequence % 1200 == 0 and deadline - time.monotonic() > 25 else args.interval
+                    stopped.wait(pause)
+                if not stopped.is_set():
+                    update_task(task.id, status="success", phase="completed", progress=100)
+            except BaseException as exc:
+                errors.append(type(exc).__name__ + ": " + str(exc))
+                stopped.set()
+        writer = threading.Thread(target=produce, daemon=True)
+        writer.start()
+        received, received_payloads, cursor, terminal = [], [], 0, False
+        next_status = started + 60
+        while not terminal:
+            if errors:
+                raise RuntimeError(errors[0])
+            if time.monotonic() > deadline + 60:
+                raise TimeoutError("Terminal event did not arrive after the bounded run")
+            if time.monotonic() >= next_restart and time.monotonic() < deadline:
+                stop_server()
+                start_server()
+                report["server_restarts"] += 1
+                next_restart = time.monotonic() + args.restart
+            report["connections"] += 1
+            url = base + f"/api/tasks/{task.id}/events/stream?after={max(0, cursor - 5)}"
+            with session.get(url, headers={"Last-Event-ID": str(cursor)}, stream=True, timeout=(3, 25)) as response:
+                response.raise_for_status()
+                response.encoding = "utf-8"
+                fields, count = {}, 0
+                for line in response.iter_lines(chunk_size=1, decode_unicode=True):
+                    if errors:
+                        raise RuntimeError(errors[0])
+                    if time.monotonic() > deadline + 60:
+                        raise TimeoutError("Bounded terminal deadline exceeded")
+                    if line.startswith(":"):
+                        report["heartbeats"] += 1
+                        continue
+                    if line:
+                        key, _, value = line.partition(":")
+                        fields[key] = value.lstrip()
+                        continue
+                    if not fields:
+                        continue
+                    payload = json.loads(fields["data"])
+                    event_id = int(fields["id"])
+                    persist_received(fields.get("event"), event_id, payload)
+                    if fields.get("event") == "task_terminal":
+                        assert payload["status"] == "success" and event_id == cursor
+                        terminal = True
+                        break
+                    assert event_id == cursor + 1, ("non-monotonic or missing event", cursor, event_id)
+                    assert payload["event_id"] == event_id
+                    cursor = event_id
+                    received.append(event_id)
+                    received_payloads.append(payload)
+                    fields = {}
+                    count += 1
+                    now = time.monotonic()
+                    if now >= next_status:
+                        report.update(elapsed_seconds=round(now-started, 3), received_events=len(received), cursor=cursor)
+                        save()
+                        print(json.dumps({key: report[key] for key in ("elapsed_seconds", "received_events", "connections", "server_restarts", "heartbeats")}), flush=True)
+                        next_status = now + 60
+                    if count >= args.disconnect_events:
+                        report["planned_disconnects"] += 1
+                        break
+        writer.join(timeout=3)
+        if writer.is_alive() or errors:
+            raise RuntimeError("Producer did not finish successfully: " + "; ".join(errors))
+        expected, expected_payloads, offset = [], [], 0
+        while True:
+            page = read_task_events_after(task.id, after=offset, limit=2000)
+            if not page:
+                break
+            expected.extend(event_id for event_id, _ in page)
+            expected_payloads.extend({**item, "event_id": event_id} for event_id, item in page)
+            offset = page[-1][0]
+        (args.output / "received.json").write_text(json.dumps(received_payloads, ensure_ascii=False), encoding="utf-8")
+        report.update(elapsed_seconds=round(time.monotonic()-started, 3), received_events=len(received),
+                      stored_events=len(expected), cursor=cursor, terminal_observed=terminal)
+        save()
+        from collections import Counter
+        comparison = {"received_events": len(received), "stored_events": len(expected),
+                      "missing_ids": sorted(set(expected) - set(received)),
+                      "unexpected_ids": sorted(set(received) - set(expected)),
+                      "duplicate_ids": [key for key, count in Counter(received).items() if count > 1],
+                      "first_payload_mismatch": next((index for index, pair in enumerate(zip(received_payloads, expected_payloads)) if pair[0] != pair[1]), None),
+                      "exact_id_order": received == expected,
+                      "exact_payloads": received_payloads == expected_payloads}
+        (args.output / "comparison.json").write_text(json.dumps(comparison, indent=2), encoding="utf-8")
+        report["comparison"] = comparison
+        save()
+        assert received == expected, "The observed stream must exactly match every stored event once"
+        assert received_payloads == expected_payloads, "Stream payloads must exactly match persisted event content"
+        assert get_task(task.id).status == "success"
+        elapsed = time.monotonic() - started
+        assert elapsed >= args.seconds
+        report.update(status="pass", elapsed_seconds=round(elapsed, 3), received_events=len(received),
+                      stored_events=len(expected), cursor=cursor, missing_events=0, duplicate_events=0,
+                      terminal_observed=True, exact_disk_replay=True, payloads_verified=True)
+        save()
+        print(json.dumps(report), flush=True)
+        return 0
+    except BaseException as exc:
+        (args.output / "received.json").write_text(json.dumps(received_payloads, ensure_ascii=False), encoding="utf-8")
+        report.update(status="failed_or_interrupted", failure_type=type(exc).__name__, failure=str(exc),
+                      received_events=len(received))
+        save()
+        raise
+    finally:
+        if watchdog:
+            watchdog.cancel()
+        report["terminal_deadline_expired"] = deadline_expired.is_set()
+        stopped.set()
+        if writer:
+            writer.join(timeout=3)
+        stop_server()
+        session.close()
+        log.close()
+        journal.close()
+        report["received_events"] = len(received)
+        report["terminal_observed"] = terminal
+        if started is not None:
+            report["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        report["received_journal_sha256"] = hashlib.sha256((args.output / "received.jsonl").read_bytes()).hexdigest()
+        report["server_stopped"] = process is None
+        report["writer_stopped"] = writer is None or not writer.is_alive()
+        report["finished_at"] = datetime.now(timezone.utc).isoformat()
+        if not report["writer_stopped"]:
+            report.update(status="failed_or_interrupted", failure_type="CleanupError", failure="Producer did not stop")
+        save()
+        if not report["writer_stopped"]:
+            raise RuntimeError("Producer did not stop during cleanup")
+
+
+if __name__ == "__main__":
+    raise SystemExit(bootstrap())
