@@ -122,6 +122,8 @@ def begin_remaining_measurement(task_id, attempt_id, options, transcript, durati
             if not context or task.cancel_requested:
                 return
             path = storage.TASK_DIR / task_id / FILENAME
+            if path.is_symlink() or path.parent.is_symlink():
+                return
             evidence = _read(path) if path.exists() else {"schema_version": SCHEMA_VERSION, "attempts": []}
             if any(item.get("attempt_id") == attempt_id for item in evidence["attempts"]):
                 return  # A duplicate callback or restart cannot reset elapsed time.

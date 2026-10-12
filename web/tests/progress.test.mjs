@@ -35,6 +35,53 @@ test("measured duration UI names its boundary, independent samples and uncertain
   assert.match(html, /不含之前的排队、下载或转写/);
   assert.match(html, /实际可能超出/);
 });
+const wholeTask = (changes = {}) => ({ ...measuredTask(), whole_task_duration_estimate: {
+  ...measuredTask().duration_estimate, scope: "current_processing_attempt", boundary: "accepted_enqueue",
+  cohort: "current_backend_process", duration_seconds_range: [150, 250], remaining_seconds_range: [60, 160], elapsed_seconds: 90,
+  ...changes,
+} });
+test("whole-attempt history has a distinct boundary and never claims original-task downtime", () => {
+  const html = durationEstimateHtml(wholeTask(), [], 1000000);
+  assert.match(html, /data-whole-duration-estimate="estimated"/);
+  assert.match(html, /本轮整段用时参考：2 分 30 秒–4 分 10 秒/);
+  assert.match(html, /当前剩余参考：1 分 0 秒–2 分 40 秒/);
+  assert.match(html, /本次后端启动后 5 个相近的成功任务/);
+  assert.match(html, /包含本次排队/);
+  assert.match(html, /不含确认等待、此前重试或停机时间/);
+  assert(!html.includes("字幕就绪后的处理参考"));
+  assert.match(durationEstimateHtml(wholeTask({ boundary: "attempt_start" }), [], 1000000), /排队未计入/);
+});
+test("unknown whole history can retain a clearly scoped narrower reference", () => {
+  const html = durationEstimateHtml(wholeTask({ status: "unknown", reason: "insufficient_compatible_history", sample_count: 4 }), [], 1000000);
+  assert.match(html, /本轮整段剩余时间未知/);
+  assert.match(html, /只有 4 个相近的成功任务/);
+  assert.match(html, /字幕就绪后的处理参考/);
+  assert(!html.includes('data-whole-duration-estimate="estimated"'));
+});
+test("whole overrun never quietly falls back to a narrower remaining countdown", () => {
+  const html = durationEstimateHtml(wholeTask({ status: "overrun", remaining_seconds_range: null, elapsed_seconds: 250 }), [], 1000000);
+  assert.match(html, /data-whole-duration-estimate="overrun"/);
+  assert.match(html, /已超出历史参考上限，剩余时间未知/);
+  assert(!html.includes("当前剩余参考"));
+  assert(!html.includes("字幕就绪后的处理参考"));
+});
+test("whole estimates reject unknown boundary, foreign cohort, stale or cancelled attempt", () => {
+  for (const changes of [{ boundary: null }, { boundary: "original_task_created" }, { cohort: "other_device" },
+    { scope: "after_transcript_ready" }, { observed_at_unix_ms: 939999 }, { sample_count: 4 },
+    { remaining_seconds_range: [0, 0] }, { duration_seconds_range: [NaN, 250] }, { elapsed_seconds: -1 },
+    { boundary: '<img onerror="bad">' }]) {
+    const html = durationEstimateHtml({ ...wholeTask(changes), duration_estimate: null }, [], 1000000);
+    assert.match(html, /data-whole-duration-estimate="unknown"/);
+    assert(!html.includes("onerror"));
+  }
+  for (const status of ["queued", "cancelling", "cancelled", "failed", "success"]) {
+    const html = durationEstimateHtml({ ...wholeTask(), status }, [], 1000000);
+    assert(!html.includes("当前剩余参考"));
+    assert(!html.includes("data-duration-estimate="), "Inactive tasks must not repeat a narrower stale reference");
+  }
+  assert.match(durationEstimateHtml(wholeTask(), [{ event: "task_enqueued" }], 1000000), /data-whole-duration-estimate="unknown"/);
+  assert.match(durationEstimateHtml(wholeTask(), [{ event: "pipeline_attempt_started", details: { attempt_id: "different" } }], 1000000), /data-whole-duration-estimate="unknown"/);
+});
 test("overrun drops remaining countdown instead of freezing at zero", () => {
   for (const changes of [{ status: "overrun", remaining_seconds_range: null, elapsed_seconds: 175 }, { elapsed_seconds: 200 }]) {
     const html = durationEstimateHtml(measuredTask(changes), [], 1000000);

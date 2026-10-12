@@ -76,6 +76,10 @@ function createFixture(scenario) {
         duration_seconds_range: [75, 175], remaining_seconds_range: [45, 145], elapsed_seconds: 30 },
     },
   };
+  if (responseScenario(scenario)) fixture.task.whole_task_duration_estimate = {
+    ...fixture.task.duration_estimate, scope: "current_processing_attempt", boundary: "accepted_enqueue",
+    cohort: "current_backend_process", duration_seconds_range: [150, 250], remaining_seconds_range: [60, 160], elapsed_seconds: 90,
+  };
   fixture.projection = () => {
     if (!(scenario.name === "enrichment" || topicScenario(scenario) || responseScenario(scenario)) || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
     const outlines = TRANSCRIPT.map((cue, index) => ({ ...cue, id: `draft-time-${index * 10}`, kind: "temporal_outline",
@@ -137,6 +141,8 @@ function createFixture(scenario) {
     fixture.task.progress = 81;
     Object.assign(fixture.task.duration_estimate, { status: "overrun", remaining_seconds_range: null,
       elapsed_seconds: 176, observed_at_unix_ms: Date.now() });
+    if (fixture.task.whole_task_duration_estimate) Object.assign(fixture.task.whole_task_duration_estimate,
+      { status: "overrun", remaining_seconds_range: null, elapsed_seconds: 251, observed_at_unix_ms: Date.now() });
     return record("task_updated");
   };
   fixture.failMetadata = () => {
@@ -156,6 +162,9 @@ function createFixture(scenario) {
     Object.assign(fixture.task, { status: "running", phase: "summarizing", summary_source: "partial-draft", progress: 82 });
     fixture.task.duration_estimate = { schema_version: 1, scope: "after_transcript_ready", status: "unknown",
       reason: "insufficient_compatible_history", sample_count: 0, duration_seconds_range: null, remaining_seconds_range: null };
+    if (fixture.task.whole_task_duration_estimate) fixture.task.whole_task_duration_estimate = {
+      ...fixture.task.duration_estimate, scope: "current_processing_attempt", boundary: "attempt_start", cohort: "current_backend_process",
+    };
     delete fixture.task.failed_phase;
     delete fixture.task.error_code;
     delete fixture.task.artifact_status.failure_phase;
@@ -256,14 +265,17 @@ async function selfTestScenario(scenario) {
   assert(!/<(?:img|script)\b/.test(html));
   const partialHash = digest(fixture.edition.text);
   assert.equal(fixture.task.duration_estimate.status, "estimated");
+  if (responseScenario(scenario)) assert.equal(fixture.task.whole_task_duration_estimate.status, "estimated");
   fixture.progressOnly();
   assert.equal(fixture.task.duration_estimate.status, "overrun");
   assert.equal(fixture.task.duration_estimate.remaining_seconds_range, null);
+  if (responseScenario(scenario)) assert.equal(fixture.task.whole_task_duration_estimate.remaining_seconds_range, null);
   fixture.failMetadata();
   assert.equal(fixture.task.summary_source, "local-template");
   assert.equal(fixture.task.artifact_status.partial_draft_available, true);
   fixture.retry();
   assert.equal(fixture.task.duration_estimate.status, "unknown");
+  if (responseScenario(scenario)) assert.equal(fixture.task.whole_task_duration_estimate.status, "unknown");
   assert.equal(digest(fixture.edition.text), partialHash);
   assert.equal(fixture.explicitSuccess, false);
   fixture.completeSuccess();
@@ -300,6 +312,7 @@ async function runScenario(scenario, out) {
   };
   let browser, page;
   const fixture = createFixture(scenario);
+  const estimateAttribute = responseScenario(scenario) ? "data-whole-duration-estimate" : "data-duration-estimate";
   async function screenshot(name, fullPage = false) {
     await page.screenshot({ path: path.join(out, name), animations: "disabled", fullPage });
     report.screenshots.push(name);
@@ -398,7 +411,10 @@ async function runScenario(scenario, out) {
     await assertNoFinal();
     await assertEscaped();
     assert.match(await page.locator("#taskStatus").innerText(), /分段草稿可读/);
-    assert.match(await page.locator('#taskStatus [data-duration-estimate="estimated"]').innerText(), /字幕就绪后的处理参考.*当前剩余参考.*本地 5 个.*实际可能超出/);
+    const estimateText = await page.locator(`#taskStatus [${estimateAttribute}="estimated"]`).innerText();
+    assert.match(estimateText, responseScenario(scenario)
+      ? /本轮整段用时参考.*当前剩余参考.*本次后端启动后 5 个.*包含本次排队.*此前重试或停机时间.*实际可能超出/
+      : /字幕就绪后的处理参考.*当前剩余参考.*本地 5 个.*实际可能超出/);
     if (textScenario(scenario)) {
       assert(!(await page.locator("#document").innerText()).includes("图文章节"));
       assert.match(await page.locator("#document").innerText(), /待最终来源检查/);
@@ -415,6 +431,36 @@ async function runScenario(scenario, out) {
     await settle();
     await screenshot("01-running-batch-2.png");
     report.checks.push("Completed synthetic batch 2 is readable while task and summary stage remain running");
+    if (responseScenario(scenario)) {
+      // Exercise the actual responsive reader and theme control. Only the
+      // estimate payload is synthetic; layout and interaction are production.
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+        for (const theme of ["light", "dark"]) {
+          const menu = page.locator("#menu");
+          if (await menu.getAttribute("aria-expanded") !== "true") await menu.click();
+          if (await page.locator("body").evaluate(body => body.classList.contains("dark")) !== (theme === "dark"))
+            await page.locator("#theme").click();
+          if (width === 390 && await menu.getAttribute("aria-expanded") === "true") await menu.click();
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await settle();
+          const geometry = await page.locator(`#taskStatus [${estimateAttribute}="estimated"]`).evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, viewport: innerWidth,
+              documentWidth: document.documentElement.scrollWidth, contentWidth: element.scrollWidth, boxWidth: element.clientWidth };
+          });
+          assert(geometry.left >= 0 && geometry.right <= geometry.viewport + 1 && geometry.documentWidth <= geometry.viewport + 1 &&
+            geometry.contentWidth <= geometry.boxWidth + 1, `Whole-attempt estimate overflow: ${JSON.stringify(geometry)}`);
+          report.observations[`whole_estimate_${width}_${theme}`] = geometry;
+          await screenshot(`01-whole-estimate-${width}-${theme}.png`);
+        }
+      }
+      await page.setViewportSize({ width: 1440, height: 960 });
+      if (await page.locator("#menu").getAttribute("aria-expanded") !== "true") await page.locator("#menu").click();
+      if (await page.locator("body").evaluate(body => body.classList.contains("dark"))) await page.locator("#theme").click();
+      await settle();
+      report.checks.push("Whole-attempt reference states its current-process sample basis and queue boundary, wraps at 1440/390 in both themes, and preserves native sidebar/theme controls");
+    }
 
     if (scenario.name === "enrichment") {
       await page.evaluate(() => {
@@ -550,7 +596,7 @@ async function runScenario(scenario, out) {
     await waitEdition();
     assert(report.editionRequests.length > requestsBeforeProgress, "A newer progress event must reload metadata and the unchanged edition");
     await assertStable("new_progress_same_revision");
-    assert.match(await page.locator('#taskStatus [data-duration-estimate="overrun"]').innerText(), /已超出历史参考上限，剩余时间未知/);
+    assert.match(await page.locator(`#taskStatus [${estimateAttribute}="overrun"]`).innerText(), /已超出历史参考上限，剩余时间未知/);
     await page.evaluate(() => window.__progressiveReaderProbe.observer.disconnect());
     await screenshot("03-duplicate-event-selection.png");
     report.checks.push("Duplicate event and newer progress-only event preserve reader DOM, selection, and passage position as status height changes");
@@ -559,7 +605,7 @@ async function runScenario(scenario, out) {
     await emit(fixture.failMetadata());
     await waitEdition();
     assert.equal(await page.locator("#taskStatus").getAttribute("data-status"), "needs-summary");
-    assert.equal(await page.locator('#taskStatus [data-duration-estimate="estimated"]').count(), 0);
+    assert.equal(await page.locator(`#taskStatus [${estimateAttribute}="estimated"]`).count(), 0);
     assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*分段仍以草稿保留/s);
     assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated source chunks must not collapse into a transcript-only draft");
     assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), responseScenario(scenario) ? 1 : 2);
@@ -574,7 +620,7 @@ async function runScenario(scenario, out) {
     await page.waitForFunction(() => document.getElementById("taskStatus")?.dataset.status === "running");
     await waitEdition();
     assert.equal(fixture.retryCalls, 1);
-    assert.match(await page.locator('#taskStatus [data-duration-estimate="unknown"]').innerText(), /只有 0 个相近的成功任务/);
+    assert.match(await page.locator(`#taskStatus [${estimateAttribute}="unknown"]`).innerText(), /只有 0 个相近的成功任务/);
     assert.equal(digest(fixture.edition.text), partialHash);
     await assertNoFinal();
     await emit(fixture.events.at(-1));

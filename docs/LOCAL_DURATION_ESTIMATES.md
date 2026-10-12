@@ -1,8 +1,10 @@
 # Local duration reference ranges
 
-This is a bounded part of issue #148. It adds an optional task presentation
-projection, `duration_estimate`, and the same reference in the default reader's
-processing steps. It replaces the old invented whole-task `eta_seconds` formula
+This is a bounded part of issue #148. It provides optional task presentation
+projections and the same references in the default reader's processing steps.
+`duration_estimate` retains the original after-transcript boundary. The new
+`whole_task_duration_estimate` measures one current processing attempt, described
+below. These replace the old invented whole-task `eta_seconds` formula
 with `null` for unfinished tasks. Terminal tasks keep the legacy zero value;
 the default reader does not display a countdown for terminal tasks.
 
@@ -69,12 +71,14 @@ period/cohort and measured interval coverage and overrun rates. Changing the
 policy or measurement boundary requires a schema version change so incompatible
 history cannot be silently mixed.
 
-Hardware identity is intentionally not collected. Matching a declared device
+Hardware identity is intentionally not collected. For this original scoped
+projection, matching a declared device
 mode does not establish identical hardware or remote-provider load. A moved
 data directory, changed hardware/model implementation, cache warmth, provider
 throttling and other load can invalidate historical usefulness even within a
 matching cohort. The UI calls this a historical reference and says actual time
-may exceed it. Whole-task estimates and provider-price calibration remain open.
+may exceed it. The newer current-attempt projection uses a stricter same-process
+cohort; provider-price calibration and real-media prediction accuracy remain open.
 
 ## Storage, bounds and privacy
 
@@ -128,4 +132,74 @@ Local-media preflight reports duration and integrity but returns `estimated_seco
 Media duration alone does not identify the selected hardware, model, subtitle route,
 queue, or provider latency. The classic confirmation view also ignores legacy point
 values and shows that whole-task timing is unknown. This does not change the scoped,
-measured after-transcript interval in the current workspace or promise a whole-task ETA.
+measured after-transcript interval in the current workspace. Preflight alone does
+not satisfy the new current-attempt measurement contract either.
+
+## Current processing attempt reference (version 1)
+
+`whole_task_duration_estimate` is a separate aggregate with scope
+`current_processing_attempt`. Its independent monotonic clock begins at the
+recorded enqueue for this attempt (`accepted_enqueue`), or at the explicit
+pipeline attempt start (`attempt_start`) when no valid enqueue clock exists.
+The latter explicitly excludes queue time. Both finish only after the successful
+note and local checks are persisted. The interval includes all actual intervening
+work and gaps; nested stage durations are never summed. User confirmation,
+earlier failed attempts, downtime and waiting before the current recorded enqueue
+are outside the boundary. A retry is one new attempt, not the original task's
+end-to-end duration.
+
+The clock may start before download or transcription, but an estimate is not
+published until the actual supported transcript source, media duration, selected
+model and processing route are known. The app does not guess which caption/ASR
+route will succeed. Before that point, missing or incompatible evidence means
+unknown. This does not provide an estimate during the initial download or initial
+transcription and does not claim to close every criterion in issue #148.
+
+History must contain at least five distinct successful tasks in the same
+backend process and compatible processing context. A random process cohort
+separates runs without recording a machine identifier or probing hardware. A
+backend restart therefore starts a new whole-attempt cohort; previous sidecars
+are retained and cannot masquerade as measurements on the new execution device.
+Declared CPU/CUDA and compute modes, explicit selected endpoint/model/options,
+known model capabilities, actual source, nearby duration, observed work route and
+reuse state further partition the cohort. Unknown device selection or capability
+is not evidence of compatibility. Remote provider load and changing local load
+can still vary within a cohort; no accuracy or deadline is promised.
+
+Selected learning ranges and local OCR currently remain unknown because their
+clipping/OCR preparation and reuse are not fully observed by this contract.
+Visual routes additionally require locally known model capability and no prior
+frame/vision cache. Successful output that used a fallback, repair or unexpected
+cache path cannot train a fresh-route estimate. These exclusions reduce available
+samples deliberately; they do not start extra work to obtain timings.
+
+The separate bounded `whole_attempt_duration_evidence.json` sidecar preserves
+the original after-transcript evidence and pipeline metric schema. Old stage
+metrics and after-transcript intervals are never backfilled into whole-attempt
+samples. Only aggregate range/count, current attempt, boundary, elapsed time and
+fixed reason codes reach the UI. No task content, endpoint, model name, history
+identifier, credential or machine identity is exposed. Faults in this optional
+observation must not change processing, cancellation, model calls or publication.
+
+A bounded in-memory registry remembers at most 256 tasks whose whole measurement
+was successfully saved by this process. Only their sidecars are considered,
+with the existing file-size and cache bounds. Thousands of older task folders
+therefore cannot hide the new eligible cohort. Deleted, linked, corrupt or
+incompatible registered files are ignored; restarting discards the registry.
+No catalog migration or extra disk index is needed. Existing or dangling
+sidecar symlinks are left intact rather than replaced with fresh measurements.
+
+The same conservative empirical envelope and minimum-sample policy apply. The
+remaining reference subtracts only live monotonic elapsed time. At the upper
+bound it becomes unknown rather than freezing at zero or extending a deadline.
+Missing clocks, retry identity changes, cancellation, failure and stale snapshots
+invalidate it. When whole-attempt history is unavailable, an eligible older
+after-transcript reference may still appear under its original explicit label;
+an overrun whole-attempt estimate never silently changes to a narrower countdown.
+
+Synthetic unit and in-process ASGI/API tests establish interval provenance, exclusion
+rules and data preservation; they do not establish real-model prediction quality.
+The existing progressive-sections Edge acceptance exercises the new reference,
+overrun and retry through production UI assets with synthetic API/SSE responses,
+including 1440/390px in both themes. Actual browser evidence is recorded with the
+pull request; fixture self-tests alone are not a visual pass.

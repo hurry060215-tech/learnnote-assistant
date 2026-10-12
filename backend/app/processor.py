@@ -839,7 +839,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             drm_detected=bool(request.drm_detected),
             drm_signals=request.drm_signals,
         )
-        attempt_id = start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id, entry_route="current_page_media", options=request.options)
         update_task(task_id, status="running", phase="downloading", progress=5, message="正在优先检查可直接读取的字幕")
         if request.drm_detected and request.options.content_mode != "subtitles" and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)
@@ -1039,7 +1039,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
     try:
         _check_cancel(task_id)
         if start_attempt:
-            attempt_id = start_pipeline_attempt(task_id)
+            attempt_id = start_pipeline_attempt(task_id, entry_route="subtitle_only", options=request.options)
         elif attempt_id is UNSET_ATTEMPT:
             attempt_id = current_pipeline_attempt(task_id)
         timing_callback = stage_duration_recorder(task_id, attempt_id)
@@ -1117,7 +1117,7 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
             raise ContentMismatchError("已保存的字幕为空，不能重新总结。")
         from .summary_versions import snapshot_summary
         snapshot_summary(task_id)
-        attempt_id = start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id, entry_route="saved_transcript", options=options)
         timing_callback = stage_duration_recorder(task_id, attempt_id)
         for stage in ("subtitle_probe", "download", "media", "transcript", "visual"):
             record_stage_duration(task_id, stage, time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
@@ -1209,7 +1209,7 @@ def _process_video_file(
     from .summary_versions import snapshot_summary
     snapshot_summary(task_id)
     if start_attempt:
-        attempt_id = start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id, entry_route="local_media", options=options)
     elif attempt_id is UNSET_ATTEMPT:
         attempt_id = current_pipeline_attempt(task_id)
     timing_callback = stage_duration_recorder(task_id, attempt_id)
@@ -1271,6 +1271,13 @@ def _process_video_file(
     draft_path = write_progressive_draft(task_id, title, transcript, expected_attempt_id=attempt_id)
     from .duration_estimates import begin_remaining_measurement
     begin_remaining_measurement(task_id, attempt_id, options, transcript, integrity.duration, route="media_to_note")
+    try:
+        from .whole_duration_estimates import bind_whole_measurement
+        bind_whole_measurement(task_id, attempt_id, options, transcript, integrity.duration, route="media_to_note",
+                               transcript_reused=getattr(transcript_artifacts, "reused", None),
+                               normalization_reused=input_path.resolve() == normalized.resolve())
+    except Exception:
+        pass  # Optional provenance must not change model calls or publication.
     previous_note = get_task(task_id).note_path
     if draft_path and (not previous_note or not Path(previous_note).is_file()):
         update_task(
