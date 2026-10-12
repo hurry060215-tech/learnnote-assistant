@@ -133,12 +133,9 @@
     return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remain).padStart(2, "0")}` : `${minutes}:${String(remain).padStart(2, "0")}`;
   }
 
-  function displayEstimate(seconds, duration) {
-    const fallback = Number.isFinite(duration) && duration > 0 ? Math.max(75, Math.round(duration * .22 + 45)) : null;
-    const value = Number.isFinite(seconds) && seconds > 0 ? seconds : fallback;
-    if (!value) return "正在估算";
-    const minutes = Math.max(1, Math.ceil(value / 60));
-    return minutes < 60 ? `约 ${minutes} 分钟` : `约 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+  function displayEstimate() {
+    // Media length or a legacy point value is not measured whole-task evidence.
+    return "未知";
   }
 
   function valueAt(...values) {
@@ -197,7 +194,6 @@
       title: valueAt(body.title, payload.title, extras.title, extras.file?.name, "未命名视频"),
       thumbnail: valueAt(body.thumbnail_url, payload.thumbnail_url, extras.thumbnail, ""),
       duration,
-      estimatedSeconds: finiteNumber(body.estimated_seconds, payload.estimated_seconds),
       audio,
       subtitles,
       visual,
@@ -233,7 +229,7 @@
     setFact(ui.audio, draft.audio, "已发现", "缺少声音");
     setFact(ui.subtitles, draft.subtitles, "已发现", "未发现", "可在转写后生成");
     setFact(ui.visual, draft.visual, "已发现", "缺少画面");
-    ui.estimate.textContent = displayEstimate(draft.estimatedSeconds, draft.duration);
+    ui.estimate.textContent = displayEstimate();
     const thumbnail = safeThumbnail(draft.thumbnail);
     ui.cover.innerHTML = thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="视频封面">` : `<span>LN</span>`;
     const blocked = draft.audio === false || draft.visual === false;

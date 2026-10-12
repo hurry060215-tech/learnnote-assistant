@@ -82,7 +82,7 @@ class LocalStagingRecoveryTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertGreater(body["duration"], 0)
-        self.assertGreater(body["estimated_seconds"], 0)
+        self.assertIsNone(body["estimated_seconds"], "Media duration alone is not processing-time evidence")
         self.assertEqual(body["integrity"]["status"], "ready")
         self.assertTrue(body["integrity"]["has_video"])
         self.assertTrue(body["integrity"]["has_audio"])

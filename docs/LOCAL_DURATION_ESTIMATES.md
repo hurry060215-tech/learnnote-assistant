@@ -121,3 +121,11 @@ fixture self-test scenarios passed without launching a browser. Backend
 compilation, the changed JavaScript syntax checks and `git diff --check` passed.
 Actual Windows Edge visual acceptance and held-out real-media calibration were
 not run locally and are not established by these results.
+
+## Preflight is not an elapsed-time measurement
+
+Local-media preflight reports duration and integrity but returns `estimated_seconds: null`.
+Media duration alone does not identify the selected hardware, model, subtitle route,
+queue, or provider latency. The classic confirmation view also ignores legacy point
+values and shows that whole-task timing is unknown. This does not change the scoped,
+measured after-transcript interval in the current workspace or promise a whole-task ETA.

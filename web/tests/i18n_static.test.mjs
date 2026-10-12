@@ -82,3 +82,20 @@ test("dynamic numeric status text translates known fragments", () => {
   context.LearnNoteI18n.applyStatic(document, "zh-CN");
   assert.equal(node.nodeValue, "预计约 5 分钟 · 已完成");
 });
+
+
+test("unknown timing and its explanation translate without inventing a duration", () => {
+  const node = { nodeValue: "未知", parentElement: { closest: () => null } };
+  const attrs = new Map([["title", "仅检查媒体，尚无整任务耗时依据"]]);
+  const element = { closest: () => null, getAttribute: name => attrs.get(name) || null,
+    setAttribute: (name, value) => attrs.set(name, value) };
+  const document = makeTextDocument(node);
+  document.querySelectorAll = () => [{ contains: () => true, querySelectorAll: () => [element] }];
+  const context = {}; vm.runInNewContext(source, context);
+  context.LearnNoteI18n.applyStatic(document, "en-US");
+  assert.equal(node.nodeValue, "Unknown");
+  assert.equal(attrs.get("title"), "Media checked; no whole-task timing evidence is available");
+  context.LearnNoteI18n.applyStatic(document, "zh-CN");
+  assert.equal(node.nodeValue, "未知");
+  assert.equal(attrs.get("title"), "仅检查媒体，尚无整任务耗时依据");
+});

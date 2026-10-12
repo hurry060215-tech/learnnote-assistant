@@ -3494,11 +3494,11 @@ async def api_preflight_local(file: UploadFile = File(...)) -> dict:
     except Exception as exc:
         staged_path.unlink(missing_ok=True)
         raise local_upload_error("local_preflight_failed", f"本地媒体预检失败：{exc}", status_code=500) from exc
-    estimated_seconds = max(30, round(integrity.duration * 0.65 + 45))
+    # Preflight validates media, but has no whole-task timing evidence.
     return {
         "title": Path(safe_name).stem,
         "duration": integrity.duration,
-        "estimated_seconds": estimated_seconds,
+        "estimated_seconds": None,
         "integrity": integrity.model_dump(mode="json"),
         "source_fingerprint": integrity.sha256,
         "staging_token": staging_token,

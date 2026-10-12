@@ -15,6 +15,47 @@ async function main() {
     await page.goto(base, { waitUntil: "networkidle" });
     if (await page.locator("#skipOnboardingButton").isVisible()) await page.locator("#skipOnboardingButton").click();
     if (await page.locator("#confirmReleaseNotesButton").isVisible()) await page.locator("#confirmReleaseNotesButton").click();
+    // Actual classic-page interaction; metadata responses are explicitly synthetic.
+    // The real-media HTTP contract separately verifies the backend returns null.
+    const preflightCases = [];
+    let taskCreates = 0;
+    await page.route("**/api/tasks/from-local", route => { taskCreates += 1; return route.abort(); });
+    const locale = async value => {
+      await page.locator("#settingsNav").click();
+      await page.locator('[data-settings-tab="general"]').click();
+      await page.locator("#settingLocale").selectOption(value);
+      await page.waitForFunction(expected => document.documentElement.lang === expected, value);
+      await page.locator("#workspaceNav").click();
+    };
+    for (const estimated of [null, 120]) {
+      const language = estimated === null ? "zh-CN" : "en-US";
+      await locale(language);
+      const preflight = "**/api/media/preflight-local";
+      let inspected = 0;
+      await page.route(preflight, route => {
+        assert.equal(route.request().method(), "POST"); inspected += 1;
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          title: "Synthetic timing contract", duration: 420, estimated_seconds: estimated,
+          integrity: { status: "ready", has_video: true, has_audio: true, has_subtitles: false },
+        }) });
+      });
+      await page.locator('[data-editorial-source="local"]').click();
+      await page.locator("#editorialFileInput").setInputFiles({ name: "synthetic-timing.mp4", mimeType: "video/mp4", buffer: Buffer.from("Metadata-response fixture; not a real video") });
+      await page.locator("#editorialMediaConfirm").waitFor({ state: "visible" });
+      const timingText = language === "en-US" ? "Unknown" : "未知";
+      await page.waitForFunction(expected => document.querySelector("#editorialEstimate").textContent === expected, timingText);
+      assert.equal(await page.locator("#editorialEstimate").getAttribute("title"), language === "en-US"
+        ? "Media checked; no whole-task timing evidence is available" : "仅检查媒体，尚无整任务耗时依据");
+      assert.equal(await page.locator("#editorialDuration").innerText(), "7:00");
+      assert.equal(await page.locator("#editorialStartTask").isEnabled(), true);
+      assert.equal(inspected, 1); assert.equal(taskCreates, 0);
+      await page.screenshot({ path: path.join(output, `preflight-${estimated === null ? "unknown" : "legacy"}.png`) });
+      preflightCases.push({ language, legacy_point_value: estimated, duration: 420, whole_task_time: "unknown", task_creates: taskCreates });
+      await page.unroute(preflight);
+      await page.goto(base, { waitUntil: "networkidle" });
+    }
+    await page.unroute("**/api/tasks/from-local");
+    await locale("zh-CN");
     await page.locator("#settingsNav").click();
     await page.locator('[data-settings-tab="connection"]').click();
     await page.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
@@ -230,7 +271,7 @@ async function main() {
     const changedBrowserTimezone = await crossTimezonePage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
     assert.notEqual(changedBrowserTimezone, selectedTimezone);
     assert.equal(await crossTimezonePage.locator("#studyPlanTimezone").inputValue(), selectedTimezone);
-    process.stdout.write(JSON.stringify({ ok: true, contrast, studyGeometry, geometry, initialSuggestedTimezone, selectedTimezone, crossTimezoneRequest, changedBrowserTimezone, crossContextActuallyChanged: changedBrowserTimezone !== initialSuggestedTimezone, restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
+    process.stdout.write(JSON.stringify({ ok: true, preflightCases, contrast, studyGeometry, geometry, initialSuggestedTimezone, selectedTimezone, crossTimezoneRequest, changedBrowserTimezone, crossContextActuallyChanged: changedBrowserTimezone !== initialSuggestedTimezone, restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
