@@ -236,6 +236,8 @@
     ,"画面": "Visuals"
     ,"预计耗时": "Estimated time"
     ,"正在估算": "Estimating"
+    ,"未知": "Unknown"
+    ,"仅检查媒体，尚无整任务耗时依据": "Media checked; no whole-task timing evidence is available"
     ,"笔记用途": "Note purpose"
     ,"这次准备怎么学？": "How will you study this?"
     ,"导入 YAML / JSON": "Import YAML / JSON"

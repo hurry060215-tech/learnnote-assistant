@@ -20,7 +20,16 @@ async function main() {
     const preflightCases = [];
     let taskCreates = 0;
     await page.route("**/api/tasks/from-local", route => { taskCreates += 1; return route.abort(); });
+    const locale = async value => {
+      await page.locator("#settingsNav").click();
+      await page.locator('[data-settings-tab="general"]').click();
+      await page.locator("#settingLocale").selectOption(value);
+      await page.waitForFunction(expected => document.documentElement.lang === expected, value);
+      await page.locator("#workspaceNav").click();
+    };
     for (const estimated of [null, 120]) {
+      const language = estimated === null ? "zh-CN" : "en-US";
+      await locale(language);
       const preflight = "**/api/media/preflight-local";
       let inspected = 0;
       await page.route(preflight, route => {
@@ -33,17 +42,20 @@ async function main() {
       await page.locator('[data-editorial-source="local"]').click();
       await page.locator("#editorialFileInput").setInputFiles({ name: "synthetic-timing.mp4", mimeType: "video/mp4", buffer: Buffer.from("Metadata-response fixture; not a real video") });
       await page.locator("#editorialMediaConfirm").waitFor({ state: "visible" });
-      assert.equal(await page.locator("#editorialEstimate").innerText(), "未知");
-      assert.equal(await page.locator("#editorialEstimate").getAttribute("title"), "仅检查媒体，尚无整任务耗时依据");
+      const timingText = language === "en-US" ? "Unknown" : "未知";
+      await page.waitForFunction(expected => document.querySelector("#editorialEstimate").textContent === expected, timingText);
+      assert.equal(await page.locator("#editorialEstimate").getAttribute("title"), language === "en-US"
+        ? "Media checked; no whole-task timing evidence is available" : "仅检查媒体，尚无整任务耗时依据");
       assert.equal(await page.locator("#editorialDuration").innerText(), "7:00");
       assert.equal(await page.locator("#editorialStartTask").isEnabled(), true);
       assert.equal(inspected, 1); assert.equal(taskCreates, 0);
       await page.screenshot({ path: path.join(output, `preflight-${estimated === null ? "unknown" : "legacy"}.png`) });
-      preflightCases.push({ legacy_point_value: estimated, duration: 420, whole_task_time: "unknown", task_creates: taskCreates });
+      preflightCases.push({ language, legacy_point_value: estimated, duration: 420, whole_task_time: "unknown", task_creates: taskCreates });
       await page.unroute(preflight);
       await page.goto(base, { waitUntil: "networkidle" });
     }
     await page.unroute("**/api/tasks/from-local");
+    await locale("zh-CN");
     await page.locator("#settingsNav").click();
     await page.locator('[data-settings-tab="connection"]').click();
     await page.waitForFunction(() => Boolean(document.querySelector("#studyPlanTimezone")?.value));
