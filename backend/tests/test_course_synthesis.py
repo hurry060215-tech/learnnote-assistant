@@ -366,6 +366,58 @@ class CourseSynthesisTests(unittest.TestCase):
             rows = db.execute("SELECT status,input_tokens,output_tokens,total_tokens FROM usage").fetchall()
         self.assertEqual(rows, [("failed", None, None, None)])
 
+    def test_sdk_timeout_maps_to_timeout_without_retry_or_source_changes(self):
+        from openai import APITimeoutError, APIConnectionError, DefaultAsyncHttpxClient
+        http = DefaultAsyncHttpxClient(trust_env=False)
+        request = http.build_request("POST", "http://127.0.0.1/private-fixture")
+        asyncio.run(http.aclose())
+        for error_type, code in ((APITimeoutError, "course_model_timeout"),
+                                 (APIConnectionError, "course_model_result_rejected")):
+            with self.subTest(error=error_type.__name__):
+                attempts = []
+                async def fail(**kwargs):
+                    attempts.append(kwargs)
+                    raise error_type(request=request)
+                class Client:
+                    base_url = "http://127.0.0.1/v1"
+                    def __init__(self, **kwargs):
+                        self.options = kwargs; self.chat = NS(completions=NS(create=fail))
+                        self.asserted_retries = kwargs["max_retries"]
+                    async def __aenter__(self):
+                        assert self.asserted_retries == 0
+                        return self
+                    async def __aexit__(self, *args): await self.options["http_client"].aclose()
+                value = self.preview().json(); before = self.hashes()
+                before.pop("token-usage.sqlite3", None)
+                with patch("openai.AsyncOpenAI", Client):
+                    outcome = self.consent(value)
+                    self.assertEqual(self.consent(value).status_code, 409)
+                self.assertEqual(outcome.status_code, 409)
+                self.assertEqual(outcome.json()["detail"]["code"], code)
+                self.assertNotIn("private-fixture", outcome.text)
+                self.assertEqual(len(attempts), 1)
+                self.assertEqual(attempts[0]["max_tokens"], 3000)
+                after = self.hashes(); after.pop("token-usage.sqlite3")
+                self.assertEqual(before, after)
+                self.assertEqual(synthesis._inflight, set())
+        with closing(sqlite3.connect(self.root / "token-usage.sqlite3")) as db:
+            self.assertEqual(db.execute("SELECT status,total_tokens FROM usage").fetchall(),
+                             [("failed", None), ("failed", None)])
+
+    def test_provider_cancellation_remains_cancellation_and_records_unknown_usage(self):
+        async def cancel(**kwargs): raise asyncio.CancelledError()
+        class Client:
+            base_url = "http://127.0.0.1/v1"
+            def __init__(self, **kwargs): self.options = kwargs; self.chat = NS(completions=NS(create=cancel))
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): await self.options["http_client"].aclose()
+        selected = model.connection(self.base_url, "synthetic-model")
+        with patch("openai.AsyncOpenAI", Client):
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(model.complete(selected, "Gradient", "question", self.preview().json()["evidence"]))
+        with closing(sqlite3.connect(self.root / "token-usage.sqlite3")) as db:
+            self.assertEqual(db.execute("SELECT status,total_tokens FROM usage").fetchall(), [("failed", None)])
+
     def test_slow_usage_write_does_not_block_async_request_loop(self):
         started, release = threading.Event(), threading.Event()
         observed = []
