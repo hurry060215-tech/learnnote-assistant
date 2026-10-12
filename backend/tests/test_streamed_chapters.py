@@ -586,16 +586,18 @@ class StreamedChapterTests(unittest.TestCase):
         self.assertIn("原文无时间点", section["markdown"])
 
     def test_unknown_profile_and_no_callback_preserve_nonstream_request_and_output(self):
-        response = types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="# 课程\n\n来源内容保持完整。"))])
+        response = types.SimpleNamespace(choices=[types.SimpleNamespace(finish_reason="stop", message=types.SimpleNamespace(content="# 课程\n\n来源内容保持完整。"))])
+        drafts = []
         for change in ({"llm_base_url": "http://localhost:1/v1"}, {"llm_model": "gpt-4.1-mini"}, {}):
             self.options = self.options.model_copy(update={"llm_base_url": "https://api.openai.com/v1", "llm_model": "gpt-4.1", **change})
             with self.provider(lambda **_kwargs: response):
-                result = self.summary(**({"section_callback": None} if not change else {}))
+                result = self.summary(section_callback=drafts.append if change else None)
             self.assertEqual(result[1], "text-llm")
             self.assertNotIn("stream", self.calls[-1])
             self.assertNotIn("response_format", self.calls[-1])
             self.assertNotIn("输出协议", self.calls[-1]["messages"][0]["content"][0]["text"])
         self.assertEqual(self.document(), {})
+        self.assertEqual([draft["kind"] for draft in drafts], ["full_response", "full_response"])
 
     def test_failed_vision_batches_keep_existing_nonstream_text_fallback(self):
         grid = FrameGrid(path=str(self.root / "synthetic.png"), url="", start=2, end=10, frame_count=1)
