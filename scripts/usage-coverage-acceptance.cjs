@@ -9,7 +9,11 @@ function group(requests, measured, value) {
     measured_output_requests: measured, output_tokens: value === null ? null : value - Math.floor(value * 0.8) };
 }
 function report(totals) {
-  return { schema_version: 2, totals, recent: [],
+  return { schema_version: 2, totals,
+    recent: Array.from({ length: totals.requests }, (_, i) => ({
+      at: `2026-10-12T12:0${i}:00Z`, model: '合成验收模型', host: 'fixture.invalid', purpose: 'note',
+      status: i ? 'failed' : 'success', total_tokens: i < totals.measured_requests ? totals.total_tokens : null,
+    })),
     daily: totals.requests ? [{ day: '2026-10-12', ...totals }] : [],
     models: totals.requests ? [{ model: '合成验收模型', host: 'fixture.invalid', ...totals }] : [] };
 }
@@ -66,7 +70,7 @@ module.exports = async function verifyUsageCoverage(page, base, out) {
     await page.locator('[data-settings-section="usage"]').click();
     await page.locator('#refreshTokenUsage').click();
     await page.locator('#tokenUsageReport h3').getByText('Token 用量：' + expected, { exact: true }).waitFor();
-    await page.locator('#tokenUsageReport p').filter({ hasText: totals.requests ? `总量 ${totals.measured_requests} / ${totals.requests} 次有记录` : '总量 尚无请求记录' }).waitFor();
+    await page.locator('#tokenUsageReport p').filter({ hasText: totals.requests ? `总量 ${totals.measured_requests}/${totals.requests} 次有记录` : '总量 尚无请求记录' }).waitFor();
     if (name === 'total-only') assert.match(await page.locator('#tokenUsageReport').innerText(), /输入 未知.*输出 未知/);
     if (name === 'unknown') await capture('usage-settings-unknown-1440-light', '#settingsDialog');
     await page.locator('#settingsDialog [data-close]').click();

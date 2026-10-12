@@ -8,7 +8,7 @@ export function usageCoverage(group, field = "total_tokens") {
   if (!fields[field] || !count(requests)) return unknown;
   if (requests === 0) return { status: "empty", value: 0, text: "0", detail: "尚无请求记录" };
   if (!count(measured) || measured > requests) return unknown;
-  const detail = `${measured.toLocaleString()} / ${requests.toLocaleString()} 次有记录`;
+  const detail = `${measured.toLocaleString()}/${requests.toLocaleString()} 次有记录`;
   if (measured === 0 || !count(value)) return { ...unknown, detail };
   const partial = measured < requests;
   return { status: partial ? "partial" : "complete", value,

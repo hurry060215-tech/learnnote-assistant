@@ -10,7 +10,7 @@ test("empty history, unknown provider usage and true zero are distinct", () => {
   for (const total_tokens of [null, 0]) {
     const result = usageCoverage({ requests: 2, measured_requests: 0, total_tokens });
     assert.equal(result.text, "未知"); assert.equal(result.value, null);
-    assert.equal(result.detail, "0 / 2 次有记录");
+    assert.equal(result.detail, "0/2 次有记录");
   }
   assert.equal(usageCoverage({ requests: 1, measured_requests: 1, total_tokens: 0 }).text, "0");
 });
@@ -19,7 +19,7 @@ test("mixed sums, including reported zero, visibly qualify their coverage", () =
   for (const value of [0, 25]) {
     const result = usageCoverage({ requests: 2, measured_requests: 1, total_tokens: value });
     assert.equal(result.text, `已记录 ${value}`);
-    assert.equal(result.detail, "1 / 2 次有记录");
+    assert.equal(result.detail, "1/2 次有记录");
     assert.equal(result.status, "partial");
   }
 });
