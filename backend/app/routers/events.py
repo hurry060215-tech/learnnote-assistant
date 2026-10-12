@@ -10,7 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from ..observability import read_task_events_after
-from ..storage import get_task
+from ..storage import get_task, task_state_transaction
 
 
 events_router = APIRouter(prefix="/api/tasks", tags=["events"])
@@ -23,6 +23,16 @@ def sse_frame(event_id: int, event: str, payload: dict[str, Any]) -> str:
     safe_event = "".join(character for character in str(event or "task_event") if character.isalnum() or character in {"_", "-"})
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return f"id: {max(0, int(event_id))}\nevent: {safe_event or 'task_event'}\ndata: {body}\n\n"
+
+
+def _terminal_event_snapshot(task_id: str, cursor: int):
+    # A terminal task manifest can become visible before update_task appends its
+    # event. Share that writer's cross-process transaction for this final read.
+    # Ordinary status reads do not acquire this lease; release before yielding SSE.
+    with task_state_transaction():
+        task = get_task(task_id)
+        events = read_task_events_after(task_id, cursor, 2000)
+    return task, events
 
 
 async def task_event_stream(task_id: str, cursor: int = 0) -> AsyncIterator[str]:
@@ -41,19 +51,33 @@ async def task_event_stream(task_id: str, cursor: int = 0) -> AsyncIterator[str]
             continue
 
         try:
-            task = get_task(task_id)
+            task = await asyncio.to_thread(get_task, task_id)
         except FileNotFoundError:
             yield sse_frame(next_index, "task_missing", {"task_id": task_id})
             return
         if task.status in TERMINAL_STATUSES:
-            yield sse_frame(next_index, "task_terminal", {
-                "task_id": task.id,
-                "status": task.status,
-                "phase": task.phase,
-                "progress": task.progress,
-                "event_id": next_index,
-            })
-            return
+            try:
+                task, final_events = await asyncio.to_thread(_terminal_event_snapshot, task_id, next_index)
+            except FileNotFoundError:
+                yield sse_frame(next_index, "task_missing", {"task_id": task_id})
+                return
+            if final_events:
+                for event_id, item in final_events:
+                    next_index = event_id
+                    idle_ticks = 0
+                    yield sse_frame(event_id, str(item.get("event") or "task_event"), {**item, "event_id": event_id})
+                # Re-read after yielding: a retry/cancel may have changed state,
+                # or another committed page may be waiting behind this one.
+                continue
+            if task.status in TERMINAL_STATUSES:
+                yield sse_frame(next_index, "task_terminal", {
+                    "task_id": task.id,
+                    "status": task.status,
+                    "phase": task.phase,
+                    "progress": task.progress,
+                    "event_id": next_index,
+                })
+                return
 
         idle_ticks += 1
         if idle_ticks >= 20:

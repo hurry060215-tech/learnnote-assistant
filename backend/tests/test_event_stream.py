@@ -17,6 +17,11 @@ from app.routers.events import events_router, sse_frame
 
 
 class EventStreamTests(unittest.TestCase):
+    def setUp(self):
+        ensure_dirs = patch("app.observability.ensure_dirs")
+        ensure_dirs.start()
+        self.addCleanup(ensure_dirs.stop)
+
     def test_absolute_cursor_is_reloaded_by_a_fresh_backend_process(self):
         with tempfile.TemporaryDirectory() as tmp, patch("app.observability.TASK_DIR", Path(tmp) / "tasks"):
             for index in range(12):
@@ -34,7 +39,8 @@ class EventStreamTests(unittest.TestCase):
         task = TaskRecord(id="long-replay", title="Reference", source_type="local", created_at=now_iso(),
                           updated_at=now_iso(), status="success", phase="completed")
         app = FastAPI(); app.include_router(events_router)
-        with tempfile.TemporaryDirectory() as tmp, patch("app.observability.TASK_DIR", Path(tmp)), \
+        with tempfile.TemporaryDirectory() as tmp, patch("app.observability.TASK_DIR", Path(tmp) / "tasks"), \
+                patch("app.storage.TASK_DIR", Path(tmp) / "tasks"), \
                 patch("app.routers.events.get_task", return_value=task):
             path = events_path(task.id); path.parent.mkdir(parents=True)
             path.write_text("\n".join(json.dumps({"event": "stage_timing", "index": index})
@@ -45,6 +51,61 @@ class EventStreamTests(unittest.TestCase):
             expected = [index + 1 for index in range(900, 4505) if index not in {1000, 1999, 2000}]
             self.assertEqual(replayed, expected)
             self.assertEqual(payloads[-1]["event_id"], 4505)
+            self.assertEqual(response.text.count("event: task_terminal"), 1)
+
+    def test_terminal_rechecks_events_appended_after_initial_page_read(self):
+        task = TaskRecord(id="terminal-race", title="Synthetic", source_type="local",
+                          created_at=now_iso(), updated_at=now_iso(),
+                          status="success", phase="completed")
+        app = FastAPI(); app.include_router(events_router)
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch("app.observability.TASK_DIR", Path(tmp) / "tasks"), \
+                patch("app.storage.TASK_DIR", Path(tmp) / "tasks"), \
+                patch("app.routers.events.get_task", return_value=task):
+            record_task_event(task.id, "draft_ready", details={"sequence": 1})
+            first = True
+            def read_during_completion(*args, **kwargs):
+                nonlocal first
+                rows = read_task_events_after(*args, **kwargs)
+                if first:
+                    first = False
+                    record_task_event(task.id, "task_updated", status="success", phase="completed")
+                return rows
+            with patch("app.routers.events.read_task_events_after", side_effect=read_during_completion):
+                response = TestClient(app).get(f"/api/tasks/{task.id}/events/stream")
+            payloads = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+            replayed = [item["event_id"] for item in payloads if "event" in item]
+            self.assertEqual(replayed, [1, 2])
+            self.assertEqual(payloads[-1]["event_id"], 2)
+            self.assertEqual(response.text.count("event: task_terminal"), 1)
+
+    def test_synchronized_terminal_drain_preserves_absolute_ids_across_pages(self):
+        task = TaskRecord(id="terminal-paged-race", title="Synthetic", source_type="local",
+                          created_at=now_iso(), updated_at=now_iso(), status="success", phase="completed")
+        app = FastAPI(); app.include_router(events_router)
+        skipped = {1000, 1999, 2000, 4000}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch("app.observability.TASK_DIR", Path(tmp) / "tasks"), \
+                patch("app.storage.TASK_DIR", Path(tmp) / "tasks"), \
+                patch("app.routers.events.get_task", return_value=task):
+            record_task_event(task.id, "draft_ready")
+            first = True
+            def read_during_completion(*args, **kwargs):
+                nonlocal first
+                rows = read_task_events_after(*args, **kwargs)
+                if first:
+                    first = False
+                    with events_path(task.id).open("a", encoding="utf-8") as handle:
+                        for index in range(4505):
+                            value = ("[]" if index % 2 else "incomplete-json") if index in skipped else json.dumps({"event": "step", "index": index})
+                            handle.write(value + "\n")
+                return rows
+            with patch("app.routers.events.read_task_events_after", side_effect=read_during_completion):
+                response = TestClient(app).get(f"/api/tasks/{task.id}/events/stream")
+            payloads = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+            replayed = [item["event_id"] for item in payloads if "event" in item]
+            self.assertEqual(replayed, [1] + [index + 2 for index in range(4505) if index not in skipped])
+            self.assertEqual(payloads[-1]["event_id"], 4506)
             self.assertEqual(response.text.count("event: task_terminal"), 1)
 
     def test_sse_frame_preserves_chinese_and_has_reconnect_id(self) -> None:
@@ -60,7 +121,7 @@ class EventStreamTests(unittest.TestCase):
         self.assertNotIn("event: task\nevil", frame)
 
     def test_reconnect_cursor_uses_absolute_event_ids(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch("app.observability.TASK_DIR", Path(tmp)):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.observability.TASK_DIR", Path(tmp) / "tasks"):
             for index in range(3):
                 record_task_event("cursor-task", "step", details={"index": index})
             page = read_task_events_after("cursor-task", after=1)
@@ -81,7 +142,8 @@ class EventStreamTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(events_router)
         with tempfile.TemporaryDirectory() as tmp, \
-             patch("app.observability.TASK_DIR", Path(tmp)), \
+             patch("app.observability.TASK_DIR", Path(tmp) / "tasks"), \
+             patch("app.storage.TASK_DIR", Path(tmp) / "tasks"), \
              patch("app.routers.events.get_task", return_value=task):
             record_task_event("stream-task", "pipeline_attempt_started", details={"sequence": 1})
             record_task_event("stream-task", "stage_timing", phase="transcript", details={"duration_ms": 12})
