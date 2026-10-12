@@ -313,7 +313,7 @@ async function main() {
       for (const theme of ["light", "dark"]) {
         if (await page.locator("#menu").getAttribute("aria-expanded") !== "true") await page.locator("#menu").click();
         if (await page.locator("body").evaluate(body => body.classList.contains("dark")) !== (theme === "dark")) await page.locator("#theme").click();
-        if (await page.locator("#menu").getAttribute("aria-expanded") === "true") await page.locator("#menu").click();
+        if (await page.locator("#menu").getAttribute("aria-expanded") === "true") await page.locator("#collapseSidebar").click();
         await synthesize();
         await page.locator("#courseSynthesisScope").scrollIntoViewIfNeeded();
         const geometry = await page.locator("#toolsDialog").evaluate(element => {
