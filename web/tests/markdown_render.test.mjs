@@ -269,6 +269,11 @@ const compatibleDraft = context.window.LearnNoteEditorial.mediaDraft("url", {
 });
 assert.equal(compatibleDraft.title, "Compatibility lesson");
 assert.equal(compatibleDraft.duration, 420);
+// Media length and legacy point values cannot establish a whole-task ETA.
+for (const [seconds, duration] of [[null, 420], [undefined, 15427], [120, 420], [0, 0], [NaN, NaN]]) {
+  assert.equal(context.window.LearnNoteEditorial.displayEstimate(seconds, duration), "未知（尚无整任务耗时记录）");
+}
+assert.equal(context.window.LearnNoteEditorial.displayDuration(420), "7:00");
 assert.equal(compatibleDraft.audio, true);
 assert.equal(compatibleDraft.visual, true);
 assert.equal(compatibleDraft.subtitles, false);
