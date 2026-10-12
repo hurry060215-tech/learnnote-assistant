@@ -2185,8 +2185,9 @@ body[data-contents-fit="false"] #pageContents {
 .profile-eyebrow,.profile-footnote { font-size:13px; color:var(--muted,#727970); line-height:1.8; }
 .profile-inline input { flex:1; min-width:0; }
 .profile-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:26px 0; }
-.profile-stats section { padding:18px; border-radius:12px; background:var(--panel,#f3f5f0); }
+.profile-stats section { padding:18px; min-width:0; overflow-wrap:anywhere; border-radius:12px; background:var(--panel,#f3f5f0); }
 .profile-stats span { display:block; font-size:12px; color:var(--muted,#727970); }
+.profile-stats small,.usage-day small { display:block; font-size:12px; color:var(--muted); line-height:1.55; }
 .profile-stats strong { display:block; font-size:26px; font-weight:550; margin-top:10px; font-variant-numeric:tabular-nums; }
 .profile-section { padding:20px 0; border-top:1px solid var(--line,#e2e5e0); }
 .profile-section h3 { margin:0 0 10px; font-weight:550; }

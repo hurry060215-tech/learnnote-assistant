@@ -1,6 +1,7 @@
 import { createReadingSettingsAdapter, normalizeReading, applyReadingAppearance } from "/web/reading-settings.js";
 import { installModelCatalog } from "/web/desk-model-catalog.js";
 import { api, escapeHtml as esc } from "/web/desk-api.js";
+import { usageCoverage } from "/web/usage-coverage.js";
 export function installSettings(ctx) {
   const { state, notice, loadKey } = ctx,
     $ = (id) => document.getElementById(id),
@@ -294,7 +295,8 @@ export function installSettings(ctx) {
     try {
       const data = await api("/api/model/usage");
       const t = data.totals, n = value => Number(value).toLocaleString();
-      target.innerHTML = `<h3>${n(t.total_tokens)} Token</h3><p>输入 ${n(t.input_tokens)} · 输出 ${n(t.output_tokens)}</p><p>${n(t.requests)} 次请求 · ${n(t.requests-t.measured_requests)} 次未返回用量</p><h4>最近请求</h4>`;
+      const total = usageCoverage(t), input = usageCoverage(t, "input_tokens"), output = usageCoverage(t, "output_tokens");
+      target.innerHTML = `<h3>Token 用量：${total.text}</h3><p>输入 ${input.text} · 输出 ${output.text}</p><p>总量 ${total.detail} · 输入 ${input.detail} · 输出 ${output.detail}</p><p class="muted">部分记录仅为已返回的数值合计；其余用量与费用未知。</p><h4>最近请求</h4>`;
       if (!data.recent.length) target.insertAdjacentHTML("beforeend", '<p class="muted">还没有记录。下次生成笔记或询问助手后，可在这里查看。</p>');
       for (const item of data.recent) {
         const row = document.createElement("p");

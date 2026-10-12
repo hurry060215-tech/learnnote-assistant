@@ -48,10 +48,20 @@ def tracked_completion(client, *, purpose="note", **kwargs):
 
 
 def usage_report():
+    # SUM preserves unknown counts. Only an empty ledger has a known zero;
+    # a nonempty group with no reported value stays NULL. Coverage is per field
+    # because providers may return a total without either component (or vice versa).
+    aggregate = "COUNT(*) requests, " + ", ".join(
+        f"COUNT({field}) {coverage}, "
+        f"CASE WHEN COUNT(*) = 0 THEN 0 ELSE SUM({field}) END {field}"
+        for field, coverage in (("input_tokens", "measured_input_requests"),
+                                ("output_tokens", "measured_output_requests"),
+                                ("total_tokens", "measured_requests"))
+    )
     with _db() as db:
         db.row_factory = sqlite3.Row
-        totals = dict(db.execute("SELECT COUNT(*) requests, COUNT(total_tokens) measured_requests, COALESCE(SUM(input_tokens),0) input_tokens, COALESCE(SUM(output_tokens),0) output_tokens, COALESCE(SUM(total_tokens),0) total_tokens FROM usage").fetchone())
+        totals = dict(db.execute(f"SELECT {aggregate} FROM usage").fetchone())
         recent = [dict(row) for row in db.execute("SELECT * FROM usage ORDER BY rowid DESC LIMIT 100")]
-        groups = [dict(row) for row in db.execute("SELECT host, model, COUNT(*) requests, COUNT(total_tokens) measured_requests, COALESCE(SUM(total_tokens),0) total_tokens FROM usage GROUP BY host, model")]
-        daily = [dict(row) for row in db.execute("SELECT substr(at,1,10) day, COUNT(*) requests, COUNT(total_tokens) measured_requests, COALESCE(SUM(total_tokens),0) total_tokens FROM usage WHERE date(at) >= date('now','-13 days') GROUP BY day ORDER BY day")]
-    return {"totals": totals, "recent": recent, "models": groups, "daily": daily}
+        groups = [dict(row) for row in db.execute(f"SELECT host, model, {aggregate} FROM usage GROUP BY host, model")]
+        daily = [dict(row) for row in db.execute(f"SELECT substr(at,1,10) day, {aggregate} FROM usage WHERE date(at) >= date('now','-13 days') GROUP BY day ORDER BY day")]
+    return {"schema_version": 2, "totals": totals, "recent": recent, "models": groups, "daily": daily}
