@@ -418,8 +418,17 @@ def api_study_export() -> dict:
 
 @study_router.get("/backup")
 def api_learning_backup() -> dict:
-    backup = export_learning_backup()
-    if len(json.dumps(backup, ensure_ascii=False).encode("utf-8")) > 100_000_000:
+    try:
+        backup = export_learning_backup()
+        serialized_size = len(json.dumps(backup, ensure_ascii=False).encode("utf-8"))
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(409, detail={
+            "code": "learning_backup_incomplete",
+            "message": "个人批注或笔记修改文件损坏、版本不兼容或不可读取，未导出不完整的备份。请先保留本地数据文件夹，检查修复后再导出。",
+        }) from exc
+    if serialized_size > 100_000_000:
         raise HTTPException(status_code=413, detail={"code": "learning_backup_too_large", "message": "学习备份超过 100 MB，无法导出为单个文件。"})
     return backup
 

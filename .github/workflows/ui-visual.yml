@@ -214,6 +214,7 @@ jobs:
             build/personal-anchors-acceptance/report.json
             build/personal-anchors-acceptance/personal-anchors.png
             build/personal-anchors-acceptance/learning-restore-blocked.png
+            build/personal-anchors-acceptance/learning-backup-error-mobile.png
             build/course-question-ui
             build/model-route-ui
           if-no-files-found: warn

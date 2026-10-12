@@ -385,7 +385,9 @@ class LearningRestoreSafetyTests(unittest.TestCase):
             # Cleanup happens after commit; these writes are already durable.
             # Report uncertainty and preserve recovery instead of pretending
             # that the failed request made no changes or retrying the merge.
-            exported = client.get("/api/study/backup").json()["study"]
+            blocked_export = client.get("/api/study/backup")
+            self.assertEqual(blocked_export.status_code, 409, blocked_export.text)
+            exported = client.get("/api/study/export").json()
             self.assertEqual(len(exported["cards"]), 1)
             self.assertEqual(len(exported["reviews"]), 1)
             self.assertEqual(len(exported["activity_events"]), 2)

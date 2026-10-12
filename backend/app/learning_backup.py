@@ -12,12 +12,13 @@ LEARNING_BACKUP_SCHEMA_VERSION = 1
 
 
 def export_learning_backup() -> dict[str, object]:
+    personal = export_personal_data()
     return {
         "schema_version": LEARNING_BACKUP_SCHEMA_VERSION,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "scope": "local-study-history-personal-notes-and-editions",
         "study": export_study_data(),
-        "personal": export_personal_data(),
+        "personal": personal,
     }
 
 

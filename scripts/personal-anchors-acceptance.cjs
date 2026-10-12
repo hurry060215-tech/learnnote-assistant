@@ -171,13 +171,20 @@ const path = require("node:path");
       await page.waitForFunction(() => !document.querySelector("#studyRestoreButton").disabled && document.querySelector("#studyBackupInput").value === "");
       return result.json();
     };
+    const downloads = [];
+    page.on("download", download => downloads.push(download));
     const future = Buffer.from(JSON.stringify({ ...JSON.parse(currentBytes), schema_version: 999, future_data: "Synthetic text must survive" }));
     fs.writeFileSync(personalPath, future);
     try {
+      const rejectedExport = page.waitForResponse(r => r.url() === `${base}/api/study/backup`);
+      await page.locator("#studyExportButton").click();
+      assert.equal((await rejectedExport).status(), 409);
+      await page.waitForFunction(() => document.querySelector("#studyDueList").textContent.includes("未导出不完整"));
+      assert.equal(downloads.length, 0, "Classic export must not download an error payload");
       await uploadBackup(422);
       assert.match(await page.locator("#studyDueList").innerText(), /版本不兼容/);
       assert.deepEqual(fs.readFileSync(personalPath), future);
-      assert.equal(studyContent((await (await page.request.get(`${base}/api/study/backup`)).json()).study), studyBefore);
+      assert.equal(studyContent(await (await page.request.get(`${base}/api/study/export`)).json()), studyBefore);
     } finally { fs.writeFileSync(personalPath, currentBytes); }
     const recovery = path.join(output, "data/personal-state/restore-pending");
     assert.equal(fs.existsSync(recovery), false);
@@ -195,10 +202,43 @@ const path = require("node:path");
     const retry = await uploadBackup(200);
     assert(Object.values(retry.merge).every(count => count === 0));
     assert.deepEqual(fs.readFileSync(personalPath), currentBytes);
-    assert.equal(studyContent((await (await page.request.get(`${base}/api/study/backup`)).json()).study), studyBefore);
+    assert.equal(studyContent(await (await page.request.get(`${base}/api/study/export`)).json()), studyBefore);
+    await page.goto(base, { waitUntil: "networkidle" });
+    await page.locator("#settings").click();
+    await page.locator('[data-settings-section="storage"]').click();
+    const management = page.locator('#settingsDialog [data-settings-page="storage"] details');
+    if (!await management.evaluate(node => node.open)) await management.locator("summary").click();
+    await page.locator("#studyTools").click();
+    await page.locator(".study-backup > summary").click();
+    const exportButton = page.getByRole("button", { name: "导出学习备份", exact: true });
+    fs.writeFileSync(personalPath, future);
+    try {
+      const response = page.waitForResponse(r => r.url() === `${base}/api/study/backup`);
+      await exportButton.click(); assert.equal((await response).status(), 409);
+      await page.waitForFunction(() => document.querySelector("#toolStatus").textContent.includes("未导出不完整"));
+      assert.equal(downloads.length, 0, "Workspace export must not download an error payload");
+      assert.deepEqual(fs.readFileSync(personalPath), future);
+      await page.setViewportSize({ width: 390, height: 844 });
+      const centered = await page.locator("#toolsDialog").evaluate(node => {
+        const box = node.getBoundingClientRect();
+        return { offset: Math.abs(box.left + box.width / 2 - innerWidth / 2), overflow: document.documentElement.scrollWidth > innerWidth + 1 };
+      });
+      assert(centered.offset <= 2 && !centered.overflow, JSON.stringify(centered));
+      await page.screenshot({ path: path.join(output, "learning-backup-error-mobile.png"), fullPage: true });
+    } finally { fs.writeFileSync(personalPath, currentBytes); }
+    const downloadReady = page.waitForEvent("download");
+    await exportButton.click();
+    const downloaded = await downloadReady;
+    const backupPath = path.join(output, "complete-learning-backup.json");
+    await downloaded.saveAs(backupPath);
+    const exported = JSON.parse(fs.readFileSync(backupPath, "utf8"));
+    const savedGroup = exported.personal.annotations.find(group => group.key === `task-${fixture.task_id}`);
+    assert.deepEqual(savedGroup.items, JSON.parse(currentBytes).annotations);
+    assert.deepEqual(fs.readFileSync(personalPath), currentBytes);
+    assert.equal(downloads.length, 1);
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ status: "pass", browser: "msedge", actual_backend: true,
-      synthetic_only: true, checks: ["claim-marker-prose-preserved", "claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary", "restore-future-schema-rejected", "restore-recovery-copy-preserved", "restore-error-visible", "restore-safe-retry"] }, null, 2));
+      synthetic_only: true, checks: ["claim-marker-prose-preserved", "claim-caption-visual", "overlapping-ranges", "multi-cue-interval", "altered-range-rejected", "interval-orphan-repair", "orphan-repair", "stale-edit", "lost-response-retry", "literal-text", "user-content-boundary", "restore-future-schema-rejected", "restore-recovery-copy-preserved", "restore-error-visible", "restore-safe-retry", "classic-backup-failure-no-download", "workspace-backup-failure-no-download", "complete-backup-after-repair", "backup-error-mobile-centered"] }, null, 2));
     console.log("Personal anchors: actual Edge/backend acceptance passed");
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
