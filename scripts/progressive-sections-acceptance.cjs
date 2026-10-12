@@ -436,11 +436,15 @@ async function runScenario(scenario, out) {
       // estimate payload is synthetic; layout and interaction are production.
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+        // Let the production resize listener update drawer accessibility before
+        // deciding whether its controls need to be opened.
+        await settle();
         for (const theme of ["light", "dark"]) {
           const menu = page.locator("#menu");
           if (await menu.getAttribute("aria-expanded") !== "true") await menu.click();
           if (await page.locator("body").evaluate(body => body.classList.contains("dark")) !== (theme === "dark"))
             await page.locator("#theme").click();
+          await page.waitForFunction(dark => document.body.classList.contains("dark") === dark, theme === "dark");
           if (width === 390 && await menu.getAttribute("aria-expanded") === "true") {
             await page.locator("#collapseSidebar").click();
             assert.equal(await menu.getAttribute("aria-expanded"), "false");
@@ -459,6 +463,7 @@ async function runScenario(scenario, out) {
         }
       }
       await page.setViewportSize({ width: 1440, height: 960 });
+      await settle();
       if (await page.locator("#menu").getAttribute("aria-expanded") !== "true") await page.locator("#menu").click();
       if (await page.locator("body").evaluate(body => body.classList.contains("dark"))) await page.locator("#theme").click();
       await settle();
