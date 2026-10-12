@@ -366,7 +366,8 @@ class AssistantTaskControlTests(unittest.TestCase):
     def test_course_status_with_unresolved_handoff_reads_manifests_without_binding_or_repair(self):
         course = courses.save_course("Synthetic course", [{"kind": "url", "url": "https://example.test/lesson"}])
         episode = course_episodes.course_episodes(course, read_only=True)[0]
-        storage.update_task(self.task.id, page_url=episode["url"], handoff_id=episode["handoff_id"],
+        storage.update_task(self.task.id, source_type="current_page", mode="video",
+                            page_url=episode["url"], handoff_id=episode["handoff_id"],
                             status="running", phase="transcribing")
         raw = json.loads(storage.task_file(self.task.id).read_text(encoding="utf-8"))
         raw["updated_at"] = "2000-01-01T00:00:00+00:00"

@@ -35,7 +35,15 @@ module.exports = async function readerEncodingAcceptance({ page, api, base, out,
     assert.equal(await page.locator("#toolsDialog").evaluate(el => el.open), false);
     assert.equal(submissions.length, 0, "Cancel and Escape before submit do not write");
 
-    await open(); await page.locator("#materialRedecodeEncoding").selectOption("utf-8");
+    await open();
+    // Deliver a previous visit's queued close after reopening. The current
+    // session must retain its dirty state and still send the real HTTP request.
+    await page.locator("#toolsDialog").evaluate(dialog => {
+      dialog.dataset.unsaved = "true";
+      dialog.dispatchEvent(new Event("close"));
+    });
+    assert.equal(await page.locator("#toolsDialog").evaluate(dialog => dialog.dataset.unsaved), "true");
+    await page.locator("#materialRedecodeEncoding").selectOption("utf-8");
     let response = reply(); await page.locator("#materialRedecodeSubmit").click();
     assert.equal((await response).status(), 422);
     await page.locator("#toolStatus").getByText(/当前资料未改变/).waitFor();
@@ -84,7 +92,8 @@ module.exports = async function readerEncodingAcceptance({ page, api, base, out,
     assert.equal(new URL(page.url()).hash, `#material/${restoreMaterial.material_id}`);
     return { default_reader: true, current_encoding: updated.metadata.encoding, raw_bytes_unchanged: true,
       evidence_ids_preserved: true, invalid_encoding_rejected: true, stale_version_rejected: true,
-      cancel_escape_no_write: true, repeated_submit_blocked: true, late_response_keeps_new_selection: true };
+      cancel_escape_no_write: true, queued_close_preserves_new_session: true,
+      repeated_submit_blocked: true, late_response_keeps_new_selection: true };
   } finally {
     release?.();
     if (heldRoute) await page.unroute(`**${endpoint}`, heldRoute);

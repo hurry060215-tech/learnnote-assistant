@@ -22,13 +22,14 @@ from .qa_evidence import (
 )
 
 from importlib.util import find_spec
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 import asyncio
 import base64
 import hmac
 import json
 import mimetypes
 import re
+import sqlite3
 import shutil
 import threading
 import time
@@ -79,7 +80,7 @@ from .task_queue import queue_status, schedule_processing, recover_processing, q
 from .routers.support import router as support_router
 from .routers.queue import router as queue_router
 from .screen_subtitle_routes import router as screen_subtitle_router
-from .task_inputs import merge_task_options, require_ready_note_model, task_media_path
+from .task_inputs import merge_task_options, require_ready_note_model, task_media_path, media_source_admission
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -3319,8 +3320,17 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     request = request.model_copy(update={"page_url": source.url, "title": title})
     source_identity = current_page_source_identity(request)
     source_type = "page_text" if request.mode == "page_text" else "current_page"
-    with _deferred_handoffs_lock:
-        existing = _existing_handoff_task(request.handoff_id)
+    from .course_episodes import prepared_course_handoff
+    from .courses import course_transaction
+    # Keep the reservation valid until the first task identity is persisted.
+    # Course deletion/editing cannot interleave validation and creation.
+    with _deferred_handoffs_lock, (course_transaction() if request.handoff_id.startswith("course-") else nullcontext()):
+        try:
+            course_handoff, existing = prepared_course_handoff(request)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            raise HTTPException(status_code=409, detail={"code": "course_episode_identity_conflict", "message": "Course source identity is unavailable or ambiguous."}) from exc
+        if not course_handoff:
+            existing = _existing_handoff_task(request.handoff_id)
         if existing:
             if not _same_handoff_source(existing, source_identity, source.url) or existing.mode != request.mode or existing.learning_range != request.learning_range:
                 raise HTTPException(
@@ -3333,8 +3343,11 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                 write_json(existing.id, "deferred_preflight.json", redacted_request_dump(request))
             return _handoff_response(existing, deduplicated=True)
 
-        task = create_task(source_type=source_type, title=title, page_url=source.url, options=request.options, mode=request.mode)
-        task = update_task(task.id, handoff_id=request.handoff_id, source_identity=source_identity, learning_range=request.learning_range, subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
+        # Persist identity with the first manifest write so restart retries reuse it.
+        task = create_task(source_type=source_type, title=title, page_url=source.url,
+                           options=request.options, mode=request.mode, handoff_id=request.handoff_id,
+                           source_identity=source_identity, learning_range=request.learning_range,
+                           subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
@@ -3606,28 +3619,29 @@ def create_from_existing_media(
 
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
     require_ready_note_model(parsed_options)
-    task = create_task(
-        source_type="local",
-        title=source.title or f"Media from {source.id}",
-        page_url=source.page_url,
-        options=parsed_options,
-        mode="rerun_from_media",
-    )
-    task = update_task(
-        task.id,
-        source_task_id=source.id,
-        source_media_path=str(media_path),
-        learning_range=source.learning_range,
-        media_integrity=rerun_integrity,
-        source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
-        selected_resource=source.selected_resource,
-        download_attempts=source.download_attempts,
-        active_video=source.active_video,
-        browser_subtitles=source.browser_subtitles,
-        drm_detected=source.drm_detected,
-        drm_signals=source.drm_signals,
-        message="Queued from downloaded media",
-    )
+    with media_source_admission(task_id, source):
+        task = create_task(
+            source_type="local",
+            title=source.title or f"Media from {source.id}",
+            page_url=source.page_url,
+            options=parsed_options,
+            mode="rerun_from_media",
+        )
+        task = update_task(
+            task.id,
+            source_task_id=source.id,
+            source_media_path=str(media_path),
+            learning_range=source.learning_range,
+            media_integrity=rerun_integrity,
+            source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
+            selected_resource=source.selected_resource,
+            download_attempts=source.download_attempts,
+            active_video=source.active_video,
+            browser_subtitles=source.browser_subtitles,
+            drm_detected=source.drm_detected,
+            drm_signals=source.drm_signals,
+            message="Queued from downloaded media",
+        )
     source_transcript_source = ""
     try:
         source_transcript_source = str(read_transcript(source.id).get("source") or "")

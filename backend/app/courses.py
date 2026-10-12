@@ -82,6 +82,13 @@ def save_course(title: str, sources: list[dict], paused: bool = False, course_id
             normalized.append(item)
         course = {"schema_version": 1, "id": course_id, "title": title.strip(), "sources": normalized, "paused": paused, "revision": revision + 1}
         atomic_write_text(_path(course_id), json.dumps(course, ensure_ascii=False, indent=2))
+        # Saving sources is an explicit write workflow. Adopt resolved reuse
+        # here so later option changes cannot silently detach a saved course;
+        # ordinary reads and deletion previews must remain side-effect free.
+        from .course_episodes import course_episodes, bind_course_episode
+        for episode in course_episodes(course):
+            if episode["source_kind"] == "url" and episode.get("task_id"):
+                bind_course_episode(course, episode["episode_id"], episode["task_id"])
         return course
 
 
@@ -89,9 +96,12 @@ def delete_course(course_id: str) -> None:
     # Removing a collection is not authorization to delete its source files.
     from .assistant_operation_store import source_deletion
     with source_deletion("course", course_id, DATA_DIR), course_transaction():
-        _path(course_id).unlink()
+        path = _path(course_id)
+        if not path.exists():
+            raise FileNotFoundError(course_id)
         from .course_episodes import clear_course_episode_links
         clear_course_episode_links(course_id)
+        path.unlink()
 
 
 def set_course_paused(course_id: str, revision: int, paused: bool, operation_id: str) -> dict:

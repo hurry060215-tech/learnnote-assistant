@@ -90,7 +90,8 @@ export function installInteractions({
   document.addEventListener(
     "close",
     (event) => {
-      if (event.target.tagName === "DIALOG") {
+      // Native close events are queued: an older visit may have already reopened.
+      if (event.target.tagName === "DIALOG" && !event.target.open) {
         markSaved(event.target);
         event.target.dispatchEvent(new Event("learnnote:dialog-closed"));
       }

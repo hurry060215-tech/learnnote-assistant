@@ -21,7 +21,27 @@ def course_path(data_dir, course_id):
 
 
 def read_course(data_dir, course_id):
-    return json.loads(course_path(data_dir, course_id).read_text(encoding="utf-8"))
+    course = json.loads(course_path(data_dir, course_id).read_text(encoding="utf-8"))
+    # A manifest cannot redirect a reviewed operation to another collection or
+    # smuggle an unchecked filesystem identity through its persisted sources.
+    if (not isinstance(course, dict) or course.get("id") != course_id
+            or type(course.get("schema_version")) is not int or course["schema_version"] != 1
+            or not isinstance(course.get("title"), str)
+            or type(course.get("paused")) is not bool
+            or type(course.get("revision")) is not int or course["revision"] < 1
+            or not isinstance(course.get("sources"), list) or len(course["sources"]) > 200):
+        raise ValueError("course_manifest_invalid")
+    for source in course["sources"]:
+        if (not isinstance(source, dict) or not isinstance(source.get("kind"), str)
+                or source["kind"] not in {"task", "material", "url"}
+                or not isinstance(source.get("title"), str)):
+            raise ValueError("course_manifest_invalid")
+        identity = source.get("url") if source["kind"] == "url" else source.get("id")
+        if (not isinstance(identity, str) or not identity
+                or (source["kind"] == "url" and len(identity) > 4096)
+                or (source["kind"] != "url" and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identity))):
+            raise ValueError("course_manifest_invalid")
+    return course
 
 
 @contextmanager
