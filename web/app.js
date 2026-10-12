@@ -5472,7 +5472,10 @@ async function exportStudyData() {
     link.remove();
     URL.revokeObjectURL(link.href);
   } catch (error) {
-    if (els.studyDueList) els.studyDueList.textContent = error?.message || "复习记录导出失败。";
+    if (els.studyDueList) {
+      els.studyDueList.textContent = error?.message || "复习记录导出失败。";
+      els.studyDueList.scrollIntoView?.({ block: "nearest" });
+    }
   } finally {
     els.studyExportButton.disabled = false;
   }
