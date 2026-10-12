@@ -180,6 +180,10 @@ const path = require("node:path");
       await page.locator("#studyExportButton").click();
       assert.equal((await rejectedExport).status(), 409);
       await page.waitForFunction(() => document.querySelector("#studyDueList").textContent.includes("未导出不完整"));
+      await page.waitForFunction(() => {
+        const box = document.querySelector("#studyDueList").getBoundingClientRect();
+        return box.top >= 0 && box.bottom <= innerHeight;
+      });
       assert.equal(downloads.length, 0, "Classic export must not download an error payload");
       await uploadBackup(422);
       assert.match(await page.locator("#studyDueList").innerText(), /版本不兼容/);
@@ -219,6 +223,15 @@ const path = require("node:path");
       assert.equal(downloads.length, 0, "Workspace export must not download an error payload");
       assert.deepEqual(fs.readFileSync(personalPath), future);
       await page.setViewportSize({ width: 390, height: 844 });
+      const mobileResponse = page.waitForResponse(r => r.url() === `${base}/api/study/backup`);
+      await exportButton.click(); assert.equal((await mobileResponse).status(), 409);
+      await page.waitForFunction(() => {
+        const feedback = document.querySelector("[data-backup-status]");
+        const box = feedback.getBoundingClientRect(), dialogBox = document.querySelector("#toolsDialog").getBoundingClientRect();
+        return !feedback.hidden && feedback.textContent.includes("未导出不完整")
+          && box.top >= Math.max(0, dialogBox.top) && box.bottom <= Math.min(innerHeight, dialogBox.bottom);
+      });
+      assert.equal(downloads.length, 0, "Narrow workspace errors must remain visible without a download");
       const centered = await page.locator("#toolsDialog").evaluate(node => {
         const box = node.getBoundingClientRect();
         return { offset: Math.abs(box.left + box.width / 2 - innerWidth / 2), overflow: document.documentElement.scrollWidth > innerWidth + 1 };

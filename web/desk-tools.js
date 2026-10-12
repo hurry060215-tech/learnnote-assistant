@@ -206,9 +206,18 @@ export function installTools(ctx) {
     const backupHint = document.createElement("p"); backupHint.className = "muted";
     backupHint.textContent = "包含填空作答、评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
     const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
+    const backupFeedback = document.createElement("p"); backupFeedback.className = "muted";
+    backupFeedback.dataset.backupStatus = ""; backupFeedback.setAttribute("role", "status"); backupFeedback.hidden = true;
     const exportBackup = document.createElement("button"); exportBackup.type = "button"; exportBackup.textContent = "导出学习备份";
     exportBackup.onclick = () => run(exportBackup, async token => {
-      const backup = await api("/api/study/backup");
+      backupFeedback.hidden = true;
+      const backup = await api("/api/study/backup").catch(error => {
+        if (token === generation && dialog.open) {
+          backupFeedback.textContent = error.message; backupFeedback.hidden = false;
+          backupFeedback.scrollIntoView({ block: "nearest" });
+        }
+        throw error;
+      });
       if (token !== generation || !dialog.open) return;
       const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
       const link = document.createElement("a"); link.href = url;
@@ -235,7 +244,7 @@ export function installTools(ctx) {
       finally { backupFile.value = ""; }
     };
     backupActions.append(exportBackup, restoreButton, backupFile);
-    backupPanel.append(backupSummary, backupHint, backupActions);
+    backupPanel.append(backupSummary, backupHint, backupActions, backupFeedback);
     const deleteStudy = document.createElement("button"); deleteStudy.type = "button"; deleteStudy.className = "danger";
     deleteStudy.textContent = "永久删除学习记录";
     deleteStudy.onclick = async () => {
