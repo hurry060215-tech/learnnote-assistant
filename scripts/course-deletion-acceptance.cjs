@@ -5,6 +5,15 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
+// GET adds a fresh observation clock; compare every persisted/projected value
+// except that clock when asserting Cancel and stale reviews change no data.
+const stableTask = task => {
+  const copy = structuredClone(task);
+  assert(Number.isInteger(copy.duration_estimate?.observed_at_unix_ms));
+  delete copy.duration_estimate.observed_at_unix_ms;
+  return copy;
+};
+
 module.exports = async function courseDeletionAcceptance(context, base, out) {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1024, height: 900 });
@@ -64,14 +73,14 @@ module.exports = async function courseDeletionAcceptance(context, base, out) {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: path.join(out, "course-deletion-review-mobile.png"), fullPage: true });
     await page.setViewportSize({ width: 1024, height: 900 });
-    const before = (await api(`/api/tasks/${chosen}`)).task;
+    const before = stableTask((await api(`/api/tasks/${chosen}`)).task);
     await page.locator('[data-action="cancel-delete-course"]').click();
     await page.locator('[data-action="edit-course"]').waitFor();
-    assert.deepEqual((await api(`/api/tasks/${chosen}`)).task, before);
+    assert.deepEqual(stableTask((await api(`/api/tasks/${chosen}`)).task), before);
     await page.locator('[data-action="delete-course"]').click(); await page.locator("#confirmCourseDeletion").waitFor();
     await checkbox(chosen).check(); await page.keyboard.press("Escape");
     assert.equal(await page.locator("#toolsDialog").evaluate(el => el.open), false);
-    assert.deepEqual((await api(`/api/tasks/${chosen}`)).task, before);
+    assert.deepEqual(stableTask((await api(`/api/tasks/${chosen}`)).task), before);
     await openCourse(target.course.id);
     await checkbox(chosen).check();
     const current = (await api(`/api/courses/${target.course.id}`)).course;
@@ -79,7 +88,7 @@ module.exports = async function courseDeletionAcceptance(context, base, out) {
     const staleReply = page.waitForResponse(response => response.request().method() === "DELETE" && response.url().endsWith(`/api/courses/${current.id}`));
     await page.locator("#confirmCourseDeletion").click(); assert.equal((await staleReply).status(), 409);
     await page.locator("#toolStatus").getByText(/未执行删除/).waitFor();
-    assert.deepEqual((await api(`/api/tasks/${chosen}`)).task, before);
+    assert.deepEqual(stableTask((await api(`/api/tasks/${chosen}`)).task), before);
     await page.locator('[data-action="delete-course"]').click(); await page.locator("#confirmCourseDeletion").waitFor();
     assert.equal(await page.locator("[data-delete-course-task]:checked").count(), 0);
     await checkbox(chosen).check(); await checkbox(linked).check();

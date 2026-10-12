@@ -3,6 +3,14 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
+// The API observation timestamp advances even when the stored task is intact.
+const stableTask = task => {
+  const copy = structuredClone(task);
+  assert(Number.isInteger(copy.duration_estimate?.observed_at_unix_ms));
+  delete copy.duration_estimate.observed_at_unix_ms;
+  return copy;
+};
+
 module.exports = async function courseMediaReuseAcceptance(context, base, out) {
   const fixture = JSON.parse(execFileSync("python", ["scripts/seed-course-media-reuse.py"], { encoding: "utf8" }));
   const page = await context.newPage(), courses = [fixture.owner_id, fixture.legacy_id], errors = [];
@@ -24,7 +32,7 @@ module.exports = async function courseMediaReuseAcceptance(context, base, out) {
     const fresh = (await api("/api/courses", { method: "POST", data: { title: "Synthetic newly reused course", sources: [{ kind: "url", url: fixture.url }] } })).course;
     courses.push(fresh.id);
     const ids = await evidence(fixture.owner_id); assert(ids.length > 0);
-    const beforeTask = (await api(`/api/tasks/${fixture.task_id}`)).task;
+    const beforeTask = stableTask((await api(`/api/tasks/${fixture.task_id}`)).task);
     await page.goto(base);
     await page.locator(`[data-id="${fixture.task_id}"][data-kind="task"]`).first().click();
     await page.locator("#document").getByText(/Synthetic shared evidence remains stable/).waitFor();
@@ -53,7 +61,7 @@ module.exports = async function courseMediaReuseAcceptance(context, base, out) {
       assert.equal((await api(`/api/courses/${id}`)).episodes[0].task_id, fixture.task_id);
       assert.deepEqual(await evidence(id), ids);
     }
-    assert.deepEqual((await api(`/api/tasks/${fixture.task_id}`)).task, beforeTask);
+    assert.deepEqual(stableTask((await api(`/api/tasks/${fixture.task_id}`)).task), beforeTask);
     assert.equal(submissions, 0); assert.deepEqual(errors, []);
     return { cross_course_task_reused: true, repeated_batch_submissions: submissions, stable_evidence_count: ids.length,
       shared_deletion_protected: true, legacy_adoption_persisted: true, page_errors: errors };
