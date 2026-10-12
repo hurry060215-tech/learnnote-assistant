@@ -10,6 +10,7 @@ const TASK_ID = "progressive-sections-ui-fixture";
 const SCENARIOS = [
   { name: "vision", kind: "vision_batch", title: "合成验收：渐进图文章节", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
   { name: "text", kind: "text_chunk", title: "合成验收：文字分段草稿", first: "文字分段 1", second: "文字分段 2" },
+  { name: "response", kind: "full_response", title: "合成验收：非流式完整响应草稿", first: "不得生成的第二份响应草稿", second: "完整响应草稿" },
   { name: "topic", kind: "topic_chapter", title: "合成验收：模型主题草稿", first: "主题：圆形", second: "主题：方形" },
   { name: "topic-visual", kind: "topic_chapter", title: "合成验收：无可用画面的主题草稿", first: "主题：圆形", second: "主题：方形" },
   { name: "enrichment", kind: "vision_batch", title: "合成验收：字幕原位补入图文", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
@@ -23,7 +24,8 @@ const FINAL_MARKER = "显式模拟成功后的最终样本";
 const HOSTILE_TEXT = '<img src="fixture-hostile.png" onerror="window.__progressiveHostileExecuted=true"><script>window.__progressiveHostileExecuted=true</script>';
 const digest = value => createHash("sha256").update(value).digest("hex");
 const topicScenario = scenario => scenario.kind === "topic_chapter";
-const textScenario = scenario => scenario.name === "text" || topicScenario(scenario);
+const responseScenario = scenario => scenario.kind === "full_response";
+const textScenario = scenario => scenario.name === "text" || responseScenario(scenario) || topicScenario(scenario);
 const visualRequested = scenario => !textScenario(scenario) || scenario.name === "topic-visual";
 
 function validateBase(value) {
@@ -43,7 +45,8 @@ function batch(number, scenario) {
   // to scroll its repeated subheading above the viewport without hitting bottom.
   const paragraphs = Array.from({ length: 18 }, (_, index) =>
     `Synthetic reading spacer ${number}.${index + 1}. This text exists only to check reader position. It makes no claim about a real lesson, a model result, or verified facts.`);
-  return `## ${heading}\n\n> 草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查\n\n### Core points\n\n${claim}\n\n${paragraphs.join("\n\n")}\n\n${number === 2 ? HOSTILE_TEXT : "Synthetic first-batch reference only."}`;
+  const provenance = responseScenario(scenario) ? "> 来源块范围（粗略定位，具体内容仍需回源核对）：来源块 1（00:00–00:20）\n\n" : "";
+  return `## ${heading}\n\n> 草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查\n\n${provenance}### Core points\n\n${claim}\n\n${paragraphs.join("\n\n")}\n\n${number === 2 ? HOSTILE_TEXT : "Synthetic first-batch reference only."}`;
 }
 
 function partialText(withFirst, scenario) {
@@ -66,7 +69,7 @@ function createFixture(scenario) {
       summary_source: "partial-draft", transcript_path: "transcript.json", note_path: "draft.partial.md",
       message: `Synthetic fixture only: ${HOSTILE_TEXT}`,
       options: { content_mode: visualRequested(scenario) ? "visual" : "text", visual_understanding: visualRequested(scenario), generate_questions: false },
-      frame_grids: topicScenario(scenario) ? [] : [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
+      frame_grids: topicScenario(scenario) || responseScenario(scenario) ? [] : [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
       artifact_status: { draft_available: true, partial_draft_available: true, transcript_ready: true },
       duration_estimate: { schema_version: 1, scope: "after_transcript_ready", status: "estimated", attempt_id: "synthetic-attempt",
         sample_count: 5, uncertainty: "empirical_not_probability", observed_at_unix_ms: Date.now(),
@@ -74,7 +77,7 @@ function createFixture(scenario) {
     },
   };
   fixture.projection = () => {
-    if (!(scenario.name === "enrichment" || topicScenario(scenario)) || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
+    if (!(scenario.name === "enrichment" || topicScenario(scenario) || responseScenario(scenario)) || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
     const outlines = TRANSCRIPT.map((cue, index) => ({ ...cue, id: `draft-time-${index * 10}`, kind: "temporal_outline",
       revision: digest(JSON.stringify(cue)), status: "draft", verified: false, summary_generated: false,
       source_cue_count: 1, heading_excerpt: cue.text, excerpts: [{ ...cue, source_cue_index: index }] }));
@@ -96,6 +99,11 @@ function createFixture(scenario) {
         source_windows: TRANSCRIPT.map(({ start, end }, index) => ({ index, start, end })),
       }));
     }
+    if (responseScenario(scenario)) generated = [{
+      id: `response-${digest("synthetic-whole-response").slice(0, 24)}`, kind: "full_response", source_blocks: [0],
+      markdown: batch(2, scenario), revision: digest(batch(2, scenario)), status: "evidence_pending", verified: false,
+      start: 0, end: 20, source_windows: TRANSCRIPT.map(({ start, end }, index) => ({ index, start, end })),
+    }];
     return { schema_version: 1, task_id: TASK_ID, task_updated_at: fixture.task.updated_at,
       status: "draft", reason: "ready", verified: false, attempt_id: "abcdef123456",
       source_revision: digest(JSON.stringify(TRANSCRIPT)), generation_revision: digest("synthetic-vision-run"),
@@ -120,9 +128,9 @@ function createFixture(scenario) {
   fixture.addEarlierBatch = () => {
     assert.equal(fixture.phase, "second-batch");
     fixture.phase = "both-batches";
-    fixture.edition = { text: partialText(true, scenario), revision: "fixture-batches-1-2", edited: false };
+    if (!responseScenario(scenario)) fixture.edition = { text: partialText(true, scenario), revision: "fixture-batches-1-2", edited: false };
     fixture.task.progress = 78;
-    return record("partial_section_ready", sectionDetails(2));
+    return responseScenario(scenario) ? record("task_updated") : record("partial_section_ready", sectionDetails(2));
   };
   fixture.progressOnly = () => {
     assert.equal(fixture.phase, "both-batches");
@@ -215,9 +223,18 @@ async function selfTestScenario(scenario) {
   assert.throws(() => fixture.completeSuccess());
   const earlier = fixture.addEarlierBatch();
   assert(fixture.task.updated_at > initialStamp);
-  assert.equal(earlier.event, "partial_section_ready");
-  assert.equal(earlier.details.verified, false);
-  assert.equal(earlier.details.kind, scenario.kind);
+  assert.equal(earlier.event, responseScenario(scenario) ? "task_updated" : "partial_section_ready");
+  if (!responseScenario(scenario)) {
+    assert.equal(earlier.details.verified, false);
+    assert.equal(earlier.details.kind, scenario.kind);
+  } else {
+    assert.equal(fixture.edition.text, original);
+    const responses = fixture.projection().sections.filter(section => section.kind === "full_response");
+    assert.equal(responses.length, 1);
+    assert.equal(responses[0].verified, false);
+    assert.equal(responses[0].status, "evidence_pending");
+    assert.deepEqual(responses[0].source_blocks, [0]);
+  }
   if (textScenario(scenario)) assert(!fixture.edition.text.includes("图文章节"));
   if (topicScenario(scenario)) {
     const projection = fixture.projection();
@@ -228,12 +245,13 @@ async function selfTestScenario(scenario) {
     assert(topics.every(section => /^chapter-[a-f0-9]{24}$/.test(section.id)));
     assert(topics.every(section => JSON.stringify(section.source_blocks) === "[0]"));
   }
-  assert(fixture.edition.text.indexOf(FIRST_HEADING) < fixture.edition.text.indexOf(SECOND_HEADING));
-  assert.equal(fixture.edition.text.match(/### Core points/g).length, 2);
+  if (!responseScenario(scenario)) assert(fixture.edition.text.indexOf(FIRST_HEADING) < fixture.edition.text.indexOf(SECOND_HEADING));
+  assert.equal(fixture.edition.text.match(/### Core points/g).length, responseScenario(scenario) ? 1 : 2);
   const markdownSandbox = {};
   require("node:vm").runInNewContext(fs.readFileSync(path.join(__dirname, "..", "web", "markdown.js"), "utf8"), markdownSandbox);
   const html = markdownSandbox.LearnNoteMarkdown.markdownToHtml(fixture.edition.text);
-  assert(html.includes('id="note-core-points"') && html.includes('id="note-core-points-2"'));
+  assert(html.includes('id="note-core-points"'));
+  assert.equal(html.includes('id="note-core-points-2"'), !responseScenario(scenario));
   assert(html.includes("&lt;img") && html.includes("&lt;script&gt;"));
   assert(!/<(?:img|script)\b/.test(html));
   const partialHash = digest(fixture.edition.text);
@@ -249,6 +267,7 @@ async function selfTestScenario(scenario) {
   assert.equal(digest(fixture.edition.text), partialHash);
   assert.equal(fixture.explicitSuccess, false);
   fixture.completeSuccess();
+  if (responseScenario(scenario)) assert.equal(fixture.events.filter(event => event.event === "partial_section_ready").length, 1);
   assert(fixture.edition.text.includes(FINAL_MARKER));
   assert.equal(fixture.task.status, "success");
   assert.deepEqual(fixture.events.map(event => event.event_id), [1, 2, 3, 4, 5, 6]);
@@ -261,10 +280,10 @@ async function selfTestScenario(scenario) {
   require("node:vm").runInNewContext(`(${installMockEventSource.toString()})({ taskId: ${JSON.stringify(TASK_ID)} })`, sandbox);
   const source = new sandbox.window.EventSource(`/api/tasks/${TASK_ID}/events/stream?after=0`);
   const received = [];
-  source.addEventListener("partial_section_ready", event => received.push([event.lastEventId, JSON.parse(event.data).details.verified]));
+  source.addEventListener(earlier.event, event => received.push([event.lastEventId, JSON.parse(event.data).details.verified]));
   assert.equal(sandbox.window.__progressiveFixture.emit(earlier), 1);
   assert.equal(sandbox.window.__progressiveFixture.emit(earlier), 1);
-  assert.deepEqual(received, [["2", false], ["2", false]]);
+  assert.deepEqual(received, [["2", responseScenario(scenario) ? undefined : false], ["2", responseScenario(scenario) ? undefined : false]]);
   source.close();
   assert.equal(sandbox.window.__progressiveFixture.emit(earlier), 0);
   assert.throws(() => new sandbox.window.EventSource("https://example.com/stream"));
@@ -421,7 +440,10 @@ async function runScenario(scenario, out) {
     }, { heading: SECOND_HEADING, claim: SECOND_CLAIM });
     assert(before.scrollTop > 0 && before.coreTop < 0, "The test must actually read below the repeated subheading");
     const requestsBeforeInsert = report.editionRequests.length;
+    const responseProgress = responseScenario(scenario)
+      ? page.waitForResponse(response => new URL(response.url()).pathname === `/api/tasks/editions/task/${TASK_ID}`) : null;
     await emit(fixture.addEarlierBatch());
+    if (responseProgress) await responseProgress;
     await waitEdition();
     const after = await page.evaluate(({ heading, claim }) => {
       const nodes = [...document.querySelectorAll("#document h2,#document h3")];
@@ -444,17 +466,22 @@ async function runScenario(scenario, out) {
       await page.locator('[data-reader-batch="vision-1"] > details > summary').click();
       assert.equal(await page.locator('[data-reader-batch="vision-1"] > details > img').getAttribute("src"), `/api/tasks/${TASK_ID}/frames/synthetic-grid.png`);
       report.checks.push("Source excerpts and active selection survive a newly inserted visual batch; exact-range owned image and source controls are available in place");
-    } else assert.notEqual(after.coreId, before.coreId, "The earlier duplicate heading must take the original occurrence-based ID");
+    } else if (responseScenario(scenario)) assert.equal(after.coreId, before.coreId, "The one completed response must stay unchanged during final checking");
+    else assert.notEqual(after.coreId, before.coreId, "The earlier duplicate heading must take the original occurrence-based ID");
     assert(Math.abs(after.sectionTop - before.sectionTop) <= 3, `Source section jumped: ${JSON.stringify({ before, after })}`);
     assert(Math.abs(after.claimTop - before.claimTop) <= 3, "The same batch-2 passage must retain its viewport position");
-    assert(after.scrollTop > before.scrollTop + 500, "Root scroll must compensate for the inserted earlier batch");
-    assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), 2);
+    if (responseScenario(scenario)) assert(Math.abs(after.scrollTop - before.scrollTop) <= 1);
+    else assert(after.scrollTop > before.scrollTop + 500, "Root scroll must compensate for the inserted earlier batch");
+    assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), responseScenario(scenario) ? 1 : 2);
     const order = await page.locator("#document h2").allTextContents();
-    assert(order.indexOf(FIRST_HEADING) < order.indexOf(SECOND_HEADING));
+    if (responseScenario(scenario)) assert.equal(order.indexOf(FIRST_HEADING), -1);
+    else assert(order.indexOf(FIRST_HEADING) < order.indexOf(SECOND_HEADING));
     await assertNoFinal();
     report.observations.anchor = { before, after };
     await screenshot("02-earlier-batch-reading-position.png");
-    report.checks.push("Earlier batch 1 arrives by partial_section_ready; edition reload preserves batch-2 position despite repeated Core points IDs");
+    report.checks.push(responseScenario(scenario)
+      ? "One full-response draft remains pending during final checking; progress creates no extra section and preserves reading position"
+      : "Earlier batch 1 arrives by partial_section_ready; edition reload preserves batch-2 position despite repeated Core points IDs");
 
     await page.evaluate(claim => {
       const element = document.getElementById("document");
@@ -505,7 +532,7 @@ async function runScenario(scenario, out) {
     assert.equal(await page.locator('#taskStatus [data-duration-estimate="estimated"]').count(), 0);
     assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*分段仍以草稿保留/s);
     assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated source chunks must not collapse into a transcript-only draft");
-    assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), 2);
+    assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), responseScenario(scenario) ? 1 : 2);
     assert.match(await page.locator("#document").innerText(), /草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查/);
     await assertEscaped();
     await assertNoFinal();
@@ -537,6 +564,8 @@ async function runScenario(scenario, out) {
     report.stream = await page.evaluate(() => ({ connections: window.__progressiveFixture.connections(), deliveries: window.__progressiveFixture.deliveries }));
     assert.deepEqual(report.stream.deliveries.map(event => event.event_id), [1, 2, 2, 3, 4, 5, 6]);
     assert(report.stream.connections.every(source => source.readyState === 2), "Terminal success must close the task stream");
+    if (responseScenario(scenario)) assert.equal(fixture.events.filter(event => event.event === "partial_section_ready").length, 1,
+      "The non-stream fixture publishes exactly one response, with progress-only transitions while awaiting its final gate");
     assert.deepEqual(report.pageErrors, []);
     assert.deepEqual(report.fixtureErrors, []);
     assert.deepEqual(report.unexpectedRequests, []);

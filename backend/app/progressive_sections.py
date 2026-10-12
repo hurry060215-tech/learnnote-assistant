@@ -41,7 +41,7 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
     if prepared is None:
         return
     # Serialize the final validation/read/merge/write/event with attempt changes.
-    with _task_data_lock if payload.get("kind") == "topic_chapter" else nullcontext():
+    with _task_data_lock if payload.get("kind") in {"topic_chapter", "full_response"} else nullcontext():
         _write_partial_section(task_id, transcript, payload, prepared, attempt_id=attempt_id)
 
 
@@ -52,7 +52,7 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
     check_cancel(task_id)
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
         return
-    if (payload.get("kind") == "topic_chapter"
+    if (payload.get("kind") in {"topic_chapter", "full_response"}
             and (read_json(task_id, "transcript.json", None) != transcript.model_dump(mode="json")
                  or _revision([get_task(task_id).source_identity.media_sha256, transcript.model_dump(mode="json")]) != source_revision)):
         return
@@ -63,7 +63,7 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
         previous = {}
     if not isinstance(previous, dict):
         previous = {}
-    if (payload.get("kind") == "topic_chapter" and previous.get("attempt_id") == attempt_id
+    if (payload.get("kind") in {"topic_chapter", "full_response"} and previous.get("attempt_id") == attempt_id
             and (previous.get("source_revision") != source_revision
                  or previous.get("generation_revision") != payload["generation_revision"])):
         return  # A different generation requires a fresh pipeline attempt.
@@ -99,7 +99,7 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
     check_cancel(task_id)
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
         return
-    if (payload.get("kind") == "topic_chapter"
+    if (payload.get("kind") in {"topic_chapter", "full_response"}
             and (read_json(task_id, "transcript.json", None) != transcript.model_dump(mode="json")
                  or _revision([get_task(task_id).source_identity.media_sha256, transcript.model_dump(mode="json")]) != source_revision)):
         return

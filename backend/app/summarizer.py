@@ -1664,6 +1664,23 @@ def summarize_with_llm(
             _VISION_PROVIDER_SEMAPHORE.release()
         check_cancel()
         generated = canonicalize_unicode_text(generated)
+        # A completed non-stream response can be read while the existing final
+        # gate runs. Never present a provider-truncated response as complete.
+        if (not stream_chapters and not use_vision and blocks and section_callback is not None and generated.strip()
+                and getattr(response.choices[0], "finish_reason", None) == "stop"):
+            from .full_response_sections import full_response_payload
+            from .processor_state import TaskCancelled
+            try:
+                generation = hashlib.sha256(json.dumps(["full-response-v1", base_url, model, content, provider_kwargs],
+                    ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+                section_callback(full_response_payload(entries, generated, generation))
+            except (SummarizationCancelled, TaskCancelled) as exc:
+                raise SummarizationCancelled("summary_cancelled") from exc
+            except Exception as exc:
+                # Draft projection is additive: an unavailable draft must not
+                # discard a completed response or skip its existing final gate.
+                _record_llm_event(events, "text_summary", "draft_unavailable", error_type=type(exc).__name__)
+            check_cancel()
         grounded = _validated_generated_note(
             client,
             model,

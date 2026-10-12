@@ -60,7 +60,7 @@ class TextChunkSectionTests(unittest.TestCase):
 
     @staticmethod
     def response(text="# 课程\n\n来源内容保持完整。"):
-        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=text))])
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(finish_reason="stop", message=types.SimpleNamespace(content=text))])
 
     def run_summary(self, callback=None, **kwargs):
         return summarize_with_llm(self.task.title, self.transcript, [], self.options,
@@ -114,13 +114,15 @@ class TextChunkSectionTests(unittest.TestCase):
         self.assertEqual((self.work / "draft.md").read_bytes(), self.draft_bytes)
         self.assertFalse((self.work / "note.md").exists())
 
-    def test_short_input_has_one_existing_call_and_no_partial(self):
+    def test_short_input_has_one_existing_call_and_one_full_response_draft(self):
         self.transcript = TranscriptResult(full_text="来源内容保持完整。")
         calls, payloads = [], []
         with self.provider(lambda **kw: calls.append(kw) or self.response()):
             self.assertIsNotNone(self.run_summary(payloads.append))
         self.assertEqual(len(calls), 1)
-        self.assertEqual(payloads, [])
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["kind"], "full_response")
+        self.assertEqual(payloads[0]["source_blocks"], [0])
 
     def test_compatibility_retry_publishes_once_after_success_without_changing_requests(self):
         from backend.tests.test_model_compatibility import ProviderError
