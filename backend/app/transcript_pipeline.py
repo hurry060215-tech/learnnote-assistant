@@ -19,6 +19,7 @@ class TranscriptArtifacts:
     audio_path: Path | None
     audio_warning: str
     transcript_path: Path
+    reused: bool = False
 
 
 def prepare_transcript(
@@ -87,11 +88,13 @@ def prepare_transcript(
 
     audio_path: Path | None = None
     cache_integrity = integrity
+    reused = False
     if transcript is None:
         check_cancel(task_id)
         cache_integrity = media_cache_integrity(integrity, normalized_path)
         transcript = load_local_transcript(task_id, cache_integrity, options)
         if transcript is not None:
+            reused = True
             update_task(task_id, phase="transcribing", progress=66, message="已复用这段视频的本地转写，无需重新识别音频")
             cached_audio = work_dir / "audio.wav"
             audio_path = cached_audio if cached_audio.is_file() else None
@@ -138,7 +141,7 @@ def prepare_transcript(
     transcript_path = work_dir / "transcript.json"
     transcript_path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     update_task(task_id, transcript_path=str(transcript_path))
-    return TranscriptArtifacts(transcript, asr_error, audio_path, audio_warning, transcript_path)
+    return TranscriptArtifacts(transcript, asr_error, audio_path, audio_warning, transcript_path, reused=reused)
 
 
 __all__ = ["TranscriptArtifacts", "prepare_transcript"]

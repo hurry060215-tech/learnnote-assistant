@@ -37,22 +37,38 @@ export function elapsedLabel(ms) {
       : `${Math.floor(seconds / 3600)} 小时 ${Math.floor(seconds / 60) % 60} 分`;
 }
 export function durationEstimateHtml(task, events = [], now = Date.now()) {
+  if (task.whole_task_duration_estimate) {
+    const whole = durationReferenceHtml(task, task.whole_task_duration_estimate, events, now, true);
+    // A narrower recorded boundary remains useful when whole-attempt history
+    // is unavailable. Never label those older samples as an entire task.
+    const narrower = task.status === "running" && !task.awaiting_confirmation && !task.cancel_requested &&
+      whole.includes('data-whole-duration-estimate="unknown"') &&
+      ["estimated", "overrun"].includes(task.duration_estimate?.status)
+      ? durationReferenceHtml(task, task.duration_estimate, events, now, false) : "";
+    return whole + narrower;
+  }
+  return durationReferenceHtml(task, task.duration_estimate, events, now, false);
+}
+function durationReferenceHtml(task, value, events, now, whole) {
+  const attribute = whole ? "data-whole-duration-estimate" : "data-duration-estimate";
+  const subject = whole ? "本轮整段剩余时间" : "剩余时间";
   const unknown = (detail = "等待当前字幕来源、处理方式和足够的相近历史记录。") =>
-    `<p class="muted" data-duration-estimate="unknown">剩余时间未知。${detail}</p>`;
+    `<p class="muted" ${attribute}="unknown">${subject}未知。${detail}</p>`;
   if (task.status === "success") return "";
   if (["failed", "cancelled", "cancelling"].includes(task.status))
     return unknown("本次处理未继续，旧区间已停用。");
   if (task.status !== "running" || task.awaiting_confirmation || task.cancel_requested)
     return unknown("尚未进入可测量的处理阶段。");
-  const value = task.duration_estimate;
   const range = item => Array.isArray(item) && item.length === 2 && item.every(n => Number.isFinite(n) && n >= 0) && item[0] <= item[1];
   const latestStart = events.findLast(e => ["pipeline_attempt_started", "task_enqueued"].includes(e.event));
-  if (!value || value.schema_version !== 1 || value.scope !== "after_transcript_ready") return unknown();
+  if (!value || value.schema_version !== 1 || value.scope !== (whole ? "current_processing_attempt" : "after_transcript_ready")) return unknown();
   if (value.status === "unknown") {
     if (value.reason === "insufficient_compatible_history" && Number.isInteger(value.sample_count) && value.sample_count >= 0 && value.sample_count < 5)
-      return unknown(`目前只有 ${value.sample_count} 个相近的成功任务，需要至少 5 个。`);
+      return unknown(`目前只有 ${value.sample_count} 个相近的成功任务，需要至少 5 个。${whole ? "仅使用本次后端启动后的完整实测记录。" : ""}`);
     return unknown();
   }
+  if (whole && (value.cohort !== "current_backend_process" || !["accepted_enqueue", "attempt_start"].includes(value.boundary)))
+    return unknown("本轮测量起点或运行环境尚不明确。");
   if (!["estimated", "overrun"].includes(value.status) || value.uncertainty !== "empirical_not_probability" ||
       typeof value.attempt_id !== "string" || !value.attempt_id ||
       !Number.isInteger(value.sample_count) || value.sample_count < 5 || value.sample_count > 30 ||
@@ -62,12 +78,14 @@ export function durationEstimateHtml(task, events = [], now = Date.now()) {
       (latestStart && (latestStart.event !== "pipeline_attempt_started" || latestStart.details?.attempt_id !== value.attempt_id)))
     return unknown("当前测量记录已变化或暂不可用。");
   const label = item => `${elapsedLabel(item[0] * 1000)}–${elapsedLabel(item[1] * 1000)}`;
-  const reference = `字幕就绪后的处理参考：${label(value.duration_seconds_range)}。`;
-  const detail = `依据本地 ${value.sample_count} 个相近的成功任务；不含之前的排队、下载或转写。区间是历史参考，实际可能超出。`;
+  const reference = `${whole ? "本轮整段用时参考" : "字幕就绪后的处理参考"}：${label(value.duration_seconds_range)}。`;
+  const detail = whole
+    ? `依据本次后端启动后 ${value.sample_count} 个相近的成功任务。${value.boundary === "accepted_enqueue" ? "包含本次排队和随后实际执行的下载、转写、生成及保存。" : "从本轮处理开始计时，包含随后实际执行的下载、转写、生成及保存；排队未计入。"}不含确认等待、此前重试或停机时间。区间是历史参考，实际可能超出。`
+    : `依据本地 ${value.sample_count} 个相近的成功任务；不含之前的排队、下载或转写。区间是历史参考，实际可能超出。`;
   if (value.status === "overrun" || value.elapsed_seconds >= value.duration_seconds_range[1])
-    return `<p class="muted" data-duration-estimate="overrun">${reference}本次已超出历史参考上限，剩余时间未知。${detail}</p>`;
+    return `<p class="muted" ${attribute}="overrun">${reference}本次已超出历史参考上限，剩余时间未知。${detail}</p>`;
   if (!range(value.remaining_seconds_range) || value.remaining_seconds_range[1] <= 0) return unknown();
-  return `<p class="muted" data-duration-estimate="estimated">${reference}当前剩余参考：${label(value.remaining_seconds_range)}。${detail}</p>`;
+  return `<p class="muted" ${attribute}="estimated">${reference}当前剩余参考：${label(value.remaining_seconds_range)}。${detail}</p>`;
 }
 export function taskTimeline(task, events = [], now = Date.now()) {
   const start = events.findLastIndex(

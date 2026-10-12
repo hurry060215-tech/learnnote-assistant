@@ -3,17 +3,24 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 from time import monotonic
+from threading import Lock
 
 
 _queue_wait = ContextVar("pipeline_queue_wait", default=None)
 
 
-def queued_callback(task_id, callback):
+def queued_callback(task_id, callback, *, recovery=False):
     """Capture only this accepted in-process enqueue, never persisted timestamps."""
     queued_at = monotonic()
+    dispatched = False
+    dispatch_lock = Lock()
 
     def run():
-        token = _queue_wait.set((task_id, queued_at, monotonic()))
+        nonlocal dispatched
+        with dispatch_lock:
+            interval = None if dispatched else (task_id, queued_at, monotonic(), "recovery" if recovery else "queued")
+            dispatched = True
+        token = _queue_wait.set(interval)
         try:
             return callback()
         finally:
@@ -22,13 +29,19 @@ def queued_callback(task_id, callback):
     return run
 
 
-def take_queue_wait(task_id):
-    """A dispatched callback can attach its wait to only one pipeline attempt."""
+def take_attempt_timing(task_id):
+    """Consume this dispatch boundary and origin only once."""
     interval = _queue_wait.get()
     if interval is None or interval[0] != task_id:
         return None
     _queue_wait.set(None)
     return interval[1:]
+
+
+def take_queue_wait(task_id):
+    """Compatibility projection of the single-use queue interval."""
+    interval = take_attempt_timing(task_id)
+    return interval[:2] if interval is not None else None
 
 
 def emit_timing(callback, stage, started_at, status, *, ended_at=None):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
 from .task_artifacts import public_summary_task
-from .duration_estimates import duration_estimate
+from .whole_duration_estimates import task_duration_estimates
 from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
     build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
 from . import qa_evidence, qa_history
@@ -2131,7 +2131,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["source_identity"] = task.source_identity.model_dump(mode="json")
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
-    payload["duration_estimate"] = duration_estimate(task)
+    payload.update(task_duration_estimates(task))
     source_quality, evidence_quality = task_source_evidence_quality(task)
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality

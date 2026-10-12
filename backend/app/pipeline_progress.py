@@ -10,7 +10,7 @@ from uuid import uuid4
 from .models import TranscriptResult
 from functools import partial
 
-from .pipeline_timing import emit_timing, take_queue_wait
+from .pipeline_timing import emit_timing, take_attempt_timing
 from .draft_sections import draft_sections_document, temporal_outline_markdown
 from .observability import read_task_events, record_task_event
 from .storage import atomic_write_text, read_json, task_dir, write_json
@@ -69,7 +69,8 @@ def _sync_current_attempt(payload: dict) -> None:
             return
 
 
-def start_pipeline_attempt(task_id: str) -> str:
+def start_pipeline_attempt(task_id: str, *, entry_route: str = "", options=None) -> str:
+    started_at = time.monotonic()
     with _task_data_lock:
         payload = _metrics(task_id)
         attempt_id = uuid4().hex[:12]
@@ -82,6 +83,7 @@ def start_pipeline_attempt(task_id: str) -> str:
             "draft": {},
         }
         attempts = payload.get("attempts") if isinstance(payload.get("attempts"), list) else []
+        retry = bool(attempts)
         attempts.append(attempt)
         payload["attempts"] = attempts[-20:]
         payload["current_attempt_id"] = attempt_id
@@ -95,9 +97,15 @@ def start_pipeline_attempt(task_id: str) -> str:
             status="running",
             details={"schema_version": PIPELINE_METRICS_SCHEMA_VERSION, "attempt_id": attempt_id, "sequence": attempt["sequence"]},
         )
-        queue_wait = take_queue_wait(task_id)
+        queue_wait = take_attempt_timing(task_id)
         if queue_wait is not None:
             emit_timing(stage_duration_recorder(task_id, attempt_id), "queue", queue_wait[0], "completed", ended_at=queue_wait[1])
+        try:
+            from .whole_duration_estimates import begin_whole_measurement
+            begin_whole_measurement(task_id, attempt_id, started_at=started_at, queue_interval=queue_wait,
+                                    entry_route=entry_route, retry=retry, options=options)
+        except Exception:
+            pass  # Optional timing must not prevent the actual attempt.
         return attempt_id
 
 
@@ -195,6 +203,8 @@ def finish_pipeline_attempt(task_id: str, status: str = "completed", *, expected
                     write_json(task_id, "pipeline_metrics.json", payload)
                     from .duration_estimates import finish_remaining_measurement
                     finish_remaining_measurement(task_id, expected_attempt_id, status)
+                    from .whole_duration_estimates import finish_whole_measurement
+                    finish_whole_measurement(task_id, expected_attempt_id, status)
                     break
         except Exception:
             pass  # Final note publication must not fail because optional metrics failed.

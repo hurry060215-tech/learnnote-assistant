@@ -3,11 +3,13 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-// The API observation timestamp advances even when the stored task is intact.
+// API observation timestamps advance even when the stored task is intact.
 const stableTask = task => {
   const copy = structuredClone(task);
-  assert(Number.isInteger(copy.duration_estimate?.observed_at_unix_ms));
-  delete copy.duration_estimate.observed_at_unix_ms;
+  for (const field of ["duration_estimate", "whole_task_duration_estimate"]) {
+    assert(Number.isInteger(copy[field]?.observed_at_unix_ms));
+    delete copy[field].observed_at_unix_ms;
+  }
   return copy;
 };
 

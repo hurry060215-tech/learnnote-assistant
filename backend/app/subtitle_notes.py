@@ -40,6 +40,11 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
     options = options.model_copy(update={"visual_understanding": False})
     from .duration_estimates import begin_remaining_measurement
     begin_remaining_measurement(task_id, attempt_id, options, transcript, duration, route="transcript_to_note")
+    try:
+        from .whole_duration_estimates import bind_whole_measurement
+        bind_whole_measurement(task_id, attempt_id, options, transcript, duration, route="transcript_to_note")
+    except Exception:
+        pass  # Optional evidence cannot change the requested processing.
     update_task(task_id, status="running", phase="summarizing", progress=78,
                 message="字幕已就绪，正在提炼要点、章节和结论")
     started = time.monotonic()

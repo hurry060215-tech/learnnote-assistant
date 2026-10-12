@@ -50,7 +50,7 @@ class LocalTaskQueue:
             db.row_factory = sqlite3.Row
             return [dict(row) for row in db.execute("SELECT * FROM jobs ORDER BY sequence")]
 
-    def enqueue(self, task_id: str, kind: str, callback: Callable, *, requires_context: bool = False, generation: str = "") -> Future:
+    def enqueue(self, task_id: str, kind: str, callback: Callable, *, requires_context: bool = False, generation: str = "", recovery: bool = False) -> Future:
         with self.condition:
             if self.stopping or self.closing:
                 raise RuntimeError("Task queue is stopping")
@@ -87,7 +87,7 @@ class LocalTaskQueue:
                 db.execute("DELETE FROM jobs WHERE state IN ('done','failed','cancelled') AND sequence NOT IN (SELECT sequence FROM jobs ORDER BY sequence DESC LIMIT 1000)")
                 db.commit()
             future = Future()
-            self.jobs[task_id] = (queued_callback(task_id, callback), future)
+            self.jobs[task_id] = (queued_callback(task_id, callback, recovery=recovery), future)
             self.generations[task_id] = generation
             try:
                 record_task_event(task_id, "task_enqueued", phase="queue", status="queued")
@@ -360,7 +360,7 @@ def _recover_processing(root: Path) -> dict[str, int]:
                 callback()
                 if get_task(task_id).cancel_requested:
                     mark_task_cancelled(task_id, expected_generation=generation)
-            queue.enqueue(task.id, row["kind"], recover_work, generation=generation)
+            queue.enqueue(task.id, row["kind"], recover_work, generation=generation, recovery=True)
             recovered += 1
     if TASK_DIR.parent.resolve() == Path(root).resolve():
         for snapshot in list_tasks_snapshot():
