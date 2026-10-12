@@ -3,7 +3,7 @@ const {chromium}=require('playwright');
 const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), assert=require('node:assert/strict');
 (async()=>{
   const base=process.argv[2]||'http://127.0.0.1:18956';
-  const out=process.argv[3]||path.join(os.tmpdir(),'learnnote-core-output');fs.mkdirSync(out,{recursive:true});
+  const out=process.argv[3]||fs.mkdtempSync(path.join(os.tmpdir(),'learnnote-core-output-'));fs.mkdirSync(out,{recursive:true});
   const browser=await chromium.launch({channel:'msedge',headless:true});
   try {
     const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
@@ -11,16 +11,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     let prepares=0;
     await page.route('**/api/local-models/*/prepare',r=>{prepares++;return r.fulfill({json:{status:'downloading',message:'下载请求已接收'}});});
-    await page.route('**/api/model/usage',r=>r.fulfill({json:{totals:{requests:2,measured_requests:1,input_tokens:1200,output_tokens:300,total_tokens:1500},daily:[{day:'2026-09-09',total_tokens:1500}],models:[{model:'验收模型',host:'example.test',total_tokens:1500}],recent:[]}}));
-    await page.goto(base);await page.locator('#profile').click();
-    await page.locator('.profile-stats').getByText('1,500',{exact:true}).waitFor();
-    assert.equal(await page.locator('.profile-stats').evaluate(el=>getComputedStyle(el).display),'grid');
-    await page.screenshot({path:path.join(out,'profile-desktop.png')});
-    await page.setViewportSize({width:390,height:844});
-    assert(await page.locator('#profileDialog').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));
-    await page.screenshot({path:path.join(out,'profile-mobile.png')});
-    await page.getByRole('button',{name:'关闭个人主页'}).click();
-    await page.setViewportSize({width:1440,height:1000});
+    await require('./usage-coverage-acceptance.cjs')(page, base, out);
     await page.locator('#settings').click();await page.locator('[data-settings-section="transcriber"]').click();
     await page.getByText('可选：准备本地语音模型',{exact:true}).click();
     assert.equal(prepares,0,'Opening settings must never download a model');
