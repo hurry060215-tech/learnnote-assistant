@@ -5,24 +5,22 @@ vision cache or completed text requests. Source artifacts and published notes st
 """
 from __future__ import annotations
 
-import math
+from contextlib import nullcontext
 from pathlib import Path
 
-from .claims import build_claim_evidence_map, mark_claims_for_review
-from .note_document import normalize_note_markdown
 from .observability import read_task_events_after, record_task_event
 from .processor_state import check_cancel
-from .reading_notes import source_block_entries, stamp
-from .storage import atomic_write_text, get_task, read_json, task_dir, update_task, write_json
-from .summary_outcome import safe_summary_text
-from .text_cleanup import TextDecodingError, canonicalize_unicode_text, redact_sensitive_url_values
-from .text_chunk_sections import text_chunk_source
+from .storage import atomic_write_text, get_task, read_json, update_task, write_json
+from .storage import _lock as _task_data_lock
+from .partial_section_content import prepare_partial_section
 from .partial_note_projection import partial_revision as _revision, valid_partial_section as _valid_section, prepare_legacy_partial, preserve_previous_partial
 
 
 def partial_section_callback(task_id: str, transcript):
     attempt_id = read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "")
-    return lambda payload: write_partial_section(task_id, transcript, payload, attempt_id=attempt_id)
+    source_revision = _revision([get_task(task_id).source_identity.media_sha256, transcript.model_dump(mode="json")])
+    return lambda payload: write_partial_section(task_id, transcript, payload, attempt_id=attempt_id,
+        expected_source_revision=source_revision)
 
 
 def _already_notified(task_id: str, revision: str) -> bool:
@@ -35,47 +33,29 @@ def _already_notified(task_id: str, revision: str) -> bool:
     return False
 
 
-def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id: str) -> None:
+def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id: str,
+                          expected_source_revision: str | None = None) -> None:
+    # Expensive claim matching must not stall unrelated task reads or cancellation.
+    prepared = prepare_partial_section(task_id, transcript, payload, attempt_id=attempt_id,
+        expected_source_revision=expected_source_revision)
+    if prepared is None:
+        return
+    # Serialize the final validation/read/merge/write/event with attempt changes.
+    with _task_data_lock if payload.get("kind") == "topic_chapter" else nullcontext():
+        _write_partial_section(task_id, transcript, payload, prepared, attempt_id=attempt_id)
+
+
+def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *, attempt_id: str) -> None:
     """Called by the coordinator after a batch, before dispatching more work."""
+    root, source_revision, text_blocks, section = prepared
+    section_id = section["id"]
     check_cancel(task_id)
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
-        return  # A late completion from an older run cannot replace current drafts.
-    task = get_task(task_id)
-    root = task_dir(task_id)
-    if payload.get("kind") not in (None, "vision_batch", "text_chunk"):
         return
-    source_revision = _revision([task.source_identity.media_sha256, transcript.model_dump(mode="json")])
-    text_blocks = []
-    if payload.get("kind") == "text_chunk":
-        text_blocks = source_block_entries(transcript)
-        source = text_chunk_source(payload, text_blocks, source_revision)
-        if source is None:
-            return
-        heading = f"文字分段 {source['block_index'] + 1}"
-    else:
-        windows = payload["source_windows"]
-        if not windows or any(not math.isfinite(float(w[key])) for w in windows for key in ("start", "end")):
-            return
-        if any(w["start"] < 0 or w["end"] < w["start"] for w in windows):
-            return
-        start, end = min(w["start"] for w in windows), max(w["end"] for w in windows)
-        section_id = "vision-" + _revision([source_revision, [[w["start"], w["end"]] for w in windows]])[:24]
-        source = {"id": section_id, "kind": "vision_batch", "start": start, "end": end, "source_windows": windows}
-        heading = f"图文章节 {stamp(start)}–{stamp(end)}"
-    section_id = source["id"]
-    try:
-        text = safe_summary_text(redact_sensitive_url_values(canonicalize_unicode_text(payload["markdown"])))
-        normalized = normalize_note_markdown(heading, text, generate_questions=task.options.generate_questions)
-        if normalized.report["blocking"]:
-            return
-        # Apply the same conservative local claim markers as final publication.
-        # Even literal quotations stay in an evidence-pending draft section.
-        claims = build_claim_evidence_map(task_id, heading, normalized.markdown, transcript)
-        markdown = mark_claims_for_review(normalized.markdown, claims)
-    except TextDecodingError:
+    if (payload.get("kind") == "topic_chapter"
+            and (read_json(task_id, "transcript.json", None) != transcript.model_dump(mode="json")
+                 or _revision([get_task(task_id).source_identity.media_sha256, transcript.model_dump(mode="json")]) != source_revision)):
         return
-    section = {**source, "status": "evidence_pending", "verified": False,
-               "summary_generated": True, "markdown": markdown, "revision": _revision(markdown)}
     try:
         previous = read_json(task_id, "partial_note.json", {})
     except (OSError, ValueError):
@@ -83,6 +63,10 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         previous = {}
     if not isinstance(previous, dict):
         previous = {}
+    if (payload.get("kind") == "topic_chapter" and previous.get("attempt_id") == attempt_id
+            and (previous.get("source_revision") != source_revision
+                 or previous.get("generation_revision") != payload["generation_revision"])):
+        return  # A different generation requires a fresh pipeline attempt.
     version = previous.get("schema_version")
     if type(version) is int and version > 1:
         return  # Never overwrite an unknown future schema.
@@ -110,10 +94,14 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
     sections[section_id] = section
     document = {"schema_version": 1, "status": "draft", "verified": False, "attempt_id": attempt_id,
                 "source_revision": source_revision, "generation_revision": payload["generation_revision"],
-                "sections": sorted(sections.values(), key=lambda item: (item.get("block_index", item.get("start", 0)), item.get("end", 0), item["id"]))}
+                "sections": sorted(sections.values(), key=lambda item: (item.get("chapter_index", item.get("block_index", item.get("start", 0))), item.get("end", 0), item["id"]))}
     document["revision"] = _revision(document)
     check_cancel(task_id)
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
+        return
+    if (payload.get("kind") == "topic_chapter"
+            and (read_json(task_id, "transcript.json", None) != transcript.model_dump(mode="json")
+                 or _revision([get_task(task_id).source_identity.media_sha256, transcript.model_dump(mode="json")]) != source_revision)):
         return
     write_json(task_id, "partial_note.json", document)
     source_draft = root / "draft.md"
@@ -145,4 +133,4 @@ def write_partial_section(task_id: str, transcript, payload: dict, *, attempt_id
         record_task_event(task_id, "partial_section_ready", phase="summary", status="draft",
             message="已生成分段草稿，待最终来源检查",
             details={"schema_version": 1, "section_id": section_id, "revision": document["revision"],
-                     "section_count": len(sections), "kind": source["kind"], "artifact": target.name, "verified": False})
+                     "section_count": len(sections), "kind": section["kind"], "artifact": target.name, "verified": False})

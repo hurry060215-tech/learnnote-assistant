@@ -13,6 +13,7 @@ from .partial_outline_projection import partial_outline
 from .reading_notes import source_block_entries
 from .storage import get_task, task_file
 from .text_chunk_sections import valid_text_chunk
+from .chapter_sections import valid_chapter
 
 
 _TASK_PROVENANCE = {"id", "created_at", "status", "retry_count", "source_identity", "options", "mode",
@@ -41,6 +42,8 @@ def valid_partial_section(item: object, source_revision: str, text_blocks: list)
         return False
     if item.get("kind") == "text_chunk":
         return valid_text_chunk(item, text_blocks, source_revision)
+    if item.get("kind") == "topic_chapter":
+        return valid_chapter(item, text_blocks, source_revision)
     if item.get("kind") != "vision_batch" or not windows:
         return False
     expected_id = "vision-" + partial_revision([source_revision, [[w["start"], w["end"]] for w in windows]])[:24]
@@ -165,6 +168,8 @@ def _partial_sections(document: object, transcript: TranscriptResult, media_sha2
         for key in (("block_index", "start", "end") if section["kind"] == "text_chunk" else ("start", "end")):
             if key in section:
                 projected[key] = section[key]
+        if section["kind"] == "topic_chapter":
+            projected.update(chapter_index=section["chapter_index"], source_blocks=section["source_blocks"], title=section["title"])
         result.append(projected)
     return result
 

@@ -1618,7 +1618,12 @@ def summarize_with_llm(
         with measured_stage("merge", timing_callback, cancelled=(SummarizationCancelled,)):
             return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
     emit_timing(timing_callback, "merge", None, "skipped")
-    text_transcript_prompt = "\n\n".join(blocks)
+    from .streamed_chapters import PROFILE, chapter_prompt, streamed_chapters, supports_streamed_chapters
+    stream_chapters = bool(not use_vision and section_callback is not None and blocks and supports_streamed_chapters(base_url, model))
+    # Recursive long-source children have no callback and deliberately retain
+    # their whole-block path. Their text-only inputs cannot create global times.
+    text_transcript_prompt = "\n\n".join(
+        f"[来源块 {index}]\n{block}" if stream_chapters else block for index, block in enumerate(blocks))
     if page_context_prompt:
         text_transcript_prompt = f"{page_context_prompt}\n{text_transcript_prompt}"
     content: list[dict] = [
@@ -1632,6 +1637,7 @@ def summarize_with_llm(
                 f"用途要求：{note_style_instruction(options)}\n"
                 f"版式要求：{note_template_instruction(options)}\n"
                 "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
+                f"{chapter_prompt() if stream_chapters else ''}"
                 f"标题：{title}\n来源：{page_url}\n\n字幕：\n{text_transcript_prompt}"
             ),
         }
@@ -1641,15 +1647,23 @@ def summarize_with_llm(
         check_cancel()
         acquire_provider_slot()
         try:
-            response = _compatible_completion(client, events=events, stage="text_summary", cancel_check=check_cancel,
-                model=model,
-                messages=[{"role": "user", "content": content}],
-                **provider_kwargs,
-            )
+            if stream_chapters:
+                generation = hashlib.sha256(json.dumps([PROFILE, base_url, model, content, provider_kwargs],
+                    ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+                generated = streamed_chapters(client, model=model, messages=[{"role": "user", "content": content}],
+                    provider_kwargs=provider_kwargs, blocks=entries, title=title, generation=generation,
+                    section_callback=section_callback, check_cancel=check_cancel)
+            else:
+                response = _compatible_completion(client, events=events, stage="text_summary", cancel_check=check_cancel,
+                    model=model,
+                    messages=[{"role": "user", "content": content}],
+                    **provider_kwargs,
+                )
+                generated = response.choices[0].message.content or ""
         finally:
             _VISION_PROVIDER_SEMAPHORE.release()
         check_cancel()
-        generated = canonicalize_unicode_text(response.choices[0].message.content or "")
+        generated = canonicalize_unicode_text(generated)
         grounded = _validated_generated_note(
             client,
             model,
