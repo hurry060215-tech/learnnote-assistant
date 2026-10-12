@@ -441,7 +441,10 @@ async function runScenario(scenario, out) {
           if (await menu.getAttribute("aria-expanded") !== "true") await menu.click();
           if (await page.locator("body").evaluate(body => body.classList.contains("dark")) !== (theme === "dark"))
             await page.locator("#theme").click();
-          if (width === 390 && await menu.getAttribute("aria-expanded") === "true") await menu.click();
+          if (width === 390 && await menu.getAttribute("aria-expanded") === "true") {
+            await page.locator("#collapseSidebar").click();
+            assert.equal(await menu.getAttribute("aria-expanded"), "false");
+          }
           await page.evaluate(() => window.scrollTo(0, 0));
           await settle();
           const geometry = await page.locator(`#taskStatus [${estimateAttribute}="estimated"]`).evaluate(element => {
