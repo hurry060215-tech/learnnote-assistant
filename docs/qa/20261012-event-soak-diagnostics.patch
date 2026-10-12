@@ -1,0 +1,32 @@
+--- a/docs/qa/20261012-event-soak.py
++++ b/docs/qa/20261012-event-soak.py
+@@ -90,6 +90,7 @@
+     stopped = threading.Event()
+     errors = []
+     writer = None
++    received, received_payloads = [], []
+     session = requests.Session()
+     session.trust_env = False
+     def start_server():
+@@ -206,6 +207,10 @@
+             expected.extend(event_id for event_id, _ in page)
+             expected_payloads.extend({**item, "event_id": event_id} for event_id, item in page)
+             offset = page[-1][0]
++        (args.output / "received.json").write_text(json.dumps(received_payloads, ensure_ascii=False), encoding="utf-8")
++        report.update(elapsed_seconds=round(time.monotonic()-started, 3), received_events=len(received),
++                      stored_events=len(expected), cursor=cursor, terminal_observed=terminal)
++        save()
+         assert received == expected, "The observed stream must exactly match every stored event once"
+         assert received_payloads == expected_payloads, "Stream payloads must exactly match persisted event content"
+         assert get_task(task.id).status == "success"
+@@ -218,7 +223,9 @@
+         print(json.dumps(report), flush=True)
+         return 0
+     except BaseException as exc:
+-        report.update(status="failed_or_interrupted", failure_type=type(exc).__name__, failure=str(exc))
++        (args.output / "received.json").write_text(json.dumps(received_payloads, ensure_ascii=False), encoding="utf-8")
++        report.update(status="failed_or_interrupted", failure_type=type(exc).__name__, failure=str(exc),
++                      received_events=len(received))
+         save()
+         raise
+     finally:

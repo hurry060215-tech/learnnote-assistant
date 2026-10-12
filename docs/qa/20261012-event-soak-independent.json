@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "source_sha": "c31a507efdf9f38da9ba08e0bc1147d6c8d24731",
+  "received_events": 7093,
+  "disk_events": 7093,
+  "journal_records": 7094,
+  "terminal_events": 1,
+  "producer_events": 7090,
+  "exact_id_order": true,
+  "exact_payloads": true,
+  "received_journal_sha256": "e547c1824cb2bc4ada063a6abee5fba619084e2728c74bdbded432a76927adb2",
+  "disk_events_sha256": "08ded2ebbaa4f4c9f09cdbfd553d17f51991824026836fd0e31fbff2065c8199",
+  "independent_read_only": true,
+  "reported_clean_shutdown": true,
+  "finished_at": "2026-10-12T20:36:12.305170+00:00",
+  "scope": "production event router and task/event storage; isolated synthetic task; no full app lifecycle"
+}

@@ -1,0 +1,21 @@
+{
+  "status": "failed_final_comparison",
+  "driver_exit_code": 1,
+  "stored_events": 7093,
+  "producer_events": 7090,
+  "producer_sequences_contiguous": true,
+  "final_received_event_count": null,
+  "final_received_payloads_retained": false,
+  "checkpoint_received_events": 7036,
+  "checkpoint_elapsed_seconds": 7145.697,
+  "scope": "Final checkpoint is not final received count; original driver did not save the arrays on assertion failure. Do not infer exact omissions. No full rerun started.",
+  "terminal_task_event_timestamp": "2026-10-12T18:05:15.647119+00:00",
+  "server_stop_log_entries": 8,
+  "server_log_only_expected_sigterm": true,
+  "driver_sha256": "8f4dbf030aef491f239a0dbbb1be50e4682a056f62758d7fd17a1795dbecf93c",
+  "raw_sha256": {
+    "report.json": "4a9709c9774e5f3a46fc7b36cc87f3abbb14c427844131431414cc6acdeab86a",
+    "driver.log": "199662aa690ee427a53a8d5b7de0de5d8b9933769b211d2058e88e352bcd2793",
+    "server.log": "ecaf9b80e1e0d0eacccde93a6eb2afd8ed9fd6fa789728b3d9ad7d5539eeca26"
+  }
+}
