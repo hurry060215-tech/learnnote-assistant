@@ -169,6 +169,15 @@ async function main() {
         await page.locator("#refresh").click();
         await page.locator(`[data-id="${material.material_id}"][data-kind="material"]`).first().click();
         await page.locator("#document").getByText("留下自己的理解", { exact: true }).waitFor();
+        const selectedSidebar = await page.locator("#sidebar").evaluate(element => ({
+          expanded: document.querySelector("#menu").getAttribute("aria-expanded"),
+          inert: element.inert,
+          onScreen: getComputedStyle(element).display !== "none" && element.getBoundingClientRect().right > 0,
+          focusInInertSidebar: element.inert && element.contains(document.activeElement),
+        }));
+        assert.deepEqual(selectedSidebar, { expanded: String(width > 760), inert: width <= 760,
+          onScreen: width > 760, focusInInertSidebar: false },
+          `${prefix}: selecting a note must preserve the desktop sidebar or dismiss the mobile drawer consistently`);
         for (const open of [true, false]) {
           await sidebar(open);
           await capture(`${prefix}-reader-sidebar-${open ? "open" : "closed"}`, "#document");

@@ -421,8 +421,6 @@ async function openItem(item, { remember = true, check = true, openMedia = true 
   $("annotationQuote").textContent = "";
   $("cancelAnnotationEdit").hidden = true;
   closeSource({ cancelEvidence: false });
-  document.body.classList.remove("menu-open");
-  $("menu").setAttribute("aria-expanded", "false");
   history.replaceState(
     null,
     "",

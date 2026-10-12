@@ -41,6 +41,16 @@ retain a centered surface with consistent bounded content. A later pass should
 assess annotation/reader inset differences and the 768px density against the
 user's actual reference images rather than introduce speculative changes.
 
+The first new Edge run also exposed a pre-existing sidebar accessibility defect:
+opening a note left the desktop sidebar visible but unconditionally changed its
+toggle to `aria-expanded="false"`. The new matrix then correctly failed when a
+click based on that state collapsed the visible sidebar. Remove the two obsolete
+sidebar writes in `openItem()`; `installInteractions()` already handles the
+selection event, preserving desktop state and dismissing/inerting the mobile
+drawer. Keep the original toggle assertion and add a post-selection check for the
+desktop/mobile ARIA and inert state. This is a product-state fix, not a timeout or
+weakened test assertion.
+
 ## Design documentation
 
 The old `docs/design/README.md` described navy/teal, 12px controls, and a different
