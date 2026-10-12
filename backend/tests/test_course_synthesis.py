@@ -559,7 +559,7 @@ class CourseSynthesisTests(unittest.TestCase):
                 received.set()
                 if provider_mode[0] in {"hold", "timeout"}: release.wait(5)
                 if provider_mode[0] == "redirect":
-                    self.send_response(307); self.send_header("Location", self.path + "/redirected"); self.end_headers(); return
+                    self.send_response(307); self.send_header("Location", "/v1/chat/completions/redirected"); self.end_headers(); return
                 if provider_mode[0] == "error":
                     raw = json.dumps({"error": {"message": "private-provider-token /home/private", "type": "server_error"}}).encode()
                     self.send_response(500)
