@@ -135,7 +135,7 @@
 
   function displayEstimate() {
     // Media length or a legacy point value is not measured whole-task evidence.
-    return "未知（尚无整任务耗时记录）";
+    return "未知";
   }
 
   function valueAt(...values) {

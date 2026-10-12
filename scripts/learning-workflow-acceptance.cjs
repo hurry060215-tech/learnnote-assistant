@@ -33,7 +33,8 @@ async function main() {
       await page.locator('[data-editorial-source="local"]').click();
       await page.locator("#editorialFileInput").setInputFiles({ name: "synthetic-timing.mp4", mimeType: "video/mp4", buffer: Buffer.from("Metadata-response fixture; not a real video") });
       await page.locator("#editorialMediaConfirm").waitFor({ state: "visible" });
-      assert.equal(await page.locator("#editorialEstimate").innerText(), "未知（尚无整任务耗时记录）");
+      assert.equal(await page.locator("#editorialEstimate").innerText(), "未知");
+      assert.equal(await page.locator("#editorialEstimate").getAttribute("title"), "仅检查媒体，尚无整任务耗时依据");
       assert.equal(await page.locator("#editorialDuration").innerText(), "7:00");
       assert.equal(await page.locator("#editorialStartTask").isEnabled(), true);
       assert.equal(inspected, 1); assert.equal(taskCreates, 0);
