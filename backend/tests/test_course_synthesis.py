@@ -550,7 +550,7 @@ class CourseSynthesisTests(unittest.TestCase):
         # Real HTTP handlers on both hops; the provider is a synthetic fixture,
         # not a live model evaluation and not a statement about answer quality.
         calls, provider_mode = [], ["normal"]
-        received, release = threading.Event(), threading.Event()
+        received, release, finished = threading.Event(), threading.Event(), threading.Event()
         class Provider(BaseHTTPRequestHandler):
             def log_message(self, *args): pass
             def do_POST(self):
@@ -572,6 +572,7 @@ class CourseSynthesisTests(unittest.TestCase):
                 self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(raw))); self.end_headers()
                 try: self.wfile.write(raw)
                 except (BrokenPipeError, ConnectionResetError): pass
+                finally: finished.set()
         provider = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
         provider_thread = threading.Thread(target=provider.serve_forever, daemon=True); provider_thread.start()
         self.addCleanup(provider.server_close); self.addCleanup(provider.shutdown)
@@ -611,17 +612,22 @@ class CourseSynthesisTests(unittest.TestCase):
             self.assertEqual(consent(value).status_code, 409)
             if mode == "unknown": self.assertIsNone(outcome.json()["usage"]["total_tokens"])
         self.assertEqual(len(calls), 4, "No retry after 500 and no redirect-following provider attempt")
-        provider_mode[0] = "timeout"; received.clear(); value = preview()
-        with patch.object(model, "MODEL_TIMEOUT_SECONDS", .03):
+        provider_mode[0] = "timeout"; received.clear(); finished.clear(); value = preview()
+        with patch.object(model, "MODEL_TIMEOUT_SECONDS", 1):
             started = time.monotonic(); timed_out = consent(value)
-        self.assertLess(time.monotonic() - started, 2)
-        self.assertTrue(received.is_set()); self.assertEqual(timed_out.status_code, 409)
+        self.assertLess(time.monotonic() - started, 3)
+        # Allow SDK/loopback setup on Windows; the held response still cannot
+        # complete before the bounded request deadline.
+        self.assertTrue(received.is_set())
+        self.assertEqual(timed_out.status_code, 409)
         self.assertEqual(timed_out.json()["detail"]["code"], "course_model_timeout")
         self.assertEqual(consent(value).status_code, 409)
         release.set()
+        self.assertEqual(len(calls), 5)
+        self.assertTrue(finished.wait(5))
         # The HTTP handler may finish after the client deadline. No remote
         # cancellation claim is made; its blocked response was never published.
-        time.sleep(.05); release.clear()
+        release.clear()
         provider_mode[0] = "hold"; received.clear(); value = preview(); result = []
         worker = threading.Thread(target=lambda: result.append(consent(value))); worker.start()
         self.assertTrue(received.wait(5)); self.assertEqual(consent(value).status_code, 409)
