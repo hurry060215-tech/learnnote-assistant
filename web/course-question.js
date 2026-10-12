@@ -1,7 +1,7 @@
 import { api, escapeHtml as esc } from "/web/desk-api.js";
 
 // A reply belongs to one dialog visit, course revision and reader navigation.
-export function installCourseQuestion({ state, dialog, show, status, generation, openEvidence, notice }) {
+export function installCourseQuestion({ state, dialog, show, status, generation, openEvidence, notice, synthesizeCourse }) {
   const pending = new Set();
   let navigation = 0, active = null;
   window.addEventListener("learnnote:navigation", () => {
@@ -35,10 +35,14 @@ export function installCourseQuestion({ state, dialog, show, status, generation,
       <label for="courseQuestionText">你的问题或关键词</label>
       <textarea id="courseQuestionText" required maxlength="1000" rows="3" placeholder="这门课程如何解释这个概念？"></textarea>
       <button id="courseQuestionSubmit" class="primary" type="submit" disabled>在所选课程中查找</button>
+      <button id="courseQuestionSynthesize" type="button">AI 综合（先预览与确认）</button>
     </form><div id="courseQuestionResult" aria-live="polite"></div>`;
     const $ = id => document.getElementById(id);
     const form = $("courseQuestionForm"), selector = $("courseQuestionScope"), question = $("courseQuestionText");
     const submit = $("courseQuestionSubmit"), hint = $("courseQuestionScopeHint"), resultView = $("courseQuestionResult");
+    $("courseQuestionSynthesize").addEventListener("click", () => {
+      if (session.current()) synthesizeCourse?.(scope, question.value.trim());
+    });
     let scope = null, sequence = 0;
     const current = serial => session.current() && serial === sequence;
     session.syncPending = () => {

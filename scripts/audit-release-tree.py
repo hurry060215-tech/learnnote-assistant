@@ -49,6 +49,7 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/personal-anchors.js"),
     Path("_internal/web/desk-tools.js"),
     Path("_internal/web/course-question.js"),
+    Path("_internal/web/course-synthesis.js"),
     Path("_internal/web/course-concepts.js"),
     Path("_internal/web/course-graph-snapshot.js"),
     Path("_internal/web/desk-material-encoding.js"),
