@@ -145,7 +145,7 @@ def messages(question, mode, evidence):
 
 
 async def complete(selected, question, mode, evidence):
-    from openai import AsyncOpenAI, DefaultAsyncHttpxClient
+    from openai import APITimeoutError, AsyncOpenAI, DefaultAsyncHttpxClient
     started = time.monotonic()
     response = None
     status = "failed"
@@ -164,6 +164,10 @@ async def complete(selected, question, mode, evidence):
             status = "rejected"
             answer = parse_response(response, evidence, selected["key"], mode)
             status = "success"
+        except APITimeoutError:
+            # The SDK transport deadline may win the race with wait_for.
+            # Both represent one timed-out attempt, never a rejected answer.
+            raise asyncio.TimeoutError("course_model_timeout") from None
         finally:
             await asyncio.to_thread(record_usage, client, selected["model"], "course_synthesis",
                                     getattr(response, "usage", None), started, status)
