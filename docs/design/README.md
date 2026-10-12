@@ -1,5 +1,11 @@
 # LearnNote workspace design specification
 
+**Archived concept reference.** The current application is `web/index.html` with
+`web/desk.css`. New pages and changes must follow the root
+[design.md](../../design.md), which records the implemented token system and the
+pending user-reference review. The concepts below predate that workspace and do
+not override its palette, navigation, typography, spacing, or component rules.
+
 These images are visual acceptance references, not screenshots of a released
 build. The v0.3 clarity pass removes the remaining control-panel structure so
 that starting a note and reading it become the two obvious paths.

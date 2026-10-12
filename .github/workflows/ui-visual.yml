@@ -153,6 +153,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Scanned PDF OCR confidence and recovery failed" }
             node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui
             if ($LASTEXITCODE -ne 0) { throw "Task stream reconnect gate failed" }
+            node scripts/design-visual-acceptance.cjs http://127.0.0.1:8765 build/design-ui
+            if ($LASTEXITCODE -ne 0) { throw "Design alignment and responsive visual gate failed" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
@@ -191,6 +193,7 @@ jobs:
         with:
           name: ui-visual-${{ github.run_id }}
           path: |
+            build/design-ui
             build/global-ui
             build/assistant-operations-ui
             build/assistant-runs-ui
