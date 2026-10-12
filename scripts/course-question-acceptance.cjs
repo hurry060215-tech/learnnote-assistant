@@ -276,7 +276,13 @@ async function main() {
     assert.equal(synthesisCalls.filter(item => item.action === "answer").length, 1);
     assert.equal(await page.locator("#courseSynthesisResult img").count(), 0);
     assert.match(await page.locator("#courseSynthesisResult").innerText(), /AI 综合 · 待核对/);
+    for (const width of [1280, 1440, 768, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+      assert(await page.locator("#courseSynthesisResult").evaluate(element => element.scrollWidth <= element.clientWidth + 1), "long cited quotations must wrap inside the answer");
+    }
+    await page.locator("#courseSynthesisResult").scrollIntoViewIfNeeded();
     await screenshot("08-synthesis-cited-answer.png");
+    await page.setViewportSize({ width: 1440, height: 960 });
     await page.locator('[data-synthesis-evidence="document-a-quote"]').click();
     await page.locator('#sourceContent .source-evidence-target[data-evidence-id="document-a-quote"]').waitFor();
     await page.locator("#closeSource").click();
@@ -325,6 +331,11 @@ async function main() {
         await screenshot(`synthesis-${width}-${theme}-form.png`);
         await page.locator("#courseSynthesisConsent").scrollIntoViewIfNeeded();
         await page.locator("#courseSynthesisConfirm").scrollIntoViewIfNeeded();
+        const consentLayout = await page.locator("#courseSynthesisConsent").evaluate(element => {
+          const box = element.getBoundingClientRect(), text = element.nextElementSibling.getBoundingClientRect();
+          return { width: box.width, checkboxRight: box.right, textLeft: text.left };
+        });
+        assert(consentLayout.width <= 20 && consentLayout.textLeft > consentLayout.checkboxRight, "consent checkbox must align beside its label");
         const button = await page.locator("#courseSynthesisConfirm").boundingBox();
         assert(button && button.x >= 0 && button.x + button.width <= width && button.y >= 0 && button.y + button.height <= (width === 390 ? 844 : 960));
         await screenshot(`synthesis-${width}-${theme}-consent.png`);

@@ -12,7 +12,7 @@ export function installCourseSynthesis({ state, dialog, show, status, generation
   dialog.addEventListener("cancel", () => { active = null; });
   return async function openCourseSynthesis(initial, initialQuestion = "") {
     const epoch = state.epoch, visit = navigation;
-    const token = show("课程 AI 综合 · 先预览", '<p class="muted">正在读取课程与已保存的模型…</p>');
+    const token = show("课程 AI 综合", '<p class="muted">正在读取课程与已保存的模型…</p>');
     const session = { owns: () => active === session && dialog.open && token === generation(),
       current: () => session.owns() && epoch === state.epoch && visit === navigation };
     active = session;
@@ -94,7 +94,7 @@ export function installCourseSynthesis({ state, dialog, show, status, generation
         const section = document.createElement("section");
         paragraph(section, claim.kind === "direct_quote" ? `原文直接引用：${claim.text}` : `AI 综合 · 待核对：${claim.text}`, "answer");
         for (const support of claim.supports || []) {
-          paragraph(section, `支持原句：${support.quote}`, "muted");
+          paragraph(section, `支持原句：${support.quote}`, "muted answer");
           if (support.citation?.evidence_id) sourceButton(section, support.citation, serial);
         }
         results.append(section);
@@ -143,8 +143,11 @@ export function installCourseSynthesis({ state, dialog, show, status, generation
         }
         approved = value;
         const label = document.createElement("label"), consent = document.createElement("input");
+        label.className = "tool-choice";
         consent.type = "checkbox"; consent.id = "courseSynthesisConsent";
-        label.append(consent, document.createTextNode("我同意把上方问题和原文发送到所选地址，发起 1 次可能收费的请求（金额未知）。"));
+        const consentText = document.createElement("span");
+        consentText.textContent = "我同意把上方问题和原文发送到所选地址，发起 1 次可能收费的请求（金额未知）。";
+        label.append(consent, consentText);
         const confirmButton = document.createElement("button"); confirmButton.type = "button"; confirmButton.id = "courseSynthesisConfirm"; confirmButton.className = "primary"; confirmButton.disabled = true; confirmButton.textContent = "确认分享并生成一次";
         consent.addEventListener("change", () => { confirmButton.disabled = !consent.checked || approved !== value || !current(serial); });
         confirmButton.addEventListener("click", () => confirm(serial, value, consent, confirmButton));
