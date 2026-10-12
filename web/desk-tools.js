@@ -6,6 +6,7 @@ import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
+import { installCourseSynthesis } from "/web/course-synthesis.js";
 import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
 import { relationshipGraph as snapshotRelationshipGraph, mountGraphCompleteness, mountGraphSnapshotExport, mountGraphSnapshotImport } from "/web/course-graph-snapshot.js";
 import {
@@ -51,7 +52,8 @@ export function installTools(ctx) {
     if (el) el.textContent = text;
   }
   const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
-  const courseQuestion = installCourseQuestion({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
+  const synthesizeCourse = installCourseSynthesis({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
+  const courseQuestion = installCourseQuestion({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice, synthesizeCourse });
   async function run(button, work) {
     const token = generation;
     if (button) button.disabled = true;

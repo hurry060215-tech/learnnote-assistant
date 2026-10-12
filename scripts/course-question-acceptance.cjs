@@ -41,7 +41,8 @@ async function main() {
   const out = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-course-question-"));
   fs.mkdirSync(out, { recursive: true });
   const report = { passed: false, synthetic_fixture: true, backend_tested: false, native_webview_tested: false, browser: "Microsoft Edge", checks: [], requests: [], screenshots: [], errors: [], unexpectedRequests: [] };
-  const courses = makeCourses(), holds = new Map(), asks = [];
+  const courses = makeCourses(), holds = new Map(), asks = [], synthesisCalls = [], previews = new Map();
+  let selectedModel = { base_url: "http://127.0.0.1:19877/v1", model: "synthetic-model" };
   let browser, page;
   const health = { ok: true, service: "learnnote", app_version: "0.2.14", backend_version: "0.2.14", protocol_version: 1, llm_model_configured: false, local_asr_available: false, default_llm_model: "", model_provider_presets: [], assistant_capabilities: {}, upload_policy: {} };
   function hold(question) {
@@ -103,7 +104,7 @@ async function main() {
           if (pathname === "/api/tasks") return json({ tasks });
           if (pathname === "/api/library/materials") return json({ materials });
           if (pathname === "/api/preferences") return json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
-          if (pathname === "/api/model/connection") return json({ model: null, configured: false });
+          if (pathname === "/api/model/connection") return json({ model: selectedModel, configured: true });
           if (pathname === "/api/model/route") return json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });
           if (pathname === "/api/connections") return json({ openrouter: { connected: false } });
           if (pathname === "/api/assistant/skills") return json({ skills: [], features: [] });
@@ -128,6 +129,34 @@ async function main() {
           if (pathname === "/api/tasks/video-a/transcript") return json({ segments: [{ start: 0, end: 5, text: "Earlier original introduction." }, { start: 12, end: 18, text: evidence[0].text }] });
         }
         if (pathname === "/api/study/activity" && request.method() === "POST") return json({ ok: true });
+        const synthesisRoute = pathname.match(/^\/api\/courses\/([^/]+)\/synthesis\/(preview|answer)$/);
+        if (synthesisRoute && request.method() === "POST") {
+          const payload = request.postDataJSON(), selected = courses.find(item => item.id === synthesisRoute[1]);
+          assert(selected); synthesisCalls.push({ action: synthesisRoute[2], course_id: selected.id, payload });
+          if (synthesisRoute[2] === "preview") {
+            assert.deepEqual(Object.keys(payload).sort(), ["base_url", "mode", "model", "question", "revision"]);
+            assert.equal(payload.revision, selected.revision); assert.equal(payload.base_url, selectedModel.base_url); assert.equal(payload.model, selectedModel.model);
+            const local = answer(selected), preview_id = String(previews.size + 1).padStart(40, "p"), fingerprint = "a".repeat(64);
+            const value = { scope: local.scope, preview_id, fingerprint, mode: payload.mode, question: payload.question, connection: { ...selectedModel },
+              can_submit: payload.question !== "overflow", blocking_reason: payload.question === "overflow" ? "course_summary_overflow" : null,
+              coverage: { selected_anchors: local.results.length, selected_characters: local.results.reduce((sum, item) => sum + item.text.length, 0), eligible_anchors: local.results.length, eligible_characters: local.results.reduce((sum, item) => sum + item.text.length, 0), all_eligible_included: true },
+              members: [{ position: 2, title: "Unindexed member", status: "unindexed", eligible: 0, excluded: 0, missing: 0 }],
+              evidence: local.results.map((item, index) => ({ ...local.citations[index], source_alias: `E${index + 1}`, text: item.text + (index === 0 ? "\n" + "X".repeat(2500) : "") })),
+              warning: "将把问题和以上原文发送到所选地址。本机网关也可能转发。1 次请求、3,000 输出 token、模型等待上限 30 秒，本地校验和用量记录另需时间；可能收费，金额未知。出处校验不代表推论正确。" };
+            value.coverage.selected_characters = value.evidence.reduce((sum, item) => sum + item.text.length, 0);
+            value.coverage.eligible_characters = value.coverage.selected_characters;
+            previews.set(preview_id, { value, used: false }); return json(value);
+          }
+          assert.deepEqual(Object.keys(payload).sort(), ["fingerprint", "preview_id", "share_source"]); assert.equal(payload.share_source, true);
+          const preview = previews.get(payload.preview_id); assert(preview);
+          if (preview.used) return json({ detail: "预览已使用" }, 409);
+          preview.used = true;
+          const value = preview.value, pending = holds.get(value.question);
+          if (pending) { pending.started.resolve(); await pending.release.promise; holds.delete(value.question); }
+          return json({ scope: value.scope, fingerprint: value.fingerprint, mode: value.mode, status: "answer", request_count: 1, review_required: true,
+            claims: [{ kind: "synthesis", text: "<img src=x onerror=alert(1)> ALPHA synthetic interpretation, review required.", supports: value.evidence.map(item => ({ quote: item.text, citation: item })), review_required: true }],
+            usage: { input_tokens: 41, output_tokens: 19, total_tokens: 60, monetary_cost: null }, warning: "AI 综合待核对；费用金额未知。" });
+        }
         const questionRoute = pathname.match(/^\/api\/courses\/([^/]+)\/ask$/);
         if (questionRoute && request.method() === "POST") {
           const payload = request.postDataJSON(), selected = courses.find(item => item.id === questionRoute[1]);
@@ -225,6 +254,98 @@ async function main() {
     await ask("mobile concept"); await result("ALPHA");
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await screenshot("06-course-mobile.png");
+    await close(); await page.setViewportSize({ width: 1536, height: 1024 });
+    async function synthesize(question = "concept") {
+      await open(); await page.locator("#courseQuestionText").fill(question);
+      await page.locator("#courseQuestionSynthesize").click();
+      await page.waitForFunction(() => !document.querySelector("#courseSynthesisPreview")?.disabled);
+      assert.equal(await page.locator("#courseSynthesisQuestion").inputValue(), question);
+      await page.locator("#courseSynthesisPreview").click();
+      await page.locator("#courseSynthesisConsent").waitFor();
+    }
+    await synthesize();
+    assert.equal(synthesisCalls.filter(item => item.action === "answer").length, 0);
+    assert.equal(await page.locator("#courseSynthesisConfirm").isDisabled(), true);
+    assert.match(await page.locator("#courseSynthesisReview").innerText(), /127.0.0.1:19877/);
+    assert.match(await page.locator("#courseSynthesisReview").innerText(), /金额未知/);
+    assert.match(await page.locator("#courseSynthesisReview").innerText(), /Unindexed member/);
+    await screenshot("07-synthesis-confirmation.png");
+    await page.locator("#courseSynthesisConsent").check();
+    await page.locator("#courseSynthesisConfirm").evaluate(button => { button.click(); button.click(); });
+    await page.waitForFunction(() => document.querySelector("#courseSynthesisResult")?.textContent.includes("synthetic interpretation"));
+    assert.equal(synthesisCalls.filter(item => item.action === "answer").length, 1);
+    assert.equal(await page.locator("#courseSynthesisResult img").count(), 0);
+    assert.match(await page.locator("#courseSynthesisResult").innerText(), /AI 综合 · 待核对/);
+    for (const width of [1280, 1440, 768, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+      assert(await page.locator("#courseSynthesisResult").evaluate(element => element.scrollWidth <= element.clientWidth + 1), "long cited quotations must wrap inside the answer");
+    }
+    await page.locator("#courseSynthesisResult").scrollIntoViewIfNeeded();
+    await screenshot("08-synthesis-cited-answer.png");
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.locator('[data-synthesis-evidence="document-a-quote"]').click();
+    await page.locator('#sourceContent .source-evidence-target[data-evidence-id="document-a-quote"]').waitFor();
+    await page.locator("#closeSource").click();
+    await synthesize(); await page.locator("#courseSynthesisQuestion").fill("Changed question");
+    assert.equal(await page.locator("#courseSynthesisConfirm").count(), 0);
+    await page.locator("#courseSynthesisPreview").click(); await page.locator("#courseSynthesisConsent").waitFor();
+    selectedModel = { ...selectedModel, model: "changed-model" };
+    await page.locator("#courseSynthesisConsent").check(); await page.locator("#courseSynthesisConfirm").click();
+    await page.waitForFunction(() => document.querySelector("#toolStatus")?.textContent.includes("模型已变化"));
+    assert.equal(synthesisCalls.filter(item => item.action === "answer").length, 1);
+    await close(); selectedModel = { ...selectedModel, model: "synthetic-model" };
+    const synthesisHold = hold("pending-synthesis"); await synthesize("pending-synthesis");
+    await page.locator("#courseSynthesisConsent").check(); await page.locator("#courseSynthesisConfirm").click(); await bounded(synthesisHold.started.promise);
+    await close(); await open(); await page.locator("#courseQuestionSynthesize").click();
+    await page.waitForFunction(() => document.querySelector("#courseSynthesisScope"));
+    assert.equal(await page.locator("#courseSynthesisPreview").isDisabled(), true);
+    const finished = page.waitForResponse(response => response.url().endsWith("/synthesis/answer")); synthesisHold.release.resolve(); await finished; await settle();
+    assert.equal(await page.locator("#courseSynthesisResult").innerText(), "");
+    await page.waitForFunction(() => !document.querySelector("#courseSynthesisPreview").disabled);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator("#courseSynthesisQuestion").fill("concept"); await page.locator("#courseSynthesisPreview").click(); await page.locator("#courseSynthesisConsent").waitFor();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert(await page.locator("#courseSynthesisReview pre").first().evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+    await page.locator("#courseSynthesisConsent").scrollIntoViewIfNeeded(); await page.locator("#courseSynthesisConsent").check();
+    await page.locator("#courseSynthesisConfirm").scrollIntoViewIfNeeded();
+    const consentBox = await page.locator("#courseSynthesisConfirm").boundingBox();
+    assert(consentBox && consentBox.x >= 0 && consentBox.x + consentBox.width <= 390 && consentBox.y >= 0 && consentBox.y + consentBox.height <= 844);
+    await screenshot("09-synthesis-mobile-preview.png");
+    await page.keyboard.press("Escape"); assert.equal(await page.locator("#toolsDialog").evaluate(dialog => dialog.open), false);
+    const answerCountBeforeVisualReview = synthesisCalls.filter(item => item.action === "answer").length;
+    report.synthesisVisualCases = [];
+    for (const width of [1280, 1440, 768, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+      for (const theme of ["light", "dark"]) {
+        if (await page.locator("#menu").getAttribute("aria-expanded") !== "true") await page.locator("#menu").click();
+        if (await page.locator("body").evaluate(body => body.classList.contains("dark")) !== (theme === "dark")) await page.locator("#theme").click();
+        if (await page.locator("#menu").getAttribute("aria-expanded") === "true") await page.locator("#collapseSidebar").click();
+        await synthesize();
+        await page.locator("#courseSynthesisScope").scrollIntoViewIfNeeded();
+        const geometry = await page.locator("#toolsDialog").evaluate(element => {
+          const r = element.getBoundingClientRect();
+          return { left: r.left, right: r.right, viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth };
+        });
+        assert(geometry.left >= 0 && geometry.right <= width && geometry.scrollWidth <= width);
+        assert(Math.abs(geometry.left - (width - geometry.right)) <= 1, "synthesis dialog must stay centered");
+        await screenshot(`synthesis-${width}-${theme}-form.png`);
+        await page.locator("#courseSynthesisConsent").scrollIntoViewIfNeeded();
+        await page.locator("#courseSynthesisConfirm").scrollIntoViewIfNeeded();
+        const consentLayout = await page.locator("#courseSynthesisConsent").evaluate(element => {
+          const box = element.getBoundingClientRect(), text = element.nextElementSibling.getBoundingClientRect();
+          return { width: box.width, checkboxRight: box.right, textLeft: text.left };
+        });
+        assert(consentLayout.width <= 20 && consentLayout.textLeft > consentLayout.checkboxRight, "consent checkbox must align beside its label");
+        const button = await page.locator("#courseSynthesisConfirm").boundingBox();
+        assert(button && button.x >= 0 && button.x + button.width <= width && button.y >= 0 && button.y + button.height <= (width === 390 ? 844 : 960));
+        await screenshot(`synthesis-${width}-${theme}-consent.png`);
+        report.synthesisVisualCases.push({ width, theme, geometry });
+        await close();
+      }
+    }
+    assert.equal(synthesisCalls.filter(item => item.action === "answer").length, answerCountBeforeVisualReview);
+    report.synthesisCalls = synthesisCalls;
+    report.checks.push("Synthetic model UI only: separate preview, exact route, explicit sharing consent, one final request, escaped review-required claims, original-source navigation, changed question/model rejection, close/reopen pending protection and mobile layout");
     assert(asks.every(item => item.mode === "lexical"));
     assert(!report.requests.some(item => /\/api\/(assistant\/(route|chat)|knowledge\/(ask|search))/.test(item)));
     assert.deepEqual(report.unexpectedRequests, []); assert.deepEqual(report.errors, []);
