@@ -12,7 +12,7 @@ It requires the existing partial-section callback and one to three existing
 source blocks. The following paths keep their existing requests and output:
 
 - Other models, snapshots, compatible/custom endpoints, proxies and Azure routes
-- Vision requests, including their text fallback after failed vision batches
+- Requests with actual vision batches, including text fallback after those batches fail
 - More than three source blocks: existing recursive text requests and completed
   parent-bound `text_chunk` drafts; text-only children do not invent global times
 - Calls without the partial-section callback, empty source and local fallback
@@ -75,9 +75,9 @@ This does not change the existing vision/text-chunk writer's locking policy.
 The Markdown reader shows complete chapter headings, locally generated
 source locators and the existing draft/evidence-pending warnings. Visible
 provenance uses at most three coarse source-block ranges, while structured
-provenance preserves every original cue window. The specialized
-visual outline renderer deliberately falls back to this Markdown path, just as
-for text chunks; this slice does not add a new frontend renderer.
+provenance preserves every original cue window. Text-mode tasks read the Markdown edition directly. A visual request with no
+usable image grids can still use text topic generation; its specialized visual
+outline renderer deliberately falls back to this Markdown path, just as for text chunks; this slice does not add a new frontend renderer.
 
 The JSON is converted locally to Markdown before the existing final grounding
 gate. Existing grounding repair calls still occur when required; “one request”

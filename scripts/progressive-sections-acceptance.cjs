@@ -11,6 +11,7 @@ const SCENARIOS = [
   { name: "vision", kind: "vision_batch", title: "合成验收：渐进图文章节", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
   { name: "text", kind: "text_chunk", title: "合成验收：文字分段草稿", first: "文字分段 1", second: "文字分段 2" },
   { name: "topic", kind: "topic_chapter", title: "合成验收：模型主题草稿", first: "主题：圆形", second: "主题：方形" },
+  { name: "topic-visual", kind: "topic_chapter", title: "合成验收：无可用画面的主题草稿", first: "主题：圆形", second: "主题：方形" },
   { name: "enrichment", kind: "vision_batch", title: "合成验收：字幕原位补入图文", first: "图文章节 00:00–00:10", second: "图文章节 00:10–00:20" },
 ];
 const SECOND_CLAIM = "Synthetic batch 2: the reference transcript says the square is blue.";
@@ -21,7 +22,9 @@ const TRANSCRIPT = [
 const FINAL_MARKER = "显式模拟成功后的最终样本";
 const HOSTILE_TEXT = '<img src="fixture-hostile.png" onerror="window.__progressiveHostileExecuted=true"><script>window.__progressiveHostileExecuted=true</script>';
 const digest = value => createHash("sha256").update(value).digest("hex");
-const textScenario = scenario => ["text", "topic"].includes(scenario.name);
+const topicScenario = scenario => scenario.kind === "topic_chapter";
+const textScenario = scenario => scenario.name === "text" || topicScenario(scenario);
+const visualRequested = scenario => !textScenario(scenario) || scenario.name === "topic-visual";
 
 function validateBase(value) {
   const base = new URL(value);
@@ -57,13 +60,13 @@ function createFixture(scenario) {
     events: [],
     edition: { text: partialText(false, scenario), revision: "fixture-batch-2", edited: false },
     task: {
-      id: TASK_ID, title: scenario.title, kind: "task", source_type: "local", mode: textScenario(scenario) ? "subtitle_only" : "visual",
+      id: TASK_ID, title: scenario.title, kind: "task", source_type: "local", mode: visualRequested(scenario) ? "visual" : "subtitle_only",
       status: "running", phase: "summarizing", progress: 62,
       created_at: new Date(clock).toISOString(), updated_at: new Date(clock).toISOString(),
       summary_source: "partial-draft", transcript_path: "transcript.json", note_path: "draft.partial.md",
       message: `Synthetic fixture only: ${HOSTILE_TEXT}`,
-      options: { content_mode: textScenario(scenario) ? "text" : "visual", visual_understanding: !textScenario(scenario), generate_questions: false },
-      frame_grids: [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
+      options: { content_mode: visualRequested(scenario) ? "visual" : "text", visual_understanding: visualRequested(scenario), generate_questions: false },
+      frame_grids: topicScenario(scenario) ? [] : [{ start: 0, end: 10, url: `/api/tasks/${TASK_ID}/frames/synthetic-grid.png` }],
       artifact_status: { draft_available: true, partial_draft_available: true, transcript_ready: true },
       duration_estimate: { schema_version: 1, scope: "after_transcript_ready", status: "estimated", attempt_id: "synthetic-attempt",
         sample_count: 5, uncertainty: "empirical_not_probability", observed_at_unix_ms: Date.now(),
@@ -71,7 +74,7 @@ function createFixture(scenario) {
     },
   };
   fixture.projection = () => {
-    if (!["enrichment", "topic"].includes(scenario.name) || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
+    if (!(scenario.name === "enrichment" || topicScenario(scenario)) || fixture.explicitSuccess) return { status: "unavailable", sections: [] };
     const outlines = TRANSCRIPT.map((cue, index) => ({ ...cue, id: `draft-time-${index * 10}`, kind: "temporal_outline",
       revision: digest(JSON.stringify(cue)), status: "draft", verified: false, summary_generated: false,
       source_cue_count: 1, heading_excerpt: cue.text, excerpts: [{ ...cue, source_cue_index: index }] }));
@@ -80,7 +83,7 @@ function createFixture(scenario) {
       markdown: batch(number, scenario), revision: digest(batch(number, scenario)), start: (number - 1) * 10, end: number * 10,
       source_windows: [{ index: number - 1, start: (number - 1) * 10, end: number * 10 }],
     }));
-    if (scenario.name === "topic") {
+    if (topicScenario(scenario)) {
       // This UI-only fixture deliberately inserts an earlier section to stress
       // stable reading. It does not claim the provider emits chapters out of order.
       // Both excerpts fit the same original source block, so each topic owns the
@@ -216,7 +219,7 @@ async function selfTestScenario(scenario) {
   assert.equal(earlier.details.verified, false);
   assert.equal(earlier.details.kind, scenario.kind);
   if (textScenario(scenario)) assert(!fixture.edition.text.includes("图文章节"));
-  if (scenario.name === "topic") {
+  if (topicScenario(scenario)) {
     const projection = fixture.projection();
     assert.equal(projection.status, "draft");
     const topics = projection.sections.filter(section => section.kind === "topic_chapter");
@@ -381,10 +384,11 @@ async function runScenario(scenario, out) {
       assert(!(await page.locator("#document").innerText()).includes("图文章节"));
       assert.match(await page.locator("#document").innerText(), /待最终来源检查/);
     }
-    if (scenario.name === "topic") {
-      assert(report.requests.includes(`GET /api/tasks/${TASK_ID}/partial-note`), "The shipped app must read the topic projection before its conservative Markdown fallback");
+    if (topicScenario(scenario)) {
+      assert.equal(report.requests.includes(`GET /api/tasks/${TASK_ID}/partial-note`), visualRequested(scenario),
+        "Text mode reads the Markdown edition directly; a visual request without usable grids checks projection before fallback");
       assert.equal(await page.locator('[data-reader-section]').count(), 0, "Unsupported specialized topic layout must fall back completely, not hide model chapters behind an outline");
-      report.checks.push("Source-bound topic projection falls back to readable, explicitly unverified Markdown; no specialized outline hides the topic text");
+      report.checks.push("Topic drafts use the current text-mode or visual-request Markdown fallback and stay explicitly unverified; no specialized outline hides the topic text");
     }
     const initialRefresh = page.waitForResponse(response => new URL(response.url()).pathname === "/api/tasks");
     await emit(fixture.initialEvent);
