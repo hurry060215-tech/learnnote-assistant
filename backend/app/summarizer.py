@@ -1,5 +1,6 @@
 from __future__ import annotations
 from .token_usage import tracked_completion
+from .pipeline_timing import emit_timing, measured_stage
 
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -96,6 +97,41 @@ def chat_completion_provider_kwargs(base_url: str) -> dict:
     if provider == "xiaomi":
         return {"extra_body": {"thinking": {"type": "disabled"}}}
     return {"temperature": 0.2}
+
+
+def _compatible_completion(client, *, events: list[dict] | None, stage: str,
+                           cancel_check: Callable[[], None] | None = None, **kwargs):
+    """One same-request retry for an explicitly unsupported sampling option.
+
+    Never infer compatibility from exception prose, and never remove output
+    budgets, thinking controls, safety fields or source data. Each actual
+    attempt keeps the existing provider-reported usage accounting.
+    """
+    try:
+        return tracked_completion(client, **kwargs)
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        body = getattr(exc, "body", None)
+        error = body.get("error", body) if isinstance(body, dict) else None
+        if (type(status) is not int or status not in {400, 422} or not isinstance(error, dict)
+                or error.get("code") != "unsupported_parameter" or error.get("param") != "temperature"
+                or "temperature" not in kwargs):
+            raise
+        event = {"stage": "provider_compatibility", "code": "api_error", "request_stage": stage,
+                 "original_status": status, "original_code": "unsupported_parameter",
+                 "parameter": "temperature", "retry_outcome": "failed"}
+        if events is not None:
+            events.append(event)
+        compatible = {key: value for key, value in kwargs.items() if key != "temperature"}
+        try:
+            if cancel_check is not None:
+                cancel_check()
+            response = tracked_completion(client, **compatible)
+        except SummarizationCancelled:
+            event["retry_outcome"] = "cancelled"
+            raise
+        event.update(code="repaired", retry_outcome="success")
+        return response
 
 
 def llm_model_supports_vision(base_url: str, model: str) -> bool:
@@ -434,10 +470,12 @@ def _evidence_duration_seconds(transcript: TranscriptResult, grids: list[FrameGr
 
 def _evidence_contract(transcript: TranscriptResult, grids: list[FrameGrid]) -> str:
     duration = _evidence_duration_seconds(transcript, grids)
+    ocr_boundary = "来源为画面字幕 OCR（screen-ocr），尚未人工核验，不是已确认的讲者原话或事实。保留专有名词、公式和低置信度文字的不确定性，不擅自纠正或补写。抽样可能漏字，引用时间仅为观察估计。" if transcript.source == "screen-ocr" else ""
     return (
         f"证据边界：视频有效时长约 {_format_ts(duration)}（{duration:.1f} 秒），"
         f"字幕 {len(transcript.segments)} 段，画面窗口 {len(grids)} 个。"
         "不得把窗口数量、页数或模板编号误写成课程时长。"
+        + ocr_boundary
     )
 
 
@@ -529,7 +567,7 @@ def _repair_grounded_note(
     title: str = "",
 ) -> str:
     try:
-        response = tracked_completion(client,
+        response = _compatible_completion(client, events=events, stage="grounding_repair",
             model=model,
             messages=[{
                 "role": "user",
@@ -1282,6 +1320,8 @@ def summarize_with_llm(
     events: list[dict] | None = None,
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
+    timing_callback: Callable | None = None,
 ) -> tuple[str, str] | None:
     options = resolve_model_options(options)
     api_key = _model_key(options)
@@ -1318,14 +1358,14 @@ def summarize_with_llm(
         _record_llm_event(events, "client_init", "client_init_failed", exc, model=model)
         return None
 
-    if grids and llm_model_supports_vision(base_url, model):
+    use_vision = bool(grids and llm_model_supports_vision(base_url, model))
+    if use_vision:
         partials: list[str] = []
         failed_batches = 0
         batches = _grid_batches(grids, options.vision_batch_size)
 
-        def run_vision_batch(index: int, batch: list[VisionGridEntry]):
-            check_cancel()
-            text_prompt = (
+        def batch_prompt(index: int, batch: list[VisionGridEntry]) -> str:
+            return (
                 "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
                 "请先做局部图文总结，不要写完整总笔记。\n"
                 "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
@@ -1334,7 +1374,19 @@ def summarize_with_llm(
                 f"{page_context_prompt}\n"
                 f"{_grid_window_prompt(transcript, batch)}"
             )
-            cache_key = _vision_cache_key(model, base_url, text_prompt, batch)
+        # Use the same request identities as the durable cache, so resumed drafts
+        # cannot mix batches from a different source, prompt, model, or endpoint.
+        prompts, cache_keys = [], []
+        for index, batch in enumerate(batches, 1):
+            check_cancel()
+            prompt = batch_prompt(index, batch)
+            prompts.append(prompt)
+            cache_keys.append(_vision_cache_key(model, base_url, prompt, batch))
+        generation_revision = hashlib.sha256("".join(cache_keys).encode()).hexdigest()
+
+        def run_vision_batch(index: int, batch: list[VisionGridEntry]):
+            check_cancel()
+            text_prompt, cache_key = prompts[index - 1], cache_keys[index - 1]
             cached = _read_vision_cache(vision_cache_dir, cache_key)
             if cached.strip():
                 return index, cached.strip(), None, True, 0
@@ -1352,7 +1404,7 @@ def summarize_with_llm(
                 acquire_provider_slot()
                 try:
                     check_cancel()
-                    response = tracked_completion(client,
+                    response = _compatible_completion(client, events=events, stage="vision_batch", cancel_check=check_cancel,
                         model=model,
                         messages=[{"role": "user", "content": content}],
                         **provider_kwargs,
@@ -1371,68 +1423,86 @@ def summarize_with_llm(
 
         concurrency = 1 if options.low_resource_mode else max(1, min(options.vision_concurrency, len(batches) or 1))
         results = []
-        if concurrency == 1:
-            for index, batch in enumerate(batches, start=1):
-                check_cancel()
-                results.append(run_vision_batch(index, batch))
-        else:
-            executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="learnnote-vision")
-            pending_batches = iter(enumerate(batches, start=1))
-            futures = {}
 
-            def submit_one() -> bool:
-                check_cancel()
-                try:
-                    index, batch = next(pending_batches)
-                except StopIteration:
-                    return False
-                futures[executor.submit(run_vision_batch, index, batch)] = index
-                return True
+        def accept_result(result) -> None:
+            check_cancel()
+            results.append(result)
+            index, partial, error, _cache_hit, _duration_ms = result
+            if section_callback is not None and partial and error is None:
+                section_callback({
+                    "generation_revision": generation_revision,
+                    "source_windows": [{"index": original_index, "start": grid.start, "end": grid.end}
+                                       for original_index, grid in batches[index - 1]],
+                    "markdown": partial,
+                })
 
-            try:
-                for _ in range(concurrency):
-                    if not submit_one():
-                        break
-                while futures:
+        with measured_stage("vision", timing_callback, cancelled=(SummarizationCancelled,)) as timing:
+            if concurrency == 1:
+                for index, batch in enumerate(batches, start=1):
                     check_cancel()
-                    done, _pending = wait(tuple(futures), timeout=0.2, return_when=FIRST_COMPLETED)
-                    if not done:
-                        continue
-                    for future in done:
-                        index = futures.pop(future)
-                        try:
-                            results.append(future.result())
-                        except SummarizationCancelled:
-                            raise
-                        except Exception as exc:
-                            results.append((index, "", exc, False, 0))
-                        submit_one()
-            except Exception:
-                for future in futures:
-                    future.cancel()
-                executor.shutdown(wait=False, cancel_futures=True)
-                raise
+                    accept_result(run_vision_batch(index, batch))
             else:
-                executor.shutdown(wait=True)
+                executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="learnnote-vision")
+                pending_batches = iter(enumerate(batches, start=1))
+                futures = {}
 
-        for index, partial, error, cache_hit, duration_ms in sorted(results, key=lambda item: item[0]):
-            if error is not None:
-                failed_batches += 1
-                code = "mojibake_blocked" if isinstance(error, TextDecodingError) else "api_error"
-                _record_llm_event(
-                    events,
-                    "vision_batch",
-                    code,
-                    error,
-                    batch=index,
-                    model=model,
-                    duration_ms=duration_ms,
-                )
-                continue
-            if cache_hit:
-                _record_llm_event(events, "vision_cache", "success", batch=index, model=model, cache="hit")
-            if partial:
-                partials.append(partial)
+                def submit_one() -> bool:
+                    check_cancel()
+                    try:
+                        index, batch = next(pending_batches)
+                    except StopIteration:
+                        return False
+                    futures[executor.submit(run_vision_batch, index, batch)] = index
+                    return True
+
+                try:
+                    for _ in range(concurrency):
+                        if not submit_one():
+                            break
+                    while futures:
+                        check_cancel()
+                        done, _pending = wait(tuple(futures), timeout=0.2, return_when=FIRST_COMPLETED)
+                        if not done:
+                            continue
+                        for future in done:
+                            index = futures.pop(future)
+                            try:
+                                result = future.result()
+                            except SummarizationCancelled:
+                                raise
+                            except Exception as exc:
+                                result = (index, "", exc, False, 0)
+                            accept_result(result)
+                            submit_one()
+                except Exception:
+                    for future in futures:
+                        future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise
+                else:
+                    executor.shutdown(wait=True)
+
+            for index, partial, error, cache_hit, duration_ms in sorted(results, key=lambda item: item[0]):
+                if error is not None:
+                    failed_batches += 1
+                    code = "mojibake_blocked" if isinstance(error, TextDecodingError) else "api_error"
+                    _record_llm_event(
+                        events,
+                        "vision_batch",
+                        code,
+                        error,
+                        batch=index,
+                        model=model,
+                        duration_ms=duration_ms,
+                    )
+                    continue
+                if cache_hit:
+                    _record_llm_event(events, "vision_cache", "success", batch=index, model=model, cache="hit")
+                if partial:
+                    partials.append(partial)
+
+            if failed_batches or not partials:
+                timing["status"] = "failed"
 
         if partials:
             check_cancel()
@@ -1448,37 +1518,40 @@ def summarize_with_llm(
             if page_context_prompt:
                 frame_index = f"{page_context_prompt}\n{frame_index}"
             try:
-                check_cancel()
-                acquire_provider_slot()
-                try:
-                    response = tracked_completion(client,
-                        model=model,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": (
-                                "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
-                                "必须覆盖所有时间窗口，不要只总结开头。\n\n"
-                                "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
-                                f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
-                                f"{note_generation_contract(options)}\n"
-                                f"{_evidence_contract(transcript, grids)}\n"
-                                f"用途要求：{note_style_instruction(options)}\n"
-                                f"版式要求：{note_template_instruction(options)}\n"
-                                "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
-                                f"标题：{title}\n来源：{page_url}\n\n"
-                                f"画面索引清单：\n{frame_index}\n\n"
-                                f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
-                                f"{merge_prompt}"
-                                ),
-                            }
-                        ],
-                        **provider_kwargs,
-                    )
-                finally:
-                    _VISION_PROVIDER_SEMAPHORE.release()
-                check_cancel()
-                generated = canonicalize_unicode_text(response.choices[0].message.content or "")
+                with measured_stage("merge", timing_callback, cancelled=(SummarizationCancelled,)) as timing:
+                    check_cancel()
+                    acquire_provider_slot()
+                    try:
+                        response = _compatible_completion(client, events=events, stage="vision_merge", cancel_check=check_cancel,
+                            model=model,
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": (
+                                    "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
+                                    "必须覆盖所有时间窗口，不要只总结开头。\n\n"
+                                    "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
+                                    f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
+                                    f"{note_generation_contract(options)}\n"
+                                    f"{_evidence_contract(transcript, grids)}\n"
+                                    f"用途要求：{note_style_instruction(options)}\n"
+                                    f"版式要求：{note_template_instruction(options)}\n"
+                                    "不要在成品笔记中复述模型提示、内部参数、风格名称、深度约束或兼容说明；直接输出读者需要的正文。\n"
+                                    f"标题：{title}\n来源：{page_url}\n\n"
+                                    f"画面索引清单：\n{frame_index}\n\n"
+                                    f"完整字幕节选：\n{transcript.full_text[:60000]}\n\n"
+                                    f"{merge_prompt}"
+                                    ),
+                                }
+                            ],
+                            **provider_kwargs,
+                        )
+                    finally:
+                        _VISION_PROVIDER_SEMAPHORE.release()
+                    check_cancel()
+                    generated = canonicalize_unicode_text(response.choices[0].message.content or "")
+                    if not generated.strip():
+                        timing["status"] = "failed"
                 grounded = _validated_generated_note(
                     client,
                     model,
@@ -1508,16 +1581,26 @@ def summarize_with_llm(
                 _record_llm_event(events, "vision_merge", code, exc, model=model)
                 return None
 
-    from .reading_notes import source_blocks
-    blocks = source_blocks(transcript)
+    if not use_vision:
+        emit_timing(timing_callback, "vision", None, "skipped")
+    from .reading_notes import source_block_entries
+    entries = source_block_entries(transcript)
+    blocks = [entry["text"] for entry in entries]
     if len(blocks) > 3:
         # Every block is processed. A failure returns an honest full-source fallback,
         # rather than silently presenting a successful summary of the opening only.
+        from .text_chunk_sections import text_chunk_payload
+        generation_revision = hashlib.sha256(json.dumps([
+            "text-chunk-v1", model, base_url, title, page_url, page_context,
+            options.model_dump(mode="json", exclude={"llm_api_key"}),
+            note_generation_contract(options), note_style_instruction(options), note_template_instruction(options),
+            blocks,
+        ], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         sections = []
         for index, block in enumerate(blocks, 1):
             check_cancel()
             partial = summarize_with_llm(
-                title, TranscriptResult(full_text=block), [],
+                title, TranscriptResult(full_text=block, source=transcript.source, warning=transcript.warning, provenance=transcript.provenance), [],
                 options.model_copy(update={"visual_understanding": False}),
                 page_url=page_url, page_context=page_context,
                 events=events, cancel_check=cancel_check,
@@ -1526,7 +1609,15 @@ def summarize_with_llm(
                 return None
             body = re.sub(r"^# [^\n]*\n+", "", partial[0], count=1)
             sections.append(f"## 第 {index} 部分\n\n{body}")
-        return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
+            # Only the parent publishes: child calls keep their existing prompts,
+            # validation/repair and output; dispatch the next block afterward.
+            check_cancel()
+            if section_callback is not None:
+                section_callback(text_chunk_payload(entries[index - 1], index - 1, partial[0], generation_revision))
+        check_cancel()
+        with measured_stage("merge", timing_callback, cancelled=(SummarizationCancelled,)):
+            return (f"# {title}\n\n" + "\n\n".join(sections), "text-llm")
+    emit_timing(timing_callback, "merge", None, "skipped")
     text_transcript_prompt = "\n\n".join(blocks)
     if page_context_prompt:
         text_transcript_prompt = f"{page_context_prompt}\n{text_transcript_prompt}"
@@ -1550,7 +1641,7 @@ def summarize_with_llm(
         check_cancel()
         acquire_provider_slot()
         try:
-            response = tracked_completion(client,
+            response = _compatible_completion(client, events=events, stage="text_summary", cancel_check=check_cancel,
                 model=model,
                 messages=[{"role": "user", "content": content}],
                 **provider_kwargs,
@@ -1598,6 +1689,8 @@ def summarize_with_diagnostics(
     page_context: str = "",
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
+    timing_callback: Callable | None = None,
 ) -> tuple[str, str, str]:
     note, source, warning, _events = summarize_with_diagnostics_audit(
         title,
@@ -1608,6 +1701,8 @@ def summarize_with_diagnostics(
         page_context,
         vision_cache_dir=vision_cache_dir,
         cancel_check=cancel_check,
+        section_callback=section_callback,
+        timing_callback=timing_callback,
     )
     return note, source, warning
 
@@ -1621,6 +1716,8 @@ def summarize_with_diagnostics_audit(
     page_context: str = "",
     vision_cache_dir: Path | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    section_callback: Callable[[dict], None] | None = None,
+    timing_callback: Callable | None = None,
 ) -> tuple[str, str, str, list[dict]]:
     events: list[dict] = []
     options = resolve_model_options(options)
@@ -1643,6 +1740,8 @@ def summarize_with_diagnostics_audit(
         events,
         vision_cache_dir=vision_cache_dir,
         cancel_check=cancel_check,
+        section_callback=section_callback,
+        timing_callback=timing_callback,
     )
     if generated:
         note, source = generated

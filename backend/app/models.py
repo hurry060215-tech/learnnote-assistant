@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import TASK_SCHEMA_VERSION
+from .subtitle_probe import SubtitleProbe
 
 
 TaskPhase = Literal[
@@ -21,7 +22,7 @@ TaskPhase = Literal[
     "cancelled",
     "failed",
 ]
-TaskMode = Literal["video", "subtitle_only", "page_text", "download_only", "local", "rerun_from_media"]
+TaskMode = Literal["video", "subtitle_only", "page_text", "download_only", "local", "rerun_from_media", "screen_subtitles"]
 CurrentPageTaskMode = Literal["video", "subtitle_only", "page_text", "download_only"]
 
 
@@ -85,6 +86,23 @@ class BrowserCookie(BaseModel):
     partitionKey: dict[str, Any] | None = None
 
 
+class ScreenSubtitleSettings(BaseModel):
+    """Normalized crop coordinates; language is a script filter, not translation."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    crop_left: float = Field(default=0, ge=0, lt=1)
+    crop_top: float = Field(default=.74, ge=0, lt=1)
+    crop_right: float = Field(default=1, gt=0, le=1)
+    crop_bottom: float = Field(default=1, gt=0, le=1)
+    interval_seconds: float = Field(default=.5, ge=.25, le=10)
+    language: Literal["auto", "zh", "en"] = "auto"
+
+    @model_validator(mode="after")
+    def valid_crop(self):
+        if self.crop_right <= self.crop_left or self.crop_bottom <= self.crop_top:
+            raise ValueError("裁剪右/下边界必须大于左/上边界。")
+        return self
+
+
 class TaskOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -94,6 +112,7 @@ class TaskOptions(BaseModel):
     visual_understanding: bool = True
     local_ocr: bool = False
     ocr_frame_limit: int = Field(default=12, ge=1, le=24)
+    screen_subtitles: ScreenSubtitleSettings | None = None
     frame_interval: int = Field(default=20, ge=1, le=600)
     grid_columns: int = Field(default=3, ge=1, le=6)
     grid_rows: int = Field(default=3, ge=1, le=6)
@@ -175,6 +194,8 @@ class CurrentPageTaskRequest(BaseModel):
     page_preflight_report: dict[str, Any] = Field(default_factory=dict)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
+    subtitle_probe: SubtitleProbe | None = None
+    extension_version: str = Field(default="", max_length=32, pattern=r"^[0-9.]*$")
     learning_range: dict[str, float] = Field(default_factory=dict)
     resources: list[ResourceCandidate] = Field(default_factory=list)
     drm_detected: bool = False
@@ -254,6 +275,7 @@ class TranscriptResult(BaseModel):
     full_text: str = ""
     source: str = "unknown"
     warning: str = ""
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class MediaTrackInfo(BaseModel):
@@ -461,6 +483,17 @@ class DownloadAttempt(BaseModel):
     companion_audio_mime: str = ""
 
 
+class TaskCancellationReceipt(BaseModel):
+    """The last committed cancellation, retained across a same-ID retry."""
+    generation: str = ""
+    operation_id: str = Field(default="", max_length=128)
+    requested_at: str = ""
+    queued_cancelled_at: str = ""
+    dispatch_prevented_at: str = ""
+    recovery_stopped_at: str = ""
+    acknowledged_at: str = ""
+
+
 class TaskRecord(BaseModel):
     schema_version: int = Field(default=TASK_SCHEMA_VERSION, ge=1)
     id: str
@@ -479,7 +512,11 @@ class TaskRecord(BaseModel):
     error_detail: str = ""
     failed_phase: str = ""
     retry_count: int = 0
+    control_generation: str = ""
+    control_retry_count: int = -1
+    cancellation_receipt: TaskCancellationReceipt = Field(default_factory=TaskCancellationReceipt)
     checkpoint: str = ""
+    screen_subtitles_media_sha256: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
     checkpoint_updated_at: str = ""
     cancel_requested: bool = False
     cancel_requested_at: str = ""
@@ -497,6 +534,8 @@ class TaskRecord(BaseModel):
     drm_signals: list[DrmSignal] = Field(default_factory=list)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)
+    subtitle_probe: SubtitleProbe | None = None
+    extension_version: str = Field(default="", max_length=32, pattern=r"^[0-9.]*$")
     media_path: str = ""
     audio_path: str = ""
     subtitle_path: str = ""

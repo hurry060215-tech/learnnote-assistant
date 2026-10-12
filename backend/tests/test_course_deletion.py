@@ -46,7 +46,7 @@ class CourseDeletionTests(unittest.TestCase):
             "confirm": "delete_course", "revision": preview["revision"], "snapshot": preview["snapshot"], "task_ids": list(ids)})
 
     def test_default_delete_preserves_tasks_materials_and_originals(self):
-        original = self.root / "original.mp4"
+        original = Path(self.stack.enter_context(tempfile.TemporaryDirectory())) / "original.mp4"
         original.write_bytes(b"synthetic original")
         task = self.task(source_media_path=str(original))
         material = library.import_document_material("independent.md", b"# Independent\n\nDocument evidence.")
@@ -79,7 +79,7 @@ class CourseDeletionTests(unittest.TestCase):
         self.assertEqual(before, after)
 
     def test_selected_child_uses_existing_cleanup_and_preserves_independent_data(self):
-        original = self.root / "original.mp4"
+        original = Path(self.stack.enter_context(tempfile.TemporaryDirectory())) / "original.mp4"
         original.write_bytes(b"synthetic original")
         child, kept = self.task(source_media_path=str(original)), self.task("Keep")
         generated = storage.task_dir(child.id) / "note.md"

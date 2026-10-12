@@ -9,6 +9,14 @@ on:
       - "extension/**"
       - "backend/app/**"
       - "scripts/*visual*.cjs"
+      - "scripts/assistant-runs-fixture.py"
+      - "scripts/material-batch-acceptance.cjs"
+      - "scripts/material-catalog-recovery-acceptance.cjs"
+      - "scripts/progressive-sections-acceptance.cjs"
+      - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/personal-anchors-*"
+      - "scripts/course-question-acceptance.cjs"
+      - "scripts/course-concepts-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
@@ -19,6 +27,14 @@ on:
       - "web/**"
       - "extension/**"
       - "scripts/*visual*.cjs"
+      - "scripts/assistant-runs-fixture.py"
+      - "scripts/material-batch-acceptance.cjs"
+      - "scripts/material-catalog-recovery-acceptance.cjs"
+      - "scripts/progressive-sections-acceptance.cjs"
+      - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/personal-anchors-*"
+      - "scripts/course-question-acceptance.cjs"
+      - "scripts/course-concepts-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
 
 permissions:
@@ -35,7 +51,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements.test.txt
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -62,20 +78,36 @@ jobs:
             if (-not $ready) { throw "Local backend did not become ready." }
             node scripts/global-assistant-acceptance.cjs http://127.0.0.1:8765 build/global-ui
             if ($LASTEXITCODE -ne 0) { throw "Global assistant and navigation gate failed" }
+            node scripts/assistant-operations-visual-acceptance.cjs http://127.0.0.1:8765 build/assistant-operations-ui
+            if ($LASTEXITCODE -ne 0) { throw "Native assistant operations and undo gate failed" }
+            node scripts/assistant-runs-visual-acceptance.cjs build/assistant-runs-ui
+            if ($LASTEXITCODE -ne 0) { throw "Bounded assistant workflow Edge/API/disk gate failed" }
+            node scripts/assistant-controls-visual-acceptance.cjs build/assistant-controls-ui
+            if ($LASTEXITCODE -ne 0) { throw "Native task/course controls Edge/API/SDK/disk gate failed" }
             node scripts/chat-stream-acceptance.cjs http://127.0.0.1:8765 build/chat-stream-ui
             if ($LASTEXITCODE -ne 0) { throw "Streaming assistant gate failed" }
             node scripts/layout-visual-acceptance.cjs http://127.0.0.1:8765 build/layout-ui
             if ($LASTEXITCODE -ne 0) { throw "Video layout and panel resize gate failed" }
             node scripts/reader-workflow-acceptance.cjs http://127.0.0.1:8765 build/reader-ui
             if ($LASTEXITCODE -ne 0) { throw "Reader timeline and navigation gate failed" }
+            node scripts/progressive-sections-acceptance.cjs http://127.0.0.1:8765 build/progressive-sections-ui
+            if ($LASTEXITCODE -ne 0) { throw "Progressive generated-section reader gate failed" }
+            node scripts/material-batch-acceptance.cjs http://127.0.0.1:8765 build/material-batch-ui
+            if ($LASTEXITCODE -ne 0) { throw "Local material batch import gate failed" }
             node scripts/workspace-ux-acceptance.cjs http://127.0.0.1:8765 build/workspace-ux
             if ($LASTEXITCODE -ne 0) { throw "Workspace settings and assistant continuity gate failed" }
             node scripts/ui-readability-acceptance.cjs http://127.0.0.1:8765 build/readability-ui
             if ($LASTEXITCODE -ne 0) { throw "Reading typography and navigation gate failed" }
+            node scripts/note-controls-visual-acceptance.cjs http://127.0.0.1:8765 build/note-controls-ui
+            if ($LASTEXITCODE -ne 0) { throw "TOC controls and summary editing gate failed" }
+            node scripts/sidepanel-progressive-acceptance.cjs build/sidepanel-progressive-ui
+            if ($LASTEXITCODE -ne 0) { throw "Sidepanel progressive reading gate failed" }
             node scripts/captions-panel-acceptance.cjs
             if ($LASTEXITCODE -ne 0) { throw "Caption fast-path panel gate failed" }
             node scripts/model-catalog-acceptance.cjs http://127.0.0.1:8765
             if ($LASTEXITCODE -ne 0) { throw "Model catalog and vision controls gate failed" }
+            node scripts/model-route-visual-acceptance.cjs http://127.0.0.1:8765 build/model-route-ui
+            if ($LASTEXITCODE -ne 0) { throw "Model route disclosure and offline readiness gate failed" }
             node scripts/workspace-recovery-acceptance.cjs http://127.0.0.1:8765 build/workspace-recovery
             if ($LASTEXITCODE -ne 0) { throw "Draft, history and connection recovery gate failed" }
             node scripts/core-output-acceptance.cjs http://127.0.0.1:8765 build/core-output
@@ -100,35 +132,90 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
             node scripts/evidence-source-acceptance.cjs http://127.0.0.1:8765 build/evidence-source-ui
             if ($LASTEXITCODE -ne 0) { throw "Evidence source and frame navigation failed" }
+            node scripts/source-review-visual-acceptance.cjs http://127.0.0.1:8765 build/source-review-ui
+            if ($LASTEXITCODE -ne 0) { throw "Source review presentation and export navigation failed" }
+            node scripts/screen-subtitle-visual-acceptance.cjs http://127.0.0.1:8765 build/screen-subtitle-ui
+            if ($LASTEXITCODE -ne 0) { throw "Screen subtitle preview and resume controls failed" }
+            node scripts/course-question-acceptance.cjs http://127.0.0.1:8765 build/course-question-ui
+            if ($LASTEXITCODE -ne 0) { throw "Course question scope and navigation failed" }
+            node scripts/pdf-ocr-acceptance.cjs http://127.0.0.1:8765 build/pdf-ocr-ui
+            if ($LASTEXITCODE -ne 0) { throw "Scanned PDF OCR confidence and recovery failed" }
             node scripts/task-stream-reconnect-acceptance.cjs build/task-stream-reconnect-ui
             if ($LASTEXITCODE -ne 0) { throw "Task stream reconnect gate failed" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Personal annotations with actual Edge and backend
+        shell: pwsh
+        run: |
+          python scripts/personal-anchors-fixture.py
+          if ($LASTEXITCODE -ne 0) { throw "Personal annotation fixture failed" }
+          $env:PYTHONPATH = "backend"
+          $env:LEARNNOTE_DATA_DIR = "$PWD/build/personal-anchors-acceptance/data"
+          $env:ORT_DISABLE_TELEMETRY = "1"
+          $env:HF_HUB_DISABLE_TELEMETRY = "1"
+          $server = Start-Process -FilePath python -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8766") -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8766/health
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $ready) { throw "Personal annotation backend did not become ready" }
+            node scripts/personal-anchors-acceptance.cjs http://127.0.0.1:8766
+            if ($LASTEXITCODE -ne 0) { throw "Personal annotation Edge/backend gate failed" }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+          }
+      - name: Material catalog recovery with actual Edge and synthetic responses
+        shell: pwsh
+        run: |
+          node scripts/material-catalog-recovery-acceptance.cjs http://127.0.0.1:18932 build/material-catalog-recovery-ui
+          if ($LASTEXITCODE -ne 0) { throw "Material catalog recovery Edge gate failed" }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ui-visual-${{ github.run_id }}
           path: |
             build/global-ui
+            build/assistant-operations-ui
+            build/assistant-runs-ui
+            build/assistant-controls-ui
             build/chat-stream-ui
             build/layout-ui
             build/workspace-ux
             build/readability-ui
+            build/note-controls-ui
             build/captions-panel
             build/model-catalog
             build/workspace-recovery
             build/core-output
             build/reader-ui
+            build/progressive-sections-ui
+            build/sidepanel-progressive-ui
+            build/material-batch-ui
+            build/material-catalog-recovery-ui
             build/product-ui
             build/unified-ui
             build/redesign-ui
             build/ui-visual
             build/learning-ui
             build/encoding-redecode-ui
+            build/pdf-ocr-ui
             build/task-stream-reconnect-ui
             build/extension-locales
             build/study-product-ui
             build/evidence-source-ui
+            build/source-review-ui
+            build/screen-subtitle-ui
+            build/personal-anchors-acceptance/report.json
+            build/personal-anchors-acceptance/personal-anchors.png
+            build/personal-anchors-acceptance/learning-restore-blocked.png
+            build/personal-anchors-acceptance/learning-backup-error-mobile.png
+            build/course-question-ui
+            build/model-route-ui
           if-no-files-found: warn
           retention-days: 14

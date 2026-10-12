@@ -26,6 +26,9 @@ tmp_ret = collect_all('rapidocr_onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('faster_whisper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+for package in ('markdown_it', 'mdurl'):
+    package_datas, package_binaries, package_imports = collect_all(package)
+    datas += package_datas; binaries += package_binaries; hiddenimports += package_imports
 
 
 a = Analysis(
@@ -42,7 +45,7 @@ a = Analysis(
     optimize=0,
 )
 a.datas += Tree('backend/app', prefix='backend/app', excludes=['__pycache__', '*.pyc'])
-a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*', 'classic.html', 'app.js', 'editorial.js', 'model-setup.js', 'learning.js', 'personal-notes.js', 'courses.js', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'styles.css', 'workspace.css', 'product.css', 'mature.css', 'editorial.css', 'experience.css'])
+a.datas += Tree('web', prefix='web', excludes=['tests', 'tests/*', 'classic.html', 'app.js', 'editorial.js', 'model-setup.js', 'learning.js', 'personal-notes.js', 'courses.js', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'task-list.js', 'styles.css', 'classic-workbench.css', 'classic-interactions.css', 'classic-study.css', 'workspace.css', 'product.css', 'mature.css', 'editorial.css', 'experience.css'])
 pyz = PYZ(a.pure)
 
 exe = EXE(

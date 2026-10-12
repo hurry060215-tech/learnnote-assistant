@@ -1,28 +1,49 @@
 """Readable source-first fallback; never turn transcript snippets into invented teaching."""
 from __future__ import annotations
 import re
+from typing import TypedDict
 from .models import TranscriptResult
 
 def stamp(value):
     seconds = max(0, int(value or 0))
     return f"{seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02}" if seconds >= 3600 else f"{seconds // 60:02}:{seconds % 60:02}"
 
-def source_blocks(transcript: TranscriptResult, budget: int = 16000):
-    """Keep every source character; segment timestamps travel with their text."""
-    parts = [f"[{stamp(s.start)} – {stamp(s.end)}] {s.text}" for s in transcript.segments if s.text.strip()]
+class SourceWindow(TypedDict):
+    index: int
+    start: float
+    end: float
+
+
+class SourceBlock(TypedDict):
+    text: str
+    source_windows: list[SourceWindow]
+
+
+def source_block_entries(transcript: TranscriptResult, budget: int = 16000) -> list[SourceBlock]:
+    """The existing request blocks, with positions from original cues only."""
+    parts = [(f"[{stamp(s.start)} – {stamp(s.end)}] {s.text}",
+              {"index": index, "start": s.start, "end": s.end})
+             for index, s in enumerate(transcript.segments) if s.text.strip()]
     if not parts:
-        parts = [transcript.full_text]
-    blocks, current = [], ""
-    for part in parts:
+        parts = [(transcript.full_text, None)]
+    blocks, current, windows = [], "", []
+    for part, window in parts:
         for offset in range(0, len(part), budget):
             piece = part[offset:offset + budget]
             if current and len(current) + len(piece) + 2 > budget:
-                blocks.append(current)
-                current = ""
+                blocks.append({"text": current, "source_windows": windows})
+                current, windows = "", []
             current += ("\n\n" if current else "") + piece
+            if window is not None and window not in windows:
+                windows.append(window)
     if current.strip():
-        blocks.append(current)
+        blocks.append({"text": current, "source_windows": windows})
     return blocks
+
+
+def source_blocks(transcript: TranscriptResult, budget: int = 16000):
+    """Keep every source character; segment timestamps travel with their text."""
+    return [block["text"] for block in source_block_entries(transcript, budget)]
 
 def readable_extract(title, transcript, grids, page_url=""):
     lines = [

@@ -15,6 +15,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
 from .document_citations import project_claim_citations
+from .review_presentation import project_source_reviews
+from .export_inline import export_inline_tokens, export_protected_spans
 from .pdf_unicode import emoji_font_for
 from .note_document import section_anchor_id, strip_note_frontmatter
 from .markdown_structure import structural_lines
@@ -22,7 +24,6 @@ from .math_text import inline_math_expressions, math_source_requires_fallback, r
 
 
 DOCUMENT_EXPORT_SCHEMA_VERSION = 1
-_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _RAW_URL_RE = re.compile(r"https?://[^\s<>\]\[\"']+", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)\b(cookie|set-cookie|authorization|proxy-authorization|password|secret|"
@@ -288,6 +289,9 @@ def build_structured_export(
     note, citation_warnings = project_claim_citations(task, str(note or ""), claim_map, settings,
         safe_url=_safe_hyperlink, timed_url=_timestamp_source_url, sanitize=sanitize_export_text, transcript=transcript,
         heading_texts=[block.text for block in _content_blocks(strip_note_frontmatter(note), title) if block.kind == "heading"])
+    source_reviews = project_source_reviews(note if settings["include_note"] else "")
+    if settings["include_note"]:
+        note = source_reviews["markdown"]
     parts: list[str] = []
     if settings["include_note"]:
         notice = evidence_review_notice(task)
@@ -340,6 +344,7 @@ def build_structured_export(
         "warnings": warnings,
         "markdown": body,
         "options": settings,
+        "source_review_anchor": source_reviews["anchor"],
     }
 
 
@@ -550,7 +555,7 @@ _EXPORT_TIMESTAMP_RE = re.compile(
     r"(?<![\d:])(?P<start>(?:\d{1,2}:)?\d{1,2}:\d{2})"
     r"(?:\s*(?:-|–|—|~|至)\s*(?:\d{1,2}:)?\d{1,2}:\d{2})?(?![\d:])"
 )
-_TIMESTAMP_EXCLUSIONS_RE = re.compile(r"`[^`]*`|!?\[[^\]]+\]\([^)]+\)|https?://[^\s]+", re.I)
+_TIMESTAMP_EXCLUSIONS_RE = re.compile(r"https?://[^\s]+", re.I)
 
 
 def _timestamp_to_seconds(value: str) -> int:
@@ -575,7 +580,32 @@ def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
     """Make visible prose timecodes return to the source video position."""
 
     output = []
-    for line, prose in structural_lines(str(markdown or "").splitlines()):
+    source = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = list(structural_lines(source.splitlines()))
+    # Inline links may wrap within prose, but cannot cross a blank paragraph
+    # or a fenced/indented code boundary. Offsets refer to unchanged source.
+    protected = []
+    run, run_start, offset = [], 0, 0
+
+    def flush_run():
+        if run:
+            protected.extend((run_start + start, run_start + end)
+                             for start, end in export_protected_spans("\n".join(run)))
+            run.clear()
+
+    for line, prose in lines:
+        if not prose or not line.strip():
+            flush_run()
+        else:
+            if not run:
+                run_start = offset
+            run.append(line)
+        offset += len(line) + 1
+    flush_run()
+    protected_index = offset = 0
+    for line, prose in lines:
+        line_start = offset
+        offset += len(line) + 1
         if not prose or not line:
             output.append(line)
             continue
@@ -584,11 +614,19 @@ def _linkify_video_timestamps(markdown: str, source_url: str) -> str:
         cursor = 0
         linked = False
         for match in _EXPORT_TIMESTAMP_RE.finditer(line):
+            absolute = line_start + match.start()
+            while protected_index < len(protected) and protected[protected_index][1] <= absolute:
+                protected_index += 1
+            if protected_index < len(protected) and protected[protected_index][0] <= absolute:
+                continue
             if any(start <= match.start() < end for start, end in excluded):
                 continue
             target = _timestamp_source_url(source_url, match.group(0))
             if not target:
                 continue
+            # A valid URL path can contain parentheses; generated Markdown
+            # destinations must escape them before the inline renderer parses it.
+            target = target.replace("(", "%28").replace(")", "%29")
             pieces.append(line[cursor:match.start()])
             pieces.append(f"[{match.group(0)}]({target})")
             cursor = match.end()
@@ -618,11 +656,8 @@ _sanitize_export_text = sanitize_export_text
 
 
 def _clean_inline_markdown(value: str) -> str:
-    text = str(value or "")
-    text = re.sub(r"`([^`]+)`", r"\1", text)
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-    text = re.sub(r"__([^_]+)__", r"\1", text)
-    return text
+    return "".join(render_math_text(token.text) if token.kind == "math" else token.text
+                   for token in export_inline_tokens(value))
 
 
 def _content_blocks(markdown: str, title: str) -> list[_Block]:
@@ -633,7 +668,8 @@ def _content_blocks(markdown: str, title: str) -> list[_Block]:
         return re.sub(r"\s+", " ", _clean_inline_markdown(value)).strip().casefold()
 
     return [block for block in blocks if not (
-        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title))]
+        block.kind == "heading" and block.level == 1 and normalize(block.text) == normalize(title)
+        and not any(token.kind == "link" for token in export_inline_tokens(block.text)))]
 
 
 
@@ -701,7 +737,7 @@ def _docx_numbering_sequence(document, start: int) -> int:
     numbering.append(num)
     return num_id
 
-def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
+def _add_docx_hyperlink(paragraph, text: str, url: str, *, bold: bool = False, italic: bool = False) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
@@ -718,7 +754,7 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     from docx.text.paragraph import Paragraph as WordParagraph
     scratch = WordParagraph(OxmlElement("w:p"), paragraph._parent)
     scratch.style = paragraph.style
-    _add_docx_text(scratch, text)
+    _add_docx_text(scratch, text, bold=bold, italic=italic)
     for run in scratch.runs:
         properties = run._element.get_or_add_rPr()
         color = OxmlElement("w:color"); color.set(qn("w:val"), "0F766E")
@@ -728,7 +764,7 @@ def _add_docx_hyperlink(paragraph, text: str, url: str) -> None:
     paragraph._p.append(hyperlink)
 
 
-def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str = "") -> None:
+def _add_docx_text(paragraph, value: str, *, bold: bool = False, italic: bool = False, font_name: str = "") -> None:
     """Use a dedicated host emoji font for non-BMP runs in editable Word output."""
 
     from docx.oxml.ns import qn
@@ -739,6 +775,8 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
         run = paragraph.add_run(part)
         if bold:
             run.bold = True
+        if italic:
+            run.italic = True
         if font_name:
             run.font.name = font_name
         if re.search(r"[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]", part):
@@ -768,29 +806,22 @@ def _add_docx_text(paragraph, value: str, *, bold: bool = False, font_name: str 
 
 
 def _add_docx_inline(paragraph, value: str, *, anchors: dict[str, str] | None = None) -> None:
-    cursor = 0
-    text = str(value or "")
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
-    for match in token_re.finditer(text):
-        if match.start() > cursor:
-            _add_docx_text(paragraph, _sanitize_export_text(text[cursor:match.start()]))
-        if match.group(1) is not None:
-            label, raw_url = match.group(1), match.group(2)
+    for token in export_inline_tokens(value):
+        style = {"bold": token.bold, "italic": token.italic}
+        if token.kind == "link":
+            label, raw_url = token.text, token.destination
             url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else _sanitize_export_text(label)
-                _add_docx_hyperlink(paragraph, display_label, url)
+                _add_docx_hyperlink(paragraph, display_label, url, **style)
             else:
-                _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）")
-        elif match.group(3) is not None or match.group(4) is not None:
-            _add_docx_text(paragraph, _sanitize_export_text(match.group(3) or match.group(4)), bold=True)
-        elif match.group(6) is not None:
-            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(match.group(6))))
+                _add_docx_text(paragraph, f"{_sanitize_export_text(label)}（链接已移除）", **style)
+        elif token.kind == "math":
+            _add_docx_text(paragraph, render_math_text(_sanitize_export_text(token.text)), **style)
+        elif token.kind == "code":
+            _add_docx_text(paragraph, _sanitize_export_text(token.text), font_name="Consolas", **style)
         else:
-            _add_docx_text(paragraph, _sanitize_export_text(match.group(5) or ""), font_name="Consolas")
-        cursor = match.end()
-    if cursor < len(text):
-        _add_docx_text(paragraph, _sanitize_export_text(text[cursor:]))
+            _add_docx_text(paragraph, _sanitize_export_text(token.text), **style)
 
 
 def build_docx_export(
@@ -1121,26 +1152,20 @@ def _pdf_escape_text(value: str) -> str:
 def _pdf_inline(value: str, *, pdf_safe: bool = True, anchors: dict[str, str] | None = None) -> str:
     compatible = _pdf_compatible_text if pdf_safe else str
     escape_text = _pdf_escape_text if pdf_safe else html.escape
-    source = str(value or "")
     parts: list[str] = []
-    cursor = 0
-    token_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|(?<!\\)\$(?!\$)([^$\n]+)\$(?!\$)")
-    for match in token_re.finditer(source):
-        parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:match.start()]))))
-        if match.group(1) is not None:
-            label, raw_url = match.group(1), match.group(2)
+    for token in export_inline_tokens(value):
+        if token.kind == "link":
+            label, raw_url = token.text, token.destination
             url = (anchors or {}).get(raw_url) or _safe_hyperlink(raw_url)
             if url:
                 display_label = url if "://" in label else compatible(_sanitize_export_text(label))
                 parts.append(f'<a href="{html.escape(url, quote=True)}" color="#0f766e"><u>{escape_text(display_label)}</u></a>')
             else:
                 parts.append(escape_text(f"{compatible(_sanitize_export_text(label))}（链接已移除）"))
-        elif match.group(3) is not None or match.group(4) is not None:
-            parts.append(f"<strong>{escape_text(compatible(_sanitize_export_text(match.group(3) or match.group(4))))}</strong>")
-        elif match.group(6) is not None:
-            parts.append(escape_text(compatible(render_math_text(_sanitize_export_text(match.group(6))))))
-        else:
-            code_text = compatible(_sanitize_export_text(match.group(5) or ""))
+        elif token.kind == "math":
+            parts.append(escape_text(compatible(render_math_text(_sanitize_export_text(token.text)))))
+        elif token.kind == "code":
+            code_text = compatible(_sanitize_export_text(token.text))
             escaped = escape_text(code_text)
             if not pdf_safe:
                 parts.append(f"<code>{escaped}</code>")
@@ -1149,8 +1174,12 @@ def _pdf_inline(value: str, *, pdf_safe: bool = True, anchors: dict[str, str] | 
             else:
                 # Courier cannot render CJK. Inherit the selected CJK font.
                 parts.append(escaped)
-        cursor = match.end()
-    parts.append(escape_text(compatible(_sanitize_export_text(source[cursor:]))))
+        else:
+            parts.append(escape_text(compatible(_sanitize_export_text(token.text))))
+        if token.bold:
+            parts[-1] = f"<strong>{parts[-1]}</strong>"
+        if token.italic:
+            parts[-1] = f"<i>{parts[-1]}</i>"
     return "".join(parts)
 
 
@@ -1384,6 +1413,7 @@ def build_html_export(
     toc: list[str] = []
     heading_occurrences: dict[str, int] = {}
     list_stack: list[str] = []
+    review_open = False
     def close_list() -> None:
         while list_stack: body.append(f"</li></{list_stack.pop()}>")
     def list_item(block: _Block) -> None:
@@ -1404,8 +1434,15 @@ def build_html_export(
             heading_occurrences[stable_base] = heading_occurrences.get(stable_base, 0) + 1
             anchor = section_anchor_id(block.text, heading_occurrences[stable_base])
             level = max(1, min(int(block.level), 4))
-            text = html.escape(_clean_inline_markdown(block.text))
-            body.append(f'<h{level} id="{anchor}">{text}</h{level}>')
+            text = html.escape(_sanitize_export_text(_clean_inline_markdown(block.text)))
+            if review_open and block.level <= 2:
+                body.append("</details>")
+                review_open = False
+            if anchor == structured["source_review_anchor"]:
+                body.append(f'<details class="source-review" id="{anchor}"><summary>{text}</summary>')
+                review_open = True
+                continue
+            body.append(f'<h{level} id="{anchor}">{inline(block.text)}</h{level}>')
             if settings["include_toc"] and level <= 3:
                 toc.append(f'<li class="toc-level-{level}"><a href="#{anchor}">{text}</a></li>')
         elif block.kind == "table":
@@ -1440,6 +1477,8 @@ def build_html_export(
             close_list()
             body.append(f"<p>{inline(block.text).replace(chr(10), '<br>')}</p>")
     close_list()
+    if review_open:
+        body.append("</details>")
     rendered = body
 
     font_path = Path(__file__).resolve().parents[2] / "site" / "assets" / "fonts" / "learnnote-site-sans.woff2"
@@ -1461,7 +1500,8 @@ def build_html_export(
 *{{box-sizing:border-box}}body{{margin:0;background:#f4f7f5;color:var(--ink);font-family:LearnNoteEmbedded,"Microsoft YaHei","Noto Sans SC",sans-serif;font-size:{settings['font_size']}pt;line-height:{settings['line_height']};}}
 main{{max-width:860px;margin:0 auto;background:var(--paper);min-height:100vh;padding:{settings['margin_top']}mm {settings['margin_right']}mm {settings['margin_bottom']}mm {settings['margin_left']}mm;}}
 h1{{font-size:2em;line-height:1.3;margin:0 0 1.2em}}h2{{font-size:1.45em;margin:1.5em 0 .55em}}h3,h4{{margin:1.2em 0 .45em}}p{{margin:{settings['paragraph_before']}pt 0 {settings['paragraph_after']}pt}}.meta{{color:var(--muted);font-size:.85em}}a{{color:var(--accent)}}blockquote{{border-left:3px solid var(--line);padding:.2em 1em;color:var(--muted)}}.math{{text-align:center;white-space:pre-wrap;margin:1em 0}}pre{{background:#f1f5f3;border:1px solid var(--line);padding:1em;overflow:auto;font-family:Consolas,monospace}}code{{font-family:Consolas,monospace}}table{{width:100%;border-collapse:collapse;margin:1em 0}}th,td{{border:1px solid var(--line);padding:.55em;text-align:left;vertical-align:top}}th{{background:#edf4f1}}img{{max-width:100%;height:auto}}figure{{margin:1.1em 0}}figcaption,.image-note{{color:var(--muted);font-size:.82em}}.toc{{border:1px solid var(--line);padding:1em;margin:1em 0}}.toc ol{{margin:.5em 0 0;padding-left:1.5em}}.toc-level-3{{margin-left:1em}}footer{{margin-top:2em;color:var(--muted);font-size:.8em;border-top:1px solid var(--line);padding-top:1em}}"""
-    document = f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body><main><h1>{title}</h1>{source_html}{toc_html}{"".join(rendered)}<footer>由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。</footer></main></body></html>'
+    review_script = """<script>document.addEventListener('click',function(event){const link=event.target.closest('a[href^="#"]');if(!link)return;let target;try{target=document.getElementById(decodeURIComponent(link.hash.slice(1)))}catch{return}for(let node=target;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;});</script>""" if structured["source_review_anchor"] else ""
+    document = f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body><main><h1>{title}</h1>{source_html}{toc_html}{"".join(rendered)}<footer>由 LearnNote 在本机生成；原视频、Cookie 与诊断秘密未嵌入此文档。</footer></main>{review_script}</body></html>'
     return DocumentExport(
         content=document.encode("utf-8"),
         media_type="text/html; charset=utf-8",

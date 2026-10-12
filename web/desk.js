@@ -1,5 +1,8 @@
+import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
+import { collapseSourceReviews } from "/web/source-review.js";
 import { renderEditionStable } from "/web/reader-progress.js";
+import { createSectionReader } from "/web/reader-sections.js";
 import {
   installConnections,
   loadModelConnection,
@@ -7,15 +10,20 @@ import {
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
+import { installNoteEditor } from "/web/desk-note-controls.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
 import { createTranscriptWindow } from "/web/transcript-window.js";
-import { evidenceAnchor } from "/web/evidence-anchor.js";
+import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
+import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=0.2.14";
+import { installMaterialBatch } from "/web/desk-material-batch.js";
+import { batchVideoRoute } from "/web/material-batch.js";
+import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
 import {
   api,
   escapeHtml as esc,
@@ -40,6 +48,9 @@ const state = {
   annotationEditingAnchor: {},
   annotationQuote: "",
   annotationQuoteReanchored: false,
+  annotationRevision: "",
+  annotationRequestId: "",
+  annotationSaving: false,
   input: "url",
   busy: false,
   refreshing: false,
@@ -48,6 +59,26 @@ const state = {
   model: {},
   health: {},
 };
+const claimContainer = document.createElement("section");
+claimContainer.id = "sourceClaims";
+claimContainer.className = "claim-timeline";
+claimContainer.hidden = true;
+$("sourceContent").before(claimContainer);
+const claimTimeline = createClaimTimeline({
+  note: $("document"), container: claimContainer, timestamp,
+  readMap: taskId => api(`/api/tasks/${encodeURIComponent(taskId)}/claims`),
+  current: snapshot => snapshot.epoch === state.epoch && snapshot.revision === state.revision &&
+    snapshot.taskVersion === claimMapVersion(state.selected) &&
+    state.selected?.kind === "task" && state.selected.id === snapshot.taskId && !state.editing,
+  onOpen: (evidence, taskId) => openClaimEvidence(evidence, taskId).catch(failure),
+});
+function loadClaimTimeline() {
+  const selected = state.selected;
+  if (!selected) { claimTimeline.reset(); return; }
+  return claimTimeline.load({ kind: selected.kind, taskId: selected.id, epoch: state.epoch,
+    taskVersion: claimMapVersion(selected),
+    revision: state.revision, text: state.text, hasMap: Boolean(selected.claim_evidence?.path) });
+}
 const presets = {
   deepseek: ["https://api.deepseek.com", "deepseek-flash"],
   kimi: ["https://api.moonshot.cn/v1", "moonshot-v1-8k"],
@@ -161,14 +192,10 @@ function updateContentMode() {
   $("vision").disabled = true;
   $("vision").closest("label").hidden = true;
   if ($("localOcr")) $("localOcr").disabled = mode !== "visual";
-  const model =
-    state.model.model || state.health.default_llm_model || "尚未配置";
-  $("contentModeExplanation").textContent =
-    mode === "subtitles"
-      ? "不生成 AI 总结。没有可用字幕时会停下来，不会自动改用语音转写。"
-      : mode === "visual"
-        ? `视觉理解：已启用 · 当前模型：${model}。画面和必要的字幕会发送给该模型。`
-        : `视觉理解：关闭 · 文字模型：${model}。本地转写只在没有可用字幕时进行。`;
+  $("contentModeExplanation").textContent = batchVideoRoute({
+    ...state.processing, llm_base_url: state.model.base_url, llm_model: state.model.model,
+    content_mode: mode, visual_understanding: mode === "visual",
+  }, state.health, { localFile: state.input === "file" });
   $("createSubmit").textContent =
     mode === "subtitles" ? "提取字幕" : "生成笔记";
 }
@@ -306,10 +333,11 @@ async function refreshLibrary() {
         (i) => i.kind === state.selected.kind && i.id === state.selected.id,
       );
     if (selected) {
-      const changed = selected.updated_at !== state.selected.updated_at;
+      const changed = claimMapVersion(selected) !== claimMapVersion(state.selected);
       state.selected = selected;
       renderStatus();
       if (changed && !state.editing) {
+        claimTimeline.reset();
         await loadEdition(state.epoch);
       }
     }
@@ -343,7 +371,7 @@ async function refreshLibrary() {
     state.refreshing = false;
   }
 }
-async function openItem(item, { remember = true, check = true } = {}) {
+async function openItem(item, { remember = true, check = true, openMedia = true } = {}) {
   if (check && !guard()) return;
   state.navigation ||= [];
   if (
@@ -360,6 +388,7 @@ async function openItem(item, { remember = true, check = true } = {}) {
     state.navigation = state.navigation.slice(-30);
   }
   window.dispatchEvent(new Event("learnnote:navigation"));
+  claimTimeline.reset();
   state.editing = false;
   $("editor").hidden = true;
   $("document").hidden = false;
@@ -386,9 +415,12 @@ async function openItem(item, { remember = true, check = true } = {}) {
   state.annotationEditingAnchor = {};
   state.annotationQuote = "";
   state.annotationQuoteReanchored = false;
+  state.annotationRevision = "";
+  state.annotationRequestId = "";
+  personalAnchorPicker.reset();
   $("annotationQuote").textContent = "";
   $("cancelAnnotationEdit").hidden = true;
-  closeSource();
+  closeSource({ cancelEvidence: false });
   document.body.classList.remove("menu-open");
   $("menu").setAttribute("aria-expanded", "false");
   history.replaceState(
@@ -400,23 +432,57 @@ async function openItem(item, { remember = true, check = true } = {}) {
   renderStatus();
   await Promise.all([loadEdition(epoch), loadAnnotations(epoch)]);
   if (
-    epoch === state.epoch &&
+    openMedia && epoch === state.epoch &&
     item.kind === "task" &&
     (item.media_path || item.source_media_path)
   )
     await openSource();
 }
+let editionRequest = 0;
+const sectionReader = createSectionReader({
+  element: $("document"), scroller: document.scrollingElement, timestamp,
+  renderMarkdown: (node, text) => { node.innerHTML = LearnNoteMarkdown.markdownToHtml(text); },
+  decorate: (node, sectionId) => {
+    // Each independently rendered batch starts its own Markdown heading IDs.
+    // Prefix them so later arrivals cannot steal an existing source anchor.
+    for (const heading of node.querySelectorAll("[id]")) heading.id = `${sectionId}-${heading.id}`;
+    for (const link of node.querySelectorAll('a[href^="#"]')) link.setAttribute("href", `#${sectionId}-${link.getAttribute("href").slice(1)}`);
+    decorateSourceTimes(node);
+  },
+  openSource: start => openSource(start).catch(failure), asset: taskAsset,
+});
 async function loadEdition(epoch) {
   const selected = state.selected;
-  const edition = await api(sourcePath(selected));
-  if (epoch !== state.epoch || state.editing) return;
+  const request = ++editionRequest;
+  const progressive = selected.kind === "task" && selected.options?.visual_understanding
+    && ["running", "cancelling", "failed", "cancelled"].includes(selected.status)
+    && (selected.artifact_status?.draft_available || selected.artifact_status?.partial_draft_available);
+  const [edition, projection] = await Promise.all([
+    api(sourcePath(selected)),
+    progressive ? api(`/api/tasks/${encodeURIComponent(selected.id)}/partial-note`).catch(() => null) : null,
+  ]);
+  if (epoch !== state.epoch || request !== editionRequest || state.editing
+      || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind
+      || state.selected?.updated_at !== selected.updated_at) return;
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
-  renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
-    `${edition.revision}:${selected.summary_source || ""}`, renderNote);
+  $("document").dataset.sourceRevision = state.revision || "";
+  $("annotations").dataset.sourceRevision = state.revision || "";
+  LearnNoteMarkdown.configure({ safeNoteMediaUrl: value => selected.kind === "task" ? taskAsset(value, selected.id) : "" });
+  if (sectionReader.render(projection, selected, edition)) {
+    claimTimeline.reset();
+    $("document").dataset.readerSource = `${selected.kind}:${selected.id}`;
+    $("document").dataset.readerRevision = `${edition.revision}:${selected.summary_source || ""}:`;
+    return;
+  }
+  if ($("document").querySelector("[data-progressive-reader]")) delete $("document").dataset.readerRevision;
+  const rendered = renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
+    `${edition.revision}:${selected.summary_source || ""}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
+  if (!rendered) loadClaimTimeline();
 }
 function renderNote() {
+  sectionReader.clear();
   // Keep the edition hash alongside the rendered document so annotations and
   // source repair can distinguish a stable anchor from an outdated selection.
   $("document").dataset.sourceRevision = state.revision || "";
@@ -429,6 +495,7 @@ function renderNote() {
   });
   const excerptOnly =
     state.selected.summary_source === "local-template" &&
+    !state.selected.artifact_status?.partial_draft_available &&
     !state.edition?.edited;
   const heading =
     state.text.trim().startsWith("# ") && !excerptOnly
@@ -458,11 +525,25 @@ function renderNote() {
     (state.text.trim()
       ? excerptOnly
         ? `<p class="muted">这里暂时保留的是字幕摘录。上方可以重新生成总结，原始字幕也可随时核对。</p><details class="transcript-draft"><summary>查看已保留的字幕摘录</summary>${LearnNoteMarkdown.markdownToHtml(state.text.replace(/^# .+\n/, ""))}</details>`
-        : LearnNoteMarkdown.markdownToHtml(state.text)
-      : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
+        : LearnNoteMarkdown.markdownToHtml(state.text, { sourceOffsets: true })
+      : canOcrMaterial(state.selected)
+        ? '<p class="muted">扫描 PDF 尚无可读的文字。可在上方查看 OCR 状态，并打开原始 PDF 核对。</p>'
+        : '<p class="muted">笔记准备好后会显示在这里，你可以先查看处理进度。</p>');
+  const ocrSelection = state.selected, ocrEpoch = state.epoch;
+  mountMaterialOcr($("document"), {
+    material: ocrSelection, api,
+    isCurrent: () => ocrEpoch === state.epoch && !state.editing && state.selected?.id === ocrSelection.id && state.selected?.kind === ocrSelection.kind,
+    onUpdated: async () => { await refresh(); },
+  });
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
+  collapseSourceReviews($("document"));
+  decorateSourceTimes($("document"));
+  loadClaimTimeline();
+  window.dispatchEvent(new Event("learnnote:document"));
+}
+function decorateSourceTimes(root) {
   if (state.selected.kind === "task")
-    for (const code of $("document").querySelectorAll("code")) {
+    for (const code of root.querySelectorAll("code")) {
       if (code.closest("pre")) continue;
       const match = code.textContent.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
       if (!match) continue;
@@ -477,7 +558,7 @@ function renderNote() {
     }
   if (state.selected.kind === "task") {
     const walker = document.createTreeWalker(
-      $("document"),
+      root,
       NodeFilter.SHOW_TEXT,
     );
     const textNodes = [];
@@ -509,7 +590,6 @@ function renderNote() {
       node.replaceWith(fragment);
     }
   }
-  window.dispatchEvent(new Event("learnnote:document"));
 }
 const taskEvents = new Map();
 const taskEventHub = createTaskEventHub({
@@ -606,7 +686,7 @@ function renderStatus(reload = true) {
     const locatedOnlyCount = Number(quality.located_only_count || 0);
     const inferenceCount = Number(quality.inference_count || 0);
     const pendingReviewCount = Number(quality.pending_review_count || 0);
-    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · 直接支持 ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
+    summary.textContent = `逐条来源映射 · ${Number(quality.claim_count || 0)} 条 · ${t.mode === "screen_subtitles" ? "逐字匹配（OCR 未人工核验）" : "直接支持"} ${Number(quality.direct_count || 0)} · 仅定位 ${locatedOnlyCount} · 推断 ${inferenceCount} · 待核对 ${pendingReviewCount}`;
     if (locatedOnlyCount || inferenceCount || pendingReviewCount || quality.unsupported_count) {
       const warning = document.createElement("p");
       warning.className = "muted";
@@ -622,47 +702,25 @@ function renderStatus(reload = true) {
       if (!details.open || details.dataset.loaded) return;
       details.dataset.loaded = "true";
       try {
+        const epoch = state.epoch, revision = state.revision;
         const mapped = await api("/api/tasks/" + t.id + "/claims");
+        if (!details.isConnected || epoch !== state.epoch || revision !== state.revision || state.editing) return;
+        const model = claimTimelineModel(mapped, { taskId: t.id, revision, text: state.text });
+        if (!model) { body.textContent = "来源映射与当前笔记版本不一致，已停用旧定位。"; return; }
         const list = document.createElement("ol");
-        for (const claim of mapped.claims || []) {
+        for (const { claim, targets } of model.entries) {
           const item = document.createElement("li");
           const text = document.createElement("span");
-          const verificationLabel = ({
-            "direct": "直接支持",
-            "located_only": "仅定位",
-            "inference": "推断",
-            "pending_review": "待核对",
-          })[claim.verification] || "待核对";
-          const sourceLabel = ({
-            "transcript": "字幕",
-            "visual": "画面",
-            "document": "文档",
-          })[claim.claim_type] || "";
-          text.textContent = `${verificationLabel}${sourceLabel ? ` · ${sourceLabel}` : ""} · ${claim.text}`;
+          text.textContent = `${claimEvidenceStatus(claim, targets)} · ${claim.text}`;
           item.append(text);
-          const evidence = (mapped.evidence || []).filter((candidate) => [...(claim.evidence_ids || []), ...(claim.candidate_evidence_ids || [])].includes(candidate.evidence_id));
-          for (const candidate of evidence.slice(0, 3)) {
-            if (candidate.kind === "document" && candidate.material_id) {
-              const locate = document.createElement("button");
-              locate.type = "button";
-              locate.textContent = `打开文档 ${candidate.locator || "出处"}`;
-              locate.onclick = async () => {
-                const material = state.items.find((entry) => entry.kind === "material" && entry.id === candidate.material_id);
-                if (!material) {
-                  notice("这份文档不在当前资料库中，无法打开出处。");
-                  return;
-                }
-                await openEvidenceSource(material, undefined, { evidenceId: candidate.evidence_id }).catch(failure);
-              };
-              item.append(locate);
-              continue;
-            }
-            const match = String(candidate.locator || "").match(/^([0-9.]+)-/);
-            if (!match || t.kind !== "task") continue;
+          for (const candidate of targets) {
             const locate = document.createElement("button");
             locate.type = "button";
-            locate.textContent = "定位 " + candidate.locator;
-            locate.onclick = () => openEvidenceSource(t, Number(match[1]), { windowId: candidate.window_id || "" }).catch(failure);
+            locate.textContent = `${claimSourceLabel(candidate)}`;
+            locate.onclick = () => {
+              if (epoch !== state.epoch || revision !== state.revision || state.editing) return;
+              openClaimEvidence(candidate, t.id).catch(failure);
+            };
             item.append(locate);
           }
           list.append(item);
@@ -683,17 +741,21 @@ async function loadAnnotations(epoch) {
   const value = await api(`/api/personal/${s.kind}/${s.id}`);
   if (epoch !== state.epoch) return;
   $("annotationList").innerHTML = value.annotations
-    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote>${esc(a.quote)}</blockquote>` : ""}<span>${esc(a.text)}</span>${a.anchor_status?.stale ? `<small>${a.anchor_status.repairable ? "原文版本已变化；重新选择当前正文以修复出处。" : "原文版本已变化；没有可恢复的引用片段。"}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
+    .map((a) => `<div class="annotation${a.anchor_status?.stale ? " annotation-stale" : ""}">${a.quote ? `<blockquote data-user-content>${esc(a.quote)}</blockquote>` : ""}<span data-user-content style="white-space:pre-wrap">${esc(a.text)}</span>${annotationAnchorLabel(a.anchor) ? `<small>${esc(annotationAnchorLabel(a.anchor))}</small>` : ""}${annotationStatusMessage(a) ? `<small>${esc(annotationStatusMessage(a))}</small>` : ""}<button type="button" data-annotation-edit="${esc(a.id)}">${a.anchor_status?.stale ? "修复出处" : "编辑"}</button><button type="button" class="danger" data-annotation-delete="${esc(a.id)}">删除</button></div>`)
     .join("");
   for (const button of $("annotationList").querySelectorAll("[data-annotation-edit]")) button.onclick = () => {
+    if (state.annotationSaving) { notice("正在保存这条批注，请稍候。"); return; }
     const item = value.annotations.find((annotation) => annotation.id === button.dataset.annotationEdit);
     if (!item) return;
     state.annotationEditingId = item.id;
+    state.annotationRevision = item.revision || "";
+    state.annotationRequestId = "";
+    personalAnchorPicker.reset();
     state.annotationEditingAnchor = item.anchor && typeof item.anchor === "object" ? item.anchor : {};
     state.annotationQuote = String(item.quote || "");
     state.annotationQuoteReanchored = false;
     $("annotationText").value = item.text;
-    $("annotationQuote").textContent = state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。";
+    $("annotationQuote").textContent = annotationAnchorLabel(item.anchor) || (state.annotationQuote ? `引用：${state.annotationQuote}` : "尚未关联原文。");
     $("saveAnnotation").textContent = item.anchor_status?.stale ? "修复出处并保存" : "保存修改";
     $("cancelAnnotationEdit").hidden = false;
     $("annotationText").focus();
@@ -707,8 +769,10 @@ async function loadAnnotations(epoch) {
   };
 }
 let sourceRequest = 0;
-function closeSource() {
+function closeSource({ cancelEvidence = true } = {}) {
+  if (cancelEvidence) evidenceRequest++;
   sourceRequest++;
+  claimTimeline.clearActive();
   $("sourcePanel").hidden = true;
   document.body.classList.remove("source-open");
   $("player").pause();
@@ -808,6 +872,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   panel.hidden = false;
   document.body.classList.add("source-open");
   const seek = () => {
+    if (s.kind === "task" && s.id === state.selected?.id) claimTimeline.sync(seconds ?? Number(player.currentTime || 0), { scroll: false });
     sourceWindowRender?.(seconds ?? Number(player.currentTime || 0), target.windowId || "");
     if (s.kind === "material" && target.evidenceId && !highlightMaterialSource($("sourceContent"), target.evidenceId)) {
       notice("保存的出处索引缺失，无法精确定位；可从笔记工具重建资料索引。");
@@ -953,7 +1018,9 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
 }
 $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
-  if ($("sourcePanel").dataset.contentMode === "transcript") sourceWindowRender?.(time);
+  if ($("sourcePanel").hidden || $("player").hidden || $("sourcePanel").dataset.contentMode !== "transcript") return;
+  sourceWindowRender?.(time);
+  claimTimeline.sync(time);
   if (sourceCueRender && $("followTranscript")?.checked) sourceCueRender(time);
   const index = renderedCues.findLastIndex(
     (c) => Number(c.dataset.time) <= time,
@@ -999,46 +1066,18 @@ $("refresh").onclick = () => {
 };
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
-$("closeSource").onclick = closeSource;
-$("edit").onclick = () => {
-  state.editing = true;
-  $("noteText").value = state.text;
-  $("document").hidden = true;
-  $("editor").hidden = false;
-  $("noteText").focus();
-};
-$("discard").onclick = () => {
-  if (!guard()) return;
-  state.editing = false;
-  $("editor").hidden = true;
-  $("document").hidden = false;
-};
-$("save").onclick = async () => {
-  const s = state.selected,
-    epoch = state.epoch;
-  $("save").disabled = true;
-  try {
-    const result = await api(sourcePath(s), {
-      method: "PUT",
-      body: JSON.stringify({
-        text: $("noteText").value,
-        revision: state.revision,
-      }),
-    });
-    if (epoch !== state.epoch) return;
-    state.text = result.text;
-    state.revision = result.revision;
-    state.editing = false;
-    renderNote();
-    $("editor").hidden = true;
-    $("document").hidden = false;
-    notice("修改已保存，原始生成稿仍保留。");
-  } catch (error) {
-    $("saveStatus").textContent = error.message;
-  } finally {
-    $("save").disabled = false;
-  }
-};
+$("closeSource").onclick = () => closeSource();
+installNoteEditor({
+  state, $, guard, notice, renderNote,
+  onEnterEdit: () => { evidenceRequest++; claimTimeline.reset(); },
+  saveNote: (selected, body) => api(sourcePath(selected), {
+    method: "PUT", body: JSON.stringify(body),
+  }),
+  renderMarkdown: (text) => {
+    LearnNoteMarkdown.configure({ safeNoteMediaUrl: (value) => state.selected?.kind === "task" ? taskAsset(value, state.selected.id) : "" });
+    return LearnNoteMarkdown.markdownToHtml(text);
+  },
+});
 $("export").onclick = () => {
   const blob = new Blob([state.editing ? $("noteText").value : state.text], {
     type: "text/markdown;charset=utf-8",
@@ -1053,16 +1092,20 @@ $("export").onclick = () => {
 };
 $("annotationForm").onsubmit = async (e) => {
   e.preventDefault();
+  if (state.annotationAnchorLoading) { notice("正在核对字幕区间，请稍候再保存。"); return; }
+  if (state.annotationSaving) return;
   const epoch = state.epoch,
     s = state.selected,
     text = $("annotationText").value;
-  const button = e.submitter;
-  button.disabled = true;
+  state.annotationSaving = true;
+  const controls = [...$("annotationForm").querySelectorAll("input,textarea,select,button")].map((control) => [control, control.disabled]);
+  for (const [control] of controls) control.disabled = true;
   try {
     const quote = state.annotationQuote;
     const anchor = state.annotationQuoteReanchored && quote
       ? { source_revision: state.revision, selected_text: quote }
       : state.annotationEditingAnchor;
+    if (!state.annotationEditingId && !state.annotationRequestId) state.annotationRequestId = crypto.randomUUID();
     await api(`/api/personal/${s.kind}/${s.id}`, {
       method: "POST",
       body: JSON.stringify({
@@ -1070,6 +1113,8 @@ $("annotationForm").onsubmit = async (e) => {
         quote: quote.slice(0, 1000),
         id: state.annotationEditingId,
         anchor,
+        revision: state.annotationRevision,
+        request_id: state.annotationRequestId,
       }),
     });
     if (epoch !== state.epoch) return;
@@ -1081,11 +1126,18 @@ $("annotationForm").onsubmit = async (e) => {
     state.annotationEditingAnchor = {};
     state.annotationQuote = "";
     state.annotationQuoteReanchored = false;
+    state.annotationRevision = "";
+    state.annotationRequestId = "";
+    personalAnchorPicker.reset();
     await loadAnnotations(epoch);
   } catch (error) {
-    failure(error);
+    if (epoch !== state.epoch || state.selected?.kind !== s.kind || state.selected?.id !== s.id) return;
+    const message = ({ annotation_revision_conflict: "这条批注已在其他页面修改。请复制当前文字，重新打开后再保存。", annotation_request_conflict: "上次保存已完成，但当前文字已变化。请复制当前文字，再编辑已保存的批注。", annotation_anchor_stale: "所选出处已变化。文字仍保留，请重新打开出处选择器并选择。" })[error.message];
+    if (message) notice(message); else failure(error);
   } finally {
-    button.disabled = false;
+    state.annotationSaving = false;
+    for (const [control, disabled] of controls) control.disabled = disabled;
+    if (epoch !== state.epoch) personalAnchorPicker.reset();
   }
 };
 $("captureAnnotationQuote").onclick = () => {
@@ -1098,6 +1150,7 @@ $("captureAnnotationQuote").onclick = () => {
   if (!quote) { notice("所选文字为空，请重新选择。"); return; }
   state.annotationQuote = quote;
   state.annotationQuoteReanchored = true;
+  personalAnchorPicker.reset();
   $("annotationQuote").textContent = `引用：${quote}`;
 };
 $("captureAnnotationQuote").onmousedown = (event) => event.preventDefault();
@@ -1106,6 +1159,9 @@ $("cancelAnnotationEdit").onclick = () => {
   state.annotationEditingAnchor = {};
   state.annotationQuote = "";
   state.annotationQuoteReanchored = false;
+  state.annotationRevision = "";
+  state.annotationRequestId = "";
+  personalAnchorPicker.reset();
   $("annotationText").value = "";
   $("annotationQuote").textContent = "";
   $("saveAnnotation").textContent = "保存补充";
@@ -1115,76 +1171,38 @@ function create() {
   updateContentMode();
   if (!$("createDialog").open) $("createDialog").showModal();
   window.dispatchEvent(new CustomEvent("learnnote:create"));
+  materialBatch.open();
 }
 $("newNote").onclick = create;
 $("welcomeNew").onclick = create;
 for (const button of document.querySelectorAll("[data-close]"))
   button.onclick = () => button.closest("dialog").close();
 function updateCreateInputPresentation() {
-  const file = $("file").files?.[0];
-  const isDocument =
-    state.input === "file" && file && /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
-  const hideVideoOptions =
-    state.input === "browser" || (state.input === "file" && (!file || isDocument));
+  const files = materialBatch.items;
+  const hasVideo = files.some(item => item.kind === "task");
+  const hideVideoOptions = state.input === "browser" || (state.input === "file" && !hasVideo);
   $("contentModeChoices").hidden = hideVideoOptions;
   $("contentModeExplanation").hidden = hideVideoOptions;
   $("generationOptions").hidden = hideVideoOptions;
-  const needsFile = state.input === "file" && !file;
-  $("createSubmit").disabled = needsFile;
-  if (needsFile) {
-    $("createSubmit").textContent = "先选择文件";
-  } else if (isDocument) {
-    $("createSubmit").textContent = "导入并阅读资料";
-  } else {
+  $("materialEncodingChoice").hidden = !files.some(item => /\.(md|markdown|txt|html?)$/i.test(item.file.name));
+  if (state.input !== "file") {
     updateContentMode();
+    $("createSubmit").disabled = state.busy;
   }
+  materialBatch.render();
 }
-let materialPreviewGeneration = 0, materialPreview = null;
-async function previewSelectedFile() {
-  const generation = ++materialPreviewGeneration;
-  const file = $("file").files?.[0];
-  let panel = $("selectedFilePreview");
-  if (!panel) {
-    panel = document.createElement("p"); panel.id = "selectedFilePreview";
-    panel.className = "muted"; panel.setAttribute("role", "status");
-    $("fileInput").append(panel);
-  }
-  panel.textContent = "";
-  materialPreview = null;
-  if (!file) return;
-  const size = (bytes) => `${(Number(bytes) / 1024 / 1024).toFixed(2)} MB`;
-  panel.textContent = `${file.name} · ${size(file.size)} · 正在本地预检…`;
-  const isDocument = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name);
-  if (!isDocument) {
-    panel.textContent = `${file.name} · ${size(file.size)} · 本地视频，优先字幕；转写和模型路线使用当前设置。至少需要 ${size(file.size)} 上传空间，解码缓存另计。`;
-    const video = document.createElement("video"), url = URL.createObjectURL(file);
-    let timeout;
-    const finish = () => { clearTimeout(timeout); video.onloadedmetadata = null; video.onerror = null; URL.revokeObjectURL(url); video.removeAttribute("src"); video.load(); };
-    timeout = setTimeout(finish, 10000);
-    video.preload = "metadata";
-    video.onloadedmetadata = () => { if (generation === materialPreviewGeneration && Number.isFinite(video.duration)) panel.textContent += ` 时长 ${timestamp(video.duration)}。`; finish(); };
-    video.onerror = finish;
-    video.src = url;
-    return;
-  }
-  materialPreview = { file, encoding: $("materialEncoding").value || "", ready: false };
-  $("createSubmit").disabled = true;
-  try {
-    const data = new FormData(); data.append("file", file); data.append("encoding", $("materialEncoding").value || "");
-    const result = await api("/api/library/materials/preview", { method: "POST", body: data });
-    if (generation !== materialPreviewGeneration) return;
-    panel.textContent = `${result.filename} · ${size(result.byte_size)}${result.page_count ? ` · ${result.page_count} 页` : ""} · 预计本地空间 ${size(result.estimated_storage_bytes)}（可选 OCR 另计）。${result.ocr_required ? "扫描 PDF：导入后可选择本地 OCR，识别结果需核验。" : "本地提取文字，不发送给模型。"}`;
-    materialPreview.ready = true;
-    $("createSubmit").disabled = false;
-  } catch (error) {
-    if (generation !== materialPreviewGeneration) return;
-    panel.textContent = error.message;
-    $("createSubmit").disabled = true;
-  }
-}
-$("file").addEventListener("change", updateCreateInputPresentation);
+const materialBatch = installMaterialBatch({ state, options, updatePresentation: updateCreateInputPresentation, refresh,
+  openResult: async ({ kind, result }) => {
+    const id = result.task_id || result.material?.material_id;
+    const item = state.items.find(item => item.id === id && item.kind === kind)
+      || { ...(kind === "material" ? result.material : result.task), id, kind };
+    if (id) await openItem(item);
+  },
+});
 for (const button of document.querySelectorAll("[data-input]"))
   button.onclick = () => {
+    if (state.busy) return;
+    if (state.input === "file" && button.dataset.input !== "file") materialBatch.pause();
     state.input = button.dataset.input;
     for (const el of document.querySelectorAll("[data-input]"))
       el.setAttribute("aria-pressed", String(el === button));
@@ -1194,18 +1212,10 @@ for (const button of document.querySelectorAll("[data-input]"))
     updateCreateInputPresentation();
     $("createStatus").textContent = "";
   };
-function updateMaterialEncodingChoice() {
-  const file = $("file").files?.[0];
-  const isMaterial = Boolean(file && /\.(md|markdown|txt|html?)$/i.test(file.name));
-  $("materialEncodingChoice").hidden = !isMaterial;
-  if (!isMaterial) $("materialEncoding").value = "";
-}
-$("file").addEventListener("change", updateMaterialEncodingChoice);
-$("file").addEventListener("change", () => previewSelectedFile().catch(failure));
-$("materialEncoding").addEventListener("change", () => previewSelectedFile().catch(failure));
 $("createForm").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
+  if (state.input === "file") { await materialBatch.submit(); return; }
   state.busy = true;
   $("createSubmit").disabled = true;
   $("createStatus").textContent = "正在提交，请稍候…";
@@ -1221,28 +1231,6 @@ $("createForm").onsubmit = async (e) => {
           options: options(),
         }),
       });
-    } else {
-      const file = $("file").files[0];
-      if (!file) throw new Error("请先选择文件。");
-      const data = new FormData();
-      data.append("file", file);
-      kind = /\.(pdf|md|markdown|txt|html?)$/i.test(file.name) ? "material" : "task";
-      const requestedEncoding = kind === "material" ? String($("materialEncoding").value || "") : "";
-      if (kind === "material") {
-        if (!materialPreview?.ready || materialPreview.file !== file || materialPreview.encoding !== requestedEncoding) throw new Error("请等待所选文件预检完成；预检失败时请调整文件或编码。");
-        data.append("encoding", requestedEncoding);
-      }
-      if (kind === "task") data.append("options", JSON.stringify(options()));
-      result = await api(
-        kind === "task"
-          ? "/api/tasks/from-local"
-          : "/api/library/materials/import",
-        { method: "POST", body: data },
-      );
-      const metadata = result?.material?.metadata || {};
-      if (kind === "material" && result?.material?.deduplicated && requestedEncoding && String(metadata.encoding || "").toLowerCase() !== requestedEncoding.toLowerCase()) {
-        throw new Error(`这份资料已经导入，当前版本按 ${metadata.encoding || "未知编码"} 解码；本次没有覆盖原资料。`);
-      }
     }
     await refresh();
     const id = result.task_id || result.material?.material_id;
@@ -1254,11 +1242,6 @@ $("createForm").onsubmit = async (e) => {
     $("createDialog").close();
     if (item) await openItem(item);
     $("url").value = "";
-    $("file").value = "";
-    materialPreview = null;
-    if ($("selectedFilePreview")) $("selectedFilePreview").textContent = "";
-    $("materialEncoding").value = "";
-    updateMaterialEncodingChoice();
     $("createStatus").textContent = "";
   } catch (error) {
     $("createStatus").textContent = error.message;
@@ -1406,151 +1389,167 @@ $("settingsForm").onsubmit = async (e) => {
     $("savePreferences").disabled = false;
   }
 };
-$("theme").onclick = () => {
-  const dark = document.body.classList.toggle("dark");
-  localStorage.setItem("learnnote.desk.theme", dark ? "dark" : "light");
-};
+$("theme").onclick = null; // installSettings wires the shared reading settings adapter.
+let reviewSession = 0, reviewRender = 0, reviewQuiz = null;
+$("reviewDialog").addEventListener("close", () => {
+  if ($("reviewDialog").open) return; // A queued close event may follow a newer open.
+  reviewSession++; reviewRender++; reviewQuiz?.dispose(); reviewQuiz = null;
+});
 let evidenceRequest = 0;
 async function openEvidenceSource(source, seconds, target = {}, request = ++evidenceRequest) {
-  await openItem(source);
-  if (request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
+  const same = state.selected?.kind === source.kind && state.selected?.id === source.id;
+  let epoch = state.epoch;
+  if (!same || state.editing) {
+    if (!guard()) return;
+    const loading = openItem(source, { check: false, openMedia: false });
+    epoch = state.epoch;
+    await loading;
+  }
+  if (epoch !== state.epoch || request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
   await openSource(seconds, source, target);
 }
 async function openEvidence(evidenceId) {
   const request = ++evidenceRequest;
   const epoch = state.epoch;
-  const result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`);
+  let result;
+  try { result = await api(`/api/knowledge/evidence/${encodeURIComponent(evidenceId)}`); }
+  catch (error) { if (epoch !== state.epoch || request !== evidenceRequest) return; throw error; }
   if (epoch !== state.epoch || request !== evidenceRequest) return;
+  if (result.evidence?.evidence_id !== evidenceId) throw new Error("出处索引不一致，无法可靠定位。");
   const anchor = evidenceAnchor(result.evidence, state.items);
   if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
   await openEvidenceSource(anchor.source, anchor.start, { evidenceId, windowId: result.evidence.metadata?.window_id || "" }, request);
 }
+async function openClaimEvidence(evidence, taskId) {
+  const anchor = claimEvidenceAnchor(evidence, taskId, state.items);
+  if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
+  await openEvidenceSource(anchor.source, anchor.start, { evidenceId: evidence.evidence_id, windowId: evidence.window_id || "" });
+}
+async function openCitation(citation, messageSource) {
+  if (citation.evidence_id) return openEvidence(citation.evidence_id);
+  const anchor = citationAnchor(citation, messageSource, state.items);
+  if (!anchor) throw new Error("这条回答没有可靠的来源定位，未猜测高亮位置。");
+  await openEvidenceSource(anchor.source, anchor.start, { windowId: citation.window_id || "" });
+}
 
 async function drawReview() {
-  const card = state.cards[0];
+  const card = state.cards[0], session = reviewSession, render = ++reviewRender;
+  reviewQuiz?.dispose(); reviewQuiz = null;
+  const current = () => session === reviewSession && render === reviewRender && $("reviewDialog").open && state.cards[0]?.card_id === card?.card_id;
   $("reviewContent").innerHTML = card
-    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3>${esc(card.front)}</h3><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div><div class="tool-actions"><button id="editReviewCard">修改问题与答案</button><button id="deleteReviewCard" class="danger">永久删除卡片</button></div><div id="reviewCardEditor"></div></div>`
+    ? `<p class="muted">待复习 ${state.cards.length} 张</p><h3 hidden>${esc(card.front)}</h3><div id="reviewQuiz"></div><label for="reviewReflection">先用自己的话解释要点；回答不会发送给模型</label><textarea id="reviewReflection" rows="3" maxlength="2000"></textarea><button id="recordReflection" class="primary">记录解释并显示答案</button><button id="skipReflection">跳过解释</button><p id="reviewReflectionStatus" role="status"></p><button id="reveal" class="primary" hidden>显示答案</button><div id="answer" hidden><p class="review-answer">${esc(card.back)}</p><div id="reviewSources"></div><p class="muted">记忆自评只调整 FSRS 复习时间，不计客观答对。</p><div class="rating">${["忘记了", "有些困难", "记住了", "很轻松"].map((label, i) => `<button data-rating="${i + 1}">${label}</button>`).join("")}</div><div class="tool-actions"><button id="editReviewCard">修改问题与答案</button><button id="deleteReviewCard" class="danger">永久删除卡片</button></div><div id="reviewCardEditor"></div></div>`
     : '<p>今天的复习已完成。</p><p class="muted">你可以回到笔记，继续阅读和整理。</p>';
-  if (card) {
-    const revealAnswer = () => {
-      $("answer").hidden = false;
-      $("reveal").hidden = true;
-      $("recordReflection").hidden = true;
-      $("skipReflection").hidden = true;
-      $("reviewReflection").hidden = true;
-    };
-    $("editReviewCard").onclick = () => {
-      $("reviewCardEditor").innerHTML = `<form id="reviewCardForm"><label for="reviewCardFront">问题</label><textarea id="reviewCardFront" required maxlength="1000">${esc(card.front)}</textarea><label for="reviewCardBack">答案</label><textarea id="reviewCardBack" required maxlength="4000">${esc(card.back)}</textarea><p class="muted">个人修改会保留原始出处和复习记录；请先核对依据。</p><button class="primary">保存修改</button></form>`;
-      $("reviewCardForm").onsubmit = async (event) => {
-        event.preventDefault();
-        const submit = event.submitter; if (submit) submit.disabled = true;
-        try {
-          const result = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/content`, { method: "PUT", body: JSON.stringify({ front: $("reviewCardFront").value, back: $("reviewCardBack").value }) });
-          if (state.cards[0]?.card_id !== card.card_id) return;
-          state.cards[0] = result.card;
-          await drawReview();
-        } catch (error) { failure(error); if (submit) submit.disabled = false; }
-      };
-      $("reviewCardFront").focus();
-    };
-    $("deleteReviewCard").onclick = async () => {
-      if (!confirm("永久删除这张卡片及其评分和自评记录？原始资料不会删除。")) return;
-      $("deleteReviewCard").disabled = true;
+  if (!card) return;
+  const quiz = globalThis.LearnNoteQuiz.mount({
+    container: $("reviewQuiz"), cardId: card.card_id, request: api, isCurrent: current,
+    onQuestionState: active => { if (current()) $("reviewContent").querySelector("h3").hidden = active; },
+    onSource: id => { $("reviewDialog").close(); openEvidence(id).catch(failure); },
+  });
+  reviewQuiz = quiz;
+  const revealAnswer = () => {
+    if (!current()) return;
+    quiz.reveal();
+    $("answer").hidden = false;
+    $("reveal").hidden = true;
+    $("recordReflection").hidden = true;
+    $("skipReflection").hidden = true;
+    $("reviewReflection").hidden = true;
+  };
+  $("editReviewCard").onclick = () => {
+    $("reviewCardEditor").innerHTML = `<form id="reviewCardForm"><label for="reviewCardFront">问题</label><textarea id="reviewCardFront" required maxlength="1000">${esc(card.front)}</textarea><label for="reviewCardBack">答案</label><textarea id="reviewCardBack" required maxlength="4000">${esc(card.back)}</textarea><p class="muted">个人修改会保留原始出处和复习记录；旧填空保留作答时的题目。修改后会重新检查证据。</p><button class="primary">保存修改</button></form>`;
+    $("reviewCardForm").onsubmit = async event => {
+      event.preventDefault();
+      const submit = event.submitter; if (submit?.disabled) return; if (submit) submit.disabled = true;
       try {
-        await api(`/api/study/cards/${encodeURIComponent(card.card_id)}?confirm=delete_card`, { method: "DELETE" });
-        state.cards = state.cards.filter(item => item.card_id !== card.card_id);
-        await drawReview();
-      } catch (error) { failure(error); if ($("deleteReviewCard")) $("deleteReviewCard").disabled = false; }
+        const result = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/content`, { method: "PUT", body: JSON.stringify({front: $("reviewCardFront").value, back: $("reviewCardBack").value})});
+        if (!current()) return;
+        state.cards[0] = result.card; await drawReview();
+      } catch (error) { if (current()) { failure(error); if (submit) submit.disabled = false; } }
     };
-    $("reveal").onclick = revealAnswer;
-    $("recordReflection").onclick = async () => {
-      if (!$("reviewReflection").value.trim()) {
-        $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。";
-        return;
-      }
-      $("recordReflection").disabled = true;
-      $("skipReflection").disabled = true;
-      try {
-        await api("/api/study/activity", { method: "POST", body: JSON.stringify({ kind: "self_assessment", source_id: `card:${card.card_id}` }) });
-        $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。";
-        revealAnswer();
-      } catch (error) {
-        $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
-        $("recordReflection").disabled = false;
-        $("skipReflection").disabled = false;
-      }
-    };
-    $("skipReflection").onclick = revealAnswer;
-    $("reviewSources").innerHTML = (card.source_evidence_ids || [])
-      .map((id) => `<button data-evidence="${esc(id)}">查看出处</button>`)
-      .join("");
+    $("reviewCardFront").focus();
+  };
+  $("deleteReviewCard").onclick = async () => {
+    if (!confirm("永久删除这张卡片及其填空作答、评分和自评记录？原始资料不会删除。")) return;
+    $("deleteReviewCard").disabled = true;
     try {
-      const schedule = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/schedule-preview`);
-      if(state.cards[0]?.card_id !== card.card_id || !$("reviewDialog").open) return;
-      for (const choice of schedule.choices) {
-        const button = $("reviewContent").querySelector(`[data-rating="${choice.rating}"]`);
-        if(!button) continue;
-        const seconds = choice.interval_seconds;
-        const label = seconds < 3600 ? `${Math.max(1,Math.round(seconds/60))} 分钟后` : seconds < 86400 ? `${Math.round(seconds/3600)} 小时后` : `${Math.round(seconds/86400)} 天后`;
-        const small = document.createElement("small"); small.textContent = label; button.append(small);
-      }
-    } catch { /* Review remains usable if only the preview request fails. */ }
-  }
+      await api(`/api/study/cards/${encodeURIComponent(card.card_id)}?confirm=delete_card`, {method: "DELETE"});
+      if (!current()) return;
+      state.cards = state.cards.filter(item => item.card_id !== card.card_id); await drawReview();
+    } catch (error) { if (current()) { failure(error); $("deleteReviewCard").disabled = false; } }
+  };
+  $("reveal").onclick = revealAnswer;
+  const reflectionKey = crypto.randomUUID();
+  $("recordReflection").onclick = async () => {
+    if ($("recordReflection").disabled) return;
+    if (!$("reviewReflection").value.trim()) { $("reviewReflectionStatus").textContent = "写一句解释，或选择跳过本次解释。"; return; }
+    $("recordReflection").disabled = true; $("skipReflection").disabled = true; quiz.reveal();
+    try {
+      await api("/api/study/activity", {method: "POST", body: JSON.stringify({kind: "self_assessment", source_id: `card:${card.card_id}`, idempotency_key: reflectionKey})});
+      if (!current()) return;
+      $("reviewReflectionStatus").textContent = "自我解释动作已保存在本机；解释文本未保存。"; revealAnswer();
+    } catch (error) {
+      if (!current()) return;
+      $("reviewReflectionStatus").textContent = error.message || "无法保存自我解释记录。";
+      $("recordReflection").disabled = false; $("skipReflection").disabled = false;
+    }
+  };
+  $("skipReflection").onclick = revealAnswer;
+  $("reviewSources").innerHTML = (card.source_evidence_ids || []).map(id => `<button data-evidence="${esc(id)}">查看出处</button>`).join("");
+  try {
+    const schedule = await api(`/api/study/cards/${encodeURIComponent(card.card_id)}/schedule-preview`);
+    if (!current()) return;
+    for (const choice of schedule.choices) {
+      const button = $("reviewContent").querySelector(`[data-rating="${choice.rating}"]`); if (!button) continue;
+      const seconds = choice.interval_seconds;
+      const label = seconds < 3600 ? `${Math.max(1,Math.round(seconds/60))} 分钟后` : seconds < 86400 ? `${Math.round(seconds/3600)} 小时后` : `${Math.round(seconds/86400)} 天后`;
+      const small = document.createElement("small"); small.textContent = label; button.append(small);
+    }
+  } catch { /* Review remains usable if only the preview request fails. */ }
 }
 async function startReview(courseId = "", taskId = "") {
-  $("reviewDialog").showModal();
-  $("reviewContent").textContent = "正在读取…";
+  const session = ++reviewSession;
+  reviewQuiz?.dispose(); reviewQuiz = null;
+  $("reviewDialog").showModal(); $("reviewContent").textContent = "正在读取…";
+  const current = () => session === reviewSession && $("reviewDialog").open;
   try {
-    const initialized = await api("/api/study/plan/initialize", {
-      method: "POST",
-      body: JSON.stringify({
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }),
-    });
+    const initialized = await api("/api/study/plan/initialize", {method: "POST", body: JSON.stringify({timezone: Intl.DateTimeFormat().resolvedOptions().timeZone})});
+    if (!current()) return;
     if (initialized.plan?.paused) {
-      state.cards = [];
-      $("reviewContent").textContent = "学习计划已暂停；在学习工作室恢复计划后可继续复习。";
-      return;
+      state.cards = []; $("reviewContent").textContent = "学习计划已暂停；在学习工作室恢复计划后可继续复习。"; return;
     }
-    state.cards = (
-      await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`)
-    ).cards;
-    drawReview();
-  } catch (error) {
-    $("reviewContent").textContent = error.message;
-  }
+    const result = await api(`/api/study/due?course_id=${encodeURIComponent(courseId)}&task_id=${encodeURIComponent(taskId)}`);
+    if (!current()) return;
+    state.cards = result.cards; drawReview();
+  } catch (error) { if (current()) $("reviewContent").textContent = error.message; }
 }
 $("review").onclick = () => startReview();
 
-$("reviewContent").onclick = async (e) => {
+$("reviewContent").onclick = async e => {
   const button = e.target.closest("[data-rating],[data-evidence]");
-  if (!button) return;
+  if (!button || button.disabled) return;
+  const session = reviewSession, render = reviewRender;
+  const current = () => session === reviewSession && render === reviewRender && $("reviewDialog").open;
+  let ratingControls = [];
   button.disabled = true;
   try {
-    if (button.dataset.evidence) {
-      $("reviewDialog").close();
-      await openEvidence(button.dataset.evidence);
-      return;
+    if (button.dataset.evidence) { $("reviewDialog").close(); await openEvidence(button.dataset.evidence); return; }
+    ratingControls = [...$("reviewContent").querySelectorAll("[data-rating], #editReviewCard, #deleteReviewCard, #reviewCardForm button, #reviewCardForm textarea")];
+    for (const control of ratingControls) control.disabled = true;
+    const card = state.cards[0], cardId = card.card_id;
+    const snapshot = JSON.stringify([Number(card.reps || 0), card.last_reviewed_at || ""]);
+    if (state.reviewSubmission?.cardId !== cardId || state.reviewSubmission.snapshot !== snapshot) {
+      state.reviewSubmission = {cardId, snapshot, key: crypto.randomUUID(), rating: Number(button.dataset.rating)};
     }
-    for (const b of $("reviewContent").querySelectorAll("[data-rating]"))
-      b.disabled = true;
-    const cardId = state.cards[0].card_id;
-    if(state.reviewSubmission?.cardId !== cardId) state.reviewSubmission = {cardId,key:crypto.randomUUID()};
-    const result = await api(`/api/study/cards/${cardId}/review`, {
-      method: "POST",
-      body: JSON.stringify({
-        rating: Number(button.dataset.rating),
-        idempotency_key: state.reviewSubmission.key,
-      }),
-    });
-    state.reviewSubmission = null;
-    if(result.card?.due_at) notice(`已记录，下次复习：${new Date(result.card.due_at).toLocaleString()}`);
-    state.cards.shift();
-    drawReview();
+    const submission = state.reviewSubmission;
+    const result = await api(`/api/study/cards/${cardId}/review`, {method: "POST", body: JSON.stringify({rating: submission.rating, idempotency_key: submission.key})});
+    if (!current()) return;
+    if (state.reviewSubmission === submission) state.reviewSubmission = null;
+    if (result.card?.due_at) notice(`已记录，下次复习：${new Date(result.card.due_at).toLocaleString()}`);
+    state.cards.shift(); drawReview();
   } catch (error) {
+    if (!current()) return;
     failure(error);
-    for (const b of $("reviewContent").querySelectorAll("button"))
-      b.disabled = false;
+    for (const control of ratingControls) control.disabled = false;
   }
 };
 window.addEventListener("beforeunload", (e) => {
@@ -1730,6 +1729,7 @@ installProductWorkspace({
   openItem,
   openSource,
   openInlineSource,
+  openCitation,
   refresh,
   notice,
   guard,
@@ -1746,4 +1746,5 @@ window.addEventListener("learnnote:annotations", () =>
 installInteractions({ state, drawList, showHome, navigateBack });
 installLayout();
 installProfile({state, notice, startReview});
+const personalAnchorPicker = installAnnotationAnchors({ state, api, notice });
 $("review").onclick = () => workspaceTools.studySettings();

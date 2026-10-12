@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from .media_kinds import classify_resource, effective_resource_kind
 from .models import ResourceCandidate
+from .media_url_parsing import same_http_origin
 
 
 def _is_http_url(url: str) -> bool:
@@ -202,6 +203,8 @@ def _attach_companion_audio_resources(resources: list[ResourceCandidate]) -> lis
         if not merged.playback_match and audio.playback_match:
             merged.playback_match = audio.playback_match
         for name, value in (audio.request_headers or {}).items():
+            if name.lower() == "authorization" and not same_http_origin(audio.url, merged.url):
+                continue
             merged.request_headers.setdefault(name, value)
         paired.append(merged)
     return paired

@@ -11,7 +11,7 @@ assert.match(product, /if \(!pending\) \$\("aiForm"\)\.requestSubmit\(\)/);
 assert.doesNotMatch(product, /citationPreviews\.className = "assistant-citation-previews"/);
 assert.doesNotMatch(product, /data-citation-preview/);
 assert.doesNotMatch(product, /b\.setAttribute\("aria-expanded"/);
-assert.match(product, /openInlineSource\?\.\(typeof citation\.start === "number"/);
+assert.match(product, /await ctx\.openCitation\(citation, messageSource\)/);
 assert.doesNotMatch(product, /b\.after\(p\)/);
 assert.match(product, /globalItems\.map\(\(item\) => \(\{ item, source: null \}\)\)/);
 assert.match(product, /sourceItems\.map\(\(item\) => \(\{ item, source: s \}\)\)/);

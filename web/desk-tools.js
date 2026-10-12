@@ -1,6 +1,13 @@
+import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountSupportSummary } from "/web/support-summary.js";
+import { mountScreenSubtitles } from "/web/screen-subtitles.js";
+import { mountMaterialCatalogRecovery } from "/web/material-catalog-recovery.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
+import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
+import { installCourseQuestion } from "/web/course-question.js";
+import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
+import { relationshipGraph as snapshotRelationshipGraph, mountGraphCompleteness, mountGraphSnapshotExport, mountGraphSnapshotImport } from "/web/course-graph-snapshot.js";
 import {
   api as request,
   escapeHtml as esc,
@@ -16,6 +23,7 @@ export function installTools(ctx) {
   dialog.className = "tools-dialog";
   document.body.append(dialog);
   let generation = 0,
+    comparisonSequence = 0,
     course = null,
     courses = [],
     courseEpisodes = [],
@@ -42,6 +50,8 @@ export function installTools(ctx) {
     const el = $("toolStatus");
     if (el) el.textContent = text;
   }
+  const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
+  const courseQuestion = installCourseQuestion({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
   async function run(button, work) {
     const token = generation;
     if (button) button.disabled = true;
@@ -90,13 +100,20 @@ export function installTools(ctx) {
     return course;
   }
   async function listCourses() {
-    const token = show("课程", '<p class="muted">正在读取课程…</p>');
+    const token = show("课程", '<button data-action="graph-snapshot" data-graph-snapshot-import type="button">导入关系图快照（只读预览）</button><div id="courseCatalog"><p class="muted">正在读取课程…</p></div>');
+    backAction = null;
+    // Import stays available even when the live catalog is empty or unreadable.
     const result = await api("/api/courses");
     if (token !== generation) return;
     courses = result.courses;
     backAction = null;
-    $("toolBody").innerHTML =
+    $("courseCatalog").innerHTML =
       `<p class="muted">把相关笔记放在一起，按自己的顺序学习。</p><button class="primary" data-action="new-course">＋ 新建课程</button><div class="tool-list">${courses.map((c) => `<button class="tool-row" data-course="${c.id}"><strong>${esc(c.title)}</strong><small>${c.paused ? "已暂停" : "学习中"}</small><span>›</span></button>`).join("") || '<p class="muted">还没有课程。</p>'}</div>`;
+  }
+  function graphSnapshot() {
+    const token = show("关系图快照 · 只读预览", "");
+    backAction = listCourses;
+    mountGraphSnapshotImport($("toolBody"), { api, isCurrent: () => token === generation && dialog.open });
   }
   function courseEditor() {
     show(
@@ -129,6 +146,11 @@ export function installTools(ctx) {
       course.title,
       `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
+    const askCourse = document.createElement("button");
+    askCourse.type = "button";
+    askCourse.dataset.action = "course-question";
+    askCourse.textContent = "在课程中提问";
+    $("toolBody").querySelector(".tool-actions").prepend(askCourse);
     backAction = listCourses;
   }
   const deletionReason = (reason) => ({
@@ -224,9 +246,9 @@ export function installTools(ctx) {
     }), { reading: 0, answer: 0, selfAssessment: 0, review: 0 });
     const progress = document.createElement("section"); progress.className = "study-progress-summary";
     const progressTitle = document.createElement("h3"); progressTitle.textContent = "近 14 天的本地学习活动";
-    const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
+    const activityText = document.createElement("p"); activityText.textContent = `阅读 ${recentActivity.reading} 次 · 未评分作答 ${recentActivity.answer} 次 · 自我解释 ${recentActivity.selfAssessment} 次 · 复习 ${recentActivity.review} 张`;
     const mastery = dashboard.progress?.mastery || {};
-    const masteryText = document.createElement("p"); masteryText.textContent = `全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
+    const masteryText = document.createElement("p"); masteryText.textContent = `FSRS 复习稳定度（来自记忆自评）：全部资料卡片：新卡 ${Number(mastery.new || 0)} · 学习中 ${Number(mastery.learning || 0)} · 需重温 ${Number(mastery.needs_attention || 0)} · 已稳定 ${Number(mastery.retained || 0)}`;
     const heatmap = document.createElement("ol"); heatmap.className = "study-activity-grid";
     heatmap.setAttribute("aria-label", "近 14 天本地复习记录，按计划时区统计");
     for (const day of dashboard.progress?.activity || []) {
@@ -237,14 +259,35 @@ export function installTools(ctx) {
       const value = document.createElement("strong"); value.textContent = String(count);
       cell.append(date, value); heatmap.append(cell);
     }
-    progress.append(progressTitle, activityText, masteryText, heatmap); $("toolBody").append(progress);
+    const measures = document.createElement("p"); measures.className = "study-measures"; measures.textContent = globalThis.LearnNoteQuiz.measuresText(dashboard.progress?.measures);
+    const meaning = document.createElement("p"); meaning.className = "muted"; meaning.textContent = "看过、答对、自评和复习稳定度分开记录；稳定度不是正确率。已有评分只保留自评含义，不补算答对。";
+    progress.append(progressTitle, activityText, measures, masteryText, meaning, heatmap); $("toolBody").append(progress);
     const backupPanel = document.createElement("details");
     backupPanel.className = "study-backup";
     const backupSummary = document.createElement("summary"); backupSummary.textContent = "备份与恢复";
     const backupHint = document.createElement("p"); backupHint.className = "muted";
-    backupHint.textContent = "包含评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
+    backupHint.textContent = "包含填空作答、评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
     const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
-    const exportBackup = document.createElement("a"); exportBackup.textContent = "导出学习备份"; exportBackup.href = "/api/study/backup"; exportBackup.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const backupFeedback = document.createElement("p"); backupFeedback.className = "muted";
+    backupFeedback.dataset.backupStatus = ""; backupFeedback.setAttribute("role", "status"); backupFeedback.hidden = true;
+    const exportBackup = document.createElement("button"); exportBackup.type = "button"; exportBackup.textContent = "导出学习备份";
+    exportBackup.onclick = () => run(exportBackup, async token => {
+      backupFeedback.hidden = true;
+      const backup = await api("/api/study/backup").catch(error => {
+        if (token === generation && dialog.open) {
+          backupFeedback.textContent = error.message; backupFeedback.hidden = false;
+          backupFeedback.scrollIntoView({ block: "nearest" });
+        }
+        throw error;
+      });
+      if (token !== generation || !dialog.open) return;
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url;
+      link.download = `learnnote-learning-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link);
+      try { link.click(); status("学习备份已导出。"); }
+      finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    });
     const restoreButton = document.createElement("button"); restoreButton.type = "button"; restoreButton.textContent = "选择备份并恢复";
     const backupFile = document.createElement("input"); backupFile.type = "file"; backupFile.accept = "application/json,.json"; backupFile.hidden = true; backupFile.setAttribute("aria-label", "选择 LearnNote 学习备份");
     restoreButton.onclick = () => backupFile.click();
@@ -263,26 +306,27 @@ export function installTools(ctx) {
       finally { backupFile.value = ""; }
     };
     backupActions.append(exportBackup, restoreButton, backupFile);
-    backupPanel.append(backupSummary, backupHint, backupActions);
+    backupPanel.append(backupSummary, backupHint, backupActions, backupFeedback);
     const deleteStudy = document.createElement("button"); deleteStudy.type = "button"; deleteStudy.className = "danger";
     deleteStudy.textContent = "永久删除学习记录";
     deleteStudy.onclick = async () => {
-      if (!confirm("永久删除全部卡片、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
+      if (!confirm("永久删除全部卡片、填空作答、评分、自评动作、计划和调度备份？原始资料、正文及个人批注保留。此操作不能撤销。")) return;
       deleteStudy.disabled = true;
       try { await api("/api/study/data?confirm=delete_all_study_data", { method: "DELETE" }); await studySettings(courseId,taskId); }
       catch (error) { status(error.message); deleteStudy.disabled = false; }
     };
     backupPanel.append(deleteStudy);
     $("toolBody").append(backupPanel);
-    if (dashboard?.mistakes?.length) {
+    const mistakes = [...(dashboard?.objective_mistakes || []), ...(dashboard?.mistakes || [])];
+    if (mistakes.length) {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
-      summary.textContent = "错题回看 · " + dashboard.mistakes.length + " 条";
+      summary.textContent = "填空错题与自评重温 · " + mistakes.length + " 条";
       details.append(summary);
-      for (const mistake of dashboard.mistakes) {
+      for (const mistake of mistakes) {
         const item = document.createElement("article");
         item.className = "record";
-        item.textContent = mistake.question + " · 上次评分 " + mistake.reviewed_at;
+        item.textContent = (mistake.basis === "objective_answer" ? "填空未匹配原文（作答时的题目） · " : "自评忘记（非客观答错） · ") + mistake.question + " · " + mistake.reviewed_at;
         const answer = document.createElement("details");
         const answerSummary = document.createElement("summary");
         answerSummary.textContent = "显示答案与复习提示";
@@ -624,8 +668,10 @@ export function installTools(ctx) {
       ? `上传保护：单个文件 ≤ ${formatBytes(upload.max_video_bytes)}；当前并发预算剩余 ${formatBytes(upload.available_upload_budget_bytes)}；磁盘剩余 ${formatBytes(upload.free_disk_bytes)}（至少保留 ${formatBytes(upload.required_free_disk_bytes)}）。`
       : "上传保护状态暂不可用；提交文件前仍会执行大小和磁盘检查。";
     $("toolBody").innerHTML =
-      `<p class="muted">${uploadNotice}</p><p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份任务索引</button></div><p class="muted">索引备份不包含视频、文档正文、个人修订或复习数据库；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
+      `<p class="muted">${uploadNotice}</p><p class="muted">清理前先预览范围。学习资料保存在本机，不会因关闭窗口而删除。</p><details><summary>查看本地存储信息</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details><div class="tool-actions"><button data-action="open-folder">打开数据文件夹</button><button data-action="backup">备份资料索引</button></div><p class="muted">索引备份包含任务与资料目录、已索引的原文/笔记文字；不含原始视频/文档文件、个人修订和复习数据库。请按私密学习资料保管；完整备份请复制数据文件夹。</p><details><summary>恢复任务索引</summary><form id="restoreForm"><input id="restoreFile" type="file" accept=".sqlite3" required><button>选择备份并恢复</button></form></details><details><summary>清理旧任务</summary><form id="cleanupForm"><label for="retention">保留最近多少天</label><input id="retention" type="number" min="1" max="3650" value="30"><label for="keepRecent">至少保留最近多少个任务</label><input id="keepRecent" type="number" min="0" max="1000" value="10"><button>预览清理范围</button></form><pre id="cleanupPreview"></pre><button id="executeCleanup" hidden class="danger" data-action="cleanup">确认执行清理</button></details>`;
+    mountMaterialCatalogRecovery($("toolBody"), { api, isCurrent: () => token === generation && dialog.open, onRecovered: refresh });
     await mountSupportSummary($("toolBody"), api);
+    if (token !== generation || !dialog.open) return;
     backAction = () => {
       dialog.close();
       $("settings").click();
@@ -657,10 +703,22 @@ export function installTools(ctx) {
       "笔记工具",
       `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
-    if (s.kind === "material" && s.status === "ocr_required") {
+    const courseTools = document.createElement("button");
+    courseTools.type = "button";
+    courseTools.dataset.action = "courses";
+    courseTools.textContent = "课程与提问";
+    $("toolBody").querySelector(".tool-menu").append(courseTools);
+    if (s.kind === "task") {
+      const subtitlesButton = document.createElement("button");
+      subtitlesButton.type = "button";
+      subtitlesButton.dataset.action = "screen-subtitles";
+      subtitlesButton.textContent = "提取已保存视频的画面字幕";
+      $("toolBody").querySelector(".tool-menu").append(subtitlesButton);
+    }
+    if (canOcrMaterial(s)) {
       const ocrButton = document.createElement("button");
       ocrButton.dataset.action = "run-material-ocr";
-      ocrButton.textContent = "准备扫描 PDF 的本地 OCR";
+      ocrButton.textContent = "查看扫描 PDF 的 OCR 与置信度";
       $("toolBody").querySelector(".tool-menu")?.append(ocrButton);
     }
     if (s.kind === "material" && !s.linked_task_id) {
@@ -668,6 +726,12 @@ export function installTools(ctx) {
       rebuildButton.dataset.action = "rebuild-material";
       rebuildButton.textContent = "从本机原文件重建出处索引";
       $("toolBody").querySelector(".tool-menu")?.append(rebuildButton);
+    }
+    if (canRedecodeMaterial(s)) {
+      const encodingButton = document.createElement("button");
+      encodingButton.dataset.action = "material-encoding";
+      encodingButton.textContent = "重新选择原文编码";
+      $("toolBody").querySelector(".tool-menu")?.append(encodingButton);
     }
     backAction = null;
   }
@@ -715,55 +779,48 @@ export function installTools(ctx) {
       `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。分类仅按关键词提示，不代表事实判断。不会自动抓取网站内容；作者身份默认省略，明显联系方式与推广内容会过滤。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-actions">${links([["单独导出社区观点", `/api/tasks/${encodeURIComponent(s.id)}/community-context/export`]])}</div><div class="tool-list">${r.items.map((item) => `<blockquote><small>${category(item.item_id)} · ${item.kind === "danmaku" ? "弹幕" : "评论"}${item.timestamp_seconds === null ? "" : " · " + Number(item.timestamp_seconds) + " 秒"}</small><p>${esc(item.text)}</p><button data-action="delete-community-item" data-item-id="${esc(item.item_id)}">删除这条观点</button></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
   }
 
-  function relationshipGraph(result) {
-    const nodes = (result.nodes || []).slice(0, 24);
-    const edges = (result.edges || []).filter((edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to));
-    if (!nodes.length || !edges.length) return null;
-    const width = 760, cellWidth = 180, cellHeight = 86, columns = 4;
-    const height = Math.max(180, Math.ceil(nodes.length / columns) * cellHeight + 32);
-    const position = new Map(nodes.map((node, index) => [node.id, { x: 16 + (index % columns) * cellWidth, y: 16 + Math.floor(index / columns) * cellHeight }]));
-    const details = document.createElement("details");
-    details.className = "relationship-graph";
-    const summary = document.createElement("summary");
-    summary.textContent = "关系图（关键词线索，不代表因果或观点一致）";
-    details.append(summary);
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "课程来源关系图");
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = "课程来源关系图";
-    svg.append(title);
-    for (const edge of edges) {
-      const from = position.get(edge.from), to = position.get(edge.to);
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(from.x + 72)); line.setAttribute("y1", String(from.y + 25));
-      line.setAttribute("x2", String(to.x + 72)); line.setAttribute("y2", String(to.y + 25));
-      line.setAttribute("class", "relationship-edge");
-      line.setAttribute("aria-label", `共同关键词：${(edge.terms || []).join("、")}`);
-      svg.append(line);
+  function relationshipGraph(result) { return snapshotRelationshipGraph(result); }
+  async function compareSources(form, token) {
+    const sequence = ++comparisonSequence;
+    const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
+    if ($("compareStart").value !== "") filters.set("start", $("compareStart").value);
+    if ($("compareEnd").value !== "") filters.set("end", $("compareEnd").value);
+    const selectedCourse = { ...course };
+    const r = await api(`/api/courses/${selectedCourse.id}/compare?${filters}`);
+    const active = () => token === generation && sequence === comparisonSequence && dialog.open && form.isConnected;
+    if (!active()) return;
+    const root = $("compareResults");
+    root.innerHTML = `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong data-user-content>${esc(m.title)}</strong><small data-user-content>${esc(m.locator)}</small><p data-user-content>${esc(m.excerpt)}</p><button data-evidence="${esc(m.evidence_id)}">核对出处</button></blockquote>`).join("") || "没有匹配出处。"}`;
+    if (r.total_matches > r.matches.length) {
+      const hint = document.createElement("p");
+      hint.textContent = `显示前 ${r.matches.length} 条出处，共 ${r.total_matches} 条；可缩小筛选范围。`;
+      root.append(hint);
     }
-    for (const node of nodes) {
-      const point = position.get(node.id);
-      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      rect.setAttribute("x", String(point.x)); rect.setAttribute("y", String(point.y));
-      rect.setAttribute("width", "144"); rect.setAttribute("height", "50"); rect.setAttribute("rx", "8");
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(point.x + 8)); label.setAttribute("y", String(point.y + 22));
-      label.textContent = String(node.title || node.id).slice(0, 22);
-      const count = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      count.setAttribute("x", String(point.x + 8)); count.setAttribute("y", String(point.y + 40));
-      count.setAttribute("class", "relationship-node-meta");
-      count.textContent = `${(node.evidence_ids || []).length} 条来源证据`;
-      group.append(rect, label, count); svg.append(group);
+    mountGraphCompleteness(root, r);
+    mountGraphSnapshotExport(root, { api, course: selectedCourse, scope: filters, isCurrent: active });
+    const graphView = relationshipGraph(r);
+    if (graphView) root.append(graphView);
+    if (r.edges?.length) {
+      const graph = document.createElement("details"), summary = document.createElement("summary"), list = document.createElement("ol");
+      summary.textContent = "关系列表（虚线为关键词共现；不表示事实关系）";
+      graph.append(summary);
+      const nodes = new Map((r.nodes || []).map(node => [node.id, node.title]));
+      for (const edge of r.edges) {
+        const item = document.createElement("li");
+        item.append(literalText(nodes.get(edge.from) || edge.from), document.createTextNode(" ↔ "), literalText(nodes.get(edge.to) || edge.to),
+          document.createTextNode(` · ${relationPresentation(edge).label}：`), literalText((edge.terms || []).join("、")));
+        for (const citation of edge.citations || []) {
+          const source = document.createElement("button");
+          source.dataset.evidence = citation.evidence_id;
+          source.append(document.createTextNode("核对出处："), literalText(`${citation.title} · ${citation.locator}`));
+          item.append(source);
+        }
+        list.append(item);
+      }
+      graph.append(list);
+      root.append(graph);
     }
-    details.append(svg);
-    const hint = document.createElement("p");
-    hint.className = "muted";
-    hint.textContent = "图下方的关系列表保留每条关系对应的证据 ID；无法理解图形时可直接使用列表。";
-    details.append(hint);
-    return details;
+    mountConceptControls(root, r, { api, course: selectedCourse, isCurrent: active, reload: () => compareSources(form, token), openEvidence: async id => { dialog.close(); await ctx.openEvidence(id); } });
   }
   async function about() {
     const token = show("关于与更新", "<p>正在读取版本信息…</p>");
@@ -772,15 +829,18 @@ export function installTools(ctx) {
     $("toolBody").innerHTML =
       `<h3>LearnNote ${esc(h.app_version)}</h3><p>统一阅读工作台 · 数据保存在本机</p><button data-action="check-update">检查正式发布版</button><p id="updateResult" role="status"></p><a class="tool-link" href="https://github.com/hurry060215-tech/learnnote-assistant/releases/latest" target="_blank" rel="noreferrer">打开官方下载页 ↗</a>`;
   }
-  const ocrMaterial = async () => {
-    const s = current();
-    if (!confirm("使用本机可选 OCR 读取扫描 PDF？OCR 结果会保留置信度并标为未核验。")) return;
-    const result = await api("/api/library/materials/" + encodeURIComponent(s.id) + "/ocr", { method: "POST" });
-    await refresh();
-    notice(result.ocr?.warning || "扫描 PDF OCR 已完成，请核对每页文字。");
-    more();
+  const ocrMaterial = () => {
+    const selected = current();
+    const token = show("扫描 PDF 的 OCR 与置信度", "");
+    mountMaterialOcr($("toolBody"), {
+      material: selected, api,
+      isCurrent: () => token === generation && dialog.open && state.selected?.kind === selected.kind && state.selected?.id === selected.id,
+      onUpdated: async () => { await refresh(); },
+    });
   };
   const actions = {
+    "graph-snapshot": graphSnapshot,
+    "material-encoding": materialEncoding,
     community,
     "toggle-community": async (button) => {
       await api("/api/study/community/settings", {
@@ -831,6 +891,11 @@ export function installTools(ctx) {
       $("regenerate").click();
     },
     courses: listCourses,
+    "course-question": () => {
+      const work = courseQuestion(course);
+      backAction = listCourses;
+      return work;
+    },
     "new-course": () => {
       course = null;
       courseEditor();
@@ -857,6 +922,19 @@ export function installTools(ctx) {
     },
     "range-position": () => {
       $("rangeStart").value = Math.floor($("player").currentTime || 0);
+    },
+    "screen-subtitles": async () => {
+      const source = current();
+      const epoch = state.epoch;
+      const token = show("提取画面字幕", "");
+      await mountScreenSubtitles($("toolBody"), {
+        source, api: request, options, refresh, status,
+        isCurrent: () => token === generation && dialog.open && state.epoch === epoch && state.selected?.id === source.id,
+        openTask: async result => {
+          dialog.close();
+          await openItem({ ...result.task, id: result.task_id, kind: "task" });
+        },
+      });
     },
     "run-ocr": async () => {
       if (!confirm("使用缓存视频创建一份开启本地 OCR 的新笔记？")) return;
@@ -1119,30 +1197,7 @@ export function installTools(ctx) {
         });
         courseView();
       } else if (form.id === "compareForm") {
-        const filters = new URLSearchParams({ q: $("compareQuery").value, source_kind: $("compareSourceKind").value, source_id: $("compareSourceId").value });
-        if ($("compareStart").value !== "") filters.set("start", $("compareStart").value);
-        if ($("compareEnd").value !== "") filters.set("end", $("compareEnd").value);
-        const r = await api(`/api/courses/${course.id}/compare?${filters}`);
-        if (token !== generation) return;
-        $("compareResults").innerHTML =
-          `<p class="muted">${esc(r.warning)}</p>${r.matches.map((m) => `<blockquote><strong>${esc(m.title)}</strong><small>${esc(m.locator)}</small><p>${esc(m.excerpt)}</p><button data-evidence="${esc(m.evidence_id)}">核对出处</button></blockquote>`).join("") || "没有匹配出处。"}`;
-        if (form.id === "compareForm" && r.edges?.length) {
-          const graphView = relationshipGraph(r);
-          if (graphView) $("compareResults").append(graphView);
-          const graph = document.createElement("details");
-          const graphTitle = document.createElement("summary");
-          graphTitle.textContent = "关系列表（每条关系保留来源）";
-          graph.append(graphTitle);
-          const list = document.createElement("ol");
-          const nodes = new Map((r.nodes || []).map((node) => [node.id, node.title]));
-          for (const edge of r.edges) {
-            const item = document.createElement("li");
-            item.textContent = (nodes.get(edge.from) || edge.from) + " ↔ " + (nodes.get(edge.to) || edge.to) + " · 共同关键词：" + (edge.terms || []).join("、") + " · 证据：" + (edge.evidence_ids || []).join("、");
-            list.append(item);
-          }
-          graph.append(list);
-          $("compareResults").append(graph);
-        }
+        await compareSources(form, token);
       } else if (form.id === "planForm") {
         await api("/api/study/plan", {
           method: "PUT",

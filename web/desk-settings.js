@@ -1,3 +1,4 @@
+import { createReadingSettingsAdapter, normalizeReading, applyReadingAppearance } from "/web/reading-settings.js";
 import { installModelCatalog } from "/web/desk-model-catalog.js";
 import { api, escapeHtml as esc } from "/web/desk-api.js";
 export function installSettings(ctx) {
@@ -319,12 +320,16 @@ export function installSettings(ctx) {
   routePanel.className = "model-route-panel";
   routePanel.setAttribute("aria-labelledby", "modelRouteHeading");
   routePanel.innerHTML =
-    '<summary id="modelRouteHeading">查看字幕与模型处理路线</summary><button type="button" id="refreshModelRoute">刷新路线</button><p id="modelRouteSummary" class="muted" role="status">正在读取字幕、模型和离线就绪度…</p><div id="modelRouteList" class="model-route-list"></div>';
+    '<summary id="modelRouteHeading">查看字幕与模型处理路线</summary><button type="button" id="refreshModelRoute">刷新路线</button><p id="modelRouteSummary" class="muted" role="status">正在读取字幕、模型和离线就绪度…</p><div id="modelRouteList" class="model-route-list"></div><p id="modelRouteCapabilities" class="muted"></p><p id="modelRouteEstimates" class="muted"></p>';
   panes.model.querySelector("h3").after(routePanel);
+  let routeRequest = 0;
   async function loadModelRoute() {
     const summary = $("modelRouteSummary"), list = $("modelRouteList");
     if (!summary || !list) return;
+    const request = ++routeRequest;
     summary.textContent = "正在读取字幕、模型和离线就绪度…";
+    $("modelRouteCapabilities").textContent = "";
+    $("modelRouteEstimates").textContent = "";
     try {
       const query = new URLSearchParams({
         transcriber: $("prefTranscriber")?.value || "faster-whisper",
@@ -332,10 +337,11 @@ export function installSettings(ctx) {
         visual_understanding: String(pref.visual_understanding !== false),
       });
       const route = await api("/api/model/route?" + query);
+      if (request !== routeRequest) return;
       summary.textContent = route.routes?.some(item => item.network === "required")
         ? "总结会调用你配置的模型；优先读取字幕，缺少字幕时再转写。"
         : "此路线不调用远程模型；平台字幕仍需连接视频站点获取。";
-      list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.id === "platform_or_embedded_subtitles" ? "按需检测" : item.ready ? "已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : "不调用模型"}</small></article>`).join("");
+      list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.id === "platform_or_embedded_subtitles" ? "按需检测" : item.ready ? "设置已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : item.network === "source_only" ? "仍需连接来源站点" : "本机路线；网关可能转发"}</small></article>`).join("");
       if (route.blocking_reasons?.length) {
         summary.textContent += " " + route.blocking_reasons.join(" ");
       }
@@ -343,7 +349,11 @@ export function installSettings(ctx) {
       if (route.data_leaving_device?.length) summary.textContent += " 所选路线可能发送到模型服务：" + route.data_leaving_device.map(value => dataLabels[value] || value).join("、") + "。";
       if (route.local_fallback?.detail) summary.textContent += " " + route.local_fallback.detail;
       if (!route.offline_source_confirmed) summary.textContent += " 尚未确认资料已在本机；平台字幕仍可能需要联网。";
+      summary.textContent += " 本次只检查配置和本机文件，未调用模型或下载权重。";
+      $("modelRouteCapabilities").textContent = ["text", "vision", "asr", "context_limit", "image_limit"].map(key => route.capability_catalog?.[key]?.detail || "").filter(Boolean).join(" ");
+      $("modelRouteEstimates").textContent = route.estimates?.detail || "费用与耗时区间：未知；尚无可用测量依据。";
     } catch (error) {
+      if (request !== routeRequest) return;
       summary.textContent = "模型路线暂时无法读取：" + (error.message || "请稍后重试");
       list.replaceChildren();
     }
@@ -582,105 +592,67 @@ export function installSettings(ctx) {
   };
   $("clearReadingPreset").onclick = () => preset(false);
   $("boldReadingPreset").onclick = () => preset(true);
-  const readingDefaults = {
-    size: 17,
-    density: "comfortable",
-    font: "sans",
-    width: "940",
-    leading: "1.65",
-    weight: "500",
-    accent: "neutral",
-    autoOpen: false,
-    notify: false,
+  let appearanceRevision = "";
+  const readingFields = {
+    prefReaderSize: "size", prefDensity: "density", prefFont: "font",
+    prefWidth: "width", prefLeading: "leading", prefWeight: "weight", prefAccent: "accent",
   };
-  function normalizeReading(value) {
-    const p = value && typeof value === "object" ? value : {};
-    const allowed = {
-      size: [15, 16, 17, 18, 20],
-      density: ["comfortable", "compact"],
-      font: ["sans", "serif", "mono"],
-      width: ["760", "940", "1120"],
-      leading: ["1.65", "1.85", "2.1"],
-      weight: ["400", "500", "600"],
-      accent: ["neutral", "teal", "blue", "plum"],
-    };
-    return Object.fromEntries(
-      Object.entries(readingDefaults).map(([key, fallback]) => [
-        key,
-        typeof fallback === "boolean"
-          ? p[key] === true
-          : allowed[key].includes(
-                key === "size" ? Number(p[key]) : String(p[key]),
-              )
-            ? key === "size"
-              ? Number(p[key])
-              : String(p[key])
-            : fallback,
-      ]),
-    );
-  }
-  function readAppearance() {
-    try {
-      return normalizeReading(
-        JSON.parse(
-          localStorage.getItem("learnnote.reading.preferences") || "{}",
-        ),
-      );
-    } catch {
-      return { ...readingDefaults };
-    }
-  }
-  function applyAppearance(p) {
-    const fonts = {
-      sans: '"Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
-      serif:
-        '"Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "SimSun", serif',
-      mono: 'Consolas, "Microsoft YaHei", monospace',
-    };
-    const colors = {
-      neutral: "#303832",
-      teal: "#087b83",
-      blue: "#4057a0",
-      plum: "#79516f",
-    };
-    const darkColors = {
-      neutral: "#d5d9d6",
-      teal: "#81d6d5",
-      blue: "#abbdff",
-      plum: "#d9aed0",
-    };
-    const style = document.documentElement.style;
-    style.setProperty("--reader-size", p.size + "px");
-    style.setProperty("--reader-font", fonts[p.font]);
-    style.setProperty("--reader-width", p.width + "px");
-    style.setProperty("--reader-leading", p.leading);
-    style.setProperty("--reader-weight", p.weight);
-    style.setProperty("--chosen-accent", colors[p.accent]);
-    style.setProperty("--chosen-accent-dark", darkColors[p.accent]);
-    document.body.classList.toggle("compact-density", p.density === "compact");
-    Object.assign(preview.querySelector("p").style, {
-      fontFamily: fonts[p.font],
-      fontSize: p.size + "px",
-      lineHeight: p.leading,
-      fontWeight: p.weight,
-    });
-  }
-  function appearance() {
-    const p = readAppearance();
-    for (const [id, key] of Object.entries({
-      prefReaderSize: "size",
-      prefDensity: "density",
-      prefFont: "font",
-      prefWidth: "width",
-      prefLeading: "leading",
-      prefWeight: "weight",
-      prefAccent: "accent",
-    }))
-      $(id).value = p[key];
+  function fillAppearance(p) {
+    for (const [id, key] of Object.entries(readingFields)) $(id).value = p[key];
     $("prefAutoOpen").checked = p.autoOpen;
     $("prefNotify").checked = p.notify;
-    applyAppearance(p);
-    state.reading = p;
+  }
+  const applyAppearance = p => applyReadingAppearance(p, { document, preview: preview.querySelector("p") });
+  let discardAppearanceDraft = false;
+  let readingStorage;
+  try { readingStorage = localStorage; } catch {} // Disabled browser storage must not break settings.
+  const readingAdapter = createReadingSettingsAdapter({
+    storage: readingStorage, document, preview: preview.querySelector("p"),
+    locks: globalThis.navigator?.locks, events: window,
+    isDirty: () => updateDirty().length > 0,
+    onChange(snapshot) {
+      const keepDraft = !discardAppearanceDraft && dirty("appearance");
+      state.reading = snapshot.preferences;
+      if (!keepDraft) {
+        appearanceRevision = snapshot.revision;
+        fillAppearance(snapshot.preferences);
+        saved(["appearance"]);
+      } else {
+        // Cross-tab saves update committed state, while the unsaved preview stays.
+        applyAppearance(collectReading());
+      }
+      if (["patch", "undo", "replay"].includes(snapshot.source)) window.dispatchEvent(new CustomEvent("learnnote:settings"));
+    },
+    onError(result) { $("preferencesStatus").textContent = result.error.message; },
+  });
+  window.LearnNoteReadingSettings = Object.freeze({
+    read: readingAdapter.read, patch: readingAdapter.patch, undo: readingAdapter.undo,
+    operation: readingAdapter.operation, recentOperations: readingAdapter.recentOperations,
+  });
+  // The sidebar and settings form share validation, persistence and final CSS.
+  $("theme").onclick = async () => {
+    const current = readingAdapter.read();
+    if (!current.ok) { notice(current.error.message); return; }
+    const result = await readingAdapter.saveManual({
+      expectedRevision: current.revision,
+      preferences: { theme: current.settings.theme === "dark" ? "light" : "dark" },
+    });
+    if (!result.ok) notice(result.error.message);
+    else {
+      if (appearanceRevision === current.revision) appearanceRevision = result.revision;
+      window.dispatchEvent(new CustomEvent("learnnote:settings"));
+    }
+  };
+  function appearance() {
+    discardAppearanceDraft = true;
+    try {
+      const result = readingAdapter.sync();
+      if (!result.ok && !state.reading) {
+        state.reading = normalizeReading({});
+        fillAppearance(state.reading);
+        applyAppearance(state.reading);
+      }
+    } finally { discardAppearanceDraft = false; }
   }
   function collectReading() {
     return normalizeReading({
@@ -702,6 +674,7 @@ export function installSettings(ctx) {
     applyAppearance(collectReading()),
   );
   dialog.addEventListener("close", () => {
+    if (dialog.open) return; // Ignore an older queued close after reopening.
     appearance();
     saved(Object.keys(panes));
   });
@@ -788,6 +761,8 @@ export function installSettings(ctx) {
     try {
       if (!panes.appearance.hidden) {
         const reading = collectReading();
+        const submittedValues = values("appearance");
+        const expectedRevision = appearanceRevision;
         let notificationMessage = "";
         if (reading.notify) {
           if (!window.Notification)
@@ -802,12 +777,14 @@ export function installSettings(ctx) {
           }
           if (notificationMessage) reading.notify = false;
         }
-        localStorage.setItem(
-          "learnnote.reading.preferences",
-          JSON.stringify(reading),
-        );
-        appearance();
-        saved(["appearance"]);
+        const result = await readingAdapter.saveManual({ preferences: reading, expectedRevision });
+        if (!result.ok) throw new Error(result.error.message);
+        // Do not discard a newer edit made while notification permission was open.
+        appearanceRevision = result.revision;
+        if (values("appearance") === submittedValues) {
+          appearance();
+          saved(["appearance"]);
+        }
         $("preferencesStatus").textContent =
           notificationMessage || "阅读与外观已保存在此设备，立即生效。";
       } else {

@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - exercised on Windows runners
 
 
 def _process_rss_bytes() -> int | None:
-    """Return current process RSS when the host exposes it."""
+    """Return Windows working-set bytes or POSIX process-lifetime peak RSS."""
 
     if os.name == "nt":
         class _Counters(ctypes.Structure):
@@ -40,15 +40,15 @@ def _process_rss_bytes() -> int | None:
                 ("PeakPagefileUsage", ctypes.c_size_t),
             ]
 
-        api = ctypes.windll.psapi.GetProcessMemoryInfo
-        api.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Counters), ctypes.c_ulong]
-        api.restype = ctypes.c_int
-        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
-        get_current_process.argtypes = []
-        get_current_process.restype = ctypes.c_void_p
-        counters = _Counters()
-        counters.cb = ctypes.sizeof(_Counters)
         try:
+            api = ctypes.windll.psapi.GetProcessMemoryInfo
+            api.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Counters), ctypes.c_ulong]
+            api.restype = ctypes.c_int
+            get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+            get_current_process.argtypes = []
+            get_current_process.restype = ctypes.c_void_p
+            counters = _Counters()
+            counters.cb = ctypes.sizeof(_Counters)
             ok = api(
                 get_current_process(),
                 ctypes.byref(counters),

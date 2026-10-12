@@ -54,7 +54,7 @@ export class LearnNoteApi {
 
   async bundle(taskId: string): Promise<ArrayBuffer> {
     const response = await requestUrl({
-      url: `${this.baseUrl()}/api/tasks/${encodeURIComponent(taskId)}/exports/bundle`,
+      url: `${this.baseUrl()}/api/tasks/${encodeURIComponent(taskId)}/exports/bundle?include_annotations=true`,
       method: "GET",
       throw: false
     });

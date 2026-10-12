@@ -29,25 +29,34 @@ function element() {
     disabled: false,
     value: "",
     children: [],
+    append(...children) { this.children.push(...children); },
     appendChild(child) { this.children.push(child); },
+    replaceChildren(...children) { this.children = children; },
+    getBoundingClientRect() { return { top: 0, bottom: 100 }; },
+    scrollTop: 0,
     addEventListener(type, callback) { listeners.set(type, callback); },
     dispatch(type, event = {}) { return listeners.get(type)?.({ preventDefault() {}, target: this, ...event }); },
     setAttribute(name, value) { attributes.set(name, String(value)); },
     getAttribute(name) { return attributes.get(name) ?? null; },
-    querySelector() { return null; }
+    querySelector() { return null; },
+    querySelectorAll() { return []; }
   };
 }
 
-export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {}, permissions = {}, locale = "zh-CN", missingMessages = [] } = {}) {
+export async function createSidepanelHarness({ contexts = [], preflight = null, start = null, starts = [], startDelayMs = 0, health = null, focus = null, tabs = [], healthByUrl = null, healthDelayMs = 0, fetchOverride = null, stored = {}, permissions = {}, locale = "zh-CN", missingMessages = [], beforeLoad = null } = {}) {
   const selectors = [
     "#connectionCard", "#connectionTitle", "#connectionDetail", "#openClientButton", "#openClientBrand", "#clientInstallHelp",
     "#refreshButton", "#platformLabel", "#playingBadge", "#videoTitle", "#videoMeta", "#integrityGrid",
     "#candidateCount", "#durationValue", "#estimateValue", "#preflightMessage", "#modeDescription", "#sendButton", "#sendButtonLabel",
     "#handoffProgress", "#handoffStatus", "#handoffPercent", "#openTaskButton", "#quickResultStatus",
-    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel",
-    "#modelReadiness", "#modelReadinessText", "#configureModelButton"
+    "#quickAskForm", "#quickAskQuestion", "#quickAskConversation", "#quickSummaryPanel", "#quickTranscriptPanel", "#quickResultCard",
+    "#progressiveCard", "#progressiveStatus", "#progressiveSections", "#progressiveRetry",
+    "#modelReadiness", "#modelReadinessText", "#configureModelButton",
+    "#sourcePreviewCard", "#sourcePreviewContent", "#sourcePreviewCount", "#subtitleSearch",
+    "#permissionDetails", "#permissionList", "#permissionStatus"
   ];
   const elements = new Map(selectors.map(selector => [selector, element()]));
+  elements.get("#sourcePreviewCard").hidden = true;
   const integrityItems = new Map(["video", "audio", "subtitle"].map(kind => {
     const item = element();
     const strong = element();
@@ -76,6 +85,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   const permissionRequests = [];
   let sitePermissionGranted = permissions.granted ?? true;
   const documentStub = {
+    addEventListener() {}, removeEventListener() {},
     createElement() { return element(); },
     querySelector(selector) { return elements.get(selector) || null; },
     querySelectorAll(selector) { return selector === "[data-client-view]" ? clientLinks : []; }
@@ -171,7 +181,9 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     }
   };
   vm.createContext(context);
+  if (beforeLoad) await beforeLoad(context, { elements, catalog });
   vm.runInContext(await readFile(new URL("../i18n.js", import.meta.url), "utf8"), context);
+  vm.runInContext(await readFile(new URL("../sidepanel-progress.js", import.meta.url), "utf8"), context);
   const code = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   vm.runInContext(code, context);
   await new Promise(resolve => setTimeout(resolve, 20));

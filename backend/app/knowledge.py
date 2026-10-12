@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from collections.abc import Collection
 from io import BytesIO
 from html.parser import HTMLParser
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 from .config import DATA_DIR, ensure_dirs
 from .embeddings import semantic_rank
+from .text_corruption import has_high_confidence_corruption, mojibake_score
 from .models import SourceEvidence
 from .text_cleanup import (
     TEXT_NORMALIZATION_VERSION,
@@ -34,6 +36,7 @@ class _VisibleTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._hidden_depth = 0
         self._pre_depth = 0
+        self._code_parts: list[str] | None = None
         self.parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
@@ -45,6 +48,8 @@ class _VisibleTextParser(HTMLParser):
         if tag == "pre":
             self.parts.append("\n\n```\n")
             self._pre_depth += 1
+        elif tag == "code" and not self._pre_depth and self._code_parts is None:
+            self._code_parts = []
         elif not self._pre_depth:
             if re.fullmatch(r"h[1-6]", tag):
                 self.parts.append("\n\n" + "#" * int(tag[1]) + " ")
@@ -61,14 +66,29 @@ class _VisibleTextParser(HTMLParser):
             return
         if self._hidden_depth:
             return
-        if tag.lower() == "pre" and self._pre_depth:
+        if tag.lower() == "code" and self._code_parts is not None:
+            literal = "".join(self._code_parts)
+            marker = "`" * (max((len(run) for run in re.findall(r"`+", literal)), default=0) + 1)
+            padding = " " if literal.startswith("`") or literal.endswith("`") else ""
+            self.parts.append(marker + padding + literal + padding + marker)
+            self._code_parts = None
+        elif tag.lower() == "pre" and self._pre_depth:
             self._pre_depth -= 1
             self.parts.append("\n```\n\n")
         elif not self._pre_depth and (tag.lower() in {"p", "div", "section", "article", "blockquote"} or re.fullmatch(r"h[1-6]", tag.lower())):
             self.parts.append("\n\n")
 
+    def close(self) -> None:
+        super().close()
+        if self._code_parts is not None:
+            # An unmatched tag cannot exempt the rest of a document.
+            self.parts.extend(self._code_parts)
+            self._code_parts = None
+
     def handle_data(self, data: str) -> None:
-        if not self._hidden_depth and (self._pre_depth or data.strip() or "\n" not in data):
+        if not self._hidden_depth and self._code_parts is not None:
+            self._code_parts.append(data)
+        elif not self._hidden_depth and (self._pre_depth or data.strip() or "\n" not in data):
             self.parts.append(data)
 
 
@@ -106,12 +126,17 @@ def _raw_import_path(raw_sha256: str) -> Path:
 
 
 def _connect() -> sqlite3.Connection:
+    from .catalog_guard import connect_catalog
     ensure_dirs()
-    connection = sqlite3.connect(_db_path(), timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout=30000")
-    ensure_evidence_schema(connection)
-    return connection
+    connection = connect_catalog(_db_path())
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        ensure_evidence_schema(connection)
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def ensure_evidence_schema(connection: sqlite3.Connection) -> None:
@@ -279,39 +304,65 @@ def remove_evidence(evidence_id: str) -> bool:
         connection.close()
 
 
-def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical") -> list[dict[str, object]]:
+def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical", *, evidence_ids: Collection[str] | None = None, canonical_only: bool = False) -> list[dict[str, object]]:
+    # None means the existing library-wide search. An empty explicit scope must
+    # never become a global fallback, including when semantic search is enabled.
+    if evidence_ids is not None and not evidence_ids:
+        return []
     limit = max(1, min(int(limit or 12), 50))
     semantic_mode = str(mode or "lexical").lower() in {"embedding", "semantic", "local-embedding"}
     query_limit = 500 if semantic_mode else limit
     connection = _connect()
     try:
+        predicates = []
+        if evidence_ids is not None:
+            # A temporary membership table avoids SQLite's parameter limit for
+            # long courses. Only IDs are loaded; evidence text remains bounded
+            # by query_limit, after membership is enforced in every SQL path.
+            connection.execute("CREATE TEMP TABLE question_scope (evidence_id TEXT PRIMARY KEY) WITHOUT ROWID")
+            connection.executemany("INSERT OR IGNORE INTO question_scope VALUES (?)", ((value,) for value in evidence_ids))
+            predicates.append("e.evidence_id IN (SELECT evidence_id FROM question_scope)")
+        if canonical_only:
+            predicates.extend([
+                "e.source_type != 'community'",
+                "e.locator NOT IN ('note', 'generated-note')",
+                "COALESCE(json_extract(e.metadata_json, '$.kind'), '') NOT IN ('note', 'community', 'generated-note', 'review-draft', 'transcript-draft')",
+                "COALESCE(json_extract(e.metadata_json, '$.review_required'), 0) = 0",
+                "COALESCE(json_extract(e.metadata_json, '$.evidence_quality'), '') != 'review_required'",
+            ])
+        scope = " AND ".join(predicates) or "1=1"
+        like_text = str(query).strip()
+        escape = ""
+        if evidence_ids is not None:
+            like_text = like_text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            escape = " ESCAPE '\\'"
+        like = f"%{like_text}%"
+        like_match = " OR ".join(f"e.{column} LIKE ?{escape}" for column in ("title", "source_uri", "locator", "text"))
         term = _fts_query(query)
         if term and _fts_available(connection):
             try:
                 rows = connection.execute(
-                    """SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
+                    f"""SELECT e.*, bm25(source_evidence_fts) AS score FROM source_evidence_fts f
                        JOIN source_evidence e ON e.evidence_id = f.evidence_id
-                       WHERE source_evidence_fts MATCH ?
+                       WHERE source_evidence_fts MATCH ? AND {scope}
                        ORDER BY score ASC, e.created_at DESC LIMIT ?""",
                     (term, query_limit),
                 ).fetchall()
             except sqlite3.OperationalError:
                 rows = []
             if not rows:
-                like = f"%{str(query).strip()}%"
                 rows = connection.execute(
-                    "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
+                    f"SELECT e.* FROM source_evidence e WHERE {scope} AND ({like_match}) ORDER BY e.created_at DESC LIMIT ?",
                     (like, like, like, like, query_limit),
                 ).fetchall()
         else:
-            if term:
-                like = f"%{str(query).strip()}%"
+            if term or (evidence_ids is not None and str(query).strip()):
                 rows = connection.execute(
-                    "SELECT * FROM source_evidence WHERE title LIKE ? OR source_uri LIKE ? OR locator LIKE ? OR text LIKE ? ORDER BY created_at DESC LIMIT ?",
+                    f"SELECT e.* FROM source_evidence e WHERE {scope} AND ({like_match}) ORDER BY e.created_at DESC LIMIT ?",
                     (like, like, like, like, query_limit),
                 ).fetchall()
             else:
-                rows = connection.execute("SELECT * FROM source_evidence ORDER BY created_at DESC LIMIT ?", (query_limit,)).fetchall()
+                rows = connection.execute(f"SELECT e.* FROM source_evidence e WHERE {scope} ORDER BY e.created_at DESC LIMIT ?", (query_limit,)).fetchall()
     finally:
         connection.close()
     result: list[dict[str, object]] = []
@@ -328,7 +379,9 @@ def search_evidence(query: str = "", limit: int = 12, mode: str = "lexical") -> 
             "metadata": json.loads(row["metadata_json"] or "{}"),
             "score": float(row["score"]) if "score" in row.keys() and row["score"] is not None else 0.0,
         })
-    if semantic_mode:
+    if semantic_mode and (result or evidence_ids is None):
+        if evidence_ids is not None:
+            return semantic_rank(query, result, limit, local_only=True)
         return semantic_rank(query, result, limit)
     return result
 
@@ -397,8 +450,8 @@ def evidence_ids_for_task(task_id: str) -> set[str]:
         connection.close()
 
 
-def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical") -> dict[str, object]:
-    hits = search_evidence(question, limit, mode)
+def answer_from_evidence(question: str, limit: int = 6, mode: str = "lexical", *, evidence_ids: Collection[str] | None = None, canonical_only: bool = False) -> dict[str, object]:
+    hits = search_evidence(question, limit, mode, evidence_ids=evidence_ids, canonical_only=canonical_only)
     if not hits:
         return {
             "answer": "资料库中没有找到足够的证据，未生成无依据答案。",
@@ -497,16 +550,21 @@ def extract_import_text_with_metadata(filename: str, content: bytes, content_typ
         parser = _VisibleTextParser()
         parser.feed(decoded_info.text)
         parser.close()
-        return "".join(parser.parts).strip(), "webpage", {
+        visible_text = "".join(parser.parts).strip()
+        # Entity expansion is another decoding boundary: raw ASCII HTML can
+        # otherwise hide corruption that only appears in the visible text.
+        if has_high_confidence_corruption(visible_text):
+            raise ValueError("text_mojibake_detected")
+        return visible_text, "webpage", {
             "encoding": decoded_info.encoding,
             "decoding_source": "strict-lossless",
             "encoding_source": decoded_info.encoding_source,
             "encoding_confidence": decoded_info.encoding_confidence,
             "declared_encoding": declared_encoding,
-            "replacement_character_count": decoded_info.replacement_character_count,
+            "replacement_character_count": visible_text.count("\ufffd"),
             "normalization_version": decoded_info.normalization_version,
             "encoding_repaired": decoded_info.repaired,
-            "mojibake_score": decoded_info.mojibake_score,
+            "mojibake_score": mojibake_score(visible_text),
         }
     return decoded_info.text, "markdown" if suffix in {".md", ".markdown"} else "task", {
         "encoding": decoded_info.encoding,

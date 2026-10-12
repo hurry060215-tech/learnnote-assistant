@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 import tempfile
 import unittest
@@ -58,16 +59,123 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertEqual(1, len(result["forbidden"]))
 
-    def test_missing_release_notes_fail(self):
+    def test_missing_release_notes_or_claim_timeline_fail(self):
+        for relative in (Path("_internal/web/release-notes.json"), Path("_internal/web/claim-timeline.js")):
+            with self.subTest(required_file=relative), tempfile.TemporaryDirectory() as temp_dir:
+                self.assertIn(relative, MODULE.REQUIRED_BUNDLED_FILES)
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
+
+    def test_missing_reader_encoding_module_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self.populate_extension(root)
             self.populate_legal_files(root)
             self.populate_bundled_files(root)
-            (root / "_internal/web/release-notes.json").unlink()
+            (root / "_internal/web/desk-material-encoding.js").unlink()
             result = MODULE.audit_release_tree(root)
             self.assertFalse(result["passed"])
-            self.assertEqual(["_internal/web/release-notes.json"], result["missing_bundled"])
+            self.assertEqual(["_internal/web/desk-material-encoding.js"], result["missing_bundled"])
+
+    def test_missing_study_quiz_module_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/study-quiz.js").unlink()
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/study-quiz.js"], result["missing_bundled"])
+
+
+    def test_missing_batch_import_modules_fail(self):
+        for filename in ("desk-material-batch.js", "material-batch.js"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                relative = Path("_internal/web") / filename
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
+
+    def test_missing_personal_anchor_module_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/personal-anchors.js").unlink()
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/personal-anchors.js"], result["missing_bundled"])
+
+    def test_missing_course_graph_modules_fail(self):
+        for filename in ("course-concepts.js", "course-graph-snapshot.js"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                relative = Path("_internal/web") / filename
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
+
+    def test_missing_progressive_reader_modules_fail(self):
+        for filename in ("desk-events.js", "reader-progress.js"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                relative = Path("_internal/web") / filename
+                (root / relative).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([relative.as_posix()], result["missing_bundled"])
+
+    def test_missing_material_ocr_module_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "_internal/web/material-ocr.js").unlink()
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["_internal/web/material-ocr.js"], result["missing_bundled"])
+
+    def test_classic_modules_remain_excluded_from_release(self):
+        for name in ("classic-workbench.css", "classic-interactions.css", "classic-study.css", "task-list.js"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                (root / "_internal/web" / name).write_text(".fixture {}", encoding="utf-8")
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([str(Path("_internal/web") / name)], result["legacy_ui"])
+
+    def test_both_desktop_specs_exclude_classic_task_modules(self):
+        classic_files = {"classic.html", "app.js", "task-format.js", "task-display.js", "task-list.js"}
+        for filename in ("LearnNote.spec", "LearnNote.macos.spec"):
+            tree = ast.parse((ROOT / filename).read_text(encoding="utf-8"))
+            web_tree = next(node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Tree" and ast.literal_eval(node.args[0]) == "web")
+            excluded = ast.literal_eval(next(keyword.value for keyword in web_tree.keywords if keyword.arg == "excludes"))
+            with self.subTest(filename=filename):
+                self.assertTrue(classic_files.issubset(excluded))
 
 
 if __name__ == "__main__":

@@ -111,7 +111,7 @@ class StaleTaskTests(unittest.TestCase):
             self.assertEqual(record.status, "running")
             self.assertEqual(record.error_code, "")
 
-    def test_list_tasks_finalizes_stale_cancelling_task(self) -> None:
+    def test_list_tasks_does_not_infer_acknowledgment_from_stale_cancellation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch("app.storage.TASK_DIR", Path(tmp)):
             task = create_task("local", "cancelled course")
             task.status = "cancelling"
@@ -124,9 +124,9 @@ class StaleTaskTests(unittest.TestCase):
 
             [record] = list_tasks()
 
-            self.assertEqual(record.status, "cancelled")
-            self.assertEqual(record.phase, "cancelled")
-            self.assertTrue(record.cancelled_at)
+            self.assertEqual(record.status, "cancelling")
+            self.assertEqual(record.phase, "cancelling")
+            self.assertFalse(record.cancelled_at)
             self.assertTrue(record.cancel_requested)
 
     def test_list_tasks_keeps_recent_cancelling_task_in_progress(self) -> None:

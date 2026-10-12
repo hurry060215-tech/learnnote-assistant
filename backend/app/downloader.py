@@ -40,7 +40,7 @@ from .media_candidate_ranking import (
     should_guess_sibling_manifest_with_blob_boundary,
     source_rank,
 )
-from .media_transport import _trusted_page_for_target, open_validated_media_response
+from .media_transport import _trusted_page_for_target, open_validated_media_response, request_media
 from .runtime import ffmpeg_bin, text_subprocess_kwargs
 
 # Compatibility exports: callers keep their existing downloader imports.
@@ -90,6 +90,26 @@ from .media_discovery import (
     _iter_media_url_tokens,
     extract_media_resources_from_text,
 )
+from .media_source_context import (
+    FRAGMENT_EXT_RE,
+    BROWSER_REQUEST_HEADER_ALLOWLIST,
+    YTDLP_HTTP_HEADER_ORDER,
+    REQUEST_BODY_REPLAY_METHODS,
+    PAGE_SCAN_SOURCE_PREFIXES,
+    NON_PRIMARY_FRAME_RE,
+    infer_manifest_url_from_fragment,
+    infer_sibling_manifest_urls_from_fragment,
+    _safe_header_value,
+    browser_request_headers_for_candidate,
+    ytdlp_headers_from_browser_context,
+    _is_scannable_play_endpoint,
+    fallback_page_contexts,
+    fallback_page_urls,
+    enrich_with_inferred_manifest_resources,
+    rank_media_candidates,
+    _same_site_host,
+    _is_untrusted_page_scan_candidate,
+)
 from .media_manifests import (
     _manifest_kind_from_body,
     _hls_encryption_flags,
@@ -120,6 +140,13 @@ def _preserve_raw_text_artifact(path: Path, raw: bytes, decoded) -> None:
                 {
                     "schema_version": 1,
                     "encoding": decoded.encoding,
+                    "encoding_source": decoded.encoding_source,
+                    "encoding_confidence": decoded.encoding_confidence,
+                    "declared_encoding": decoded.declared_encoding,
+                    "repaired": decoded.repaired,
+                    "mojibake_score": decoded.mojibake_score,
+                    "replacement_character_count": decoded.replacement_character_count,
+                    "normalization_version": decoded.normalization_version,
                     "raw_sha256": decoded.raw_sha256,
                     "byte_count": decoded.byte_count,
                     "canonicalized": True,
@@ -137,7 +164,6 @@ def _preserve_raw_text_artifact(path: Path, raw: bytes, decoded) -> None:
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
 AUDIO_EXT_RE = re.compile(r"\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
-FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
 TEXT_RESPONSE_RE = re.compile(r"json|text|html|javascript|mpegurl|dash\+xml|xml|x-mpegurl", re.I)
 DIRECT_MEDIA_SUFFIXES = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".flv", ".avi"}
@@ -153,22 +179,6 @@ MEDIA_CONTENT_TYPE_SUFFIXES = {
 }
 SUBTITLE_EXTENSIONS = {".vtt", ".srt", ".ass", ".ssa"}
 SUBTITLE_LANGUAGE_PREFERENCES = ("zh-CN", "zh-Hans", "zh-Hant", "zh", "ai-zh", "en", "en-US", "ai-en")
-BROWSER_REQUEST_HEADER_ALLOWLIST = {
-    "accept": "Accept",
-    "accept-language": "Accept-Language",
-    "authorization": "Authorization",
-    "content-type": "Content-Type",
-    "origin": "Origin",
-    "referer": "Referer",
-    "sec-ch-ua": "Sec-CH-UA",
-    "sec-ch-ua-mobile": "Sec-CH-UA-Mobile",
-    "sec-ch-ua-platform": "Sec-CH-UA-Platform",
-    "sec-fetch-dest": "Sec-Fetch-Dest",
-    "sec-fetch-mode": "Sec-Fetch-Mode",
-    "sec-fetch-site": "Sec-Fetch-Site",
-    "user-agent": "User-Agent",
-    "x-requested-with": "X-Requested-With",
-}
 DOWNLOAD_RESPONSE_HEADER_ALLOWLIST = {
     "accept-ranges",
     "content-disposition",
@@ -176,33 +186,12 @@ DOWNLOAD_RESPONSE_HEADER_ALLOWLIST = {
     "content-range",
     "content-type",
 }
-YTDLP_HTTP_HEADER_ORDER = (
-    "User-Agent",
-    "Accept-Language",
-    "Origin",
-    "Referer",
-    "Accept",
-    "Sec-CH-UA",
-    "Sec-CH-UA-Mobile",
-    "Sec-CH-UA-Platform",
-    "Sec-Fetch-Dest",
-    "Sec-Fetch-Mode",
-    "Sec-Fetch-Site",
-    "X-Requested-With",
-    "Authorization",
-)
-REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 MAX_REPLAY_BODY_BYTES = 64 * 1024
 YTDLP_SOCKET_TIMEOUT_SECONDS = 20
 YTDLP_DOWNLOAD_TIMEOUT_SECONDS = 1800
 YTDLP_RETRIES = 3
 YTDLP_FRAGMENT_RETRIES = 3
 YTDLP_EXTRACTOR_RETRIES = 3
-PAGE_SCAN_SOURCE_PREFIXES = ("page-scan", "page-frame-scan")
-NON_PRIMARY_FRAME_RE = re.compile(
-    r"(^|[./?&=_-])(ad|ads|advert|advertisement|banner|campaign|promo|promotion|activity|event|blackboard|era)([./?&=_-]|$)",
-    re.I,
-)
 
 
 def _clean_filename(value: str) -> str:
@@ -251,61 +240,6 @@ def _media_suffix_from_response(url: str, content_type: str = "", content_dispos
     if mime in MEDIA_CONTENT_TYPE_SUFFIXES:
         return MEDIA_CONTENT_TYPE_SUFFIXES[mime]
     return ".mp4"
-
-
-def infer_manifest_url_from_fragment(url: str) -> str:
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return ""
-    path = parsed.path or ""
-    lowered = path.lower()
-    for ext in (".m3u8", ".mpd"):
-        index = lowered.find(ext)
-        if index < 0:
-            continue
-        manifest_path = path[: index + len(ext)]
-        if manifest_path == path:
-            return ""
-        return urlunparse(parsed._replace(path=manifest_path, params="", fragment=""))
-    return ""
-
-
-def infer_sibling_manifest_urls_from_fragment(url: str) -> list[str]:
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return []
-    path = parsed.path or ""
-    lowered = path.lower()
-    if not FRAGMENT_EXT_RE.search(path) or ".m3u8" in lowered or ".mpd" in lowered:
-        return []
-    slash = path.rfind("/")
-    directory = path[: slash + 1] if slash >= 0 else "/"
-    names = (
-        ("index.m3u8", "playlist.m3u8", "master.m3u8")
-        if lowered.endswith(".ts")
-        else ("manifest.mpd", "index.mpd", "master.m3u8", "index.m3u8")
-    )
-
-    directories = [directory]
-    parent = directory.rstrip("/")
-    parent_name = parent.rsplit("/", 1)[-1].lower()
-    parent_directory = parent.rsplit("/", 1)[0] + "/" if "/" in parent else "/"
-    if (
-        parent_directory not in directories
-        and parent_directory != "/"
-        and re.search(r"^(segments?|chunks?|fragments?|video|audio|v\d+|\d{3,4}p|[a-z]{2,4}_?\d{3,4}p|avc|h26[45]|dash|hls)$", parent_name)
-    ):
-        directories.append(parent_directory)
-
-    results: list[str] = []
-    for candidate_directory in directories:
-        for name in names:
-            guessed = urlunparse(parsed._replace(path=f"{candidate_directory}{name}", params="", fragment=""))
-            if guessed not in results:
-                results.append(guessed)
-    return results
 
 
 def _domain_matches(cookie_domain: str, host: str) -> bool:
@@ -381,23 +315,6 @@ def ffmpeg_cookies_option(cookies: list[BrowserCookie], target_url: str = "") ->
     return "\n".join(fields)
 
 
-def _safe_header_value(value: object) -> str:
-    return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
-
-
-def browser_request_headers_for_candidate(candidate: ResourceCandidate | None) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    for name, value in (candidate.request_headers if candidate else {}).items():
-        lower = str(name).lower()
-        canonical = BROWSER_REQUEST_HEADER_ALLOWLIST.get(lower)
-        if not canonical:
-            continue
-        cleaned = _safe_header_value(value)
-        if cleaned:
-            headers[canonical] = cleaned
-    return headers
-
-
 def download_headers_for_candidate(
     candidate: ResourceCandidate | None,
     cookies: list[BrowserCookie],
@@ -405,7 +322,7 @@ def download_headers_for_candidate(
     url: str | None = None,
 ) -> dict[str, str]:
     target_url = url or (candidate.url if candidate else "")
-    headers = browser_request_headers_for_candidate(candidate)
+    headers = browser_request_headers_for_candidate(candidate, target_url)
     headers.pop("Range", None)
     if candidate and (
         (url and url != candidate.url)
@@ -424,87 +341,7 @@ def download_headers_for_candidate(
     return headers
 
 
-def ytdlp_headers_from_browser_context(page_url: str, resources: list[ResourceCandidate]) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    ordered = sorted(
-        resources,
-        key=lambda item: (
-            1 if item.is_main_video else 0,
-            1 if item.playback_match else 0,
-            item.score or 0,
-        ),
-        reverse=True,
-    )
-    for candidate in ordered:
-        candidate_headers = browser_request_headers_for_candidate(candidate)
-        for name in YTDLP_HTTP_HEADER_ORDER:
-            value = candidate_headers.get(name)
-            if value and name not in headers:
-                headers[name] = value
-
-    if page_url:
-        headers.setdefault("Referer", _safe_header_value(page_url))
-    return headers
-
-
 _open_validated_media_response = open_validated_media_response
-
-
-def _is_scannable_play_endpoint(candidate: ResourceCandidate) -> bool:
-    if not _is_http_url(candidate.url):
-        return False
-    if classify_resource(candidate.url, candidate.mime) != "unknown":
-        return False
-    request_type = (candidate.request_type or "").lower()
-    method = (candidate.method or "").upper()
-    label = (candidate.label or "").lower()
-    source = (candidate.source or "").lower()
-    if request_type in {"xmlhttprequest", "fetch"} and _media_endpoint_hint(candidate.url):
-        return True
-    if source.startswith("pagehook") and _media_endpoint_hint(candidate.url):
-        return True
-    if method in REQUEST_BODY_REPLAY_METHODS and candidate.request_body and _media_endpoint_hint(candidate.url):
-        return True
-    return "play" in label and _media_endpoint_hint(candidate.url)
-
-
-def fallback_page_contexts(page_url: str, resources: list[ResourceCandidate]) -> list[tuple[str, ResourceCandidate | None]]:
-    contexts: list[tuple[str, ResourceCandidate | None]] = []
-    seen: set[str] = set()
-
-    def add(url: str, candidate: ResourceCandidate | None = None) -> None:
-        value = _safe_header_value(url)
-        if not _is_http_url(value):
-            return
-        if value in seen:
-            return
-        seen.add(value)
-        contexts.append((value, candidate))
-
-    add(page_url, None)
-    ordered = sorted(
-        resources,
-        key=lambda item: (
-            1 if item.is_main_video else 0,
-            1 if item.playback_match else 0,
-            item.score or 0,
-        ),
-        reverse=True,
-    )
-    for item in ordered:
-        add(item.frame_url, item)
-        add(item.page_url, item)
-        if classify_resource(item.url, item.mime) == "unknown" and (
-            item.source == "dom" or "iframe" in (item.label or "").lower() or _is_scannable_play_endpoint(item)
-        ):
-            add(item.url, item)
-        add(item.request_headers.get("Referer", ""), item)
-        add(item.initiator, item)
-    return contexts
-
-
-def fallback_page_urls(page_url: str, resources: list[ResourceCandidate]) -> list[str]:
-    return [url for url, _ in fallback_page_contexts(page_url, resources)]
 
 
 def write_netscape_cookie_file(cookies: list[BrowserCookie], path: Path) -> Path:
@@ -549,53 +386,6 @@ def choose_ytdlp_subtitle_language(info: dict) -> tuple[str, bool]:
         for lang in subtitles:
             return str(lang), automatic
     return "", False
-
-
-def enrich_with_inferred_manifest_resources(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
-    enriched = list(resources)
-    known_urls = {item.url for item in resources if item.url}
-    has_blob_boundary = any(effective_resource_kind(item) == "blob" for item in resources)
-    for item in resources:
-        inferred_url = infer_manifest_url_from_fragment(item.url)
-        if inferred_url and inferred_url not in known_urls:
-            inferred = item.model_copy(deep=True)
-            inferred.url = inferred_url
-            inferred.kind = classify_resource(inferred_url, item.mime)
-            inferred.mime = "application/vnd.apple.mpegurl" if inferred.kind == "hls" else "application/dash+xml"
-            inferred.source = "inferred-manifest"
-            inferred.label = item.label or "inferred manifest"
-            inferred.score = min(100, max(item.score, score_candidate(inferred)) + 12)
-            if not inferred.playback_match:
-                inferred.playback_match = "inferred-from-fragment"
-            enriched.append(inferred)
-            known_urls.add(inferred_url)
-            continue
-        if inferred_url:
-            continue
-        if has_blob_boundary and not should_guess_sibling_manifest_with_blob_boundary(item):
-            continue
-        if effective_resource_kind(item) != "fragment":
-            continue
-        for guessed_url in infer_sibling_manifest_urls_from_fragment(item.url):
-            if guessed_url in known_urls:
-                continue
-            guessed = item.model_copy(deep=True)
-            guessed.url = guessed_url
-            guessed.kind = classify_resource(guessed_url, "")
-            guessed.mime = "application/vnd.apple.mpegurl" if guessed.kind == "hls" else "application/dash+xml"
-            guessed.source = "manifest-guess"
-            guessed.label = "guessed HLS manifest from segment directory" if guessed.kind == "hls" else "guessed DASH manifest from segment directory"
-            guessed.score = min(72, max(42, (item.score or 0) + 18))
-            if not guessed.playback_match:
-                guessed.playback_match = "inferred-from-fragment"
-            enriched.append(guessed)
-            known_urls.add(guessed_url)
-    return enriched
-
-
-def rank_media_candidates(resources: list[ResourceCandidate]) -> list[ResourceCandidate]:
-    enriched = enrich_with_inferred_manifest_resources(resources)
-    return rank_enriched_candidates(enriched, is_untrusted_page_scan_candidate=_is_untrusted_page_scan_candidate)
 
 
 def _safe_request_header_names(headers: dict[str, str]) -> list[str]:
@@ -759,33 +549,6 @@ def _binary_video_mismatch(body: bytes, content_type: str) -> str:
     return "unrecognized video container signature"
 
 
-def _same_site_host(left: str, right: str) -> bool:
-    left_host = (urlparse(left or "").hostname or "").lower().strip(".")
-    right_host = (urlparse(right or "").hostname or "").lower().strip(".")
-    if not left_host or not right_host:
-        return True
-    return left_host == right_host or left_host.endswith(f".{right_host}") or right_host.endswith(f".{left_host}")
-
-
-def _is_untrusted_page_scan_candidate(candidate: ResourceCandidate) -> bool:
-    source = (candidate.source or "").lower()
-    if not source.startswith(PAGE_SCAN_SOURCE_PREFIXES):
-        return False
-    if candidate.user_selected or candidate.is_main_video or candidate.playback_match:
-        return False
-
-    top_page = candidate.page_url or ""
-    frame_url = candidate.frame_url or ""
-    referer = (candidate.request_headers or {}).get("Referer", "")
-    frame_context = frame_url or (referer if referer and referer != top_page else "")
-    suspicious_context = any(
-        NON_PRIMARY_FRAME_RE.search(value or "")
-        for value in (candidate.url, frame_url, referer, candidate.label)
-    )
-    third_party_frame = bool(frame_context and top_page and not _same_site_host(frame_context, top_page))
-    return suspicious_context or third_party_frame
-
-
 def _decode_response_text(
     body: bytes,
     content_type: str = "",
@@ -867,9 +630,6 @@ def _embedded_media_candidates_from_text_response(
     if not resources:
         return []
 
-    inherited_headers = browser_request_headers_for_candidate(parent)
-    inherited_headers.setdefault("Referer", referer or base_url)
-    inherited_headers.pop("Content-Type", None)
     skipped_urls = {parent.url, parent.resolved_url or ""}
     dedup: dict[str, ResourceCandidate] = {}
     for item in resources:
@@ -880,6 +640,9 @@ def _embedded_media_candidates_from_text_response(
             continue
         item.kind = kind
         item.score = min(100, max(item.score, score_candidate(item)))
+        inherited_headers = browser_request_headers_for_candidate(parent, item.url)
+        inherited_headers.setdefault("Referer", referer or base_url)
+        inherited_headers.pop("Content-Type", None)
         item.request_headers = {**(item.request_headers or {}), **inherited_headers}
         item.is_main_video = parent.is_main_video or item.is_main_video
         item.playback_match = parent.playback_match or item.playback_match
@@ -907,6 +670,7 @@ def _preflight_sibling_manifest_guesses(
     best_failure: MediaPreflightResult | None = None
     for guessed_url in guessed_urls:
         guessed = candidate.model_copy(deep=True)
+        guessed.request_headers = browser_request_headers_for_candidate(candidate, guessed_url)
         guessed.url = guessed_url
         guessed.resolved_url = ""
         guessed.kind = classify_resource(guessed_url, "")
@@ -1321,12 +1085,7 @@ def _preflight_companion_audio(
             "warnings": warnings,
         })
 
-    audio_probe = candidate.model_copy(deep=True)
-    audio_probe.url = audio_url
-    audio_probe.resolved_url = ""
-    audio_probe.kind = "audio"
-    audio_probe.mime = candidate.audio_mime or "audio/mp4"
-    headers = download_headers_for_candidate(audio_probe, cookies, referer, url=audio_url)
+    headers = download_headers_for_candidate(candidate, cookies, referer, url=audio_url)
     headers.setdefault("Accept", "audio/*,video/*,*/*;q=0.8")
     headers.setdefault("Range", "bytes=0-4095")
 
@@ -1817,17 +1576,17 @@ class MediaDownloader:
         def apply_context_headers(resources: list[ResourceCandidate], referer: str) -> list[ResourceCandidate]:
             if not resources:
                 return resources
-            inherited = browser_request_headers_for_candidate(context_candidate)
-            inherited.setdefault(
-                "Referer",
-                _safe_header_value(
-                    context_headers.get("Referer", "")
-                    or (context_candidate.page_url if context_candidate else "")
-                    or (context_candidate.frame_url if context_candidate else "")
-                    or referer
-                ),
-            )
             for item in resources:
+                inherited = browser_request_headers_for_candidate(context_candidate, item.url)
+                inherited.setdefault(
+                    "Referer",
+                    _safe_header_value(
+                        context_headers.get("Referer", "")
+                        or (context_candidate.page_url if context_candidate else "")
+                        or (context_candidate.frame_url if context_candidate else "")
+                        or referer
+                    ),
+                )
                 merged_headers = {**inherited, **(item.request_headers or {})}
                 if not context_candidate or item.url != context_candidate.url:
                     merged_headers.pop("Content-Type", None)
@@ -1842,7 +1601,7 @@ class MediaDownloader:
             return resources
 
         try:
-            with requests.request(request_method, page_url, headers=headers, data=request_body, stream=True, timeout=20) as response:
+            with request_media(request_method, page_url, headers=headers, data=request_body, stream=True, timeout=20) as response:
                 if response.status_code in {401, 403}:
                     self._record_attempt(
                         strategy="page-scan",
@@ -1948,7 +1707,7 @@ class MediaDownloader:
                             mime=manifest_mime,
                             score=score_kind(final_url, "page-scan", manifest_kind),
                             label="response manifest",
-                            request_headers={**browser_request_headers_for_candidate(context_candidate), "Referer": page_url},
+                            request_headers={**browser_request_headers_for_candidate(context_candidate, final_url), "Referer": page_url},
                         ),
                     )
                 apply_context_headers(resources, base_url)
@@ -2414,7 +2173,7 @@ class MediaDownloader:
         request_method, request_body = request_body_for_candidate(candidate, url)
 
         def attempt(headers: dict[str, str]) -> Path:
-            with requests.request(request_method, url, headers=headers, data=request_body, stream=True, timeout=30) as response:
+            with request_media(request_method, url, headers=headers, data=request_body, stream=True, timeout=30) as response:
                 _update_candidate_from_download_response(candidate, response)
                 if response.status_code in {401, 403}:
                     raise DownloadError("auth_required", f"媒体资源返回 HTTP {response.status_code}。")
@@ -2524,20 +2283,25 @@ class MediaDownloader:
             raise DownloadError("download_forbidden", "分离音视频流缺少可访问的 HTTP(S) 地址。")
         output = self.download_dir / f"{_clean_filename(title)}_direct_av.mp4"
         video_headers = download_headers_for_candidate(candidate, cookies, referer, url=video_url)
-        audio_probe = candidate.model_copy(deep=True)
-        audio_probe.url = audio_url
-        audio_probe.resolved_url = ""
-        audio_probe.kind = "audio"
-        audio_probe.mime = candidate.audio_mime or "audio/mp4"
-        audio_headers = download_headers_for_candidate(audio_probe, cookies, referer, url=audio_url)
+        audio_headers = download_headers_for_candidate(candidate, cookies, referer, url=audio_url)
+        # FFmpeg can redirect either input; only its cookie jar retains domain scope.
+        for headers in (video_headers, audio_headers):
+            headers.pop("Authorization", None)
+            headers.pop("Cookie", None)
+        video_cookies = ffmpeg_cookies_option(cookies, video_url)
+        audio_cookies = ffmpeg_cookies_option(cookies, audio_url)
         video_user_agent = video_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
         audio_user_agent = audio_headers.pop("User-Agent", video_user_agent)
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
         if video_headers:
             cmd += ["-headers", "\r\n".join(f"{name}: {value}" for name, value in video_headers.items() if value) + "\r\n"]
+        if video_cookies:
+            cmd += ["-cookies", video_cookies]
         cmd += ["-user_agent", video_user_agent, "-i", video_url]
         if audio_headers:
             cmd += ["-headers", "\r\n".join(f"{name}: {value}" for name, value in audio_headers.items() if value) + "\r\n"]
+        if audio_cookies:
+            cmd += ["-cookies", audio_cookies]
         cmd += [
             "-user_agent",
             audio_user_agent,
@@ -2553,6 +2317,8 @@ class MediaDownloader:
             "+faststart",
             str(output),
         ]
+        if output.exists() and output.stat().st_nlink > 1:
+            output.unlink()
         result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
@@ -2571,13 +2337,15 @@ class MediaDownloader:
         output = self.download_dir / f"{_clean_filename(title)}_subtitle{suffix}"
         headers = download_headers_for_candidate(candidate, cookies, referer)
         try:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = request_media("GET", url, headers=headers, timeout=30)
             if response.status_code in {401, 403}:
                 raise DownloadError("auth_required", f"字幕资源返回 HTTP {response.status_code}。")
             if response.status_code >= 400:
                 raise DownloadError("download_forbidden", f"字幕资源返回 HTTP {response.status_code}。")
             raw_subtitle = response.content
-            decoded_subtitle = decode_text_bytes(raw_subtitle, source="downloaded-subtitle")
+            response_headers = getattr(response, "headers", {}) or {}
+            declared_encoding = declared_text_encoding(response_headers.get("content-type") or response_headers.get("Content-Type") or "")
+            decoded_subtitle = decode_text_bytes(raw_subtitle, source="downloaded-subtitle", declared_encoding=declared_encoding)
             text = decoded_subtitle.text
             text = re.sub(r"\r+\n", "\n", text)
             text = re.sub(r"\r+", "\n", text).strip()
@@ -2610,7 +2378,7 @@ class MediaDownloader:
 
         try:
             probe_url = candidate.resolved_url or candidate.url
-            with requests.get(probe_url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
+            with request_media("GET", probe_url, headers=probe_headers, stream=True, timeout=15, allow_redirects=True) as response:
                 _update_candidate_from_download_response(candidate, response)
                 body = _read_probe_bytes(response)
                 content_type = response.headers.get("content-type", "")
@@ -2662,7 +2430,7 @@ class MediaDownloader:
 
         try:
             self._notify_status("正在重放播放请求获取 manifest", 15, candidate)
-            with requests.request(request_method, url, headers=request_headers, data=request_body, stream=True, timeout=30, allow_redirects=True) as response:
+            with request_media(request_method, url, headers=request_headers, data=request_body, stream=True, timeout=30, allow_redirects=True) as response:
                 _update_candidate_from_download_response(candidate, response)
                 body = _read_probe_bytes(response, limit=MAX_PAGE_SCAN_BYTES)
                 content_type = response.headers.get("content-type", "")
@@ -2721,6 +2489,8 @@ class MediaDownloader:
         request_headers = download_headers_for_candidate(candidate, cookies, referer, url=url)
         kind = effective_resource_kind(candidate)
         user_agent = request_headers.pop("User-Agent", "Mozilla/5.0 LearnNoteAssistant/0.1")
+        # Global FFmpeg headers also reach manifest children and redirect targets.
+        request_headers.pop("Authorization", None)
         ffmpeg_cookies = ffmpeg_cookies_option(cookies, url)
         if ffmpeg_cookies:
             request_headers.pop("Cookie", None)
@@ -2735,6 +2505,8 @@ class MediaDownloader:
             cmd += ["-f", kind]
         cmd += ["-user_agent", user_agent, "-i", str(local_manifest or url), "-c", "copy", str(output)]
         self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
+        if output.exists() and output.stat().st_nlink > 1:
+            output.unlink()
         result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()

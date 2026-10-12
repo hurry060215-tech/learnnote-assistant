@@ -656,6 +656,7 @@
   }
 
   function etaText(seconds) {
+    if (seconds == null) return "剩余时间未知";
     const value = Number(seconds);
     if (!Number.isFinite(value) || value < 0) return "正在估算";
     if (value < 60) return `${Math.max(1, Math.ceil(value))} 秒`;

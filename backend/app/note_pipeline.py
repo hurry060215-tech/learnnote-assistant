@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from .processor_state import ContentMismatchError
+from .pipeline_timing import measured_stage
+
+from .processor_state import ContentMismatchError, TaskCancelled
+from .pipeline_progress import UNSET_ATTEMPT, current_pipeline_attempt, finish_pipeline_attempt, stage_duration_recorder
 from .note_document import build_note_document, normalize_note_markdown
 from .storage import task_dir, update_task, write_json
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
@@ -36,7 +39,11 @@ def finish_note_task(
     build_summary_diagnostics: Callable,
     check_cancel: Callable,
     mark_checkpoint: Callable,
+    attempt_id=UNSET_ATTEMPT,
 ) -> None:
+    if attempt_id is UNSET_ATTEMPT:
+        attempt_id = current_pipeline_attempt(task_id)
+    timing_callback = stage_duration_recorder(task_id, attempt_id)
     if preserve_transcript_review_draft(task_id, title, transcript,
             task_dir=task_dir, write_json=write_json, update_task=update_task):
         return
@@ -112,36 +119,38 @@ def finish_note_task(
         frame_extraction_warning=frame_extraction_warning,
         frame_anchor_timestamps=frame_anchor_timestamps,
     )
-    normalized_note = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
-    note = normalized_note.markdown
-    note_quality_path = write_json(task_id, "note_quality.json", normalized_note.report)
-    if normalized_note.report["blocking"]:
-        quarantine_path = task_dir(task_id) / "note.quarantine.md"
-        quarantine_path.write_text(note, encoding="utf-8")
-        update_task(
-            task_id,
-            status="failed",
-            phase="failed",
-            progress=100,
-            message="笔记输出检查未通过，已有资料保留，可直接重试总结。",
-            error_code="note_quality_failed",
-            error_detail="；".join(item["message"] for item in normalized_note.report["issues"] if item["severity"] == "error"),
-            failed_phase="summarizing",
-            summary_warning="笔记未发布：输出检查未通过",
-        )
-        return
-    claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
-    reviewed_note = mark_claims_for_review(note, claim_evidence)
-    if reviewed_note != note:
-        note = reviewed_note
-        # Rebuild against the actual persisted bytes so source spans, revisions
-        # and click targets cannot drift after adding visible review markers.
+    with measured_stage("verify", timing_callback, cancelled=(TaskCancelled,)) as timing:
+        normalized_note = normalize_note_markdown(title, note, generate_questions=options.generate_questions)
+        note = normalized_note.markdown
+        note_quality_path = write_json(task_id, "note_quality.json", normalized_note.report)
+        if normalized_note.report["blocking"]:
+            timing["status"] = "failed"
+            quarantine_path = task_dir(task_id) / "note.quarantine.md"
+            quarantine_path.write_text(note, encoding="utf-8")
+            update_task(
+                task_id,
+                status="failed",
+                phase="failed",
+                progress=100,
+                message="笔记输出检查未通过，已有资料保留，可直接重试总结。",
+                error_code="note_quality_failed",
+                error_detail="；".join(item["message"] for item in normalized_note.report["issues"] if item["severity"] == "error"),
+                failed_phase="summarizing",
+                summary_warning="笔记未发布：输出检查未通过",
+            )
+            return
         claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
-        review_count = sum(claim["review_required"] for claim in claim_evidence["claims"])
-        summary_warning = "；".join(filter(None, [summary_warning, f"{review_count} 条内容待回源核对，已在正文标记"]))
-    claim_evidence_path = write_json(task_id, "claim_evidence_map.json", claim_evidence)
-    note_document = build_note_document(title, note, evidence=claim_evidence["evidence"])
-    note_document_path = write_json(task_id, "note_document.json", note_document)
+        reviewed_note = mark_claims_for_review(note, claim_evidence)
+        if reviewed_note != note:
+            note = reviewed_note
+            # Rebuild against the actual persisted bytes so source spans, revisions
+            # and click targets cannot drift after adding visible review markers.
+            claim_evidence = build_claim_evidence_map(task_id, title, note, transcript, visual_windows)
+            review_count = sum(claim["review_required"] for claim in claim_evidence["claims"])
+            summary_warning = "；".join(filter(None, [summary_warning, f"{review_count} 条内容待回源核对，已在正文标记"]))
+        claim_evidence_path = write_json(task_id, "claim_evidence_map.json", claim_evidence)
+        note_document = build_note_document(title, note, evidence=claim_evidence["evidence"])
+        note_document_path = write_json(task_id, "note_document.json", note_document)
     summary_diagnostics["media_integrity"] = integrity.model_dump(mode="json")
     summary_diagnostics["evidence_coverage"] = evidence_coverage.model_dump(mode="json")
     summary_diagnostics["note_quality"] = normalized_note.report
@@ -181,6 +190,7 @@ def finish_note_task(
             **final_fields,
         )
         mark_checkpoint(task_id, "note_ready")
+    finish_pipeline_attempt(task_id, "failed" if asr_error else "completed", expected_attempt_id=attempt_id)
 
 
 __all__ = ["finish_note_task"]

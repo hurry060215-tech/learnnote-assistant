@@ -128,7 +128,7 @@ class TextDecoderProvenanceTests(unittest.TestCase):
             def iter_content(self, chunk_size=0):
                 yield body
 
-        with tempfile.TemporaryDirectory() as tmp, patch("app.downloader.requests.request", return_value=Response()):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.downloader.request_media", return_value=Response()):
             downloader = MediaDownloader(Path(tmp) / "task")
             resources = downloader._discover_page_resources(page_url, [], None)
 
@@ -152,7 +152,7 @@ class TextDecoderProvenanceTests(unittest.TestCase):
             def iter_content(self, chunk_size=0):
                 yield body
 
-        with tempfile.TemporaryDirectory() as tmp, patch("app.downloader.requests.request", return_value=Response()):
+        with tempfile.TemporaryDirectory() as tmp, patch("app.downloader.request_media", return_value=Response()):
             downloader = MediaDownloader(Path(tmp) / "task")
             resources = downloader._discover_page_resources(page_url, [], None)
 

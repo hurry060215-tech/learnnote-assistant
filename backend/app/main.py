@@ -1,5 +1,9 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
+from .task_artifacts import public_summary_task
+from .duration_estimates import duration_estimate
+from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
+    build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
 from . import qa_evidence, qa_history
 from .qa_evidence import (
     clip_text as _clip_text,
@@ -18,8 +22,7 @@ from .qa_evidence import (
 )
 
 from importlib.util import find_spec
-from io import BytesIO
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 import asyncio
 import base64
 import hmac
@@ -32,7 +35,6 @@ import threading
 import time
 from secrets import token_urlsafe
 from uuid import uuid4
-from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -49,9 +51,10 @@ from .downloader import effective_resource_kind, media_file_video_signature, pre
 from .media import MediaProcessingError, extract_video_clip, probe_duration, probe_media_integrity
 from .knowledge import add_evidence, answer_from_evidence, evidence_for_task, extract_import_text, preserve_raw_import, remove_evidence, search_evidence
 from .integrations import notion_export_payload
+from .document_exports import sanitize_export_text
 from .embeddings import embedding_status
 from .models import CurrentPageTaskRequest, EvidenceCoverage, MediaIntegrity, MediaPreflightRequest, PagePreflightRequest, RerunFromMediaRequest, ResourceCandidate, SourceEvidence, SourceInputRequest, StorageCleanupRequest, StudyCard, StudyCardPositionRequest, StudyCardStatusRequest, StudyPlanUpdateRequest, StudyReviewRequest, TaskOptions, TaskQuestionRequest, TaskRecord, TranscriptResult, now_iso
-from .observability import read_task_events, redacted_support_manifest
+from .observability import read_task_events, redacted_support_manifest, support_event_projection
 from .study import due_cards, export_study_data, get_study_plan, list_cards, propose_cards, review_card, review_history, save_cards, set_card_position, set_card_status, study_summary, update_study_plan
 from .processor import browser_subtitle_text_is_player_ui, process_current_page_task, process_local_video_task, read_note, read_transcript, read_visual_index, redacted_request_dump, redacted_resource
 from .media_preflight import page_preflight_report
@@ -76,6 +79,8 @@ from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_mode
 from .task_queue import queue_status, schedule_processing, recover_processing, queue_for
 from .routers.support import router as support_router
 from .routers.queue import router as queue_router
+from .screen_subtitle_routes import router as screen_subtitle_router
+from .task_inputs import merge_task_options, require_ready_note_model, task_media_path, media_source_admission
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -106,6 +111,7 @@ app.include_router(learning_space_router)
 app.include_router(range_router)
 app.include_router(support_router)
 app.include_router(queue_router)
+app.include_router(screen_subtitle_router)
 _extension_heartbeat_at = 0.0
 _extension_version = ""
 _extension_protocol_version = 0
@@ -303,28 +309,6 @@ def cleanup_expired_staged_uploads(now: float | None = None) -> int:
     return removed
 
 
-def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None) -> TaskOptions:
-    merged = (base or TaskOptions()).model_dump(mode="json")
-    if overrides is not None:
-        explicit_fields = getattr(overrides, "model_fields_set", set()) or set()
-        override_values = overrides.model_dump(mode="json")
-        for field in explicit_fields:
-            if field in override_values:
-                merged[field] = override_values[field]
-    return resolve_model_options(TaskOptions.model_validate(merged))
-
-
-def require_ready_note_model(options: TaskOptions) -> None:
-    """Explicit AI work must not spend minutes extracting before finding no key."""
-    if options.content_mode not in {"text", "visual"}:
-        return  # Existing auto-mode integrations keep their source-first behavior.
-    from .summarizer import _model_key
-    if not _model_key(resolve_model_options(options)):
-        raise HTTPException(409, {"code": "model_required", "message": "还没有可用的模型连接。请先配置模型，或选择仅提取字幕；本次尚未下载或转写。"})
-    if options.content_mode == "visual" and not llm_model_supports_vision(options.llm_base_url or LLM_BASE_URL, options.llm_model or LLM_MODEL):
-        raise HTTPException(409, {"code": "visual_model_required", "message": "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。"})
-
-
 def build_handoff_integrity(request: CurrentPageTaskRequest) -> MediaIntegrity:
     active = request.active_video
     has_video = bool(active and (active.src or active.src_object_video_tracks > 0))
@@ -391,19 +375,6 @@ def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) ->
     if isinstance(body, RerunFromMediaRequest):
         return body.options
     return body
-
-
-def task_media_path(task: TaskRecord) -> Path | None:
-    for raw_path in (task.media_path, task.source_media_path):
-        if not raw_path:
-            continue
-        try:
-            path = Path(raw_path)
-        except (OSError, ValueError):
-            continue
-        if path.is_file():
-            return path
-    return None
 
 
 def task_media_file_exists(task: TaskRecord) -> bool:
@@ -833,6 +804,8 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             "active_frame_id": active.frame_id if active else None,
             "active_time_seconds": active.current_time if active else None,
             "browser_subtitle_count": len(task.browser_subtitles or []),
+            "subtitle_probe": task.subtitle_probe.model_dump() if task.subtitle_probe else None,
+            "extension_version": task.extension_version,
             "cookie_domain_count": int(cookie_summary.get("domain_count") or 0),
             "cookie_count": int(cookie_count or 0),
             "partitioned_cookie_count": int(cookie_summary.get("partitioned_count") or 0),
@@ -1049,6 +1022,7 @@ def _audit_report_text(value: object) -> str:
 
 
 def render_task_audit_markdown(task: TaskRecord) -> str:
+    task = public_summary_task(task)
     audit = task_audit_summary(task)
     direct = direct_extraction_evidence(task)
     reuse = task_reuse_evidence(task)
@@ -1145,7 +1119,7 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
         "- 当前页直取失败时，本工具不会改用标签页录制、破解 DRM 或伪造学习进度。",
         "",
     ])
-    return "\n".join(lines)
+    return sanitize_export_text("\n".join(lines))
 
 
 def read_resource_inventory(task: TaskRecord) -> dict:
@@ -1173,6 +1147,7 @@ def read_page_preflight_report(task: TaskRecord) -> dict:
 
 
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
+    task = public_summary_task(task)
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
@@ -1934,6 +1909,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
 
 
 def task_audit_summary(task: TaskRecord) -> dict:
+    task = public_summary_task(task)
     gates = task_audit_gates(task)
     released = [gate for gate in gates if gate["state"] in {"pass", "skip"}]
     blocked = [gate for gate in gates if gate["state"] in {"fail", "warn"}]
@@ -2138,15 +2114,16 @@ def task_workflow_stage(task: TaskRecord) -> str:
     return "compose_note"
 
 
-def task_eta_seconds(task: TaskRecord) -> int:
+def task_eta_seconds(task: TaskRecord) -> int | None:
     if task.status in {"success", "failed", "cancelled"}:
         return 0
-    duration = float(task.media_integrity.duration or 0)
-    estimated_total = max(30, round(duration * 0.65 + 45))
-    return max(0, round(estimated_total * (100 - max(0, min(100, task.progress))) / 100))
+    # A whole-task point ETA is unsupported. The additive scoped projection
+    # below exposes empirical ranges only when compatible evidence exists.
+    return None
 
 
 def task_payload(task: TaskRecord) -> dict:
+    task = public_summary_task(task)
     payload = task.model_dump(mode="json")
     payload["media_integrity"] = task.media_integrity.model_dump(mode="json")
     payload["handoff_integrity"] = task.handoff_integrity.model_dump(mode="json")
@@ -2154,6 +2131,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["source_identity"] = task.source_identity.model_dump(mode="json")
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
+    payload["duration_estimate"] = duration_estimate(task)
     source_quality, evidence_quality = task_source_evidence_quality(task)
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
@@ -2194,14 +2172,16 @@ def task_artifact_status(task: TaskRecord) -> dict[str, object]:
     transcript = exists(task.transcript_path)
     note = exists(task.note_path)
     visual = exists(task.visual_index_path) or bool(task.visual_windows)
-    draft = bool(task.summary_source == "transcript-draft" or (task.checkpoint == "transcript_ready" and transcript and not note))
+    partial_draft = Path(task.note_path).name == "draft.partial.md"
+    draft = bool(task.summary_source in {"transcript-draft", "partial-draft"} or partial_draft or (task.checkpoint == "transcript_ready" and transcript and not note))
     return {
         "checkpoint": task.checkpoint,
         "draft_available": draft,
+        "partial_draft_available": partial_draft and note,
         "transcript_ready": transcript,
         "visual_index_ready": visual,
         "note_ready": note,
-        "final": task.status == "success" and note,
+        "final": task.status == "success" and note and not draft,
         "failure_phase": task.failed_phase if task.status == "failed" else "",
         "summary_source": task.summary_source,
         "recovery": "retry_summary" if transcript and not note else "resume_or_retry" if task.status in {"failed", "cancelled"} else "",
@@ -2209,6 +2189,7 @@ def task_artifact_status(task: TaskRecord) -> dict[str, object]:
 
 
 def render_diagnostics_markdown(task: TaskRecord) -> str:
+    task = public_summary_task(task)
     selected = task.selected_resource
     resource_inventory = read_resource_inventory(task)
     page_preflight = read_page_preflight_report(task)
@@ -2385,6 +2366,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
     direct = direct_extraction_evidence(task)
     selected_direct = direct.get("selected_candidate") or {}
     browser_context = direct.get("browser_context") or {}
+    lines.append(f"- Platform subtitle probe: {(task.subtitle_probe.status if task.subtitle_probe else 'not_recorded')} / extension {task.extension_version or 'not_recorded'}")
     download_direct = direct.get("download") or {}
     processing_direct = direct.get("processing") or {}
     playback_direct = playback_evidence(task)
@@ -2497,15 +2479,7 @@ def render_diagnostics_markdown(task: TaskRecord) -> str:
         "- `media.mp4` 通过单独的“导出本地视频”接口下载，资料包默认不内嵌大视频文件。",
         "",
     ])
-    return "\n".join(lines)
-
-
-def _write_file_if_exists(archive: ZipFile, path_value: str, archive_name: str) -> None:
-    if not path_value:
-        return
-    path = Path(path_value)
-    if path.is_file():
-        archive.write(path, archive_name)
+    return sanitize_export_text("\n".join(lines))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -2817,7 +2791,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         note = read_note(task.id)
     except Exception:
         note = ""
-    if note.strip():
+    if note.strip() and Path(task.note_path).name != "draft.partial.md":
         citations.extend(_note_evidence_chunks(note, source_id=task.id))
 
     try:
@@ -3347,11 +3321,10 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
     source_identity = current_page_source_identity(request)
     source_type = "page_text" if request.mode == "page_text" else "current_page"
     from .course_episodes import prepared_course_handoff
-    from .course_state import lock as course_state_lock
+    from .courses import course_transaction
     # Keep the reservation valid until the first task identity is persisted.
-    # Course deletion/editing uses the same lock and cannot pass this check
-    # while a delayed submission is between validation and creation.
-    with _deferred_handoffs_lock, course_state_lock:
+    # Course deletion/editing cannot interleave validation and creation.
+    with _deferred_handoffs_lock, (course_transaction() if request.handoff_id.startswith("course-") else nullcontext()):
         try:
             course_handoff, existing = prepared_course_handoff(request)
         except (ValueError, OSError, sqlite3.Error) as exc:
@@ -3365,15 +3338,16 @@ def create_from_current_page(request: CurrentPageTaskRequest, background_tasks: 
                     detail={"code": "handoff_id_conflict", "message": "This handoff id belongs to a different source."},
                 )
             if defer and existing.awaiting_confirmation:
+                existing = update_task(existing.id, subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
                 _deferred_handoffs[existing.id] = request.model_copy(deep=True)
                 write_json(existing.id, "deferred_preflight.json", redacted_request_dump(request))
             return _handoff_response(existing, deduplicated=True)
 
-        # Persist the source identity with the first manifest write so a
-        # restart cannot leave an anonymous task that a retry duplicates.
+        # Persist identity with the first manifest write so restart retries reuse it.
         task = create_task(source_type=source_type, title=title, page_url=source.url,
                            options=request.options, mode=request.mode, handoff_id=request.handoff_id,
-                           source_identity=source_identity, learning_range=request.learning_range)
+                           source_identity=source_identity, learning_range=request.learning_range,
+                           subtitle_probe=request.subtitle_probe, extension_version=request.extension_version)
         if request.handoff_id:
             _handoff_task_ids[request.handoff_id] = task.id
         if request.browser_subtitles:
@@ -3612,6 +3586,13 @@ def create_from_existing_media(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
+    if source.mode == "screen_subtitles" and source.options.screen_subtitles is not None:
+        from .screen_subtitle_routes import create_screen_subtitles, ScreenSubtitleRequest
+        next_options = merge_task_options(source.options, rerun_options_from_body(request), resolve_connection=False)
+        return create_screen_subtitles(task_id, ScreenSubtitleRequest(
+            settings=next_options.screen_subtitles or source.options.screen_subtitles,
+            generate_note=next_options.content_mode != "subtitles", options=next_options), background_tasks)
+
     media_path = task_media_path(source)
     if not media_path:
         raw_media_path = source.media_path or source.source_media_path
@@ -3638,28 +3619,29 @@ def create_from_existing_media(
 
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
     require_ready_note_model(parsed_options)
-    task = create_task(
-        source_type="local",
-        title=source.title or f"Media from {source.id}",
-        page_url=source.page_url,
-        options=parsed_options,
-        mode="rerun_from_media",
-    )
-    task = update_task(
-        task.id,
-        source_task_id=source.id,
-        source_media_path=str(media_path),
-        learning_range=source.learning_range,
-        media_integrity=rerun_integrity,
-        source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
-        selected_resource=source.selected_resource,
-        download_attempts=source.download_attempts,
-        active_video=source.active_video,
-        browser_subtitles=source.browser_subtitles,
-        drm_detected=source.drm_detected,
-        drm_signals=source.drm_signals,
-        message="Queued from downloaded media",
-    )
+    with media_source_admission(task_id, source):
+        task = create_task(
+            source_type="local",
+            title=source.title or f"Media from {source.id}",
+            page_url=source.page_url,
+            options=parsed_options,
+            mode="rerun_from_media",
+        )
+        task = update_task(
+            task.id,
+            source_task_id=source.id,
+            source_media_path=str(media_path),
+            learning_range=source.learning_range,
+            media_integrity=rerun_integrity,
+            source_identity=local_source_identity(source.title or media_path.stem, rerun_integrity),
+            selected_resource=source.selected_resource,
+            download_attempts=source.download_attempts,
+            active_video=source.active_video,
+            browser_subtitles=source.browser_subtitles,
+            drm_detected=source.drm_detected,
+            drm_signals=source.drm_signals,
+            message="Queued from downloaded media",
+        )
     source_transcript_source = ""
     try:
         source_transcript_source = str(read_transcript(source.id).get("source") or "")
@@ -3716,6 +3698,7 @@ def api_summary_version(task_id: str, version_id: str) -> dict:
 
 @app.post("/api/tasks/{task_id}/retry-summary")
 def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: TaskOptions | None = Body(default=None)) -> dict:
+    from .task_control import admit_retry
     from .models import TranscriptResult
     from .processor import process_saved_transcript_task
     try:
@@ -3740,9 +3723,8 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: Task
         raise HTTPException(409, {"code": "visual_resume_required", "message": "图文笔记需要同时分析画面。请从本地视频继续处理，或明确切换为文字笔记后仅根据字幕总结。"})
     require_ready_note_model(options)
     _snapshot_before_retry(task_id)
-    task = update_task(task_id, status="queued", phase="queued", progress=0, error_code="", error_detail="", failed_phase="",
-        cancel_requested=False, cancel_requested_at="", cancelled_at="", awaiting_confirmation=False,
-        message="使用已保存字幕重新生成总结，不下载视频、不重新转写。", retry_count=source.retry_count+1,
+    task = admit_retry(source, error_code="", error_detail="", failed_phase="", awaiting_confirmation=False,
+        message="使用已保存字幕重新生成总结，不下载视频、不重新转写。",
         options=options.model_copy(update={"llm_api_key":None}))
     schedule_processing(background_tasks, process_saved_transcript_task, task_id, options, _queue_kind="summary")
     return {"task_id": task_id, "task": task_payload(task)}
@@ -3754,6 +3736,13 @@ def resume_task_from_checkpoint(
     background_tasks: BackgroundTasks,
     request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
+    from .screen_subtitle_routes import resume_screen_subtitles
+    from .task_control import admit_retry
+    try:
+        if get_task(task_id).mode == "screen_subtitles":
+            return resume_screen_subtitles(task_id, background_tasks, rerun_options_from_body(request))
+    except FileNotFoundError:
+        pass
     try:
         source = get_task(task_id)
     except FileNotFoundError as exc:
@@ -3784,8 +3773,8 @@ def resume_task_from_checkpoint(
         except (OSError, ValueError):
             pass
     _snapshot_before_retry(task_id)
-    task = update_task(
-        task_id,
+    task = admit_retry(
+        source,
         status="queued",
         phase="queued",
         progress=0,
@@ -3804,7 +3793,6 @@ def resume_task_from_checkpoint(
         summary_diagnostics_path="",
         summary_diagnostics={},
         options=parsed_options.model_copy(update={"llm_api_key": None}),
-        retry_count=source.retry_count + 1,
     )
     source_transcript_source = ""
     try:
@@ -4079,7 +4067,8 @@ def api_retry_task(
                 "message": "需要重新从当前播放页发起，才能刷新登录状态和视频地址。",
             },
         )
-    update_task(task_id, retry_count=source.retry_count + 1)
+    from .task_control import admit_retry
+    admit_retry(source, clone=True)
     return create_from_existing_media(task_id, background_tasks, request)
 
 
@@ -4224,13 +4213,14 @@ def api_export_markdown(task_id: str, include_annotations: bool = False) -> Plai
     if not note.strip():
         raise HTTPException(status_code=404, detail="Note not found")
     filename = markdown_filename(task.id, task.title)
-    from .document_exports import evidence_review_notice
+    from .document_exports import evidence_review_notice, project_source_reviews
     notice = evidence_review_notice(task)
     if notice:
         note = notice + "\n\n" + note
     if include_annotations:
         from .personal_notes import annotation_markdown
         note += annotation_markdown("task", task_id)
+    note = project_source_reviews(note)["markdown"]
     headers = {
         "Content-Disposition": (
             f'attachment; filename="learnnote-{task.id}.md"; '
@@ -4315,9 +4305,9 @@ def api_export_manifest(task_id: str) -> Response:
 
 
 @app.get("/api/tasks/{task_id}/exports/bundle")
-def api_export_bundle(task_id: str) -> Response:
+def api_export_bundle(task_id: str, include_annotations: bool = False) -> Response:
     try:
-        task = get_task(task_id)
+        task = public_summary_task(get_task(task_id))
         note = read_note(task_id)
         transcript = read_transcript(task_id)
         visual_index = read_visual_index(task_id)
@@ -4348,35 +4338,18 @@ def api_export_bundle(task_id: str) -> Response:
     if not has_artifact:
         raise HTTPException(status_code=404, detail="Task artifacts not found")
 
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        archive.writestr("audit.md", audit_report)
-        archive.writestr("diagnostics.md", diagnostics)
-        archive.writestr("visual_windows.md", visual_windows)
-        if qa_history:
-            archive.writestr("qa.md", qa_report)
-            archive.writestr(QA_HISTORY_FILE, json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
-        if note.strip():
-            archive.writestr("note.md", note)
-        archive.writestr("task.json", json.dumps(task.model_dump(mode="json"), ensure_ascii=False, indent=2))
-        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
-        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
-        if resource_inventory:
-            archive.writestr("resource_inventory.json", json.dumps(resource_inventory, ensure_ascii=False, indent=2))
-        if page_preflight:
-            archive.writestr("page_preflight_report.json", json.dumps(page_preflight, ensure_ascii=False, indent=2))
-        if task.subtitle_path:
-            _write_file_if_exists(archive, task.subtitle_path, f"subtitles/{Path(task.subtitle_path).name}")
-        elif generated_subtitles:
-            archive.writestr("subtitles/generated-transcript.srt", generated_subtitles)
-        if task.summary_diagnostics:
-            archive.writestr("summary_diagnostics.json", json.dumps(task.summary_diagnostics, ensure_ascii=False, indent=2))
-        if isinstance(claim_map, dict) and claim_map:
-            archive.writestr("claim_evidence_map.json", json.dumps(claim_map, ensure_ascii=False, indent=2))
-        for index, grid in enumerate(task.frame_grids):
-            filename = Path(grid.path).name or f"grid_{index:03d}.jpg"
-            _write_file_if_exists(archive, grid.path, f"grids/{filename}")
+    annotations = None
+    if include_annotations:
+        from .personal_notes import list_annotations
+        annotations = list_annotations("task", task.id)
+    content = build_bundle_archive(BundleArchive(
+        task=task, note=note, transcript=transcript, visual_index=visual_index,
+        qa_history=qa_history, claim_map=claim_map, diagnostics=diagnostics,
+        audit_report=audit_report, visual_windows=visual_windows, qa_report=qa_report,
+        manifest=manifest, resource_inventory=resource_inventory,
+        page_preflight=page_preflight, generated_subtitles=generated_subtitles,
+    ), annotations=annotations, qa_history_file=QA_HISTORY_FILE,
+        write_file=_write_file_if_exists)
 
     filename = bundle_filename(task.id, task.title)
     headers = {
@@ -4385,7 +4358,7 @@ def api_export_bundle(task_id: str) -> Response:
             f"filename*=UTF-8''{quote(filename)}"
         )
     }
-    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+    return Response(content, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/sanitized-bundle")
@@ -4402,40 +4375,13 @@ def api_export_sanitized_bundle(task_id: str) -> Response:
     claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     if not note.strip() and not transcript.get("segments") and not visual_index.get("windows"):
         raise HTTPException(status_code=404, detail="Shareable study artifacts not found")
-    safe_manifest = {
-        "schema_version": 1,
-        "bundle_type": "sanitized-study",
-        "privacy": {
-            "original_media": False,
-            "cookies": False,
-            "signed_urls": False,
-            "diagnostics": False,
-            "source_paths": False,
-        },
-        "task": {"id": task.id, "title": task.title, "source_type": task.source_type, "status": task.status},
-        "artifacts": {"note": bool(note.strip()), "transcript": bool(transcript.get("segments")), "visual_index": bool(visual_index.get("windows")), "qa": bool(qa_history), "claim_evidence": bool(claim_map)},
-    }
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(safe_manifest, ensure_ascii=False, indent=2))
-        if note.strip():
-            archive.writestr("note.md", note)
-        archive.writestr("transcript.json", json.dumps(transcript, ensure_ascii=False, indent=2))
-        archive.writestr("visual_index.json", json.dumps(visual_index, ensure_ascii=False, indent=2))
-        if qa_history:
-            archive.writestr("qa_history.json", json.dumps({"schema_version": 1, "items": qa_history}, ensure_ascii=False, indent=2))
-        if isinstance(claim_map, dict) and claim_map:
-            archive.writestr("claim_evidence_map.json", json.dumps({
-                "schema_version": claim_map.get("schema_version", 1),
-                "task_id": task.id,
-                "title": task.title,
-                "claims": claim_map.get("claims", []),
-                "counts": claim_map.get("counts", {}),
-                "quality": claim_map.get("quality", {}),
-            }, ensure_ascii=False, indent=2))
+    content = build_sanitized_archive(StudyArchive(
+        task=task, note=note, transcript=transcript, visual_index=visual_index,
+        qa_history=qa_history, claim_map=claim_map,
+    ))
     filename = f"learnnote-{task.id}-sanitized-study.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return Response(buffer.getvalue(), media_type="application/zip", headers=headers)
+    return Response(content, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/events")
@@ -4455,19 +4401,14 @@ def api_export_support_package(task_id: str) -> Response:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    events = read_task_events(task_id)
+    events = support_event_projection(read_task_events(task_id))
     manifest = redacted_support_manifest(task_id, events)
-    diagnostics = render_diagnostics_markdown(task)
-    audit = render_task_audit_markdown(task)
-    buffer = BytesIO()
-    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        archive.writestr("events.json", json.dumps(events, ensure_ascii=False, indent=2))
-        archive.writestr("diagnostics.md", diagnostics)
-        archive.writestr("audit.md", audit)
+    diagnostics = sanitize_export_text(render_diagnostics_markdown(task))
+    audit = sanitize_export_text(render_task_audit_markdown(task))
+    content = build_support_archive(manifest, events, diagnostics, audit)
     filename = f"learnnote-{task.id}-support-package.zip"
     return Response(
-        buffer.getvalue(),
+        content,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

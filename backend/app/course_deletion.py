@@ -34,7 +34,7 @@ def _busy_tasks():
     if not path.exists():
         return set()
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=1)) as db:
-        return {row[0] for row in db.execute("SELECT task_id FROM jobs WHERE state IN ('queued','running','recovering')")}
+        return {row[0] for row in db.execute("SELECT task_id FROM jobs WHERE state IS NULL OR state NOT IN ('done','failed','cancelled','waiting_context')")}
 
 
 def _dependency_owners():
@@ -73,7 +73,7 @@ def _preview(course_id):
     try:
         busy = _busy_tasks()
         dependency_owners = _dependency_owners()
-    except (ValueError, OSError, sqlite3.Error):
+    except (ValueError, TypeError, OSError, sqlite3.Error):
         busy = set()
         dependency_owners = set()
         references_verified = False
@@ -100,7 +100,7 @@ def _preview(course_id):
                                "source_media_path": task.source_media_path})
         except FileNotFoundError:
             reason = "source_missing"
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):
             reason = "source_unreadable"
         if not reason:
             reason = ("shared_task" if task_id in shared else
@@ -118,14 +118,14 @@ def _preview(course_id):
 
 
 def preview_course_deletion(course_id):
-    with courses._lock, storage._lock:
+    with courses.course_read_lock(), storage._lock:
         return _preview(course_id)
 
 
 def delete_reviewed_course(course_id, *, revision, snapshot, task_ids):
     # Same lock order as course saves/bindings. Task transitions cannot race the
     # eligibility check; course saves/binds cannot create new shared references.
-    with courses._lock, storage._lock:
+    with storage.assistant_records.locked(storage.DATA_DIR), courses.course_transaction(), storage.task_state_transaction():
         preview = _preview(course_id)
         if preview["revision"] != revision or preview["snapshot"] != snapshot:
             raise ValueError("course_deletion_changed_reload_required")

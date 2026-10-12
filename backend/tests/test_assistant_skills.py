@@ -22,6 +22,9 @@ class AssistantSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory,patch.object(skills,"DATA_DIR",Path(directory)),patch.object(skills,"LLM_API_KEY",""):
             result=skills.execute_global("product.help","帮我删除全部笔记")
             self.assertIn("不会替你删除",result["answer"])
+            self.assertIn("已索引的原文/笔记文字",result["answer"])
+            self.assertIn("私密学习资料",result["answer"])
+            self.assertIn("默认恢复只处理任务索引",result["answer"])
             self.assertEqual(result["actions"][0]["id"],"storage")
             self.assertFalse(result["execution"]["automatic_actions"])
             self.assertEqual(len(skills.history()),1)
@@ -60,7 +63,7 @@ class AssistantSkillTests(unittest.TestCase):
     def test_help_followup_keeps_topic_instead_of_reading_selected_note(self):
         self.assertEqual(skills.resolve_skill("下一步呢","auto",True,"product.help")["skill"]["id"],"product.help")
         with tempfile.TemporaryDirectory() as directory,patch.object(skills,"DATA_DIR",Path(directory)):
-            skills.execute_global("product.help","怎么配置模型")
-            result=skills.execute_global("product.help","下一步呢")
+            skills.execute_global("product.help","怎么配置模型",conversation_id="test-help")
+            result=skills.execute_global("product.help","下一步呢",conversation_id="test-help")
             self.assertIn("测试连接",result["answer"])
             self.assertEqual(result["actions"][0]["id"],"settings_model")

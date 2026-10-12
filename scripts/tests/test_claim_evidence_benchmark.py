@@ -36,10 +36,13 @@ class ClaimEvidenceBenchmarkTests(unittest.TestCase):
 
     def test_user_interface_distinguishes_all_review_states_and_document_sources(self) -> None:
         source = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
+        timeline = (ROOT / "web" / "claim-timeline.js").read_text(encoding="utf-8")
         for label in ("直接支持", "仅定位", "推断", "待核对"):
             self.assertIn(label, source)
-        self.assertIn('"document": "文档"', source)
-        self.assertIn('candidate.kind === "document"', source)
+        self.assertIn('document: "文档"', timeline)
+        self.assertIn("claimEvidenceStatus", source)
+        anchor = (ROOT / "web" / "evidence-anchor.js").read_text(encoding="utf-8")
+        self.assertIn('kind === "document"', anchor)
         self.assertIn("highlightMaterialSource", source)
         view = (ROOT / "web" / "evidence-source-view.js").read_text(encoding="utf-8")
         self.assertIn("source-evidence-target", view)

@@ -47,6 +47,14 @@ async function main() {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("load");
+  const stylesheets = await page.evaluate(() => [...document.styleSheets]
+    .filter(sheet => sheet.href)
+    .map(sheet => ({ path: new URL(sheet.href).pathname, ruleCount: sheet.cssRules.length })));
+  const expectedStyles = ["styles.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css", "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css"];
+  if (JSON.stringify(stylesheets.map(sheet => sheet.path)) !== JSON.stringify(expectedStyles.map(name => `/web/${name}`)) || stylesheets.some(sheet => !sheet.ruleCount)) {
+    throw new Error(`Classic stylesheets failed to load in cascade order: ${JSON.stringify(stylesheets)}`);
+  }
   await page.waitForTimeout(1000);
   if (await page.locator("#onboardingOverlay:not([hidden])").count()) {
     await page.locator("#skipOnboardingButton").click();
@@ -103,7 +111,7 @@ async function main() {
   }
   await browser.close();
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, english, chinese, wide, tablet, mobile, keyboard }));
+  process.stdout.write(JSON.stringify({ ok: true, stylesheets, english, chinese, wide, tablet, mobile, keyboard }));
 }
 
 main().catch(error => {

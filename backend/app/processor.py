@@ -20,7 +20,9 @@ from .note_pipeline import finish_note_task
 from .subtitle_notes import finish_transcript_note
 from .summary_outcome import has_generated_summary, safe_summary_text
 from .note_document import normalize_note_markdown
-from .pipeline_progress import record_stage_duration, start_pipeline_attempt, write_progressive_draft
+from .pipeline_progress import UNSET_ATTEMPT, current_pipeline_attempt, record_stage_duration, stage_duration_recorder, start_pipeline_attempt, write_progressive_draft
+from .pipeline_timing import emit_timing, measured_stage
+from .progressive_sections import partial_section_callback
 from .reliability import calculate_evidence_coverage, current_page_source_identity, evidence_coverage_markdown, validate_source_identity
 from .processor_state import (
     ContentMismatchError,
@@ -34,7 +36,7 @@ from .processor_state import (
     start_task_resource_monitor,
     validate_summary_evidence,
 )
-from .storage import get_task, mark_task_cancelled, save_task, task_dir, update_task, write_json
+from .storage import get_task, mark_task_cancelled, task_dir, update_task, write_json
 from .source_input import clean_task_title
 from .summarizer import SummarizationCancelled, build_visual_windows, llm_model_supports_vision, summarize_page_text_with_diagnostics, summarize_with_diagnostics_audit as summarize_with_diagnostics
 from .summary_diagnostics import build_summary_diagnostics
@@ -171,7 +173,7 @@ PLAYER_DANMAKU_COMMENT_SIGNATURES = (
 )
 
 
-def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_check=None):
+def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_check=None, section_callback=None, timing_callback=None):
     try:
         parameters = list(inspect.signature(summary_fn).parameters.values())
         supports_cache = any(
@@ -188,13 +190,13 @@ def _summarize_with_optional_cache(summary_fn, *args, cache_dir: Path, cancel_ch
         kwargs["vision_cache_dir"] = cache_dir
     if cancel_check is not None and ("cancel_check" in parameter_names or accepts_kwargs):
         kwargs["cancel_check"] = cancel_check
-    try:
-        return summary_fn(*args, **kwargs)
-    except TypeError as exc:
-        message = str(exc)
-        if kwargs and "unexpected keyword argument" in message and any(name in message for name in kwargs):
-            return summary_fn(*args)
-        raise
+    if section_callback is not None and ("section_callback" in parameter_names or accepts_kwargs):
+        kwargs["section_callback"] = section_callback
+    if timing_callback is not None and ("timing_callback" in parameter_names or accepts_kwargs):
+        kwargs["timing_callback"] = timing_callback
+    # Adapt before execution. Retrying an internal TypeError could dispatch the
+    # same already-completed provider work twice.
+    return summary_fn(*args, **kwargs)
 
 
 def remember_reusable_media(task_id: str, path: Path) -> bool:
@@ -837,7 +839,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             drm_detected=bool(request.drm_detected),
             drm_signals=request.drm_signals,
         )
-        start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id)
         update_task(task_id, status="running", phase="downloading", progress=5, message="正在优先检查可直接读取的字幕")
         if request.drm_detected and request.options.content_mode != "subtitles" and not has_downloadable_candidate(request.resources):
             message = drm_failure_message(request)
@@ -877,7 +879,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 duration = range_end - range_start
                 direct = transcript_from_browser_subtitles(cues) if cues else None
             usable = browser_subtitles_are_reliable(cues, duration)
-            record_stage_duration(task_id, "subtitle_probe", probe_started, status="completed" if usable else "skipped")
+            record_stage_duration(task_id, "subtitle_probe", probe_started, status="completed" if usable else "skipped", expected_attempt_id=attempt_id)
             resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
             if resolved_title != request.title:
                 request.title = resolved_title
@@ -888,10 +890,10 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 if duration and not request.active_video:
                     request.active_video = ActiveVideoInfo(duration=duration)
                 update_task(task_id, mode="subtitle_only", browser_subtitles=cues)
-                record_stage_duration(task_id, "download", time.monotonic(), status="skipped")
-                record_stage_duration(task_id, "media", time.monotonic(), status="skipped")
-                record_stage_duration(task_id, "visual", time.monotonic(), status="skipped")
-                process_subtitle_only_task(task_id, request, transcript=None if selected_range else direct, start_attempt=False)
+                record_stage_duration(task_id, "download", time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
+                record_stage_duration(task_id, "media", time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
+                record_stage_duration(task_id, "visual", time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
+                process_subtitle_only_task(task_id, request, transcript=None if selected_range else direct, start_attempt=False, attempt_id=attempt_id)
                 return
             if request.options.content_mode == "subtitles":
                 _fail(task_id, "subtitles_unavailable", "没有取得可用的已有字幕。本次未下载视频、未转写、未调用模型；可以在已登录的网页重新识别，或切换为文字笔记。")
@@ -904,7 +906,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         from .stage_budget import stage_budget
         with stage_budget(work_dir.parent.parent, "download", cancel_check=lambda: _check_cancel(task_id)):
             media_path, selected = downloader.download(request.page_url, request.resources, request.cookies, request.title)
-        record_stage_duration(task_id, "download", download_started)
+        record_stage_duration(task_id, "download", download_started, expected_attempt_id=attempt_id)
         _check_cancel(task_id)
         try:
             if media_path.stat().st_size > int(request.options.resource_budget_mb) * 1024 * 1024:
@@ -1003,6 +1005,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
                 max(0.0, request.active_video.current_time - selected_range[0]) if selected_range else request.active_video.current_time
             ] if request.active_video else [],
             start_attempt=False,
+            attempt_id=attempt_id,
         )
     except TaskCancelled:
         return
@@ -1031,12 +1034,15 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         persist_task_resource_usage(task_id, resource_monitor, resource_started_at)
 
 
-def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *, transcript: TranscriptResult | None = None, start_attempt: bool = True) -> None:
+def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *, transcript: TranscriptResult | None = None, start_attempt: bool = True, attempt_id=UNSET_ATTEMPT) -> None:
     """Create a summary from complete captions while retaining user's note preferences."""
     try:
         _check_cancel(task_id)
         if start_attempt:
-            start_pipeline_attempt(task_id)
+            attempt_id = start_pipeline_attempt(task_id)
+        elif attempt_id is UNSET_ATTEMPT:
+            attempt_id = current_pipeline_attempt(task_id)
+        timing_callback = stage_duration_recorder(task_id, attempt_id)
         probe_started = time.monotonic()
         duration = request.active_video.duration if request.active_video else 0
         selected_range = _learning_range_bounds(request.learning_range)
@@ -1053,7 +1059,7 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
         if not browser_subtitles_are_reliable(request.browser_subtitles, duration):
             raise ContentMismatchError("当前字幕覆盖不足，不能代替完整视频内容；请选择标准转写。")
         if start_attempt:
-            record_stage_duration(task_id, "subtitle_probe", probe_started)
+            record_stage_duration(task_id, "subtitle_probe", probe_started, expected_attempt_id=attempt_id)
         started = time.monotonic()
         transcript = transcript or transcript_from_browser_subtitles(request.browser_subtitles)
         transcript = correct_transcript_terms(transcript)
@@ -1063,17 +1069,20 @@ def process_subtitle_only_task(task_id: str, request: CurrentPageTaskRequest, *,
             message="字幕已保存，正在整理原文；本次不调用模型" if request.options.content_mode == "subtitles" else "字幕已保存；跳过视频下载和语音识别，接下来生成 AI 总结",
             active_video=request.active_video, subtitle_path=subtitle_path,
             transcript_path=str(transcript_path), checkpoint="transcript_ready")
-        record_stage_duration(task_id, "transcript", started)
+        record_stage_duration(task_id, "transcript", started, expected_attempt_id=attempt_id)
         for stage in ("download", "media", "visual"):
-            record_stage_duration(task_id, stage, time.monotonic(), status="skipped")
+            record_stage_duration(task_id, stage, time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
+        emit_timing(timing_callback, "frames", None, "skipped")
         if request.options.content_mode == "subtitles":
             from .caption_extraction import finish_caption_extraction
-            finish_caption_extraction(task_id, request.title, transcript, subtitle_path)
+            finish_caption_extraction(task_id, request.title, transcript, subtitle_path, attempt_id=attempt_id)
             return
         finish_transcript_note(task_id, request.title, request.page_url, transcript, request.options,
-            duration=duration, media_skipped=True,
+            duration=duration, media_skipped=True, attempt_id=attempt_id,
             summarize=lambda *args: _summarize_with_optional_cache(summarize_with_diagnostics, *args,
-                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested)),
+                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                section_callback=partial_section_callback(task_id, transcript),
+                timing_callback=timing_callback),
             build_diagnostics=build_summary_diagnostics, check_cancel=_check_cancel)
     except (TaskCancelled, SummarizationCancelled):
         if get_task(task_id).cancel_requested:
@@ -1096,18 +1105,30 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         if task_dir(task_id).resolve() not in target.parents or not target.is_file():
             raise ContentMismatchError("找不到此任务已保存的字幕，请重新获取内容。")
         transcript = TranscriptResult.model_validate_json(target.read_text(encoding="utf-8"))
+        if transcript.source == "screen-ocr" and (transcript.provenance.get("status") != "ready" or transcript.provenance.get("coverage", {}).get("complete") is not True):
+            raise ContentMismatchError("画面字幕尚未完整提取，请先恢复画面字幕任务。")
+        if transcript.source == "screen-ocr":
+            from .screen_subtitles import media_hash
+            expected = task.screen_subtitles_media_sha256
+            media = Path(task.media_path)
+            if not expected or expected != transcript.provenance.get("media_sha256") or not media.is_file() or media_hash(media, lambda: _check_cancel(task_id)) != expected:
+                raise ContentMismatchError("画面字幕关联的媒体已变化或无法确认；原文字保留，请重新提取后再生成笔记。")
         if not transcript.segments or not transcript.full_text.strip():
             raise ContentMismatchError("已保存的字幕为空，不能重新总结。")
         from .summary_versions import snapshot_summary
         snapshot_summary(task_id)
-        start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id)
+        timing_callback = stage_duration_recorder(task_id, attempt_id)
         for stage in ("subtitle_probe", "download", "media", "transcript", "visual"):
-            record_stage_duration(task_id, stage, time.monotonic(), status="skipped")
+            record_stage_duration(task_id, stage, time.monotonic(), status="skipped", expected_attempt_id=attempt_id)
+        emit_timing(timing_callback, "frames", None, "skipped")
         duration = task.media_integrity.duration if task.media_integrity else (task.active_video.duration if task.active_video else 0)
         finish_transcript_note(task_id, task.title, task.page_url, transcript, options,
-            duration=duration, media_skipped=not bool(task.media_path),
+            duration=duration, media_skipped=not bool(task.media_path), attempt_id=attempt_id,
             summarize=lambda *args: _summarize_with_optional_cache(summarize_with_diagnostics, *args,
-                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested)),
+                cache_dir=task_dir(task_id) / "vision_cache", cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                section_callback=partial_section_callback(task_id, transcript),
+                timing_callback=timing_callback),
             build_diagnostics=build_summary_diagnostics, check_cancel=_check_cancel)
     except (TaskCancelled, SummarizationCancelled):
         if get_task(task_id).cancel_requested:
@@ -1135,7 +1156,7 @@ def process_local_video_task(
         from .caption_extraction import finish_caption_extraction
         try:
             _check_cancel(task_id)
-            start_pipeline_attempt(task_id)
+            attempt_id = start_pipeline_attempt(task_id)
             update_task(task_id, status="running", phase="detecting", progress=10, message="检查本地视频中的已有字幕，不转写音频。")
             subtitle = subtitle_path
             transcript = parse_subtitle_or_none(subtitle, source=subtitle_source or "page-subtitle") if subtitle else None
@@ -1151,7 +1172,7 @@ def process_local_video_task(
                 _fail(task_id, "subtitles_unavailable", "没有找到本地视频内嵌字幕；可切换为文字笔记进行音频转写。")
                 return
             _check_cancel(task_id)
-            finish_caption_extraction(task_id, title, transcript, str(subtitle))
+            finish_caption_extraction(task_id, title, transcript, str(subtitle), attempt_id=attempt_id)
         except TaskCancelled:
             return
         except Exception:
@@ -1182,12 +1203,16 @@ def _process_video_file(
     page_context: str = "",
     frame_anchor_timestamps: list[float] | None = None,
     start_attempt: bool = True,
+    attempt_id=UNSET_ATTEMPT,
 ) -> None:
     work_dir = task_dir(task_id)
     from .summary_versions import snapshot_summary
     snapshot_summary(task_id)
     if start_attempt:
-        start_pipeline_attempt(task_id)
+        attempt_id = start_pipeline_attempt(task_id)
+    elif attempt_id is UNSET_ATTEMPT:
+        attempt_id = current_pipeline_attempt(task_id)
+    timing_callback = stage_duration_recorder(task_id, attempt_id)
     media_started_at = time.monotonic()
     _check_cancel(task_id)
     update_task(task_id, status="running", phase="processing_video", progress=25, message="正在标准化视频")
@@ -1227,7 +1252,7 @@ def _process_video_file(
     _check_cancel(task_id)
     update_task(task_id, media_path=str(normalized))
     mark_checkpoint(task_id, "media_ready")
-    record_stage_duration(task_id, "media", media_started_at)
+    record_stage_duration(task_id, "media", media_started_at, expected_attempt_id=attempt_id)
     transcript_started_at = time.monotonic()
     transcript_artifacts = prepare_transcript(
         task_id,
@@ -1242,8 +1267,10 @@ def _process_video_file(
     transcript = transcript_artifacts.transcript
     asr_error = transcript_artifacts.asr_error
     mark_checkpoint(task_id, "transcript_ready")
-    record_stage_duration(task_id, "transcript", transcript_started_at)
-    draft_path = write_progressive_draft(task_id, title, transcript)
+    record_stage_duration(task_id, "transcript", transcript_started_at, expected_attempt_id=attempt_id)
+    draft_path = write_progressive_draft(task_id, title, transcript, expected_attempt_id=attempt_id)
+    from .duration_estimates import begin_remaining_measurement
+    begin_remaining_measurement(task_id, attempt_id, options, transcript, integrity.duration, route="media_to_note")
     previous_note = get_task(task_id).note_path
     if draft_path and (not previous_note or not Path(previous_note).is_file()):
         update_task(
@@ -1255,15 +1282,18 @@ def _process_video_file(
 
     media_duration = integrity.duration
     visual_started_at = time.monotonic()
-    visual_artifacts = extract_visual_evidence(
-        task_id,
-        normalized,
-        title,
-        page_url,
-        options,
-        media_duration,
-        frame_anchor_timestamps,
-    )
+    with measured_stage("frames", timing_callback, cancelled=(TaskCancelled,)) as timing:
+        visual_artifacts = extract_visual_evidence(
+            task_id,
+            normalized,
+            title,
+            page_url,
+            options,
+            media_duration,
+            frame_anchor_timestamps,
+        )
+        if not (options.visual_understanding or options.local_ocr):
+            timing["status"] = "skipped"
     frames = visual_artifacts.frames
     frame_samples = visual_artifacts.frame_samples
     grids = visual_artifacts.grids
@@ -1278,11 +1308,8 @@ def _process_video_file(
         extraction_metrics=visual_artifacts.metrics,
     )
 
-    record = get_task(task_id)
-    record.frame_grids = grids
-    record.visual_windows = visual_windows
-    record.visual_index_path = str(visual_index_path)
-    save_task(record)
+    update_task(task_id, frame_grids=grids, visual_windows=visual_windows,
+                visual_index_path=str(visual_index_path))
     mark_checkpoint(task_id, "visual_ready")
     extraction_metrics = visual_artifacts.metrics.get("frame_extraction") or {}
     record_stage_duration(
@@ -1294,6 +1321,7 @@ def _process_video_file(
         grid_count=len(grids),
         cache_hit_count=extraction_metrics.get("cached_frame_count", 0),
         batch_count=extraction_metrics.get("ffmpeg_batch_process_count", 0),
+        expected_attempt_id=attempt_id,
     )
 
     def summarize_with_progress(*args, **kwargs):
@@ -1305,11 +1333,13 @@ def _process_video_file(
             else:
                 result = _summarize_with_optional_cache(
                     summarize_with_diagnostics, *args, cache_dir=work_dir / "vision_cache",
-                    cancel_check=lambda: bool(get_task(task_id).cancel_requested))
+                    cancel_check=lambda: bool(get_task(task_id).cancel_requested),
+                    section_callback=partial_section_callback(task_id, transcript),
+                    timing_callback=timing_callback)
             if not has_generated_summary(result[1]):
                 summary_status = "failed"
             return result
-        except SummarizationCancelled:
+        except (SummarizationCancelled, TaskCancelled):
             summary_status = "cancelled"
             _check_cancel(task_id)
             raise
@@ -1317,7 +1347,7 @@ def _process_video_file(
             summary_status = "failed"
             raise
         finally:
-            record_stage_duration(task_id, "summary", summary_started_at, status=summary_status)
+            record_stage_duration(task_id, "summary", summary_started_at, status=summary_status, expected_attempt_id=attempt_id)
 
     finish_note_task(
         task_id,
@@ -1341,6 +1371,7 @@ def _process_video_file(
         build_summary_diagnostics=build_summary_diagnostics,
         check_cancel=_check_cancel,
         mark_checkpoint=mark_checkpoint,
+        attempt_id=attempt_id,
     )
 
 

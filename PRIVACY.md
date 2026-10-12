@@ -61,6 +61,52 @@ snapshots can be previewed and downloaded without replacing the current user
 edition. They remain with the task's local files and are not uploaded by this
 version-history feature.
 
+## Native assistant operations
+
+The optional bounded note workflow requires an explicit per-workflow sharing choice.
+It sends the current requirement, fixed selected source and actual read results to
+the selected text model; subsequent decisions may resend those results and incur
+provider charges. It does not include prior chat or upload extra session logs.
+Local `assistant-runs` records retain the user's requirement and references to the
+operation journal, which can include read text, full edit backups and export files.
+Deleting a workflow record leaves those separately managed operation copies and
+the current note intact. Deleting its source removes related workflow records.
+Model connection keys/options are not stored in workflow records.
+See [bounded note workflows](docs/native-assistant-runs.md) for exact limits.
+
+The **Operate software** panel can read, edit or export the explicitly selected
+saved note and change this browser's reading appearance. It can also inspect one
+explicitly selected task or course, request cancellation of one task generation,
+or pause/resume future course episode preparation. These controls retain existing
+files; resuming course preparation does not start processing. A cancellation
+request is recorded separately from worker acknowledgement and completion, and
+cancellation cannot be undone. The local forms do not
+call a model. Submitting a natural-language request sends that request, the
+selected source identifier/revision and, for note tools, current reading appearance to the
+selected text-model provider. Saved note text and bounded task/course status are excluded unless the user checks
+its per-request sharing option. Planning does not execute the proposed operation;
+the user reviews its preview before applying it. This feature sends no additional
+session-log upload and provides no shell, credential or installation-file tool.
+
+Operation records are stored locally in `assistant-operations`. They can contain
+read text, complete before/after note copies for undo, generated export files,
+and bounded task/course status snapshots and control receipts. Task/course status
+snapshots omit source URLs, local paths, transcripts and model settings.
+They are separate from the original source files. The panel lets the user delete
+terminal operation records and their associated undo/export copies; doing so does
+not change the current note. Deleting the source task or material also removes
+its assistant copies; deleting a course removes its related control records.
+Forgetting a control record does not reverse cancellation or course pause. The
+task/course manifest retains the latest bounded operation marker for recovery.
+An interrupted deletion is checked again before a retained
+record can be served; damaged records or disk failures produce an explicit error.
+Copies the user downloaded or backed up remain outside this cleanup.
+
+Reading operations and their bounded undo receipts are stored with this browser's
+existing appearance preferences. Clearing site data removes that local history.
+No notification permission, provider connection or security setting is changed by
+the reading tool.
+
 ## Browser extension data
 
 The Chrome/Edge extension observes the current tab's video elements, iframe

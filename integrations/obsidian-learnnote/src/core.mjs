@@ -93,7 +93,9 @@ export function noteFrontmatter(task, syncedAt) {
 export function mergeGeneratedNote(existing, frontmatter, generated) {
   const body = String(generated || "").trim();
   const current = String(existing || "");
-  let personal = `${PERSONAL_SECTION}\n\n`;
+  const personalIndex = current.search(/^## 我的补充[^\S\r\n]*\r?$/m);
+  const beforePersonal = index => index >= 0 && (personalIndex < 0 || index < personalIndex);
+  let personal = "";
   const markerPairs = [
     [GENERATED_START, GENERATED_END],
     [LEGACY_GENERATED_START, LEGACY_GENERATED_END]
@@ -101,17 +103,30 @@ export function mergeGeneratedNote(existing, frontmatter, generated) {
   for (const [startMarker, endMarker] of markerPairs) {
     const start = current.indexOf(startMarker);
     const end = current.indexOf(endMarker);
-    if (start >= 0 && end > start) {
-      const remainder = current.slice(end + endMarker.length).trim();
-      personal = remainder || personal;
+    if (beforePersonal(start) && end > start && beforePersonal(end)) {
+      // Only the delimited region is generated. Migrate any text before it
+      // into the personal section too, so the next marker-free sync keeps it.
+      const prefix = current.slice(0, start).replace(/^---[^\S\r\n]*\r?\n[\s\S]*?\r?\n---[^\S\r\n]*(?:\r?\n|$)/, "");
+      const remainder = current.slice(end + endMarker.length);
+      personal = prefix.trim()
+        ? `${PERSONAL_SECTION}\n\n${prefix}${remainder}`
+        : remainder;
+      if (!/^## 我的补充[^\S\r\n]*\r?$/m.test(personal)) {
+        personal = `${PERSONAL_SECTION}\n\n${personal}`;
+      }
       break;
     }
   }
-  if (!current.includes(GENERATED_START) && !current.includes(LEGACY_GENERATED_START)) {
-    const personalIndex = current.search(/^## 我的补充\s*$/m);
-    if (personalIndex >= 0) personal = current.slice(personalIndex).trim();
+  if (!personal && current) {
+    const hasDamagedMarkers = markerPairs.some(([start, end]) => beforePersonal(current.indexOf(start)) || beforePersonal(current.indexOf(end)));
+    // An unrecognized or damaged note has no safely replaceable region.
+    // Keep its body as personal material rather than guessing what to erase.
+    personal = personalIndex >= 0 && !hasDamagedMarkers
+      ? current.slice(personalIndex)
+      : `${PERSONAL_SECTION}\n\n${current.replace(/^---[^\S\r\n]*\r?\n[\s\S]*?\r?\n---[^\S\r\n]*(?:\r?\n|$)/, "")}`;
   }
-  return `${frontmatter}\n\n${body}\n\n${personal}\n`;
+  if (!personal) personal = `${PERSONAL_SECTION}\n\n`;
+  return `${frontmatter}\n\n${body}\n\n${personal}`;
 }
 
 export function importedTaskId(markdown) {

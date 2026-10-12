@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "status": "candidate-unreviewed",
+  "source_sha": "a400df83e450004253d6386847a1bfc5a473e00e",
+  "fixture_id": "active-recall-demo-v1",
+  "fixture_sha256": "37c6f956d16ffa5c43872c46fb3de84e792511bd72fa98c8b3cf134f3581fde9",
+  "browser": "153.0.4234.48",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "panel_viewport": {
+    "width": 576,
+    "height": 900
+  },
+  "device_scale_factor": 1,
+  "composition": "Two separate views: complete top-of-panel before sending, and complete result card after the synthetic task. Uniform scale at least 90%; unmodified product DOM/CSS. Full panel captures retained for review.",
+  "synthetic_data": true,
+  "model_called": false,
+  "native_extension_installation_tested": false,
+  "original_content_identical_across_locales": true,
+  "visual_review": null,
+  "workflow_run_url": "https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37941628048",
+  "assets": [
+    {
+      "filename": "store-en-US-summary-1280x800.png",
+      "sha256": "d21605b186818a6acbb4d584bc42ba5e66c894e3c719d79c670d5f60d5751166",
+      "width": 1280,
+      "height": 800,
+      "locale": "en-US",
+      "state": "summary",
+      "original_title": "Active recall: a two-minute study routine",
+      "disclosure": "Separate panel views rendered in Edge, arranged for this image. Synthetic course and service replies; no model call or native extension installation.",
+      "panel_geometry": {
+        "width": 576,
+        "scrollWidth": 576,
+        "bodyScrollWidth": 576,
+        "overflow": [],
+        "lang": "en"
+      },
+      "captures": [
+        {
+          "filename": "store-source-en-US.png",
+          "sha256": "dbb0b43f7b67423bf58df2e25ab4e700d5522cf9f07c696c589791cb5dc43990",
+          "width": 576,
+          "height": 343
+        },
+        {
+          "filename": "store-result-en-US-summary.png",
+          "sha256": "36ed4b3f7eb4f20036244ab47a7f83f4afff4e482c733724f01d2372c8a96124",
+          "width": 548,
+          "height": 350
+        },
+        {
+          "filename": "store-full-panel-en-US-summary.png",
+          "sha256": "1230e3c8b4dffa32ab144860376fbe0b5d9226026061bbb098c2a2e1fb61b8ce",
+          "width": 576,
+          "height": 1600
+        }
+      ]
+    },
+    {
+      "filename": "store-en-US-transcript-1280x800.png",
+      "sha256": "93915f23d099fb080f9706e09ea252ee74ff014e793ab51349d8659521678979",
+      "width": 1280,
+      "height": 800,
+      "locale": "en-US",
+      "state": "transcript",
+      "original_title": "Active recall: a two-minute study routine",
+      "disclosure": "Separate panel views rendered in Edge, arranged for this image. Synthetic course and service replies; no model call or native extension installation.",
+      "panel_geometry": {
+        "width": 576,
+        "scrollWidth": 576,
+        "bodyScrollWidth": 576,
+        "overflow": [],
+        "lang": "en"
+      },
+      "captures": [
+        {
+          "filename": "store-source-en-US.png",
+          "sha256": "dbb0b43f7b67423bf58df2e25ab4e700d5522cf9f07c696c589791cb5dc43990",
+          "width": 576,
+          "height": 343
+        },
+        {
+          "filename": "store-result-en-US-transcript.png",
+          "sha256": "f8136d238d9e6fd83e5fa4b59098cf401d1e6de143e7890aa93d2a6061b1bd73",
+          "width": 548,
+          "height": 436
+        },
+        {
+          "filename": "store-full-panel-en-US-transcript.png",
+          "sha256": "da202f3b468935c4784ebc79cdfef5919137b85b91ef0c5324c4dcea0cfccaeb",
+          "width": 576,
+          "height": 1686
+        }
+      ]
+    },
+    {
+      "filename": "store-zh-CN-summary-1280x800.png",
+      "sha256": "ba693e5dd271842ee2ca129a04419f35addb7abd17a3eb893ff207bc4ffc5b50",
+      "width": 1280,
+      "height": 800,
+      "locale": "zh-CN",
+      "state": "summary",
+      "original_title": "Active recall: a two-minute study routine",
+      "disclosure": "图中并列展示两处独立的侧栏视图，均由 Edge 渲染。课程与服务响应为合成示例；未调用模型，未进行原生扩展安装。",
+      "panel_geometry": {
+        "width": 576,
+        "scrollWidth": 576,
+        "bodyScrollWidth": 576,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "captures": [
+        {
+          "filename": "store-source-zh-CN.png",
+          "sha256": "935987ff784385b7e58030060727d0fd54a2a266c1138d015deb60a3d7ce1581",
+          "width": 576,
+          "height": 343
+        },
+        {
+          "filename": "store-result-zh-CN-summary.png",
+          "sha256": "0311e7fc135d6933622d77a7c82f07523b638199a7dd51c8b21b505b19c26830",
+          "width": 548,
+          "height": 350
+        },
+        {
+          "filename": "store-full-panel-zh-CN-summary.png",
+          "sha256": "a6b79485c34c9375e5fc9afe1cbcf0844f3e20ad6f4a56318ca942bec7889645",
+          "width": 576,
+          "height": 1579
+        }
+      ]
+    },
+    {
+      "filename": "store-zh-CN-transcript-1280x800.png",
+      "sha256": "c2a179c67d7c7dfdcd75ac4086ffaf6998684256d800dd189561fe94249f795c",
+      "width": 1280,
+      "height": 800,
+      "locale": "zh-CN",
+      "state": "transcript",
+      "original_title": "Active recall: a two-minute study routine",
+      "disclosure": "图中并列展示两处独立的侧栏视图，均由 Edge 渲染。课程与服务响应为合成示例；未调用模型，未进行原生扩展安装。",
+      "panel_geometry": {
+        "width": 576,
+        "scrollWidth": 576,
+        "bodyScrollWidth": 576,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "captures": [
+        {
+          "filename": "store-source-zh-CN.png",
+          "sha256": "935987ff784385b7e58030060727d0fd54a2a266c1138d015deb60a3d7ce1581",
+          "width": 576,
+          "height": 343
+        },
+        {
+          "filename": "store-result-zh-CN-transcript.png",
+          "sha256": "3a0bf6a036c4ac49be1c4011fd8e7100b5ab4befbd0499aa75d00e99a78c5d3c",
+          "width": 548,
+          "height": 436
+        },
+        {
+          "filename": "store-full-panel-zh-CN-transcript.png",
+          "sha256": "8f2d986f5b91a161292c8867994a0e3c9e1e80178026e4f7ce2a4f44862a709f",
+          "width": 576,
+          "height": 1665
+        }
+      ]
+    }
+  ]
+}

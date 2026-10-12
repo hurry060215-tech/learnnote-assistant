@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import ctypes
 import hashlib
 import json
 import math
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -13,36 +11,11 @@ from pathlib import Path
 import wave
 from app.asr_chunks import CHUNK_SECONDS
 from app.config import DEFAULT_WHISPER_COMPUTE_TYPE, DEFAULT_WHISPER_DEVICE, MODEL_CACHE_DIR
+from app.resource_monitor import (
+    _disk_free_bytes as disk_free_bytes,
+    _process_rss_bytes as rss_bytes,
+)
 from app.transcriber import transcribe_audio
-
-
-class ProcessMemoryCountersEx(ctypes.Structure):
-    _fields_ = [
-        ("cb", ctypes.c_ulong),
-        ("PageFaultCount", ctypes.c_ulong),
-        ("PeakWorkingSetSize", ctypes.c_size_t),
-        ("WorkingSetSize", ctypes.c_size_t),
-        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-        ("QuotaPagedPoolUsage", ctypes.c_size_t),
-        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-        ("PagefileUsage", ctypes.c_size_t),
-        ("PeakPagefileUsage", ctypes.c_size_t),
-        ("PrivateUsage", ctypes.c_size_t),
-    ]
-
-
-def rss_bytes() -> int:
-    counters = ProcessMemoryCountersEx()
-    counters.cb = ctypes.sizeof(counters)
-    psapi = ctypes.WinDLL("Psapi.dll")
-    kernel32 = ctypes.WinDLL("kernel32.dll")
-    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-    psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.POINTER(ProcessMemoryCountersEx), ctypes.c_ulong]
-    psapi.GetProcessMemoryInfo.restype = ctypes.c_int
-    if not psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
-        raise ctypes.WinError()
-    return int(counters.WorkingSetSize)
 
 
 def sha256(path: Path) -> str:
@@ -67,27 +40,30 @@ def main() -> None:
         audio_channels = audio.getnchannels()
 
     stop_sampling = threading.Event()
-    samples: list[dict[str, float | int]] = []
+    samples: list[dict[str, float | int | None]] = []
+    sampler_errors: list[str] = []
     first_result: list[float] = []
     process_start = time.monotonic()
 
     def sample() -> None:
-        previous_wall = time.monotonic()
-        previous_cpu = time.process_time()
-        while not stop_sampling.wait(1):
-            current_wall = time.monotonic()
-            current_cpu = time.process_time()
-            cpu = 100 * (current_cpu - previous_cpu) / max(0.001, current_wall - previous_wall)
-            previous_wall, previous_cpu = current_wall, current_cpu
-            try:
+        try:
+            previous_wall = time.monotonic()
+            previous_cpu = time.process_time()
+            while not stop_sampling.wait(1):
+                current_wall = time.monotonic()
+                current_cpu = time.process_time()
+                cpu = 100 * (current_cpu - previous_cpu) / max(0.001, current_wall - previous_wall)
+                previous_wall, previous_cpu = current_wall, current_cpu
                 samples.append({
                     "elapsed_seconds": current_wall - process_start,
                     "rss_bytes": rss_bytes(),
                     "cpu_percent": cpu,
-                    "free_disk_bytes": shutil.disk_usage(audio_path.parent).free,
+                    "free_disk_bytes": disk_free_bytes(audio_path.parent),
                 })
-            except OSError:
-                continue
+        except Exception as exc:
+            # Keep unexpected sampler failures visible without saving arbitrary
+            # exception messages (which can include local paths or input data).
+            sampler_errors.append(type(exc).__name__)
 
     def progress(seconds: float, phase: str) -> None:
         if phase == "transcribing" and seconds > 0 and not first_result:
@@ -102,7 +78,16 @@ def main() -> None:
         sampler.join(timeout=3)
 
     elapsed = time.monotonic() - process_start
-    free_values = [int(item["free_disk_bytes"]) for item in samples]
+    rss_values = [int(item["rss_bytes"]) for item in samples if item["rss_bytes"] is not None]
+    cpu_values = [float(item["cpu_percent"]) for item in samples if item["cpu_percent"] is not None]
+    free_values = [int(item["free_disk_bytes"]) for item in samples if item["free_disk_bytes"] is not None]
+    metric_counts = (len(rss_values), len(cpu_values), len(free_values))
+    if sampler_errors:
+        resource_status = "error"
+    elif samples and all(count == len(samples) for count in metric_counts):
+        resource_status = "complete"
+    else:
+        resource_status = "partial" if any(metric_counts) else "unavailable"
     segments = transcript.segments
     status = "pass" if transcript.source == "faster-whisper" and bool(segments) else "fail"
     report = {
@@ -129,13 +114,18 @@ def main() -> None:
         "last_transcribed_end_seconds": round(max((float(item.end) for item in segments), default=0), 3),
         "warning": transcript.warning,
         "resource_usage": {
+            "status": resource_status,
+            "sampler_error": sampler_errors[0] if sampler_errors else None,
             "sample_count": len(samples),
-            "rss_peak_bytes": max((int(item["rss_bytes"]) for item in samples), default=0),
-            "process_cpu_percent_mean": round(sum(float(item["cpu_percent"]) for item in samples) / len(samples), 2) if samples else 0,
-            "process_cpu_percent_peak": round(max((float(item["cpu_percent"]) for item in samples), default=0), 2),
-            "disk_free_before_bytes": free_values[0] if free_values else None,
+            "rss_sample_count": len(rss_values),
+            "process_cpu_sample_count": len(cpu_values),
+            "disk_sample_count": len(free_values),
+            "rss_peak_bytes": max(rss_values, default=None),
+            "process_cpu_percent_mean": round(sum(cpu_values) / len(cpu_values), 2) if cpu_values else None,
+            "process_cpu_percent_peak": round(max(cpu_values), 2) if cpu_values else None,
+            "disk_free_before_bytes": samples[0]["free_disk_bytes"] if samples else None,
             "disk_free_min_bytes": min(free_values) if free_values else None,
-            "disk_free_after_bytes": free_values[-1] if free_values else None,
+            "disk_free_after_bytes": samples[-1]["free_disk_bytes"] if samples else None,
         },
         "provider_api_calls": 0,
         "transcript_text_saved": False,

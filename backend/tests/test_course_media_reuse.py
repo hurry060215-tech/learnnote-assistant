@@ -85,7 +85,7 @@ class CourseMediaReuseTests(unittest.TestCase):
         self.assertEqual(sum(not response.json()["deduplicated"] for response in responses), 1)
         self.assertEqual(self.schedule.call_count, 1)
         self.assertEqual(self.index.call_count, 1)
-        self.assertEqual(len(storage.list_tasks(read_only=True)), 1)
+        self.assertEqual(len(storage.list_tasks_snapshot()), 1)
         task_id = task_ids.pop()
         indexed_ids = {call.args[0].id for call in self.index.call_args_list}
         self.assertEqual(indexed_ids, {task_id})
@@ -215,7 +215,7 @@ with patch.object(main, 'resolve_model_options', side_effect=lambda value: value
             response = self.submit(prepared, **change)
             self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(self.schedule.call_count, 0)
-        self.assertEqual(storage.list_tasks(read_only=True), [])
+        self.assertEqual(storage.list_tasks_snapshot(), [])
 
     def test_deleted_or_unprepared_course_cannot_submit_a_late_handoff(self):
         course = self.course()
@@ -225,7 +225,7 @@ with patch.object(main, 'resolve_model_options', side_effect=lambda value: value
         courses.delete_course(course["id"])
         self.assertEqual(self.submit(prepared).status_code, 409)
         self.assertEqual(self.schedule.call_count, 0)
-        self.assertEqual(storage.list_tasks(read_only=True), [])
+        self.assertEqual(storage.list_tasks_snapshot(), [])
 
     def test_corrupt_manifest_alias_cannot_reuse_an_unrelated_task(self):
         course = self.course()
@@ -274,7 +274,7 @@ with patch.object(main, 'resolve_model_options', side_effect=lambda value: value
         response = self.submit(prepared)
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(self.schedule.call_count, 0)
-        self.assertEqual({task.id for task in storage.list_tasks(read_only=True)}, {task.id for task in tasks})
+        self.assertEqual({task.id for task in storage.list_tasks_snapshot()}, {task.id for task in tasks})
 
     def test_conflicting_source_identity_and_duplicate_handoff_fail_closed(self):
         owner, target = self.course(), self.course()
@@ -308,6 +308,44 @@ with patch.object(main, 'resolve_model_options', side_effect=lambda value: value
         self.assertEqual(self.episode(target)["status"], "source_unreadable")
         self.assertEqual(self.submit(prepared).status_code, 409)
         self.assertEqual(self.schedule.call_count, 0)
+
+    def test_unreadable_unbound_manifest_cannot_silently_create_duplicate(self):
+        owner, target = self.course(), self.course()
+        prepared = self.prepare(target)
+        task = self.legacy_task(owner)
+        for payload in ("broken manifest", "42"):
+            with self.subTest(payload=payload):
+                storage.task_file(task.id).write_text(payload)
+                self.assertEqual(self.episode(target)["status"], "source_unreadable")
+                self.assertEqual(self.submit(prepared).status_code, 409)
+                self.assertEqual(self.schedule.call_count, 0)
+                self.assertEqual(len(list(storage.TASK_DIR.glob("*/task.json"))), 1)
+
+    def test_prepare_and_bind_only_return_public_storage_error_codes(self):
+        course = self.course()
+        prepared = self.prepare(course)
+        task = self.legacy_task(course)
+        for operation in ("prepare", "bind"):
+            for error in (OSError("synthetic private path"), sqlite3.DatabaseError("synthetic private SQL")):
+                with self.subTest(operation=operation, error=error), patch(
+                    f"app.routers.courses.{operation}_course_episode", side_effect=error
+                ):
+                    response = self.client.post(f"/api/courses/{course['id']}/episodes/{prepared['episode_id']}/{operation}",
+                                                json={"task_id": task.id} if operation == "bind" else None)
+                self.assertEqual(response.status_code, 409, response.text)
+                self.assertEqual(response.json()["detail"]["code"], "course_unavailable")
+                self.assertNotIn("synthetic private", response.text)
+
+    def test_save_reuse_errors_never_disclose_storage_details(self):
+        course = self.course()
+        payload = {key: course[key] for key in ("title", "sources", "paused", "revision")}
+        for method, endpoint, status in (("POST", "/api/courses", 422), ("PUT", f"/api/courses/{course['id']}", 409)):
+            for error in (OSError("synthetic private path"), sqlite3.DatabaseError("synthetic private SQL")):
+                with self.subTest(method=method, error=error), patch("app.routers.courses.save_course", side_effect=error):
+                    response = self.client.request(method, endpoint, json=payload)
+                self.assertEqual(response.status_code, status, response.text)
+                self.assertEqual(response.json()["detail"]["code"], "course_unavailable")
+                self.assertNotIn("synthetic private", response.text)
 
     def test_corrupt_reservation_and_paused_or_removed_source_fail_closed(self):
         for state in ("corrupt", "paused", "removed"):

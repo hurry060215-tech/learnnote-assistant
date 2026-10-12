@@ -11,6 +11,7 @@ import re
 from urllib.parse import urlparse
 
 from .models import ResourceCandidate
+from .media_url_parsing import _media_endpoint_hint, is_telemetry_endpoint
 
 
 MEDIA_EXT_RE = re.compile(r"\.(mp4|m4v|webm|mov|mkv|flv|avi)(\?|#|$)", re.I)
@@ -18,10 +19,6 @@ AUDIO_EXT_RE = re.compile(r"\.(m4a|mp3|aac|opus|ogg|oga|wav)(\?|#|$)", re.I)
 MANIFEST_EXT_RE = re.compile(r"\.(m3u8|mpd)(\?|#|$)", re.I)
 FRAGMENT_EXT_RE = re.compile(r"\.(m4s|ts)(\?|#|$)", re.I)
 SUBTITLE_EXT_RE = re.compile(r"\.(vtt|srt|ass|ssa)(\?|#|$)", re.I)
-MEDIA_ENDPOINT_HINT_RE = re.compile(
-    r"(^|[/?&=._\s-])(api|ananas|play|player|stream|video|audio|media|source|sources|sourcelist|backup|backups|cdn|baseurl|base_url|base-url|host|domain|vod|quality|qualities|definition|definitions|format|formats|profile|profiles|variant|variants|rendition|renditions|level|levels|track|tracks|hls|dash|manifest|playlist|master|m3u8|mpd|objectid|dtoken|fileid|httpmd)([/?&=._\s-]|$)",
-    re.I,
-)
 REQUEST_BODY_REPLAY_METHODS = {"POST", "PUT", "PATCH"}
 DIRECT_MEDIA_ASSET_RE = re.compile(r"\.(?:css|js|mjs|map|wasm|woff2?|ttf|otf|eot)$", re.I)
 IMAGE_ASSET_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|svg|ico)$", re.I)
@@ -36,10 +33,6 @@ def _is_http_url(url: str) -> bool:
         return urlparse(url or "").scheme.lower() in {"http", "https"}
     except (TypeError, ValueError):
         return False
-
-
-def _media_endpoint_hint(url: str) -> bool:
-    return bool(MEDIA_ENDPOINT_HINT_RE.search(url or ""))
 
 
 def _is_clearly_non_media_asset_url(url: str) -> bool:
@@ -79,6 +72,8 @@ def classify_resource(url: str, mime: str = "") -> str:
     mime_lower = (mime or "").lower()
     if lowered.startswith("blob:"):
         return "blob"
+    if is_telemetry_endpoint(url):
+        return "unknown"
     if mime_lower.startswith("image/") or _is_clearly_non_media_asset_url(url):
         return "unknown"
     if "mpegurl" in mime_lower:
@@ -123,6 +118,8 @@ def effective_resource_kind(candidate: ResourceCandidate) -> str:
     inferred = classify_resource(candidate.url, candidate.mime)
     if inferred != "unknown":
         return inferred
+    if is_telemetry_endpoint(candidate.url):
+        return "unknown"
     declared = (candidate.kind or "").lower()
     if declared in {"video", "audio", "hls", "dash", "subtitle", "fragment", "blob"}:
         return declared

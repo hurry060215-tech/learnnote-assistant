@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import hashlib
 import ipaddress
 import json
@@ -7,6 +9,7 @@ import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
@@ -15,6 +18,9 @@ from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
 from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
+from . import assistant_operation_store as assistant_records
+from .catalog_guard import CatalogUnavailable, catalog_guard, connect_catalog
+from .catalog_health import catalog_status
 
 
 LIBRARY_SCHEMA_VERSION = 3
@@ -25,6 +31,14 @@ MATERIAL_MAX_ANCHORS = 1000
 SUPPORTED_DOCUMENT_SUFFIXES = {".pdf", ".md", ".markdown", ".html", ".htm", ".txt"}
 SUPPORTED_LOCAL_VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi"}
 _lock = threading.RLock()
+
+
+def _catalog_operation(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with _lock, catalog_guard(DATA_DIR):
+            return function(*args, **kwargs)
+    return guarded
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -124,7 +138,8 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
           ON library_materials(updated_at DESC);
         CREATE INDEX IF NOT EXISTS library_materials_task_idx
           ON library_materials(linked_task_id);
-        INSERT OR REPLACE INTO library_meta(key, value) VALUES ('schema_version', '3');
+        INSERT INTO library_meta(key, value) VALUES ('schema_version', '3')
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value;
         """
     )
     columns = {row[1] for row in connection.execute("PRAGMA table_info(library_tasks)").fetchall()}
@@ -140,18 +155,23 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
         return False
 
 
-def _connect() -> tuple[sqlite3.Connection, bool]:
+def _connect(*, allow_missing: bool = False) -> tuple[sqlite3.Connection, bool]:
     ensure_dirs()
-    connection = sqlite3.connect(_db_path(), timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout=30000")
-    fts_available = _ensure_schema(connection)
-    return connection, fts_available
+    connection = connect_catalog(_db_path(), allow_missing=allow_missing)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
+        fts_available = _ensure_schema(connection)
+        return connection, fts_available
+    except BaseException:
+        connection.close()
+        raise
 
 
 def index_task(record: TaskRecord) -> bool:
     """Best-effort indexing; task JSON remains the source of truth if SQLite is unavailable."""
-    note = _read_text(record.note_path)
+    # Incomplete generated batches must not become search or assistant evidence.
+    note = "" if Path(record.note_path).name == "draft.partial.md" else _read_text(record.note_path)
     transcript = _read_text(record.transcript_path)
     source = _safe_url(record.page_url)
     content = "\n".join(part for part in (record.title, source, note, transcript) if part)
@@ -220,7 +240,7 @@ def record_to_evidence(record: TaskRecord, text: str, kind: str):
         locator="transcript" if kind == "transcript" else "note",
         text=text,
         task_id=record.id,
-        metadata={"kind": kind, "checkpoint": record.checkpoint, "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest()},
+        metadata={"kind": kind, "checkpoint": record.checkpoint, "review_required": bool(record.summary_diagnostics.get("review_required")), "source_revision": hashlib.sha256(str(text).encode("utf-8")).hexdigest()},
     )
 
 
@@ -246,42 +266,62 @@ def transcript_evidence(record: TaskRecord, raw: str):
             locator=f"{start:.1f}-{end:.1f}s",
             text=str(segment.get("text") or ""),
             task_id=record.id,
-            metadata={"kind": "transcript", "start": start, "end": end, "source_revision": hashlib.sha256(str(segment.get("text") or "").encode("utf-8")).hexdigest()},
+            metadata={"kind": "transcript", "start": start, "end": end, "review_required": bool(record.summary_diagnostics.get("review_required")), "source_revision": hashlib.sha256(str(segment.get("text") or "").encode("utf-8")).hexdigest()},
         ))
     return items or [record_to_evidence(record, raw, "transcript")]
 
 
 def remove_task(task_id: str) -> bool:
-    evidence_ids = [
-        str(item.get("evidence_id") or "")
-        for item in evidence_for_task(task_id, limit=2000)
-        if str(item.get("evidence_id") or "")
-    ]
     try:
-        with _lock:
-            connection, fts_available = _connect()
-            try:
-                connection.execute("DELETE FROM library_tasks WHERE task_id = ?", (task_id,))
-                connection.execute("DELETE FROM library_materials WHERE linked_task_id = ?", (task_id,))
-                if fts_available:
-                    connection.execute("DELETE FROM library_tasks_fts WHERE task_id = ?", (task_id,))
-                connection.commit()
-            finally:
-                connection.close()
-        from .community import clear_community_context
-        from .study import remove_cards_for_evidence
-
-        remove_cards_for_evidence(evidence_ids)
-        clear_community_context(task_id)
-        remove_task_evidence(task_id)
+        # Linked material registrations disappear with their task. Keep the
+        # same outer operation lock for both identities before any DB lock.
+        with assistant_records.locked(DATA_DIR), ExitStack() as cleanup:
+            with _lock:
+                connection, _ = _connect()
+                try:
+                    linked = connection.execute("SELECT material_id FROM library_materials WHERE linked_task_id = ?", (task_id,)).fetchall()
+                finally:
+                    connection.close()
+            for row in linked:
+                cleanup.enter_context(assistant_records.source_deletion("material", row["material_id"], DATA_DIR))
+            _remove_task_index(task_id)
         return True
     except sqlite3.Error:
         return False
 
 
-def rebuild_index() -> dict[str, int | str]:
+def _remove_task_index(task_id: str):
+    evidence_ids = [
+        str(item.get("evidence_id") or "")
+        for item in evidence_for_task(task_id, limit=2000)
+        if str(item.get("evidence_id") or "")
+    ]
     with _lock:
         connection, fts_available = _connect()
+        try:
+            connection.execute("DELETE FROM library_tasks WHERE task_id = ?", (task_id,))
+            connection.execute("DELETE FROM library_materials WHERE linked_task_id = ?", (task_id,))
+            if fts_available:
+                connection.execute("DELETE FROM library_tasks_fts WHERE task_id = ?", (task_id,))
+            connection.commit()
+        finally:
+            connection.close()
+    from .community import clear_community_context
+    from .study import remove_cards_for_evidence
+
+    remove_cards_for_evidence(evidence_ids)
+    clear_community_context(task_id)
+    remove_task_evidence(task_id)
+
+
+@_catalog_operation
+def rebuild_index() -> dict:
+    catalog = catalog_status(DATA_DIR)
+    if catalog["state"] in {"corrupt", "incompatible"} or catalog.get("unresolved_sidecars") or (catalog["recovery_required"] and not any(TASK_DIR.glob("*/task.json"))):
+        return {"status": "blocked", "indexed": 0, "skipped": 0, "catalog": catalog,
+                "code": "catalog_recovery_required", "schema_version": LIBRARY_SCHEMA_VERSION}
+    with _lock:
+        connection, fts_available = _connect(allow_missing=True)
         try:
             connection.execute("DELETE FROM library_tasks")
             if fts_available:
@@ -299,7 +339,8 @@ def rebuild_index() -> dict[str, int | str]:
             skipped += 1
             continue
         indexed += int(index_task(record))
-    return {"status": "pass", "indexed": indexed, "skipped": skipped, "schema_version": LIBRARY_SCHEMA_VERSION}
+    return {"status": "partial" if catalog["recovery_required"] else "pass", "indexed": indexed, "skipped": skipped,
+            "schema_version": LIBRARY_SCHEMA_VERSION, "catalog": catalog_status(DATA_DIR)}
 
 
 def _search_term(value: str) -> str:
@@ -340,6 +381,12 @@ def search_library(query: str = "", limit: int = 50) -> list[dict[str, object]]:
 
 def library_status() -> dict[str, object]:
     with _lock:
+        catalog = catalog_status(DATA_DIR)
+        if catalog["state"] != "healthy":
+            return {"schema_version": LIBRARY_SCHEMA_VERSION, "catalog": catalog,
+                    "indexed_task_count": catalog["indexed_task_count"], "material_count": catalog["material_count"],
+                    "fts_available": False, "path": str(_db_path()),
+                    "bytes": _db_path().stat().st_size if _db_path().exists() else 0}
         connection, fts_available = _connect()
         try:
             count = int(connection.execute("SELECT COUNT(*) FROM library_tasks").fetchone()[0])
@@ -347,6 +394,7 @@ def library_status() -> dict[str, object]:
             path = _db_path()
             return {
                 "schema_version": LIBRARY_SCHEMA_VERSION,
+                "catalog": catalog,
                 "indexed_task_count": count,
                 "material_count": material_count,
                 "fts_available": fts_available,
@@ -377,8 +425,11 @@ def duplicate_groups() -> list[dict[str, object]]:
             connection.close()
 
 
+@_catalog_operation
 def backup_library() -> Path:
     """Create a SQLite-consistent index snapshot (not a full data backup)."""
+    if catalog_status(DATA_DIR)["recovery_required"]:
+        raise CatalogUnavailable("catalog_recovery_required")
     export_dir = DATA_DIR / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -408,6 +459,7 @@ def backup_library() -> Path:
     return target
 
 
+@_catalog_operation
 def restore_library(backup_path: Path) -> dict[str, object]:
     """Logically migrate a validated task index into a fresh local database."""
     candidate = Path(backup_path).resolve()
@@ -506,7 +558,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
                 export_dir = DATA_DIR / "exports"
                 export_dir.mkdir(parents=True, exist_ok=True)
                 rollback = export_dir / f"learnnote-library-pre-restore-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}.sqlite3"
-                live = sqlite3.connect(target)
+                live = connect_catalog(target)
                 snapshot = sqlite3.connect(rollback)
                 try:
                     live.backup(snapshot)
@@ -518,7 +570,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
             # The database also owns documents and canonical evidence. Restore
             # only the validated task projection in one SQLite transaction;
             # replacing the whole file silently erased those unrelated tables.
-            live = sqlite3.connect(target)
+            live = connect_catalog(target)
             sanitized = sqlite3.connect(temporary)
             try:
                 live_fts = _ensure_schema(live)
@@ -542,7 +594,7 @@ def restore_library(backup_path: Path) -> dict[str, object]:
         temporary.unlink(missing_ok=True)
         raise
     status = library_status()
-    status.update({"backup_scope": "task_index_only", "rollback_snapshot_created": rollback_created})
+    status.update({"backup_scope": "task_index_only", "restore_scope": "task_index_only", "rollback_snapshot_created": rollback_created})
     return status
 
 
@@ -705,6 +757,12 @@ def delete_material(material_id: str) -> dict[str, object]:
     """Permanently remove one app-owned material and only its own evidence."""
 
     material_key = str(material_id or "")[:128]
+    with assistant_records.source_deletion("material", material_key, DATA_DIR):
+        return _delete_material_locked(material_key)
+
+
+@_catalog_operation
+def _delete_material_locked(material_key):
     with _lock:
         connection, _ = _connect()
         try:
@@ -797,11 +855,11 @@ def _split_long_section(text: str, max_chars: int = 6000) -> list[str]:
     return chunks
 
 
-def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "") -> tuple[str, list[tuple[str, str]], dict[str, object]]:
+def _material_sections(filename: str, content: bytes, content_type: str, encoding: str = "", *, preserve_original: bool = True) -> tuple[str, list[tuple[str, str]], dict[str, object]]:
     text, evidence_source_type, decoding = extract_import_text_with_metadata(filename, content, content_type, encoding=encoding)
     suffix = Path(filename).suffix.lower()
     sections: list[tuple[str, str]] = []
-    raw_info = preserve_raw_import(content, filename)
+    raw_info = preserve_raw_import(content, filename) if preserve_original else {"sha256": hashlib.sha256(content).hexdigest(), "byte_count": len(content)}
     metadata: dict[str, object] = {
         "extraction": "local",
         "ocr_performed": False,
@@ -855,6 +913,7 @@ def _find_material_by_sha(connection: sqlite3.Connection, digest: str) -> sqlite
     return connection.execute("SELECT * FROM library_materials WHERE sha256 = ?", (digest,)).fetchone()
 
 
+@_catalog_operation
 def import_document_material(filename: str, content: bytes, content_type: str = "", encoding: str = "") -> dict[str, object]:
     safe_name = _safe_material_filename(filename)
     suffix = Path(safe_name).suffix.lower()
@@ -1040,6 +1099,11 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def task_material_source_uri(record: TaskRecord) -> str:
+    """Stable, sanitized source identity shared by video aliases and readers."""
+    return _safe_url(record.page_url) or f"local://tasks/{record.id}"
+
+
 def register_task_material(record: TaskRecord) -> dict[str, object]:
     media_path = Path(record.media_path or record.source_media_path) if (record.media_path or record.source_media_path) else None
     digest = str(record.source_identity.media_sha256 or "").strip()
@@ -1062,7 +1126,7 @@ def register_task_material(record: TaskRecord) -> dict[str, object]:
     evidence_ids = [str(item.get("evidence_id") or "") for item in anchors if item.get("evidence_id")]
     material_id = uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
-    source_uri = _safe_url(record.page_url) or f"local://tasks/{record.id}"
+    source_uri = task_material_source_uri(record)
     filename = media_path.name if media_path else ""
     status = "ready" if record.status == "success" else ("failed" if record.status == "failed" else "processing")
     metadata = {
@@ -1074,6 +1138,13 @@ def register_task_material(record: TaskRecord) -> dict[str, object]:
     with _lock:
         connection, _ = _connect()
         try:
+            # Evidence loading releases the process lock. Recheck after taking
+            # the SQLite write reservation so concurrent registrations also
+            # converge when they arrive through different processes.
+            connection.execute("BEGIN IMMEDIATE")
+            existing = _find_material_by_sha(connection, digest)
+            if existing is not None:
+                return _material_row(existing, deduplicated=True)
             connection.execute(
                 """INSERT INTO library_materials
                    (material_id, schema_version, title, filename, source_type, content_type,
@@ -1113,7 +1184,7 @@ def material_anchors(material_id: str, limit: int = 500) -> list[dict[str, objec
     cap = max(1, min(int(limit or 500), 1000))
     selected = evidence_ids[:cap]
     placeholders = ",".join("?" for _ in selected)
-    connection = sqlite3.connect(_db_path(), timeout=30)
+    connection = connect_catalog(_db_path())
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
@@ -1173,13 +1244,19 @@ def material_content(material_id: str) -> str:
         # Old index-only documents remain readable from their complete anchors.
         anchors = material_anchors(material_id, 1000)
         if not anchors:
+            if str(exc) == "material_no_extractable_text" and material["source_type"] == "pdf" and not material["evidence_ids"]:
+                # Only a valid scan with no indexed text gets an empty reader.
+                # Missing evidence from a prior OCR must still report failure.
+                if _file_sha256(source) != material["sha256"]:
+                    raise ValueError("material_source_integrity_mismatch") from exc
+                return ""
             raise
         return "\n\n".join(str(item["text"]) for item in anchors)
 
 
-def redecode_document_material(material_id: str, encoding: str) -> dict[str, object]:
+def redecode_document_material(material_id: str, encoding: str, *, expected_updated_at: str | None = None) -> dict[str, object]:
     """Re-parse one stored text document from its unchanged original bytes."""
-    return _rewrite_document_material(material_id, encoding, rebuilding=False)
+    return _rewrite_document_material(material_id, encoding, rebuilding=False, expected_updated_at=expected_updated_at)
 
 
 def rebuild_document_material(material_id: str) -> dict[str, object]:
@@ -1187,12 +1264,15 @@ def rebuild_document_material(material_id: str) -> dict[str, object]:
     return _rewrite_document_material(material_id, "", rebuilding=True)
 
 
-def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool) -> dict[str, object]:
+@_catalog_operation
+def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: bool, expected_updated_at: str | None = None) -> dict[str, object]:
     requested = str(encoding or "").strip()[:40]
     if not requested and not rebuilding:
         raise ValueError("material_redecode_encoding_required")
     with _lock:
         material = get_material(material_id)
+        if expected_updated_at is not None and material.get("updated_at") != expected_updated_at:
+            raise ValueError("material_redecode_changed_reload_required")
         if material.get("linked_task_id"):
             raise ValueError("material_rebuild_requires_document")
         if not rebuilding and (str(material.get("source_type") or "") == "pdf" or Path(str(material.get("filename") or "")).suffix.lower() == ".pdf"):
@@ -1211,13 +1291,11 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
         if rebuilding:
             requested = str(metadata.get("decoding_hint") or "")
         if rebuilding and metadata.get("ocr_performed"):
-            ocr_path = source.parent / "ocr.json"
-            if ocr_path.resolve().parent != source.parent or not ocr_path.is_file() or ocr_path.stat().st_size > MATERIAL_IMPORT_MAX_BYTES:
-                raise ValueError("material_rebuild_ocr_cache_invalid")
-            ocr = json.loads(ocr_path.read_text(encoding="utf-8"))
-            revision = hashlib.sha256(json.dumps(ocr, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
-            if revision != metadata.get("source_revision") or not isinstance(ocr, dict) or not isinstance(ocr.get("pages"), list):
-                raise ValueError("material_rebuild_ocr_cache_invalid")
+            from .pdf_ocr_cache import read_ocr_cache
+            try:
+                ocr = read_ocr_cache(material, source.parent)
+            except ValueError as exc:
+                raise ValueError("material_rebuild_ocr_cache_invalid") from exc
             sections = [(f"page {max(1, int(page.get('page') or 1))}", str(page.get("text") or "").strip())
                         for page in ocr["pages"] if isinstance(page, dict) and str(page.get("text") or "").strip()]
             source_type, decoding = "pdf", metadata.copy()
@@ -1252,6 +1330,10 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
                 filename=filename,
                 decoding_metadata=decoding,
             ))
+            if rebuilding and metadata.get("ocr_performed"):
+                page = next(page for page in ocr["pages"] if f"page {page['page']}" == locator)
+                items[-1].metadata.update({"ocr_performed": True, "ocr_verified": False,
+                                           "ocr_confidence": page["confidence"], "verification": "unreviewed"})
 
         previous_revision = str(metadata.get("source_revision") or "")
         metadata.update(decoding)
@@ -1333,56 +1415,114 @@ def _rewrite_document_material(material_id: str, encoding: str, *, rebuilding: b
         return get_material(material_id)
 
 
-def apply_material_ocr(material_id: str, ocr_result: dict[str, object]) -> dict[str, object]:
-    material = get_material(material_id)
-    if str(material.get("source_type") or "") != "pdf":
-        raise ValueError("material_ocr_requires_pdf")
-    pages = ocr_result.get("pages") if isinstance(ocr_result, dict) else []
-    if not isinstance(pages, list):
-        raise ValueError("material_ocr_invalid_result")
-    for evidence_id in [str(value) for value in material.get("evidence_ids", []) if str(value)]:
-        remove_evidence(evidence_id)
-    evidence_ids: list[str] = []
-    for page in pages:
-        if not isinstance(page, dict):
-            continue
-        text = str(page.get("text") or "").strip()
-        if not text:
-            continue
-        page_number = max(1, int(page.get("page") or 1))
-        evidence_ids.append(add_evidence(record_to_material_evidence(
-            evidence_id=f"material-{material_id}-ocr-{page_number:04d}",
-            source_type="pdf",
-            title=str(material["title"]),
-            source_uri=str(material["source_uri"]),
-            locator=f"page {page_number}",
-            text=text,
-            material_id=material_id,
-            filename=str(material["filename"]),
-        )).evidence_id)
-    root = (DATA_DIR / "materials" / str(material_id)).resolve()
-    if not root.is_relative_to(DATA_DIR.resolve()):
-        raise ValueError("invalid_material_path")
-    ocr_path = root / "ocr.json"
-    _atomic_text(ocr_path, json.dumps(ocr_result, ensure_ascii=False, indent=2))
-    metadata = dict(material.get("metadata") or {})
-    metadata.update({
-        "ocr_performed": True,
-        "ocr_engine": ocr_result.get("engine", ""),
-        "ocr_path": str(ocr_path),
-        "ocr_verified": False,
-        "ocr_page_count": int(ocr_result.get("page_count") or len(pages)),
-        "ocr_processed_page_count": int(ocr_result.get("processed_page_count") or len(pages)),
-        "ocr_missing_page_range": ocr_result.get("missing_page_range") or [],
-        "source_revision": hashlib.sha256(json.dumps(ocr_result, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
-    })
-    connection, _ = _connect()
-    try:
-        connection.execute(
-            "UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?, owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?",
-            ("ready" if evidence_ids and not ocr_result.get("missing_page_range") else ("ocr_partial" if evidence_ids else "ocr_required"), len(evidence_ids), json.dumps(evidence_ids, ensure_ascii=False), json.dumps(metadata, ensure_ascii=False), datetime.now(timezone.utc).isoformat(), str(material_id)),
-        )
-        connection.commit()
-    finally:
-        connection.close()
-    return get_material(material_id)
+@_catalog_operation
+def apply_material_ocr(material_id: str, ocr_result: dict) -> dict:
+    from .pdf_ocr import summarize_ocr
+    from .pdf_ocr_cache import _revision, read_ocr_cache
+
+    with _lock:
+        material = get_material(material_id)
+        if material["source_type"] != "pdf":
+            raise ValueError("material_ocr_requires_pdf")
+        source = material_source_path(material_id)
+        if _file_sha256(source) != material["sha256"]:
+            raise ValueError("material_source_integrity_mismatch")
+        cached = read_ocr_cache(material, source.parent)
+        pages = ocr_result.get("pages") if isinstance(ocr_result, dict) else None
+        if not isinstance(pages, list) or not pages:
+            raise ValueError("material_ocr_invalid_result")
+        total = ocr_result.get("page_count") or (cached or {}).get("page_count") or max(int(page.get("page") or 0) for page in pages)
+        batch = summarize_ocr(pages, total, engine=ocr_result.get("engine", ""), failed_pages=ocr_result.get("failed_pages") or [])
+        if cached and cached["page_count"] != batch["page_count"]:
+            raise ValueError("material_ocr_invalid_result")
+        # Existing pages win, including successful blank pages. Concurrent/retried
+        # batches cannot overwrite already usable text or its confidence.
+        merged = {page["page"]: page for page in batch["pages"]}
+        merged.update({page["page"]: page for page in (cached or {}).get("pages", [])})
+        result = summarize_ocr(list(merged.values()), total, engine=(cached or {}).get("engine") or batch["engine"], failed_pages=batch["failed_pages"])
+        revision = _revision(result)
+        cache_path = source.parent / f"ocr-{revision}.json"
+        serialized = json.dumps(result, ensure_ascii=False, indent=2)
+        if len(serialized.encode("utf-8")) > MATERIAL_IMPORT_MAX_BYTES:
+            raise ValueError("material_ocr_cache_too_large")
+        old_metadata = dict(material.get("metadata") or {})
+        old_cache = source.parent / Path(str(old_metadata.get("ocr_path") or "ocr.json")).name
+        now = datetime.now(timezone.utc).isoformat()
+        scores = [page["confidence"] for page in result["pages"] if page["confidence"] is not None]
+        metadata = {**old_metadata, "ocr_performed": True, "ocr_engine": result["engine"], "ocr_path": str(cache_path),
+                    "ocr_verified": False, "ocr_page_count": result["page_count"],
+                    "ocr_processed_page_count": result["processed_page_count"],
+                    "ocr_missing_page_range": result["missing_page_range"], "ocr_missing_pages": result["missing_pages"],
+                    "ocr_confidence": round(sum(scores) / len(scores), 4) if scores else None,
+                    "source_revision": revision}
+        anchors = {row["locator"]: row["evidence_id"] for row in material_anchors(material_id, 1000)}
+        if cached:
+            previous_pages = [page for page in cached["pages"] if page["text"]]
+            previous_ids = material["evidence_ids"]
+            if len(previous_pages) != len(previous_ids):
+                raise ValueError("material_ocr_identity_invalid")
+            for page, evidence_id in zip(previous_pages, previous_ids):
+                anchors.setdefault(f"page {page['page']}", evidence_id)
+        connection, _ = _connect()
+        wrote_cache = False
+        try:
+            ensure_evidence_schema(connection)
+            connection.commit()
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute("SELECT * FROM library_materials WHERE material_id=?", (material_id,)).fetchone()
+            if current is None or any(_material_row(current)[field] != material[field] for field in ("updated_at", "sha256", "filename", "evidence_ids", "metadata")):
+                raise ValueError("material_ocr_changed_reload_required")
+            evidence_fts = bool(connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_evidence_fts'").fetchone())
+            evidence_ids = []
+            for page in result["pages"]:
+                if not page["text"]:
+                    continue
+                locator = f"page {page['page']}"
+                evidence_id = anchors.get(locator) or f"material-{material_id}-ocr-{page['page']:04d}"
+                existing = connection.execute("SELECT * FROM source_evidence WHERE evidence_id=?", (evidence_id,)).fetchone()
+                if existing is not None and (existing["task_id"] or json.loads(existing["metadata_json"] or "{}").get("material_id") != material_id):
+                    raise ValueError("material_ocr_identity_invalid")
+                item = record_to_material_evidence(evidence_id=evidence_id, source_type="pdf", title=material["title"],
+                                                          source_uri=material["source_uri"], locator=locator, text=page["text"],
+                                                          material_id=material_id, filename=material["filename"])
+                item.metadata.update({"ocr_performed": True, "ocr_verified": False, "ocr_confidence": page["confidence"], "verification": "unreviewed"})
+                connection.execute("""INSERT OR REPLACE INTO source_evidence
+                    (evidence_id,schema_version,source_type,title,source_uri,locator,text,task_id,metadata_json,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (item.evidence_id, item.schema_version, item.source_type, item.title, item.source_uri, item.locator,
+                     item.text, "", json.dumps(item.metadata, ensure_ascii=False), existing["created_at"] if existing else now))
+                if evidence_fts:
+                    connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id=?", (evidence_id,))
+                    connection.execute("INSERT INTO source_evidence_fts(evidence_id,title,source_uri,locator,text) VALUES (?,?,?,?,?)",
+                                       (evidence_id, item.title, item.source_uri, item.locator, item.text))
+                evidence_ids.append(evidence_id)
+            # Publish an immutable cache before the SQLite pointer. A failure or
+            # interruption leaves the previous pointer/cache/anchors usable.
+            if cache_path.exists():
+                if cache_path.resolve().parent != source.parent.resolve() or _revision(json.loads(cache_path.read_text(encoding="utf-8"))) != revision:
+                    raise ValueError("material_ocr_cache_invalid")
+            else:
+                _atomic_text(cache_path, serialized)
+                wrote_cache = True
+            connection.execute("""UPDATE library_materials SET status=?, anchor_count=?, evidence_ids_json=?,
+                owns_evidence=1, metadata_json=?, updated_at=? WHERE material_id=?""",
+                ("ocr_partial" if result["missing_pages"] else "ready", len(evidence_ids), json.dumps(evidence_ids),
+                 json.dumps(metadata, ensure_ascii=False), now, material_id))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            if wrote_cache:
+                try:
+                    cache_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+        finally:
+            connection.close()
+        # Only remove our superseded generated cache after the new pointer commits.
+        if old_cache != cache_path and re.fullmatch(r"ocr-[a-f0-9]{64}\.json", old_cache.name):
+            try:
+                old_cache.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return get_material(material_id)

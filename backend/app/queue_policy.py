@@ -2,6 +2,18 @@
 import os
 
 LANES = ("heavy", "light", "download")
+LIGHT_TASK_KINDS = {"light", "summary", "local_light", "page_light"}
+LANE_PENDING_LIMIT = 12
+
+
+class QueueFull(ValueError):
+    pass
+
+
+def task_lane(kind: str) -> str:
+    if kind == "page_download":
+        return "download"
+    return "light" if kind in LIGHT_TASK_KINDS else "heavy"
 
 
 def lane_budgets() -> dict[str, int]:

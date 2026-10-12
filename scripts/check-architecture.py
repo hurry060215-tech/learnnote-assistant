@@ -4,12 +4,13 @@ import re
 from pathlib import Path
 
 from architecture_graph import dependency_cycles, python_import_edges
+from classic_styles import classic_style_violations
 from javascript_graph import javascript_violations
 
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -18,32 +19,53 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
-    "backend/app/main.py": 4800,
-    "backend/app/downloader.py": 2800,
+    "backend/app/main.py": 4705,
+    "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
-    "web/app.js": 9650,
-    "web/styles.css": 12920,
-    "backend/app/media_url_parsing.py": 270,
+    "web/app.js": 9455,
+    "web/styles.css": 12262,
+    "backend/app/media_source_context.py": 300,
+    "backend/app/media_url_parsing.py": 290,
     "backend/app/media_json_discovery.py": 440,
     "backend/app/media_discovery.py": 320,
     "backend/app/media_manifests.py": 150,
     "backend/app/qa_evidence.py": 400,
     "backend/app/qa_history.py": 130,
-    "extension/page_hook.js": 2850,
+    "backend/app/task_archives.py": 140,
+    "extension/page_hook.js": 2855,
     "extension/background.js": 2500,
     "extension/content.js": 2200,
     "extension/content-study-evidence.js": 110,
+    "extension/sidepanel.js": 1523,
+    "extension/sidepanel-progress.js": 220,
     "extension/capture-classification.js": 290,
     "extension/capture-ranking.js": 320,
     "web/task-format.js": 210,
     "web/task-display.js": 225,
+    "web/task-list.js": 215,
     "web/learning.js": 600,
     "web/personal-notes.js": 300,
     "web/courses.js": 500,
     "backend/app/courses.py": 400,
+    "backend/app/course_comparison.py": 140,
+    "backend/app/course_graph_export.py": 190,
+    "backend/app/graph_snapshot.py": 320,
+    "backend/app/routers/graph_snapshot.py": 90,
+    "web/course-graph-snapshot.js": 380,
     "backend/app/local_ocr.py": 250,
     "backend/app/task_queue.py": 400,
     "backend/app/upload_limits.py": 250,
+    "backend/app/progressive_sections.py": 180,
+    "backend/app/partial_note_projection.py": 270,
+    "backend/app/partial_outline_projection.py": 65,
+    "backend/app/text_chunk_sections.py": 80,
+    "backend/app/reading_notes.py": 115,
+    "backend/app/catalog_guard.py": 120,  # Pre-open sidecar and schema-version safety checks.
+    "backend/app/catalog_health.py": 70,
+    "backend/app/catalog_snapshot.py": 180,
+    "backend/app/catalog_recovery.py": 300,
+    "backend/app/routers/catalog_recovery.py": 100,
+    "web/material-catalog-recovery.js": 160,
 }
 
 
@@ -55,13 +77,21 @@ LEGACY_DEFERRED_EDGES = {
     ("app.task_queue", "app.range_learning"): "Dispatch a recovered range intent",
 }
 PURE_MODULE_DEPENDENCIES = {
-    "media_url_parsing": set(),
+    "course_comparison": {"concept_identity"},
+    "graph_snapshot": {"concept_identity", "course_comparison"},
+    "media_source_context": {"models", "media_kinds", "media_candidate_ranking", "media_url_parsing"},
+    "media_url_parsing": {"media_telemetry"},
+    "media_telemetry": set(),
     "media_manifests": set(),
     "media_json_discovery": {"models", "media_kinds", "media_candidate_ranking", "media_url_parsing"},
     "media_discovery": {"models", "media_kinds", "media_candidate_ranking", "media_json_discovery", "media_url_parsing"},
     "qa_evidence": {"models", "transcript_passages"},
     "qa_history": {"models", "qa_evidence"},
-    "models": {"app"},
+    "task_archives": {"models"},
+    "models": {"app", "subtitle_probe"},
+    "subtitle_probe": set(),
+    "text_chunk_sections": {"reading_notes"},
+    "reading_notes": {"models"},
 }
 
 
@@ -90,13 +120,16 @@ def import_violations(app_root: Path = APP) -> list[str]:
 
 
 # Keep the complete, explicitly listed extraction group bounded alongside its entry points.
-EXTRACTED_BACKEND_BUDGET = 9250
+# #269 adds strict credential-origin parsing after the unchanged #143 extraction.
+EXTRACTED_BACKEND_BUDGET = 9300
 EXTRACTED_BACKEND_MODULES = (
-    "main", "downloader", "media_url_parsing", "media_json_discovery",
-    "media_discovery", "media_manifests", "qa_evidence", "qa_history",
+    "main", "downloader", "media_source_context", "media_url_parsing", "media_json_discovery",
+    "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
+CLASSIC_TASK_SCRIPT_BUDGET = 10100
+CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js")
 
 
 def aggregate_size_violations() -> list[str]:
@@ -107,6 +140,9 @@ def aggregate_size_violations() -> list[str]:
     size = sum((ROOT / "extension" / name).stat().st_size for name in EXTENSION_CAPTURE_SCRIPTS)
     if size > EXTENSION_SCRIPT_BUDGET_BYTES:
         violations.append(f"Extension capture scripts have {size} bytes; bundle budget is {EXTENSION_SCRIPT_BUDGET_BYTES}")
+    lines = sum(len((ROOT / "web" / name).read_text(encoding="utf-8").splitlines()) for name in CLASSIC_TASK_SCRIPTS)
+    if lines > CLASSIC_TASK_SCRIPT_BUDGET:
+        violations.append(f"Classic task scripts have {lines} lines; combined budget is {CLASSIC_TASK_SCRIPT_BUDGET}")
     return violations
 
 
@@ -126,20 +162,21 @@ def module_size_violations() -> list[str]:
     styles = list((ROOT / "web").glob("*.css"))
     runtime_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name in active_names)
     legacy_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name not in active_names)
-    if runtime_lines > 2250:
-        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 2250")
+    # Bounded TOC resize/settings and note editor controls retain the existing visual effects.
+    if runtime_lines > 2310:
+        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 2310")
     if legacy_lines > 23000:
         violations.append(f"Historical web CSS has {legacy_lines} lines; budget is 23000")
     return violations
 
 
 def main() -> int:
-    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS) + module_size_violations() + aggregate_size_violations()
+    violations = import_violations() + javascript_violations(ROOT, EXTENSION_CAPTURE_SCRIPTS, CLASSIC_TASK_SCRIPTS) + classic_style_violations(ROOT) + module_size_violations() + aggregate_size_violations()
     if violations:
         print("Architecture boundary violations:")
         print("\n".join(violations))
         return 1
-    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, Python/JavaScript cycle graphs, classic load order, and {len(MODULE_SIZE_LIMITS)} size guards checked")
+    print(f"Architecture boundaries pass: {len(BOUNDARY_MODULES)} boundary modules, {len(ROUTER_MODULES)} routers, {len(STATE_MODULES)} state modules, Python/JavaScript cycle graphs, classic script/CSS load order and aggregate budgets, and {len(MODULE_SIZE_LIMITS)} size guards checked")
     return 0
 
 

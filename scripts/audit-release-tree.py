@@ -17,7 +17,7 @@ REQUIRED_EXTENSION_FILES = {
     "page_hook.js",
     "sidepanel.html",
     "sidepanel.css",
-    "sidepanel.js",
+    "sidepanel.js", "sidepanel-progress.js",
     "i18n.js",
     "INSTALL.txt",
 }
@@ -44,19 +44,33 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/index.html"),
     Path("_internal/web/desk.css"),
     Path("_internal/web/desk.js"),
+    Path("_internal/web/study-quiz.js"),
     Path("_internal/web/desk-api.js"),
+    Path("_internal/web/personal-anchors.js"),
     Path("_internal/web/desk-tools.js"),
+    Path("_internal/web/course-question.js"),
+    Path("_internal/web/course-concepts.js"),
+    Path("_internal/web/course-graph-snapshot.js"),
+    Path("_internal/web/desk-material-encoding.js"),
+    Path("_internal/web/desk-material-batch.js"),
+    Path("_internal/web/material-batch.js"),
+
+    Path("_internal/web/material-ocr.js"),
+    Path("_internal/web/material-catalog-recovery.js"),
     Path("_internal/web/desk-product.js"),
     Path("_internal/web/desk-settings.js"),
     Path("_internal/web/desk-interactions.js"),
     Path("_internal/web/desk-layout.js"),
     Path("_internal/web/desk-chat-stream.js"),
     Path("_internal/web/desk-progress.js"),
+    Path("_internal/web/desk-events.js"),
+    Path("_internal/web/reader-progress.js"),
     Path("_internal/web/desk-connections.js"),
     Path("_internal/web/desk-drafts.js"),
     Path("_internal/web/desk-summary-versions.js"),
     Path("_internal/web/desk-profile.js"),
     Path("_internal/web/source-video.js"),
+    Path("_internal/web/claim-timeline.js"),
     Path("_internal/web/markdown.js"),
 
 }
@@ -82,7 +96,7 @@ def audit_release_tree(root: Path) -> dict:
     root_files = {path.name for path in root.iterdir() if path.is_file()}
     missing_root = sorted(REQUIRED_ROOT_FILES - root_files)
     missing_bundled = sorted(path.as_posix() for path in REQUIRED_BUNDLED_FILES if not (root / path).is_file())
-    legacy_ui = [str(path.relative_to(root)) for path in files if path.parent == root / "_internal/web" and path.name in {'model-setup.js', 'experience.css', 'editorial.js', 'product.css', 'app.js', 'personal-notes.js', 'learning.js', 'styles.css', 'courses.js', 'workspace.css', 'editorial.css', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'classic.html', 'mature.css'}]
+    legacy_ui = [str(path.relative_to(root)) for path in files if path.parent == root / "_internal/web" and path.name in {'model-setup.js', 'experience.css', 'editorial.js', 'product.css', 'app.js', 'personal-notes.js', 'learning.js', 'styles.css', 'classic-workbench.css', 'classic-interactions.css', 'classic-study.css', 'courses.js', 'workspace.css', 'editorial.css', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'task-list.js', 'classic.html', 'mature.css'}]
     license_errors: list[str] = []
     ffmpeg_builds: list[dict] = []
     for executable in files:

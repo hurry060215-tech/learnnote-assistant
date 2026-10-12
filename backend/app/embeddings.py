@@ -18,12 +18,17 @@ def embedding_status() -> dict[str, Any]:
     }
 
 
-def semantic_rank(query: str, documents: list[dict[str, object]], limit: int = 12) -> list[dict[str, object]]:
+def semantic_rank(query: str, documents: list[dict[str, object]], limit: int = 12, *, local_only: bool = False) -> list[dict[str, object]]:
     if not find_spec("sentence_transformers"):
         raise RuntimeError("local_embedding_unavailable")
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(DEFAULT_EMBEDDING_MODEL)
+    try:
+        model = SentenceTransformer(DEFAULT_EMBEDDING_MODEL, **({"local_files_only": True} if local_only else {}))
+    except (OSError, ValueError, RuntimeError) as exc:
+        if local_only:
+            raise RuntimeError("local_embedding_unavailable") from exc
+        raise
     texts = [f"{item.get('title', '')}\n{item.get('text', '')}" for item in documents]
     vectors = model.encode([query, *texts], normalize_embeddings=True)
     query_vector = vectors[0]

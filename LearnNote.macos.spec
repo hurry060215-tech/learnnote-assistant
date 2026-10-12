@@ -22,6 +22,11 @@ hiddenimports += collect_submodules("app")
 hiddenimports += collect_submodules("fastapi")
 hiddenimports += collect_submodules("starlette")
 hiddenimports += collect_submodules("uvicorn")
+for package in ("markdown_it", "mdurl"):
+    package_datas, package_binaries, package_imports = collect_all(package)
+    datas += package_datas
+    binaries += package_binaries
+    hiddenimports += package_imports
 
 for optional_package in ("webview", "imageio_ffmpeg", "faster_whisper", "tzdata"):
     try:
@@ -47,7 +52,7 @@ a = Analysis(
     optimize=0,
 )
 a.datas += Tree("backend/app", prefix="backend/app", excludes=["__pycache__", "*.pyc"])
-a.datas += Tree("web", prefix="web", excludes=['tests', 'tests/*', 'classic.html', 'app.js', 'editorial.js', 'model-setup.js', 'learning.js', 'personal-notes.js', 'courses.js', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'styles.css', 'workspace.css', 'product.css', 'mature.css', 'editorial.css', 'experience.css'])
+a.datas += Tree("web", prefix="web", excludes=['tests', 'tests/*', 'classic.html', 'app.js', 'editorial.js', 'model-setup.js', 'learning.js', 'personal-notes.js', 'courses.js', 'i18n.js', 'task-links.js', 'task-format.js', 'task-display.js', 'task-list.js', 'styles.css', 'classic-workbench.css', 'classic-interactions.css', 'classic-study.css', 'workspace.css', 'product.css', 'mature.css', 'editorial.css', 'experience.css'])
 pyz = PYZ(a.pure)
 
 exe = EXE(

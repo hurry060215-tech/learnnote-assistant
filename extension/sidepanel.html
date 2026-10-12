@@ -103,6 +103,14 @@
 
 
 
+      <section id="progressiveCard" class="quick-result-card" hidden aria-labelledby="progressiveTitle">
+        <h2 id="progressiveTitle" data-i18n="progress_title">逐步阅读</h2>
+        <p id="progressiveStatus" role="status" aria-live="polite"></p>
+        <p class="muted" data-i18n="progress_workspace">在工作台查看最终结果或取消处理。</p>
+        <button id="progressiveRetry" class="secondary-button" type="button" hidden data-i18n="progress_retry">重新连接阅读</button>
+        <div id="progressiveSections" class="progress-sections" tabindex="0" aria-label="分段草稿" data-i18n-aria="progress_sections"></div>
+      </section>
+
       <section id="quickResultCard" class="quick-result-card" hidden aria-label="快速学习结果" data-i18n-aria="ui_quick_study_result">
         <header class="quick-result-header">
           <div><strong id="quickResultStatus"><span data-i18n="ui_reading_subtitles_2">正在读取字幕</span></strong></div>
@@ -132,6 +140,7 @@
     </main>
 
     <script src="i18n.js"></script>
+    <script src="sidepanel-progress.js"></script>
     <script src="sidepanel.js?v=0.2.14"></script>
   </body>
 </html>

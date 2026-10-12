@@ -109,7 +109,7 @@ class MaterialRebuildTests(unittest.TestCase):
         scan = library.import_document_material("scan.pdf", pdf_bytes(), "application/pdf")
         scan = library.apply_material_ocr(scan["material_id"], {"pages": [{"page": 1, "text": "OCR text"}]})
         before = self.sql("SELECT * FROM source_evidence")
-        (library.material_source_path(scan["material_id"]).parent / "ocr.json").write_text('{"pages":[]}', encoding="utf-8")
+        Path(scan["metadata"]["ocr_path"]).write_text('{"pages":[]}', encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "ocr_cache_invalid"):
             library.rebuild_document_material(scan["material_id"])
         self.assertEqual(self.sql("SELECT * FROM source_evidence"), before)

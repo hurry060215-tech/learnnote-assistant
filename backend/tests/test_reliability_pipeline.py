@@ -284,7 +284,8 @@ class LocalMediaContractTests(unittest.TestCase):
             self.assertEqual(payload["media_integrity"]["status"], "video_only")
             self.assertEqual(payload["source_identity"]["resource_fingerprint"], body["source_fingerprint"])
             self.assertEqual(payload["workflow_stage"], "acquire_media")
-            self.assertGreater(payload["eta_seconds"], 0)
+            self.assertIsNone(payload["eta_seconds"])
+            self.assertEqual(payload["duration_estimate"]["status"], "unknown")
         finally:
             task = get_task(task_id)
             Path(task.source_media_path).unlink(missing_ok=True)

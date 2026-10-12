@@ -351,7 +351,7 @@ class ResourceDetectionTests(unittest.TestCase):
                 kind="video",
                 request_headers={"Authorization": "Bearer secret-token"},
             )
-            with patch("app.downloader.requests.request", return_value=FakeResponse()):
+            with patch("app.downloader.request_media", return_value=FakeResponse()):
                 downloader = MediaDownloader(task_dir(task.id), progress_callback=download_progress_updater(task.id))
                 output, selected = downloader.download(
                     "https://course.example.com/lesson",
@@ -795,7 +795,7 @@ class ResourceDetectionTests(unittest.TestCase):
         self.assertEqual(headers["Sec-CH-UA-Platform"], '"Windows"')
         self.assertEqual(headers["X-Requested-With"], "XMLHttpRequest")
         self.assertNotIn("Cookie", headers)
-        self.assertEqual(headers["Authorization"], "Bearer bad")
+        self.assertNotIn("Authorization", headers)
 
     def test_ytdlp_without_browser_context_keeps_native_user_agent(self) -> None:
         headers = ytdlp_headers_from_browser_context("https://www.bilibili.com/video/BV1xx411c7mD", [])
@@ -2130,7 +2130,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2204,7 +2204,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize),
                 patch("app.processor.extract_audio", side_effect=fake_extract_audio),
                 patch("app.processor.transcribe_audio", side_effect=fake_transcribe),
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary),
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary),
             ):
                 process_current_page_task(task.id, request)
 
@@ -2337,7 +2337,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2407,7 +2407,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.normalize_video", side_effect=fake_normalize), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2475,7 +2475,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 patch("app.processor.transcript_from_subtitle", side_effect=fake_transcript_from_subtitle), \
                 patch("app.processor.extract_audio", side_effect=AssertionError("audio extraction should be skipped")), \
                 patch("app.processor.transcribe_audio", side_effect=AssertionError("Whisper should be skipped")), \
-                patch("app.processor.summarize_with_diagnostics", side_effect=fake_summary):
+                patch("app.processor.summarize_with_diagnostics", new=fake_summary):
                 process_current_page_task(task.id, request)
 
             record = get_task(task.id)
@@ -2796,7 +2796,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
 
 class DownloaderBoundaryTests(unittest.TestCase):
-    @patch("app.downloader.requests.request", side_effect=OSError("offline page fixture"))
+    @patch("app.downloader.request_media", side_effect=OSError("offline page fixture"))
     @patch.object(MediaDownloader, "_download_with_ytdlp", side_effect=DownloadError("no_media_found", "offline yt-dlp fixture"))
     def test_blob_only_resources_fail_as_no_media_without_drm_signal(self, _download, _request) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2813,7 +2813,7 @@ class DownloaderBoundaryTests(unittest.TestCase):
             self.assertEqual(downloader.attempts[0].status, "skipped")
             self.assertEqual(downloader.attempts[0].code, "no_media_found")
 
-    @patch("app.downloader.requests.request", side_effect=OSError("offline page fixture"))
+    @patch("app.downloader.request_media", side_effect=OSError("offline page fixture"))
     @patch.object(MediaDownloader, "_download_with_ytdlp", side_effect=DownloadError("no_media_found", "offline yt-dlp fixture"))
     def test_blob_with_fragments_keeps_fragment_diagnostics(self, _download, _request) -> None:
         with tempfile.TemporaryDirectory() as tmp:

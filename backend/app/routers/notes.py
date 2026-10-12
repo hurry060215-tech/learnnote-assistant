@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 import hashlib
 import json
-import threading
+import re
+from uuid import uuid4
+from contextlib import contextmanager
 from pydantic import BaseModel, Field
 from ..config import DATA_DIR
 from ..storage import atomic_write_text
@@ -16,9 +18,21 @@ from ..note_document import build_note_document, normalize_note_markdown
 from ..storage import get_task
 from ..storage import read_json
 from ..task_artifacts import read_task_note
+from ..partial_note_projection import read_partial_note
+from ..personal_storage import RECOVERY_MESSAGE, PersonalStorageError, PersonalRecoveryRequired, lock as _edition_lock, personal_transaction
 
 
 notes_router = APIRouter(prefix="/api/tasks", tags=["notes"])
+
+
+@notes_router.get("/{task_id}/partial-note")
+def api_partial_note(task_id: str) -> dict:
+    """Read an unverified current-attempt projection; never run the pipeline."""
+    try:
+        return read_partial_note(task_id)
+    except FileNotFoundError:
+        pass
+    raise HTTPException(status_code=404, detail="Task not found")
 
 
 @notes_router.get("/{task_id}/ocr")
@@ -55,7 +69,20 @@ __all__ = ["notes_router"]
 # User editions are independent of generated task artifacts and source evidence.
 # Optimistic revision checks prevent a stale tab from replacing a newer edit.
 
-_edition_lock = threading.RLock()
+@contextmanager
+def edition_transaction():
+    """Serialize manual/assistant saves with annotation and backup writes."""
+    try:
+        with personal_transaction(DATA_DIR):
+            root = DATA_DIR / "user-editions"
+            if root.is_symlink():
+                raise PersonalStorageError("personal_storage_unavailable")
+            root.mkdir(parents=True, exist_ok=True)
+            yield
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
+    except PersonalStorageError as exc:
+        raise HTTPException(409, "个人资料暂不可写入，请检查本地存储后重试。") from exc
 
 class EditionRequest(BaseModel):
     text: str = Field(max_length=5_000_000)
@@ -83,7 +110,9 @@ def _edition_state(kind: str, source_id: str):
             if (not isinstance(state, dict) or not isinstance(state.get("text"), str)
                     or not isinstance(state.get("revision"), str)
                     or state["revision"] != hashlib.sha256(state["text"].encode()).hexdigest()
-                    or state.get("edited") is not True):
+                    or state.get("edited") is not True
+                    or ("write_id" in state and (not isinstance(state["write_id"], str)
+                        or re.fullmatch(r"[A-Za-z0-9_-]{8,64}", state["write_id"]) is None))):
                 raise ValueError("Invalid saved edition")
             return state
         except (OSError, ValueError, TypeError) as exc:
@@ -102,15 +131,25 @@ def get_edition(kind: str, source_id: str):
 @notes_router.put("/editions/{kind}/{source_id}")
 def put_edition(kind: str, source_id: str, request: EditionRequest):
     try:
-        with _edition_lock:
-            current = _edition_state(kind, source_id)
-            if current["revision"] != request.revision:
-                raise HTTPException(409, "笔记已在其他页面更新。请先复制当前修改，再重新打开笔记。")
-            state = {"text": request.text, "revision": hashlib.sha256(request.text.encode()).hexdigest(), "edited": True}
-            atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
-            return state
+        with edition_transaction():
+            return save_edition_locked(kind, source_id, request.text, request.revision)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(404, "Source unavailable") from exc
+
+
+def save_edition_locked(kind: str, source_id: str, text: str, revision: str, write_id: str | None = None):
+    """Caller holds edition_transaction; preserve the existing revision contract."""
+    current = _edition_state(kind, source_id)
+    if current["revision"] != revision:
+        raise HTTPException(409, "笔记已在其他页面更新。请先复制当前修改，再重新打开笔记。")
+    # A content hash alone cannot distinguish a later manual return to old text.
+    # This marker is committed atomically with the body, without migrating originals.
+    marker = write_id or uuid4().hex
+    if re.fullmatch(r"[A-Za-z0-9_-]{8,64}", marker) is None:
+        raise ValueError("Invalid edition write marker")
+    state = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": True, "write_id": marker}
+    atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
+    return state
 
 
 @notes_router.get("/editions/{kind}/{source_id}/exports/{format}")
@@ -126,7 +165,8 @@ def export_edition(kind: str, source_id: str, format: str, include_annotations: 
     if include_annotations:
         text += annotation_markdown(kind, source_id)
     if format == "markdown":
-        return Response(sanitize_export_text(text), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="note.md"'})
+        from ..review_presentation import project_source_reviews
+        return Response(sanitize_export_text(project_source_reviews(text)["markdown"]), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="note.md"'})
     task = get_task(source_id) if kind == "task" else SimpleNamespace(id=source_id, title=get_material(source_id)["title"], page_url="")
     try:
         result = build_docx_export(task, text) if format == "docx" else build_pdf_export(task, text)

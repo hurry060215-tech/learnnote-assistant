@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "source_sha": "a400df83e450004253d6386847a1bfc5a473e00e",
+  "browser": "153.0.4234.48",
+  "zoom_method": "effective CSS viewport plus deviceScaleFactor; not native toolbar zoom",
+  "chrome_apis": "synthetic runtime/storage/permissions/tabs/i18n",
+  "backend": "synthetic local-service replies; no model or website access",
+  "native_installation_or_permission_prompts_tested": false,
+  "cases": [
+    {
+      "locale": "zh-CN",
+      "width": 390,
+      "zoom": 90,
+      "cssWidth": 433,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 433,
+        "scrollWidth": 433,
+        "bodyScrollWidth": 433,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 390,
+      "zoom": 100,
+      "cssWidth": 390,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 390,
+        "scrollWidth": 390,
+        "bodyScrollWidth": 390,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 390,
+      "zoom": 200,
+      "cssWidth": 195,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 195,
+        "scrollWidth": 195,
+        "bodyScrollWidth": 195,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 768,
+      "zoom": 90,
+      "cssWidth": 853,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 853,
+        "scrollWidth": 853,
+        "bodyScrollWidth": 853,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 768,
+      "zoom": 100,
+      "cssWidth": 768,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 768,
+        "scrollWidth": 768,
+        "bodyScrollWidth": 768,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 768,
+      "zoom": 200,
+      "cssWidth": 384,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 384,
+        "scrollWidth": 384,
+        "bodyScrollWidth": 384,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 1440,
+      "zoom": 90,
+      "cssWidth": 1600,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 1600,
+        "scrollWidth": 1600,
+        "bodyScrollWidth": 1600,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 1440,
+      "zoom": 100,
+      "cssWidth": 1440,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "zh-CN",
+      "width": 1440,
+      "zoom": 200,
+      "cssWidth": 720,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 720,
+        "scrollWidth": 720,
+        "bodyScrollWidth": 720,
+        "overflow": [],
+        "lang": "zh-CN"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 390,
+      "zoom": 90,
+      "cssWidth": 433,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 433,
+        "scrollWidth": 433,
+        "bodyScrollWidth": 433,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 390,
+      "zoom": 100,
+      "cssWidth": 390,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 390,
+        "scrollWidth": 390,
+        "bodyScrollWidth": 390,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 390,
+      "zoom": 200,
+      "cssWidth": 195,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 195,
+        "scrollWidth": 195,
+        "bodyScrollWidth": 195,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 768,
+      "zoom": 90,
+      "cssWidth": 853,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 853,
+        "scrollWidth": 853,
+        "bodyScrollWidth": 853,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 768,
+      "zoom": 100,
+      "cssWidth": 768,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 768,
+        "scrollWidth": 768,
+        "bodyScrollWidth": 768,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 768,
+      "zoom": 200,
+      "cssWidth": 384,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 384,
+        "scrollWidth": 384,
+        "bodyScrollWidth": 384,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 1440,
+      "zoom": 90,
+      "cssWidth": 1600,
+      "cssHeight": 1000,
+      "geometry": {
+        "width": 1600,
+        "scrollWidth": 1600,
+        "bodyScrollWidth": 1600,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 1440,
+      "zoom": 100,
+      "cssWidth": 1440,
+      "cssHeight": 900,
+      "geometry": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    },
+    {
+      "locale": "en-US",
+      "width": 1440,
+      "zoom": 200,
+      "cssWidth": 720,
+      "cssHeight": 450,
+      "geometry": {
+        "width": 720,
+        "scrollWidth": 720,
+        "bodyScrollWidth": 720,
+        "overflow": [],
+        "lang": "en"
+      },
+      "page_errors": [],
+      "external_requests": []
+    }
+  ],
+  "store_candidates": [
+    "store-en-US-summary-1280x800.png",
+    "store-en-US-transcript-1280x800.png",
+    "store-zh-CN-summary-1280x800.png",
+    "store-zh-CN-transcript-1280x800.png"
+  ],
+  "store_manifest": "store-candidates.json",
+  "passed": true
+}

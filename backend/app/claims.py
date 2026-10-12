@@ -153,6 +153,7 @@ def build_claim_evidence_map(
             "evidence_id": f"task-{task_id}-transcript-{index:05d}",
             "kind": "transcript",
             "source_type": "video",
+            **({"source": "screen-ocr", "verification": "unreviewed"} if transcript.source == "screen-ocr" else {}),
             "locator": f"{float(segment.start):.1f}-{float(segment.end):.1f}s",
             "start": float(segment.start),
             "end": float(segment.end),
@@ -254,7 +255,7 @@ def build_claim_evidence_map(
         for kind in ("transcript", "visual", "document", "inference", "unsupported")
     }
     evidence_revision = hashlib.sha256("\n".join(
-        f"{item['evidence_id']}|{item['kind']}|{item['source_type']}|{item['locator']}|{item.get('source_uri', '')}|{item['text']}"
+        f"{item['evidence_id']}|{item['kind']}|{item['source_type']}|{item['locator']}|{item.get('source_uri', '')}|{item['text']}" + ("|screen-ocr|unreviewed" if item.get("source") == "screen-ocr" else "")
         for item in evidence
     ).encode("utf-8")).hexdigest()
     return {

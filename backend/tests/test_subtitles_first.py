@@ -103,7 +103,7 @@ class SubtitlesFirstTests(unittest.TestCase):
             content = raw
 
         downloader = MediaDownloader(Path(self.temp.name) / "raw-subtitle-task")
-        with patch("app.downloader.requests.get", return_value=Response()):
+        with patch("app.downloader.request_media", return_value=Response()):
             output = downloader._download_text_file(
                 ResourceCandidate(url="https://example.com/subtitle.vtt", kind="subtitle"),
                 [],

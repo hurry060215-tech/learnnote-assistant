@@ -171,6 +171,7 @@ CLASSIC_PROVIDERS = {
     "LearnNoteStudyEvidence": "extension/content-study-evidence.js",
     "LearnNoteTaskFormat": "web/task-format.js",
     "LearnNoteTaskDisplay": "web/task-display.js",
+    "LearnNoteTaskList": "web/task-list.js",
 }
 PURE_ALLOWED = {
     "extension/capture-classification.js": set(),
@@ -178,6 +179,7 @@ PURE_ALLOWED = {
     "extension/content-study-evidence.js": set(),
     "web/task-format.js": set(),
     "web/task-display.js": {"web/task-format.js"},
+    "web/task-list.js": {"web/task-format.js", "web/task-display.js"},
 }
 
 
@@ -250,7 +252,7 @@ def javascript_analysis(root: Path):
     return edges, errors, imports, injections, namespaces
 
 
-def javascript_violations(root: Path, capture_scripts=None) -> list[str]:
+def javascript_violations(root: Path, capture_scripts=None, classic_task_scripts=None) -> list[str]:
     edges, errors, imports, injections, namespaces = javascript_analysis(root)
     if capture_scripts is not None:
         required = {"extension/background.js", "extension/content.js", "extension/page_hook.js"}
@@ -263,6 +265,18 @@ def javascript_violations(root: Path, capture_scripts=None) -> list[str]:
         for missing in sorted(required - declared):
             if (root / missing).is_file():
                 errors.append(f"Capture bundle budget omits dependency {missing}")
+
+    if classic_task_scripts is not None:
+        required = {"web/app.js"}
+        while True:
+            expanded = required | {edge.target for edge in edges if edge.source in required}
+            if expanded == required:
+                break
+            required = expanded
+        declared = {f"web/{name}" for name in classic_task_scripts}
+        for missing in sorted(required - declared):
+            if (root / missing).is_file():
+                errors.append(f"Classic task budget omits dependency {missing}")
 
     def load(source, loaded, visiting):
         if source in visiting:

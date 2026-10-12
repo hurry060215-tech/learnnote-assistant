@@ -817,5 +817,53 @@
   },
   "range_selected_bounds": {
     "message": "已选择 {start}–{end} 秒；发送时重新核对当前位置和视频身份。"
+  },
+  "progress_title": {
+    "message": "逐步阅读"
+  },
+  "progress_sections": {
+    "message": "分段草稿"
+  },
+  "progress_waiting": {
+    "message": "等待章节；可在工作台查看或确认任务。"
+  },
+  "progress_draft": {
+    "message": "草稿 · 证据补充中 · 未验证"
+  },
+  "progress_workspace": {
+    "message": "在工作台查看最终结果或取消处理。"
+  },
+  "progress_reconnecting": {
+    "message": "连接暂时中断，正在重新同步。已显示章节仍是未验证草稿。"
+  },
+  "progress_paused": {
+    "message": "读取暂时停止。请检查工作台连接后重试；已显示章节仍是未验证草稿。"
+  },
+  "progress_retry": {
+    "message": "重新连接阅读"
+  },
+  "progress_cancelled": {
+    "message": "任务已取消，已停止读取。已显示章节仍是未验证草稿。"
+  },
+  "progress_failed": {
+    "message": "任务未完成，已停止读取。可在工作台查看原因；已显示章节仍是未验证草稿。"
+  },
+  "progress_complete": {
+    "message": "任务已完成，可在工作台核对最终结果。这里保留的分段内容仍是未验证草稿。"
+  },
+  "progress_cancelling": {
+    "message": "已请求取消，已停止读取。请在工作台确认处理状态；已显示章节仍是未验证草稿。"
+  },
+  "progress_syncing": {
+    "message": "正在同步草稿版本；已显示内容仍未验证。"
+  },
+  "progress_legacy": {
+    "message": "旧草稿无法确认属于本次处理，暂不在侧栏显示。请在工作台查看任务与保留内容。"
+  },
+  "progress_unavailable": {
+    "message": "有草稿未通过内容或来源校验，未显示相关部分。请在工作台查看任务与保留内容。"
+  },
+  "progress_excerpt": {
+    "message": "字幕摘录 · 非 AI 总结 · 未验证"
   }
 }

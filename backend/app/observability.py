@@ -9,6 +9,8 @@ from typing import Any
 
 from .config import TASK_DIR, ensure_dirs
 from .text_cleanup import TextDecodingError, read_canonical_text
+from .document_exports import sanitize_export_text
+from .summary_outcome import safe_summary_diagnostics
 
 
 EVENT_SCHEMA_VERSION = 1
@@ -107,6 +109,23 @@ def read_task_events_after(task_id: str, after: int = 0, limit: int = 500) -> li
             if len(rows) >= count:
                 break
     return rows
+
+
+def support_event_projection(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Read-only support view of legacy events; free-form messages stay local."""
+    result = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        row = {}
+        for key in ("timestamp", "event", "phase", "status", "error_code"):
+            value = event.get(key)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:+-]{0,100}", value):
+                row[key] = sanitize_export_text(value)
+        if isinstance(event.get("details"), dict):
+            row["details"] = safe_summary_diagnostics(event["details"])
+        result.append(row)
+    return result
 
 
 def redacted_support_manifest(task_id: str, events: list[dict[str, Any]]) -> dict[str, Any]:

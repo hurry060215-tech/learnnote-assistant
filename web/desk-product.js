@@ -1,6 +1,10 @@
 import { assistantStream } from "/web/desk-chat-stream.js";
 import { createDraftStore } from "/web/desk-drafts.js";
+import { createAssistantConversations } from "/web/assistant-session.js";
 import { installSummaryVersions } from "/web/desk-summary-versions.js";
+import { createOutlineControls } from "/web/desk-note-controls.js";
+import { installAssistantOperations } from "/web/assistant-operations.js";
+import { installAssistantRuns } from "/web/assistant-runs.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -91,6 +95,25 @@ export function installProductWorkspace(ctx) {
   pane.hidden = true;
   pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><span id="assistantSourceTag" class="assistant-source-tag">自由提问</span><div><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><header><span>可以试试</span><button id="hideAssistantPrompts" type="button" title="隐藏快捷建议">隐藏</button></header><div class="assistant-prompt-items"><span class="assistant-prompt-item"><button data-prompt="你有哪些功能？怎么使用？" data-prompt-key="help">使用帮助</button><button data-dismiss-prompt="help" aria-label="关闭使用帮助建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="总结这份内容的核心观点，并给出对应出处" data-prompt-key="summary">总结要点</button><button data-dismiss-prompt="summary" aria-label="关闭总结要点建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="解释这份内容中最重要的概念和它们的关系" data-prompt-key="explain">解释概念</button><button data-dismiss-prompt="explain" aria-label="关闭解释概念建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处" data-prompt-key="quiz">帮我自测</button><button data-dismiss-prompt="quiz" aria-label="关闭帮我自测建议">×</button></span></div></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向全局助手提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus" role="status"></small><button id="aiStop" type="button" hidden>停止</button><button id="aiSend" class="primary">发送</button></footer></form>`;
   document.body.append(pane);
+  installAssistantOperations(ctx);
+  installAssistantRuns(ctx);
+  const conversations = createAssistantConversations();
+  const newTopic = document.createElement("button");
+  newTopic.type = "button";
+  newTopic.textContent = "新话题";
+  newTopic.title = "开始新话题，保留记录但不沿用之前的对话上下文";
+  pane.querySelector("header > div").prepend(newTopic);
+  newTopic.onclick = async () => {
+    const source = state.selected;
+    const topicScope = source ? `${source.kind}:${source.id}` : "global";
+    conversations.reset(topicScope);
+    previousSkill = "";
+    const loading = loadHistory(), epoch = assistantEpoch;
+    await loading;
+    if (visibleSource !== topicScope || epoch !== assistantEpoch) return;
+    $("aiStatus").textContent = "已开始新话题，历史记录和未发送草稿仍保留。";
+    $("aiQuestion").focus();
+  };
   const skillControls = document.createElement("div");
   skillControls.className = "assistant-skill-controls";
   skillControls.innerHTML =
@@ -315,19 +338,10 @@ export function installProductWorkspace(ctx) {
     }
     block.querySelectorAll("[data-citation]").forEach((b) => {
       b.type = "button";
-      b.onclick = () => {
-        const index = Number(b.dataset.citation);
-        const citation = result.citations[index] || {};
-        const targetSource = citation.source_id && citation.source_kind
-          ? { ...(messageSource || {}), id: citation.source_id, kind: citation.source_kind, title: citation.title || messageSource?.title || "来源" }
-          : messageSource;
-        if (targetSource && (typeof citation.start === "number" || citation.source_kind === "material")) {
-          // Citations locate in the main reader; the assistant answer stays
-          // compact and never expands a second copy of the source excerpt.
-          openInlineSource?.(typeof citation.start === "number" ? citation.start : undefined, targetSource, typeof citation.end === "number" ? citation.end : undefined);
-        } else {
-          notice("这条回答没有可靠的来源定位，未猜测高亮位置。");
-        }
+      b.onclick = async () => {
+        const citation = result.citations[Number(b.dataset.citation)] || {};
+        try { await ctx.openCitation(citation, messageSource); }
+        catch (error) { notice(error.message || "这条回答没有可靠的来源定位。"); }
       };
     });
     block.querySelector(".save-ai-note").onclick = async (e) => {
@@ -388,12 +402,13 @@ export function installProductWorkspace(ctx) {
     $("skillExecution").textContent = s ? "问题会根据措辞决定是否读取这份来源" : "自由提问不会自动读取笔记或资料";
     try {
       const globalItems = (await api("/api/assistant/history")).items;
-      const sourceItems =
+      const sourceItems = [
+        ...(localThreads.get(nextScope) || []),
+        ...(
         s?.kind === "task"
           ? (await api(`/api/tasks/${s.id}/qa`)).items
-          : s
-            ? localThreads.get(s.id) || []
-            : [];
+          : []),
+      ];
       const items = [
         ...globalItems.map((item) => ({ item, source: null })),
         ...sourceItems.map((item) => ({ item, source: s })),
@@ -401,8 +416,6 @@ export function installProductWorkspace(ctx) {
         (a.item.created_at || "").localeCompare(b.item.created_at || ""),
       );
       if (epoch !== assistantEpoch) return;
-      if (!previousSkill && visibleSource === "global")
-        previousSkill = items.at(-1)?.skill?.id || "";
       const olderCount = Math.max(0, items.length - 6);
       let older = null;
       if (olderCount) {
@@ -573,10 +586,15 @@ export function installProductWorkspace(ctx) {
           {
             question,
             skill: plan.skill.id,
+            conversation_id: conversations.id(s ? `${s.kind}:${s.id}` : "global"),
             ...(plan.skill.id === "general.chat" ? { options: options() } : {}),
           },
           streamingOptions,
         );
+      } else if (plan.skill.id === "note.outline") {
+        result = await api(`/api/assistant/outline/${s.kind}/${encodeURIComponent(s.id)}?revision=${encodeURIComponent(state.revision || "")}`, {
+          signal: controller.signal,
+        });
       } else {
         result =
           s.kind === "task"
@@ -607,9 +625,9 @@ export function installProductWorkspace(ctx) {
       $("assistantHistory").querySelector(".assistant-empty")?.remove();
       clearTimeout(paintTimer);
       streamBlock.replaceWith(renderMessage(question, result, s));
-      if (s?.kind === "material" && result.skill?.requires_source)
-        localThreads.set(s.id, [
-          ...(localThreads.get(s.id) || []),
+      if (s && result.skill?.requires_source && (s.kind === "material" || plan.skill.id === "note.outline"))
+        localThreads.set(`${s.kind}:${s.id}`, [
+          ...(localThreads.get(`${s.kind}:${s.id}`) || []),
           { question, ...result, created_at: new Date().toISOString() },
         ]);
       if (
@@ -659,8 +677,13 @@ export function installProductWorkspace(ctx) {
   readerNav.className = "reader-strip";
   readerNav.id = "readerStrip";
   readerNav.hidden = true;
-  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
+  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="editSummary" type="button">编辑正文</button><button id="readingLayout" type="button">正文排版</button><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
   toolbar.after(readerNav);
+  $("editSummary").onclick = () => $("edit").click();
+  $("readingLayout").onclick = () => {
+    $("settings").click();
+    document.querySelector('[data-settings-section="appearance"]').click();
+  };
   const pageContents = document.createElement("nav");
   pageContents.id = "pageContents";
   pageContents.setAttribute("aria-label", "当前笔记章节");
@@ -701,6 +724,7 @@ export function installProductWorkspace(ctx) {
   const outline = document.createElement("dialog");
   outline.id = "outlineDialog";
   document.body.append(outline);
+  const outlineControls = createOutlineControls(outline);
   function updateReadingContext() {
     const s = state.selected;
     readerNav.hidden = !s;
@@ -775,7 +799,10 @@ export function installProductWorkspace(ctx) {
       (b) =>
         (b.onclick = () => {
           outline.close();
-          headings[Number(b.dataset.heading)].scrollIntoView({
+          const heading = headings[Number(b.dataset.heading)];
+          for (let parent = heading.parentElement; parent; parent = parent.parentElement)
+            if (parent.tagName === "DETAILS") parent.open = true;
+          heading.scrollIntoView({
             behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
               ? "instant"
               : "smooth",
@@ -783,6 +810,7 @@ export function installProductWorkspace(ctx) {
           });
         }),
     );
+    outlineControls.mount();
     outline.showModal();
   };
   installSummaryVersions({ state, openItem, notice });

@@ -33,10 +33,13 @@ from .media_url_parsing import (
     _looks_like_json_url_candidate,
     _media_endpoint_hint,
     _mime_for_kind,
+    is_telemetry_endpoint,
     normalize_media_url,
 )
 
 def _declared_media_kind(hint: str, url: str) -> tuple[str, str]:
+    if is_telemetry_endpoint(url):
+        return "unknown", ""
     kind = classify_resource(url)
     if kind != "unknown":
         return kind, _mime_for_kind(kind)

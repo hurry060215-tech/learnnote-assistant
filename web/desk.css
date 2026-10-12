@@ -284,7 +284,7 @@ small,
   font-weight: var(--reader-weight, 500);
 }
 .encoding-provenance-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 9px 12px; color: var(--muted); font-size: .88rem; }
-.document .source-evidence-target, #sourceContent .source-evidence-target { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
+.document .source-evidence-target, #sourceContent .source-evidence-target, .document .note-claim-active { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
 .document h1 {
   font-size: clamp(24px, 2.1vw, 30px);
   font-weight: 700;
@@ -523,6 +523,7 @@ dialog {
 dialog::backdrop {
   background: #15151555;
   backdrop-filter: blur(3px);
+  animation: backdrop-arrive 0.16s ease-out;
 }
 dialog header {
   display: flex;
@@ -571,6 +572,7 @@ dialog footer {
 .file-drop small {
   display: block;
 }
+.material-batch ol { display: grid; gap: 8px; margin: 12px 0; padding-left: 24px; max-height: 280px; overflow: auto; overflow-wrap: anywhere; }
 .material-encoding-choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 .material-encoding-choice span { display: grid; gap: 3px; }
 .material-encoding-choice small { color: var(--muted); }
@@ -894,6 +896,7 @@ button:has(svg) {
 }
 .reader-strip > div:last-child {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   flex-shrink: 0;
   max-width: 100%;
@@ -1228,15 +1231,57 @@ body.assistant-visible .workspace {
 }
 .outline-tree {
   display: grid;
-  gap: 8px;
+  gap: var(--outline-gap, 4px);
 }
+.source-review-panel { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.source-review-panel > summary { cursor: pointer; color: var(--muted); }
+.source-review-panel section { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.source-review-link { font-size: .76em; vertical-align: baseline; }
 .outline-tree button {
   margin-left: calc(var(--level) * 16px);
   text-align: left;
   border-left: 1px solid var(--line);
   background: transparent;
   white-space: normal;
+  font-size: var(--outline-size, 14px);
+  line-height: 1.5;
+  padding-block: var(--outline-padding, 6px);
+  overflow-wrap: anywhere;
 }
+.outline-tree button:hover, .outline-tree button:focus-visible {
+  background: var(--tint);
+  border-left-color: var(--accent);
+}
+.outline-tree button:active { background: var(--panel); }
+#outlineDialog {
+  max-width: calc(100vw - 28px);
+  padding: 26px 30px;
+  overflow: hidden;
+}
+#outlineDialog[open] { display: flex; flex-direction: column; }
+#outlineDialog > header { flex-shrink: 0; margin-bottom: 12px; }
+#outlineDialog > p { margin: 0 0 10px; }
+#outlineDialog .outline-tree { min-height: 0; overflow: auto; padding: 4px; }
+.outline-settings { flex-shrink: 0; margin-bottom: 14px; }
+.outline-settings > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
+.outline-settings > div { padding: 2px 14px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+.outline-settings label { display: flex; justify-content: space-between; }
+.outline-settings input[type="range"] { padding: 0; accent-color: var(--accent); }
+.outline-settings button { margin-top: 8px; font-size: 12px; }
+#outlineResize { position: absolute; inset: 20px 1px 20px auto; width: 14px; cursor: ew-resize; touch-action: none; border-radius: 8px; }
+#outlineResize::after { content: ""; position: absolute; inset: 35% 5px; border-radius: 3px; background: var(--line); transition: background-color .14s ease; }
+#outlineResize:hover::after, #outlineResize:focus-visible::after { background: var(--accent); }
+.resizing-outline, .resizing-outline * { cursor: ew-resize !important; user-select: none !important; }
+.note-format-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.note-format-tools button { border: 1px solid var(--line); font-size: 13px; }
+.note-format-tools [aria-pressed="true"] { background: var(--tint); border-color: var(--accent); }
+.editor { max-width: var(--reader-width, 940px); }
+.editor .note-preview { padding: 18px; min-height: 45vh; border: 1px solid var(--line); border-radius: 8px; }
+@media (max-width: 600px) {
+  #outlineDialog { padding: 20px; }
+  #outlineDialog header h2 { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { #outlineResize::after { transition: none; } }
 .version-row {
   display: block;
   width: 100%;
@@ -1792,9 +1837,6 @@ button {
 dialog[open] {
   animation: dialog-arrive 0.12s ease-out;
 }
-dialog::backdrop {
-  animation: backdrop-arrive 0.16s ease-out;
-}
 @keyframes dialog-arrive {
   from {
     opacity: 1;
@@ -1822,13 +1864,15 @@ dialog::backdrop {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after, dialog::backdrop {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+@media (prefers-reduced-transparency: reduce) {
+  dialog::backdrop { background: #f5f6f3; backdrop-filter: none; opacity: 1; animation: none !important; transition: none !important; }
+  body.dark dialog::backdrop { background: #252525; }
 }
 
 /* Reading workflow: recorded facts, quiet navigation, no decorative row icons. */
@@ -2247,3 +2291,16 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 .study-activity-grid li[data-level="2"] { border-bottom:3px solid var(--accent); }
 .study-activity-grid li[data-level="3"] { border-bottom:5px solid var(--accent); }
 @media (forced-colors: active) { .study-activity-grid li { border-color:CanvasText; } }
+
+/* Playback only highlights persisted claim spans; scrolling is opt-in. */
+.claim-timeline { padding: 12px 16px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.claim-timeline-list { max-height: 240px; overflow: auto; padding-left: 24px; overscroll-behavior: contain; }
+.claim-timeline-list p { margin: 8px 0; }
+.claim-timeline-list button { margin: 3px; white-space: normal; text-align: left; }
+.claim-timeline-list small { display: block; }
+.note-claim-marker { margin: 4px 6px; white-space: normal; user-select: none; }
+.note-claim-marker[aria-current="true"] { border-color: var(--accent, #496960); font-weight: 650; }
+@media (max-width: 600px) {
+  .claim-timeline { padding: 10px; }
+  .claim-timeline-list { max-height: 180px; }
+}

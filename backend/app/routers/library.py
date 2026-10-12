@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import DATA_DIR, TEMP_DIR
 from ..library import (
     MATERIAL_IMPORT_MAX_BYTES,
-    apply_material_ocr,
     backup_library,
     delete_material,
     duplicate_groups,
@@ -34,6 +33,8 @@ from ..library import (
     search_library,
 )
 from ..storage import get_task
+from ..catalog_health import catalog_status
+from .catalog_recovery import catalog_recovery_router
 from ..document_exports import (
     DocumentExportUnavailable,
     build_docx_export,
@@ -46,6 +47,7 @@ from ..document_exports import (
 
 
 library_router = APIRouter(prefix="/api/library", tags=["library"])
+library_router.include_router(catalog_recovery_router)
 
 
 class MaterialUnifiedExportRequest(BaseModel):
@@ -79,6 +81,9 @@ def api_library_material_capabilities() -> dict:
 
 @library_router.get("/materials")
 def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
+    catalog = catalog_status(DATA_DIR)
+    if catalog["state"] in {"missing", "corrupt", "incompatible"} and catalog["recovery_required"]:
+        return {"schema_version": 1, "materials": [], "catalog": catalog}
     return {"schema_version": 1, "materials": list_materials(limit, source_type)}
 
 
@@ -142,22 +147,50 @@ async def api_library_material_import(file: UploadFile = File(...), encoding: st
     return {"ok": True, "material": material}
 
 
+def _material_ocr_error(exc: Exception) -> HTTPException:
+    messages = {
+        "material_not_found": "学习资料不存在。",
+        "material_ocr_requires_pdf": "扫描 PDF OCR 只支持 PDF 资料。",
+        "material_ocr_not_required": "这份 PDF 已有原始文本，无需扫描识别。",
+        "material_source_integrity_mismatch": "原始文件校验失败，现有 OCR 内容未改变。",
+        "material_ocr_cache_invalid": "OCR 缓存校验失败，已保留现有文字与引用；请从本地备份恢复缓存。",
+        "material_ocr_batch_failed": "本次页面识别失败，已保留之前的结果；可以再次继续。",
+        "material_ocr_changed_reload_required": "资料已更新，请重新打开后继续。",
+        "material_source_missing": "本机原始 PDF 缺失，已保留 OCR 结果；请恢复原文件后继续。",
+        "material_ocr_cache_too_large": "OCR 缓存超过安全大小，已保留之前的结果。请拆分 PDF 后导入。",
+        "material_ocr_invalid_result": "本次 OCR 结果无效，已保留之前的结果；可以重试。",
+        "material_ocr_identity_invalid": "OCR 引用身份不一致，未覆盖现有引用。",
+        "pdf_page_limit_exceeded": "PDF 超过支持的 500 页，请拆分后再导入。",
+    }
+    # Use exception text only as a lookup key. Responses contain public literals,
+    # never exception strings that could include local paths or document content.
+    public_codes = {known: known for known in messages}
+    code = public_codes.get(str(exc), "material_ocr_failed") if isinstance(exc, ValueError) else "material_ocr_failed"
+    return HTTPException(status_code=404 if code == "material_not_found" else 422,
+                         detail={"code": code, "message": messages.get(code, "本地 OCR 未能完成，已保留之前的结果；请检查可选组件后重试。")})
+
+
+@library_router.get("/materials/{material_id}/ocr")
+def api_library_material_ocr_cache(material_id: str) -> dict:
+    from ..material_ocr import get_material_ocr
+    try:
+        return {"ok": True, "ocr": get_material_ocr(material_id)}
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        raise _material_ocr_error(exc) from exc
+
+
 @library_router.post("/materials/{material_id}/ocr")
 def api_library_material_ocr(material_id: str) -> dict:
+    from ..material_ocr import continue_material_ocr
     try:
-        material = get_material(material_id)
-        source = material_source_path(material_id)
-        from ..pdf_ocr import ocr_pdf
-        result = ocr_pdf(source)
-        if result.get("status") not in {"ready", "partial"}:
-            raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result.get("warning", "扫描 PDF OCR 组件不可用。")})
-        return {"ok": True, "material": apply_material_ocr(material_id, result), "ocr": result}
+        result = continue_material_ocr(material_id)
+        if not result["ok"]:
+            raise HTTPException(status_code=503, detail={"code": "pdf_ocr_unavailable", "message": result["ocr"].get("warning", "扫描 PDF OCR 组件不可用。")})
+        return result
     except HTTPException:
         raise
-    except (ValueError, OSError) as exc:
-        code = str(exc)
-        message = "扫描 PDF OCR 只支持 PDF 资料。" if code == "material_ocr_requires_pdf" else "扫描 PDF OCR 未能完成，请检查文件和可选组件。"
-        raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
+    except (ValueError, OSError, ImportError, RuntimeError, sqlite3.Error) as exc:
+        raise _material_ocr_error(exc) from exc
 
 
 @library_router.post("/materials/register-task/{task_id}")
@@ -197,21 +230,35 @@ def api_library_delete_material(material_id: str, confirm: str = "") -> dict:
 @library_router.post("/materials/{material_id}/redecode")
 def api_library_material_redecode(material_id: str, payload: dict | None = Body(default=None)) -> dict:
     encoding = str((payload or {}).get("encoding") or "").strip()[:40]
+    expected_updated_at = (payload or {}).get("expected_updated_at")
     try:
-        return {"ok": True, "material": redecode_document_material(material_id, encoding)}
-    except ValueError as exc:
-        code = str(exc)
-        status = 404 if code == "material_not_found" else 422
+        return {"ok": True, "material": redecode_document_material(material_id, encoding, expected_updated_at=expected_updated_at)}
+    except (ValueError, OSError, sqlite3.Error) as exc:
         messages = {
+            "material_not_found": "学习资料不存在。",
+            "material_redecode_changed_reload_required": "资料已被另一项操作修改，未覆盖当前版本。请关闭并重新打开编码窗口后再试。",
+            "material_rebuild_changed_reload_required": "资料已被另一项操作修改，未覆盖当前版本。请关闭并重新打开编码窗口后再试。",
+            "material_rebuild_requires_document": "视频资料请从原视频任务恢复。",
+            "material_rebuild_identity_invalid": "资料引用身份不一致，未覆盖当前资料。",
+            "material_source_missing": "本机原始文件缺失，无法重解码；现有资料未改变。",
+            "material_file_too_large": "原始文件过大，未覆盖当前资料。",
             "material_redecode_encoding_required": "请先选择原文编码。",
             "material_redecode_pdf_unsupported": "PDF 请使用本地 OCR；字符集重解码仅适用于 TXT、Markdown 和 HTML。",
             "material_source_integrity_mismatch": "原始文件校验失败，未覆盖当前资料。",
             "material_redecode_empty": "所选编码没有提取出有效文本，当前资料未改变。",
+            "material_no_extractable_text": "所选编码没有提取出有效文本，当前资料未改变。",
             "material_redecode_evidence_missing": "原始出处索引不完整，当前资料未改变。",
             "text_encoding_unsupported": "所选编码无法无损解码原始字节，当前资料未改变。",
             "text_mojibake_detected": "所选编码仍会产生高置信度乱码，当前资料未改变。",
             "material_anchor_limit_exceeded": "解码结果包含过多段落，当前资料未改变。",
+            "extracted_text_too_large": "解码结果过大，当前资料未改变。",
         }
+        # Return a literal public code from this mapping, never exception text
+        # (which can include local paths or document content).
+        public_codes = {known: known for known in messages}
+        code = public_codes.get(str(exc), "material_redecode_failed") if isinstance(exc, ValueError) else "material_redecode_failed"
+        conflict = code in {"material_redecode_changed_reload_required", "material_rebuild_changed_reload_required"}
+        status = 404 if code == "material_not_found" else 409 if conflict else 422
         raise HTTPException(status_code=status, detail={"code": code, "message": messages.get(code, "资料重解码失败，当前内容未改变。")}) from exc
 
 
@@ -373,13 +420,20 @@ def api_material_export(material_id: str, kind: str, include_annotations: bool =
 
 @library_router.post("/backup")
 def api_library_backup() -> dict:
-    path = backup_library()
+    try:
+        path = backup_library()
+    except (sqlite3.Error, OSError) as exc:
+        raise HTTPException(status_code=409, detail={"code": "catalog_recovery_required", "message": "资料目录缺失或损坏；请先选择已有备份预览资料目录恢复。原文件仍然保留。"}) from exc
     return {
         "status": "pass",
         "name": path.name,
         "download_url": f"/api/library/backup/{path.name}",
         "bytes": path.stat().st_size,
-        "scope": "task_index_only",
+        "scope": "library_catalog_snapshot",
+        "default_restore_scope": "task_index_only",
+        "contents": ["task_and_material_catalog", "indexed_original_and_note_text"],
+        "excluded_contents": ["original_video_files", "original_document_files", "personal_revisions", "review_database"],
+        "privacy_notice": "包含任务与资料目录、已索引的原文/笔记文字；请按私密学习资料保管。",
     }
 
 
@@ -409,6 +463,8 @@ async def api_library_restore(file: UploadFile = File(...)) -> dict:
                 handle.write(chunk)
         try:
             return restore_library(temporary)
+        except sqlite3.Error as exc:
+            raise HTTPException(status_code=409, detail={"code": "catalog_recovery_required", "message": "当前数据库不可安全写入。任务索引恢复不恢复文档；请先单独预览资料目录恢复。"}) from exc
         except ValueError as exc:
             code = str(exc)
             messages = {

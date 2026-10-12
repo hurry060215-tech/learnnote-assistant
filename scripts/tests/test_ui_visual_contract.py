@@ -32,16 +32,17 @@ class UiVisualContractTests(unittest.TestCase):
 
     def test_local_document_import_is_not_presented_as_video_ai_generation(self) -> None:
         script = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
+        batch = (ROOT / "web" / "desk-material-batch.js").read_text(encoding="utf-8")
         self.assertIn(
-            'state.input === "file" && file && /\\.(pdf|md|markdown|txt|html?)$/i.test(file.name)',
+            'state.input === "browser" || (state.input === "file" && !hasVideo)',
             script,
         )
-        self.assertIn('$("createSubmit").disabled = needsFile;', script)
+        self.assertIn('!queue.canSubmit', batch)
         self.assertIn(
-            '$("createSubmit").textContent = "先选择文件";', script
+            '"先选择文件"', batch
         )
         self.assertIn(
-            '$("createSubmit").textContent = "导入并阅读资料";', script
+            '"导入并阅读资料"', batch
         )
         self.assertIn(
             '$("contentModeChoices").hidden = hideVideoOptions;', script

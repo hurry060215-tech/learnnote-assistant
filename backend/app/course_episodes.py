@@ -10,9 +10,9 @@ import re
 import sqlite3
 
 from .config import DATA_DIR, ensure_dirs
-from .course_state import lock as _lock, read_course, require_current_course
 from .source_input import normalize_source_input
-from .storage import get_task, list_tasks
+from .storage import get_task, list_tasks_snapshot
+from .course_state import course_transaction, read_course
 
 
 def _connect():
@@ -128,7 +128,7 @@ def _projection(episode, task):
             "resource_budget_mb": task.options.resource_budget_mb, "content_mode": task.options.content_mode}
 
 
-def course_episodes(course):
+def course_episodes(course, *, read_only=False):
     episodes = [_episode(course["id"], source, index) for index, source in enumerate(course["sources"]) if source["kind"] in {"url", "task"}]
     rows = {}
     shared_links = {}
@@ -142,16 +142,24 @@ def course_episodes(course):
                 placeholders = ",".join("?" for _ in urls)
                 for row in db.execute(f"SELECT source_url,task_id FROM course_episodes WHERE source_url IN ({placeholders}) AND task_id<>''", urls):
                     shared_links.setdefault(row["source_url"], set()).add(row["task_id"])
-    tasks = list_tasks(read_only=True) if any(item["url"] for item in episodes) else []
+    tasks, snapshot_error = [], None
+    try:
+        # Without readable manifests, absence is unproven: an unreadable,
+        # not-yet-bound handoff must not silently create a duplicate task.
+        tasks = list_tasks_snapshot(strict=True) if any(item["url"] for item in episodes) else []
+    except (ValueError, TypeError, OSError) as exc:
+        snapshot_error = exc
     result = []
     for episode in episodes:
         linked = rows.get(episode["episode_id"], {}).get("task_id") or episode["task_id"]
         row = rows.get(episode["episode_id"])
         try:
+            if episode["url"] and snapshot_error is not None:
+                raise snapshot_error
             if row and (row["source_url"] != episode["url"] or row["handoff_id"] != episode["handoff_id"]):
                 raise ValueError("course_episode_identity_conflict")
             task = _resolve_task(episode, linked, tasks, shared_links.get(episode["url"], ()))
-        except (ValueError, OSError) as exc:
+        except (ValueError, TypeError, OSError) as exc:
             status = "identity_conflict" if str(exc) == "course_episode_identity_conflict" else "source_unreadable"
             result.append({**episode, "status": status, "task_id": "", "retryable": False})
             continue
@@ -171,7 +179,7 @@ def prepared_course_handoff(request):
         return False, None
     if not path.exists():
         raise ValueError("course_episode_identity_conflict")
-    with _lock:
+    with course_transaction(DATA_DIR):
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=1)) as db:
             db.row_factory = sqlite3.Row
             row = db.execute("SELECT * FROM course_episodes WHERE handoff_id=?", (request.handoff_id,)).fetchone()
@@ -203,9 +211,11 @@ def _write_link(db, course_id, episode, task_id):
 
 
 def prepare_course_episode(course, episode_id):
-    with _lock:
-        require_current_course(DATA_DIR, course)
-        return _prepare_course_episode(course, episode_id)
+    with course_transaction(DATA_DIR):
+        current = read_course(DATA_DIR, course["id"])
+        if current["revision"] != course["revision"]:
+            raise ValueError("course_changed_reload_required")
+        return _prepare_course_episode(current, episode_id)
 
 
 def _prepare_course_episode(course, episode_id):
@@ -236,9 +246,8 @@ def _prepare_course_episode(course, episode_id):
 
 
 def bind_course_episode(course, episode_id, task_id):
-    with _lock:
-        require_current_course(DATA_DIR, course)
-        return _bind_course_episode(course, episode_id, task_id)
+    with course_transaction(DATA_DIR):
+        return _bind_course_episode(read_course(DATA_DIR, course["id"]), episode_id, task_id)
 
 
 def _bind_course_episode(course, episode_id, task_id):

@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "decision": "accepted-for-repository-localization-assets",
+  "reviewer": {
+    "name": "Codex",
+    "type": "AI assistant visual review"
+  },
+  "reviewed_at": "2026-10-09T14:12:58Z",
+  "source": {
+    "sha": "a400df83e450004253d6386847a1bfc5a473e00e",
+    "tree_sha": "081304e04b7da91a894e379fb0bc0b38f3cb399c",
+    "commit_url": "https://github.com/hurry060215-tech/learnnote-assistant/commit/a400df83e450004253d6386847a1bfc5a473e00e",
+    "kind": "GitHub pull request test merge",
+    "parent_shas": [
+      "179ea5cdb394476ec3eda87da8abf4f0591b88e4",
+      "413fa0d5ccd8e4c7c8e9ab812863e986ded9841e"
+    ],
+    "pull_request_url": "https://github.com/hurry060215-tech/learnnote-assistant/pull/273",
+    "tested_pull_request_head_sha": "413fa0d5ccd8e4c7c8e9ab812863e986ded9841e",
+    "tested_pull_request_head_tree_sha": "081304e04b7da91a894e379fb0bc0b38f3cb399c",
+    "tree_relationship": "The test merge tree equals the tested pull request head tree."
+  },
+  "workflow": {
+    "name": "UI visual acceptance",
+    "run_id": 37941628048,
+    "url": "https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/37941628048",
+    "conclusion": "success"
+  },
+  "artifact": {
+    "id": 11621709725,
+    "metadata_url": "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/actions/artifacts/11621709725",
+    "archive_url": "https://api.github.com/repos/hurry060215-tech/learnnote-assistant/actions/artifacts/11621709725/zip",
+    "zip_sha256": "487a46e29ab702f27d66464bba6c12a42ecc287b59ce769d531a3456c85d6a0d",
+    "transfer": "Downloaded through the official GitHub connector; ZIP SHA-256 matched the artifact metadata.",
+    "archive_note": "Exact extracted image and report bytes are retained here beyond CI artifact retention. No temporary signed download URL is stored."
+  },
+  "inspection": {
+    "method": "All four 1280x800 artwork PNGs and all four full-panel raw captures were individually viewed at their original resolution.",
+    "observations": [
+      "Product labels, note and subtitle text, timestamps and disclosure are readable.",
+      "English and Simplified Chinese product labels match their respective locale.",
+      "The same English lesson title, note and six subtitle cues remain unchanged across locales.",
+      "Complete source and result context is visible, with no cropped header or obscured result card.",
+      "The composition clearly identifies separate panel views rather than one actual browser window.",
+      "Synthetic course and service replies, no model call and no native extension installation are explicitly disclosed.",
+      "No regression-only placeholders or private user data appear in the reviewed store artwork."
+    ],
+    "full_panel_captures": [
+      {
+        "filename": "store-full-panel-en-US-summary.png",
+        "sha256": "1230e3c8b4dffa32ab144860376fbe0b5d9226026061bbb098c2a2e1fb61b8ce",
+        "width": 576,
+        "height": 1600
+      },
+      {
+        "filename": "store-full-panel-en-US-transcript.png",
+        "sha256": "da202f3b468935c4784ebc79cdfef5919137b85b91ef0c5324c4dcea0cfccaeb",
+        "width": 576,
+        "height": 1686
+      },
+      {
+        "filename": "store-full-panel-zh-CN-summary.png",
+        "sha256": "a6b79485c34c9375e5fc9afe1cbcf0844f3e20ad6f4a56318ca942bec7889645",
+        "width": 576,
+        "height": 1579
+      },
+      {
+        "filename": "store-full-panel-zh-CN-transcript.png",
+        "sha256": "8f2d986f5b91a161292c8867994a0e3c9e1e80178026e4f7ce2a4f44862a709f",
+        "width": 576,
+        "height": 1665
+      }
+    ]
+  },
+  "images": [
+    {
+      "filename": "store-en-US-summary-1280x800.png",
+      "sha256": "d21605b186818a6acbb4d584bc42ba5e66c894e3c719d79c670d5f60d5751166",
+      "width": 1280,
+      "height": 800,
+      "locale": "en-US",
+      "state": "summary"
+    },
+    {
+      "filename": "store-en-US-transcript-1280x800.png",
+      "sha256": "93915f23d099fb080f9706e09ea252ee74ff014e793ab51349d8659521678979",
+      "width": 1280,
+      "height": 800,
+      "locale": "en-US",
+      "state": "transcript"
+    },
+    {
+      "filename": "store-zh-CN-summary-1280x800.png",
+      "sha256": "ba693e5dd271842ee2ca129a04419f35addb7abd17a3eb893ff207bc4ffc5b50",
+      "width": 1280,
+      "height": 800,
+      "locale": "zh-CN",
+      "state": "summary"
+    },
+    {
+      "filename": "store-zh-CN-transcript-1280x800.png",
+      "sha256": "c2a179c67d7c7dfdcd75ac4086ffaf6998684256d800dd189561fe94249f795c",
+      "width": 1280,
+      "height": 800,
+      "locale": "zh-CN",
+      "state": "transcript"
+    }
+  ],
+  "generated_provenance": {
+    "manifest": "store-candidates.json",
+    "manifest_sha256": "6fa59775bca0668fc3ff90acbed7f4999c42720c2f1d5f8d53b0ccad458d4435",
+    "report": "report.json",
+    "report_sha256": "fe29b79cf57417b60e8a3ee105be52bb7f13eb06312c2999f9d00e17e3a12e49",
+    "unchanged": true,
+    "note": "Generated candidate-unreviewed status and visual_review null are intentionally preserved. This separate record documents the later assistant visual review."
+  },
+  "scope": {
+    "repository_bilingual_assets_accepted": true,
+    "store_approval": false,
+    "store_submission_performed": false,
+    "native_extension_installation_tested": false,
+    "real_browser_permission_dialogs_tested": false,
+    "real_model_generation_tested": false,
+    "chrome_apis_and_service_responses": "synthetic fixtures; shipped panel DOM, styles and controller rendered in Edge",
+    "layout_coverage": "18 locale/viewport/effective-scale conditions; effective CSS viewport and deviceScaleFactor, not native browser toolbar zoom"
+  }
+}

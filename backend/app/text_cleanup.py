@@ -12,6 +12,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from charset_normalizer import from_bytes
 
 from .models import TranscriptResult
+from .text_corruption import (
+    MOJIBAKE_BLOCK_THRESHOLD, corruption_prose, has_high_confidence_corruption,
+    may_repair_utf8_mojibake, mojibake_score,
+)
 
 
 TEXT_NORMALIZATION_VERSION = "nfc-newlines-controls-v1"
@@ -51,21 +55,6 @@ class DecodedText:
     normalization_version: str = TEXT_NORMALIZATION_VERSION
 
 
-_MOJIBAKE_MARKERS = (
-    "\ufffd",
-    "\u00e2\u20ac",
-    "\u00f0\u0178",
-    "\u00ef\u00bb\u00bf",
-    "\u00e8\u00af",
-    "\u00e7\u00a8",
-    "\u00e6\u20ac",
-    "\u00e7\u00bb",
-    "\u951f\u65a4\u62f7",
-    "\u6d93\ue15f",
-    "\u93c2\u56e7",
-    "\u7487\u8f70",
-)
-_UTF8_MOJIBAKE_RE = re.compile(r"(?:Ã[\u0080-\u00bf]|Â(?:[\u0080-\u00bf]|\s)|â(?:€|™|œ|“|”|…)|ðŸ)")
 _SENSITIVE_URL_VALUE_RE = re.compile(
     r"([?&](?:token|access_token|auth|auth_token|authorization|signature|sign|sig|key|expires|expires_at|jwt|policy|key-pair-id|x-amz-signature|x-amz-credential)=)[^&#\s]+",
     re.I,
@@ -90,21 +79,10 @@ _HTML_CONTENT_CHARSET_RE = re.compile(
 )
 
 
-def mojibake_score(value: str) -> int:
-    """Return a conservative corruption score without penalising normal CJK."""
-
-    text = str(value or "")
-    score = sum(text.count(marker) * (10 if marker == "\ufffd" else 2) for marker in _MOJIBAKE_MARKERS)
-    score += len(_UTF8_MOJIBAKE_RE.findall(text)) * 2
-    score += sum(4 for char in text if 0x80 <= ord(char) <= 0x9F)
-    score += text.count("\x00") * 4
-    return score
-
-
 def _repair_utf8_mojibake(value: str) -> tuple[str, bool]:
     original = str(value or "")
     original_score = mojibake_score(original)
-    if original_score <= 0:
+    if original_score <= 0 or not may_repair_utf8_mojibake(original):
         return original, False
     best = original
     best_score = original_score
@@ -157,7 +135,7 @@ def canonicalize_unicode_text(value: str, *, reject_mojibake: bool = True) -> st
     # NUL and non-whitespace C0 controls cannot be meaningful subtitle/note text.
     text = "".join(char for char in text if char in "\n\t" or ord(char) >= 0x20)
     score = mojibake_score(text)
-    if reject_mojibake and score >= 4:
+    if reject_mojibake and score >= MOJIBAKE_BLOCK_THRESHOLD:
         raise TextDecodingError("text_mojibake_detected")
     return text
 
@@ -373,7 +351,7 @@ def decode_text_bytes(
     if reject_mojibake and quality_penalty >= 8:
         label = f" ({source})" if source else ""
         raise TextDecodingError(f"text_encoding_unsupported{label}")
-    if reject_mojibake and best.mojibake_score >= 4:
+    if reject_mojibake and best.mojibake_score >= MOJIBAKE_BLOCK_THRESHOLD:
         label = f" ({source})" if source else ""
         raise TextDecodingError(f"text_mojibake_detected{label}")
     return DecodedText(
@@ -421,6 +399,10 @@ def correct_transcript_terms(transcript: TranscriptResult) -> TranscriptResult:
     # Preserve the raw artifact upstream, mark sparse uncertainty visibly, and
     # keep imported text and widespread corruption subject to the strict gate.
     raw_text = "\n".join(segment.text for segment in transcript.segments) if transcript.segments else transcript.full_text
+    if corruption_prose(raw_text) != raw_text:
+        # Keep code examples literal, including quoted corruption/ASR markers.
+        # The publication gate still checks any prose surrounding those quotes.
+        return transcript
     missing = raw_text.count("\ufffd")
     if transcript.source == "faster-whisper" and 0 < missing <= 10 and missing / max(1, len(raw_text)) <= 0.01:
         locations = [f"{int(segment.start) // 60:02d}:{int(segment.start) % 60:02d}" for segment in transcript.segments if "\ufffd" in segment.text]
@@ -430,6 +412,11 @@ def correct_transcript_terms(transcript: TranscriptResult) -> TranscriptResult:
             "full_text": transcript.full_text.replace("\ufffd", "【识别不清】"),
             "warning": "\n".join(filter(None, [transcript.warning, warning])),
         })
+    review_text = "\n".join(segment.text for segment in transcript.segments) if transcript.segments else transcript.full_text
+    if has_high_confidence_corruption(review_text) and "\ufffd" not in review_text:
+        # Retain unresolved words for the explicit review draft, without
+        # guessing replacements or preventing that draft from being written.
+        return transcript
     segments = [
         segment.model_copy(update={"text": correct_common_zh_asr_text(segment.text)})
         for segment in transcript.segments

@@ -276,7 +276,23 @@
     "range_custom": "自定义起止时间",
     "range_position_unavailable": "当前位置不可用或已到片尾，请播放视频后重试。",
     "range_chapter_unavailable": "当前片段没有可靠的原始章节线索，请选择时间窗口或自定义范围。",
-    "range_selected_bounds": "已选择 {start}–{end} 秒；发送时重新核对当前位置和视频身份。"
+    "range_selected_bounds": "已选择 {start}–{end} 秒；发送时重新核对当前位置和视频身份。",
+    "progress_title": "逐步阅读",
+    "progress_sections": "分段草稿",
+    "progress_waiting": "等待章节；可在工作台查看或确认任务。",
+    "progress_draft": "草稿 · 证据补充中 · 未验证",
+    "progress_workspace": "在工作台查看最终结果或取消处理。",
+    "progress_reconnecting": "连接暂时中断，正在重新同步。已显示章节仍是未验证草稿。",
+    "progress_paused": "读取暂时停止。请检查工作台连接后重试；已显示章节仍是未验证草稿。",
+    "progress_retry": "重新连接阅读",
+    "progress_cancelled": "任务已取消，已停止读取。已显示章节仍是未验证草稿。",
+    "progress_failed": "任务未完成，已停止读取。可在工作台查看原因；已显示章节仍是未验证草稿。",
+    "progress_complete": "任务已完成，可在工作台核对最终结果。这里保留的分段内容仍是未验证草稿。",
+    "progress_cancelling": "已请求取消，已停止读取。请在工作台确认处理状态；已显示章节仍是未验证草稿。",
+    "progress_syncing": "正在同步草稿版本；已显示内容仍未验证。",
+    "progress_legacy": "旧草稿无法确认属于本次处理，暂不在侧栏显示。请在工作台查看任务与保留内容。",
+    "progress_unavailable": "有草稿未通过内容或来源校验，未显示相关部分。请在工作台查看任务与保留内容。",
+    "progress_excerpt": "字幕摘录 · 非 AI 总结 · 未验证"
   },
   "en": {
     "extensionName": "LearnNote Current Video Assistant",
@@ -551,7 +567,23 @@
     "range_custom": "Custom start and end",
     "range_position_unavailable": "The current position is unavailable or at the end. Play the video and try again.",
     "range_chapter_unavailable": "No reliable source chapter covers this position. Choose a time window or custom range.",
-    "range_selected_bounds": "Selected {start}–{end} seconds. Position and video identity are rechecked when sending."
+    "range_selected_bounds": "Selected {start}–{end} seconds. Position and video identity are rechecked when sending.",
+    "progress_title": "Read as sections arrive",
+    "progress_sections": "Draft sections",
+    "progress_waiting": "Waiting for sections. View or confirm this task in the workspace.",
+    "progress_draft": "Draft · Evidence pending · Unverified",
+    "progress_workspace": "View the final result or cancel processing in the workspace.",
+    "progress_reconnecting": "Reconnecting and syncing. Visible sections remain unverified drafts.",
+    "progress_paused": "Reading paused. Check the workspace connection and retry. Visible sections remain unverified drafts.",
+    "progress_retry": "Reconnect reading",
+    "progress_cancelled": "Task cancelled; reading stopped. Visible sections remain unverified drafts.",
+    "progress_failed": "Task did not finish; reading stopped. Check the workspace for details. Visible sections remain unverified drafts.",
+    "progress_complete": "Task finished. Review the final result in the workspace. Sections retained here remain unverified drafts.",
+    "progress_cancelling": "Cancellation requested; reading stopped. Check processing status in the workspace. Visible sections remain unverified drafts.",
+    "progress_syncing": "Syncing the draft version. Visible content remains unverified.",
+    "progress_legacy": "This older draft cannot be linked to the current attempt. Check the task and retained content in the workspace.",
+    "progress_unavailable": "Some draft content could not pass content or source checks and is hidden. Check the task and retained content in the workspace.",
+    "progress_excerpt": "Source excerpts · Not an AI summary · Unverified"
   }
 }/* END CATALOGS */;
   function locale() {

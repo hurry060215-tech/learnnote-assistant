@@ -11,6 +11,7 @@ class EvidenceEncodingUiTests(unittest.TestCase):
     def test_default_workspace_offers_encoding_choice_only_for_document_inputs(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
+        batch = (ROOT / "web" / "material-batch.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "desk.css").read_text(encoding="utf-8")
 
         self.assertIn('id="materialEncodingChoice"', html)
@@ -19,8 +20,8 @@ class EvidenceEncodingUiTests(unittest.TestCase):
         self.assertIn('value="shift_jis"', html)
         self.assertIn('value="utf-16-le"', html)
         self.assertIn('value="utf-16-be"', html)
-        self.assertIn('data.append("encoding", requestedEncoding)', script)
-        self.assertIn("updateMaterialEncodingChoice", script)
+        self.assertIn('data.append("encoding", item.encoding)', batch)
+        self.assertIn('$("materialEncodingChoice").hidden = !files.some', script)
         self.assertIn("encoding-provenance-note", script)
         self.assertIn("encoding_confidence", script)
         self.assertIn("未覆盖原资料", (ROOT / "web" / "app.js").read_text(encoding="utf-8"))

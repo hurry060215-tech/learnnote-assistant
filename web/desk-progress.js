@@ -1,18 +1,24 @@
 import { escapeHtml as esc } from "/web/desk-api.js";
 
 const stageNames = {
+  queue: "本次排队",
   subtitle_probe: "检查字幕",
-  media: "获取视频",
+  download: "获取视频",
+  media: "准备媒体",
   transcript: "读取文字",
-  visual: "补充画面",
-  summary: "生成笔记",
+  frames: "抽帧与本地准备",
+  vision: "视觉批次",
+  merge: "合并内容",
+  verify: "本地输出/来源检查",
+  visual: "画面准备（合计）",
+  summary: "生成笔记（合计）",
 };
 export const phaseName = (phase) =>
   ({
     queued: "等待开始",
     detecting: "探测字幕",
     downloading: "获取视频",
-    processing_video: "准备音轨",
+    processing_video: "准备媒体",
     transcribing: "读取字幕或转写",
     extracting_frames: "补充画面",
     summarizing: "生成总结",
@@ -20,7 +26,6 @@ export const phaseName = (phase) =>
     failed: "需要处理",
     cancelled: "已停止",
     cancelling: "正在停止",
-    download: "获取视频",
     ...stageNames,
   })[phase] || "处理内容";
 export function elapsedLabel(ms) {
@@ -31,11 +36,45 @@ export function elapsedLabel(ms) {
       ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
       : `${Math.floor(seconds / 3600)} 小时 ${Math.floor(seconds / 60) % 60} 分`;
 }
+export function durationEstimateHtml(task, events = [], now = Date.now()) {
+  const unknown = (detail = "等待当前字幕来源、处理方式和足够的相近历史记录。") =>
+    `<p class="muted" data-duration-estimate="unknown">剩余时间未知。${detail}</p>`;
+  if (task.status === "success") return "";
+  if (["failed", "cancelled", "cancelling"].includes(task.status))
+    return unknown("本次处理未继续，旧区间已停用。");
+  if (task.status !== "running" || task.awaiting_confirmation || task.cancel_requested)
+    return unknown("尚未进入可测量的处理阶段。");
+  const value = task.duration_estimate;
+  const range = item => Array.isArray(item) && item.length === 2 && item.every(n => Number.isFinite(n) && n >= 0) && item[0] <= item[1];
+  const latestStart = events.findLast(e => ["pipeline_attempt_started", "task_enqueued"].includes(e.event));
+  if (!value || value.schema_version !== 1 || value.scope !== "after_transcript_ready") return unknown();
+  if (value.status === "unknown") {
+    if (value.reason === "insufficient_compatible_history" && Number.isInteger(value.sample_count) && value.sample_count >= 0 && value.sample_count < 5)
+      return unknown(`目前只有 ${value.sample_count} 个相近的成功任务，需要至少 5 个。`);
+    return unknown();
+  }
+  if (!["estimated", "overrun"].includes(value.status) || value.uncertainty !== "empirical_not_probability" ||
+      typeof value.attempt_id !== "string" || !value.attempt_id ||
+      !Number.isInteger(value.sample_count) || value.sample_count < 5 || value.sample_count > 30 ||
+      !range(value.duration_seconds_range) || value.duration_seconds_range[1] <= 0 ||
+      !Number.isFinite(value.elapsed_seconds) || value.elapsed_seconds < 0 ||
+      !Number.isFinite(value.observed_at_unix_ms) || now - value.observed_at_unix_ms > 60000 || value.observed_at_unix_ms - now > 1000 ||
+      (latestStart && (latestStart.event !== "pipeline_attempt_started" || latestStart.details?.attempt_id !== value.attempt_id)))
+    return unknown("当前测量记录已变化或暂不可用。");
+  const label = item => `${elapsedLabel(item[0] * 1000)}–${elapsedLabel(item[1] * 1000)}`;
+  const reference = `字幕就绪后的处理参考：${label(value.duration_seconds_range)}。`;
+  const detail = `依据本地 ${value.sample_count} 个相近的成功任务；不含之前的排队、下载或转写。区间是历史参考，实际可能超出。`;
+  if (value.status === "overrun" || value.elapsed_seconds >= value.duration_seconds_range[1])
+    return `<p class="muted" data-duration-estimate="overrun">${reference}本次已超出历史参考上限，剩余时间未知。${detail}</p>`;
+  if (!range(value.remaining_seconds_range) || value.remaining_seconds_range[1] <= 0) return unknown();
+  return `<p class="muted" data-duration-estimate="estimated">${reference}当前剩余参考：${label(value.remaining_seconds_range)}。${detail}</p>`;
+}
 export function taskTimeline(task, events = [], now = Date.now()) {
   const start = events.findLastIndex(
-    (e) => e.event === "pipeline_attempt_started",
+    (e) => ["task_enqueued", "pipeline_attempt_started"].includes(e.event),
   );
-  const current = start < 0 ? events : events.slice(start);
+  const waitingForAdmission = task.status === "queued" && task.phase === "queued" && events[start]?.event !== "task_enqueued";
+  const current = waitingForAdmission ? [] : start < 0 ? events : events.slice(start);
   const stages = Object.entries(stageNames).map(([key, label]) => ({
     key,
     label,
@@ -47,6 +86,10 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       (e) => e.event === "stage_timing" && e.phase === stage.key,
     );
     if (timed) {
+      const duration = timed.details?.duration_ms;
+      const durationLabel = Number.isFinite(duration) && duration >= 0
+        ? elapsedLabel(duration)
+        : "耗时未记录";
       stage.state =
         timed.status === "completed"
           ? "done"
@@ -56,22 +99,31 @@ export function taskTimeline(task, events = [], now = Date.now()) {
       stage.detail =
         stage.state === "skipped"
           ? {
-              media: "无需下载",
+              frames: "无需抽帧或本地 OCR",
+              vision: "无需视觉模型分析",
+              merge: "无需合并",
+              download: "无需下载",
+              media: "无需准备媒体",
               visual: "未启用 / 无需画面",
               transcript: "复用已有文字",
               subtitle_probe: "复用已有结果",
             }[stage.key] || "无需执行"
-          : `${stage.state === "done" ? "已完成" : "未完成"} · ${elapsedLabel(timed.details?.duration_ms || 0)}`;
+          : `${stage.state === "done" ? "已完成" : "未完成"} · ${durationLabel}`;
     }
   }
-  const activeKey = {
+  const phaseStages = {
+    queued: "queue",
     detecting: "subtitle_probe",
-    downloading: "media",
-    processing_video: "transcript",
+    downloading: "download",
+    // Audio extraction reuses this phase after media preparation finishes.
+    processing_video: stages.some(
+      (s) => s.key === "media" && ["done", "skipped"].includes(s.state),
+    ) ? "transcript" : "media",
     transcribing: "transcript",
-    extracting_frames: "visual",
+    extracting_frames: "frames",
     summarizing: "summary",
-  }[task.phase];
+  };
+  const activeKey = phaseStages[task.phase];
   const active = stages.find((s) => s.key === activeKey);
   if (
     active &&
@@ -96,13 +148,7 @@ export function taskTimeline(task, events = [], now = Date.now()) {
     ["failed", "cancelled", "cancelling"].includes(task.status)
   ) {
     const failedKey =
-      {
-        detecting: "subtitle_probe",
-        downloading: "media",
-        transcribing: "transcript",
-        summarizing: "summary",
-        extracting_frames: "visual",
-      }[task.failed_phase] ||
+      phaseStages[task.failed_phase] ||
       (task.error_code === "summary_unavailable" ? "summary" : null);
     const stopped = stages.find((s) => s.key === failedKey);
     if (stopped) {
@@ -137,9 +183,9 @@ export function timelineHtml(
 ) {
   const artifacts = task.artifact_status || {};
   const checkpoint = artifacts.checkpoint || task.checkpoint;
-  const artifactHint = artifacts.draft_available ? " · 字幕草稿已保留" : artifacts.transcript_ready ? " · 字幕已就绪" : "";
+  const artifactHint = artifacts.draft_available ? (artifacts.partial_draft_available ? " · 分段草稿可读" : " · 字幕草稿已保留") : artifacts.transcript_ready ? " · 字幕已就绪" : "";
   const failureHint = artifacts.failure_phase ? ` · 失败阶段：${phaseName(artifacts.failure_phase)}` : "";
-  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary><ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
+  return `<details class="task-progress-details" data-task-progress="${esc(task.id)}" ${expanded ? "open" : ""}><summary>处理步骤${checkpoint ? ` · 检查点 ${esc(checkpoint)}` : ""}${artifactHint}${failureHint}</summary>${durationEstimateHtml(task, events)}<ol class="task-timeline" aria-label="实际处理步骤">${taskTimeline(
     task,
     events,
   )
@@ -147,9 +193,11 @@ export function timelineHtml(
       (s, i) =>
         `<li data-stage="${s.key}" data-state="${s.state}"><span class="timeline-mark" aria-hidden="true">${s.state === "done" ? "✓" : s.state === "skipped" ? "−" : i + 1}</span><div><strong>${s.label}</strong><small>${esc(s.detail)}</small></div></li>`,
     )
-    .join("")}</ol></details>`;
+    .join("")}</ol><p class="muted">抽帧与本地准备包含已启用的本地 OCR；本地输出/来源检查记录格式与来源映射检查，不代表事实已核验。画面和笔记汇总步骤可包含上面的细分耗时，请勿相加。</p></details>`;
 }
 export function taskExplanation(task) {
+  if (task.status === "failed" && task.artifact_status?.partial_draft_available)
+    return "完整总结尚未完成；已生成的分段仍以草稿保留，可先阅读或核对字幕，再重试。";
   if (task.options?.content_mode === "subtitles")
     return task.status === "success"
       ? "已有字幕已保存，可以阅读或导出。本次未下载视频、转写音频或调用模型。"
@@ -186,8 +234,10 @@ export function eventLogHtml(events) {
     pipeline_attempt_started: "开始本次处理",
     stage_timing: "步骤结束",
     draft_ready: "字幕草稿可读",
+    partial_section_ready: "分段草稿可读",
     summary_retry_requested: "重新生成总结",
     task_created: "接收来源",
+    task_enqueued: "加入本次队列",
     task_started: "开始处理",
     task_completed: "处理完成",
     task_failed: "处理未完成",
@@ -201,7 +251,7 @@ export function eventLogHtml(events) {
         .slice(-120)
         .map(
           (e) =>
-            `<li><time>${esc(new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</time><div><strong>${esc(names[e.event] || phaseName(e.phase))}</strong><p>${esc(e.event === "stage_timing" ? `${phaseName(e.phase)} · ${e.status === "skipped" ? "无需执行" : elapsedLabel(e.details?.duration_ms || 0)}` : e.message || phaseName(e.phase))}</p></div></li>`,
+            `<li><time>${esc(new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</time><div><strong>${esc(names[e.event] || phaseName(e.phase))}</strong><p>${esc(e.event === "stage_timing" ? `${phaseName(e.phase)} · ${e.status === "skipped" ? "无需执行" : Number.isFinite(e.details?.duration_ms) && e.details.duration_ms >= 0 ? elapsedLabel(e.details.duration_ms) : "耗时未记录"}` : e.message || phaseName(e.phase))}</p></div></li>`,
         )
         .join("")}</ol></details>`
     : '<p class="muted">这份旧任务没有可用的逐步记录。可以下载诊断报告查看已保存的状态。</p>';

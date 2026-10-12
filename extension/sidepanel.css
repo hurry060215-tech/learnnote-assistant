@@ -232,3 +232,9 @@ footer { padding: 2px 22px 20px; color: #7a8e93; font-size: 12px; line-height: 1
 .source-preview > summary > [data-i18n] { font-size: inherit; font-weight: inherit; color: inherit; }
 .primary-button, .secondary-button, .result-actions button { overflow-wrap: anywhere; }
 @media (max-width: 330px) { .connection-card button { max-width: 100%; } }
+
+/* Draft sections keep their nodes and their own reading position on updates. */
+.progress-sections { max-height: 60vh; overflow: auto; overflow-anchor: none; }
+.progress-section { min-width: 0; border-top: 1px solid var(--line, #ddd); padding: 10px 0; }
+.progress-section pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; margin: 0; }
+.progress-draft-label { font-size: 12px; color: var(--muted, #666); }

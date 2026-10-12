@@ -793,6 +793,16 @@
               "type": "string",
               "title": "Task Id"
             }
+          },
+          {
+            "name": "include_annotations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Annotations"
+            }
           }
         ],
         "responses": {

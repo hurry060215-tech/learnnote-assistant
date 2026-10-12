@@ -19,3 +19,8 @@ assert.match(html, /data-client-view="diagnostics"/);
 assert.doesNotMatch(html, /API Key|切片间隔|视觉窗口|任务历史|导出诊断|候选资源列表/);
 assert.match(css, /\.handoff-progress > span[\s\S]*transition: width 240ms ease/);
 assert.match(css, /font-family: Inter, "SF Pro Text", "Segoe UI Variable"/);
+const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(match => match[1].split("?")[0]);
+assert(scripts.indexOf("i18n.js") < scripts.indexOf("sidepanel-progress.js"));
+assert(scripts.indexOf("sidepanel-progress.js") < scripts.indexOf("sidepanel.js"));
+assert.match(html, /id="progressiveStatus"[^>]*role="status"/);
+assert.match(html, /id="progressiveSections"[^>]*tabindex="0"/);
