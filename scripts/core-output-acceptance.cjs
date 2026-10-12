@@ -3,7 +3,7 @@ const {chromium}=require('playwright');
 const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), assert=require('node:assert/strict');
 (async()=>{
   const base=process.argv[2]||'http://127.0.0.1:18956';
-  const out=process.argv[3]||path.join(os.tmpdir(),'learnnote-core-output');fs.mkdirSync(out,{recursive:true});
+  const out=process.argv[3]||fs.mkdtempSync(path.join(os.tmpdir(),'learnnote-core-output-'));fs.mkdirSync(out,{recursive:true});
   const browser=await chromium.launch({channel:'msedge',headless:true});
   try {
     const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
