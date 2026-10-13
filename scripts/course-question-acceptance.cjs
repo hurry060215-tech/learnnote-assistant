@@ -114,6 +114,13 @@ async function main() {
           if (/^\/api\/personal\/(material|task)\/[^/]+$/.test(pathname)) return json({ annotations: [] });
           const course = pathname.match(/^\/api\/courses\/([^/]+)$/);
           if (course) { const selected = courses.find(item => item.id === course[1]); return json(selected ? { course: selected, episodes: [] } : { detail: "课程不存在或已删除" }, selected ? 200 : 404); }
+          const personalReview = pathname.match(/^\/api\/tasks\/editions\/(material|task)\/([^/]+)\/personal-review$/);
+          if (personalReview) {
+            const selected = personalReview[1] === "task" ? tasks.find(item => item.id === personalReview[2]) : materials.find(item => item.material_id === personalReview[2]);
+            assert(selected, `Unknown fixture review source: ${pathname}`);
+            return json({ status: "unmarked", context_revision: null, note_revision: "fixture", review_revision: "0".repeat(64),
+              can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
+          }
           const edition = pathname.match(/^\/api\/tasks\/editions\/(material|task)\/([^/]+)$/);
           if (edition) { const selected = edition[1] === "task" ? tasks.find(item => item.id === edition[2]) : materials.find(item => item.material_id === edition[2]); assert(selected); return json({ text: `# ${selected.title}\n\nSynthetic reader text with local source evidence.`, revision: "fixture", edited: false }); }
           const materialRead = pathname.match(/^\/api\/library\/materials\/([^/]+)(?:\/(content|anchors))?$/);

@@ -268,7 +268,7 @@ export function installTools(ctx) {
     backupPanel.className = "study-backup";
     const backupSummary = document.createElement("summary"); backupSummary.textContent = "备份与恢复";
     const backupHint = document.createElement("p"); backupHint.className = "muted";
-    backupHint.textContent = "包含填空作答、评分历史、计划、个人批注和笔记修改。恢复只合并缺失内容，不覆盖本机现有记录；原始资料需要先恢复到本机。";
+    backupHint.textContent = "包含填空作答、评分历史、计划、个人批注、笔记修改和本机个人核对记录。恢复只合并缺失内容，不覆盖本机现有记录；导入的核对记录需要本人重新核对，原始资料需要先恢复到本机。";
     const backupActions = document.createElement("div"); backupActions.className = "tool-actions";
     const backupFeedback = document.createElement("p"); backupFeedback.className = "muted";
     backupFeedback.dataset.backupStatus = ""; backupFeedback.setAttribute("role", "status"); backupFeedback.hidden = true;
@@ -297,12 +297,12 @@ export function installTools(ctx) {
       const file = backupFile.files?.[0];
       if (!file) return;
       if (file.size > 100_000_000) { status("学习备份超过 100 MB，未写入任何数据。"); backupFile.value = ""; return; }
-      if (!confirm("将评分、计划、个人批注和笔记修改合并到本机；现有条目不会被覆盖。原始资料需要先恢复，继续吗？")) { backupFile.value = ""; return; }
+      if (!confirm("将评分、计划、个人批注、笔记修改和个人核对记录合并到本机；现有条目不会被覆盖。导入的核对记录不会自动成为本人确认。原始资料需要先恢复，继续吗？")) { backupFile.value = ""; return; }
       try {
         const payload = JSON.parse(await file.text());
         const result = await api("/api/study/backup/restore", { method: "POST", body: JSON.stringify(payload) });
         const merge = result.merge || {};
-        status(`已恢复 ${merge.restored_reviews || 0} 条评分、${merge.restored_annotations || 0} 条批注和 ${merge.restored_editions || 0} 份修改。`);
+        status(`已恢复 ${merge.restored_reviews || 0} 条评分、${merge.restored_annotations || 0} 条批注和 ${merge.restored_editions || 0} 份修改、${merge.restored_personal_reviews || 0} 条待重新核对的个人记录。`);
         await studySettings(courseId,taskId);
       } catch (error) { status(error.message || "备份无效或无法恢复。"); }
       finally { backupFile.value = ""; }

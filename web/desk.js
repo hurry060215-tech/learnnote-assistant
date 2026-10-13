@@ -24,6 +24,7 @@ import { installTools } from "/web/desk-tools.js?v=0.2.14";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
+import { installPersonalReview } from "/web/personal-review.js";
 import {
   api,
   escapeHtml as esc,
@@ -339,8 +340,8 @@ async function refreshLibrary() {
       if (changed && !state.editing) {
         claimTimeline.reset();
         await loadEdition(state.epoch);
-      }
-    }
+      } else if (!state.editing) state.personalReview?.load();
+    } else if (state.selected && !state.editing) state.personalReview?.load();
     const completed = state.items.filter(
       (item) =>
         item.kind === "task" &&
@@ -469,6 +470,7 @@ async function loadEdition(epoch) {
   $("annotations").dataset.sourceRevision = state.revision || "";
   LearnNoteMarkdown.configure({ safeNoteMediaUrl: value => selected.kind === "task" ? taskAsset(value, selected.id) : "" });
   if (sectionReader.render(projection, selected, edition)) {
+    state.personalReview?.reset();
     claimTimeline.reset();
     $("document").dataset.readerSource = `${selected.kind}:${selected.id}`;
     $("document").dataset.readerRevision = `${edition.revision}:${selected.summary_source || ""}:`;
@@ -477,7 +479,7 @@ async function loadEdition(epoch) {
   if ($("document").querySelector("[data-progressive-reader]")) delete $("document").dataset.readerRevision;
   const rendered = renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
     `${edition.revision}:${selected.summary_source || ""}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
-  if (!rendered) loadClaimTimeline();
+  if (!rendered) { loadClaimTimeline(); state.personalReview?.load(); }
 }
 function renderNote() {
   sectionReader.clear();
@@ -1071,7 +1073,7 @@ $("source").onclick = () =>
 $("closeSource").onclick = () => closeSource();
 installNoteEditor({
   state, $, guard, notice, renderNote,
-  onEnterEdit: () => { evidenceRequest++; claimTimeline.reset(); },
+  onEnterEdit: () => { evidenceRequest++; claimTimeline.reset(); state.personalReview?.reset(); },
   saveNote: (selected, body) => api(sourcePath(selected), {
     method: "PUT", body: JSON.stringify(body),
   }),
@@ -1749,4 +1751,5 @@ installInteractions({ state, drawList, showHome, navigateBack });
 installLayout();
 installProfile({state, notice, startReview});
 const personalAnchorPicker = installAnnotationAnchors({ state, api, notice });
+state.personalReview = installPersonalReview({ state, api, refreshNote: () => loadEdition(state.epoch) });
 $("review").onclick = () => workspaceTools.studySettings();

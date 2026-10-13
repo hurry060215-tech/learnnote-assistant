@@ -161,12 +161,13 @@ def annotation_markdown(kind: str, source_id: str) -> str:
 
 def export_personal_data() -> dict[str, list[dict]]:
     """Export all recognized personal content or fail without a partial backup."""
-    result = {"annotations": [], "editions": []}
+    result = {"annotations": [], "editions": [], "personal_reviews": []}
     total_bytes = 0
     with personal_transaction(DATA_DIR):
         for folder, pattern, kind in (
             ("personal-notes", r"(?:task|material)-[A-Za-z0-9_-]+", "annotations"),
             ("user-editions", r"[a-f0-9]{64}", "editions"),
+            ("personal-reviews", r"[a-f0-9]{64}", "personal_reviews"),
         ):
             root = DATA_DIR / folder
             if root.is_symlink() or (root.exists() and not root.is_dir()):
@@ -186,12 +187,17 @@ def export_personal_data() -> dict[str, list[dict]]:
                 if kind == "annotations":
                     value = _annotation_file(content, path.stem, validate_personal_data)
                     result[kind].append({"key": path.stem, "items": value["annotations"]})
-                else:
+                elif kind == "editions":
                     _edition_file(content, path.stem, validate_personal_data)
                     value = json.loads(content.decode("utf-8"))
                     result[kind].append({"key": path.stem, "value": {
                         "text": value["text"], "revision": value["revision"], "edited": value["edited"],
                     }})
+                else:
+                    from .personal_review_records import validate_review
+                    from .personal_restore import _object
+                    value = validate_review(_object(content), path.stem)
+                    result[kind].append({"key": path.stem, "value": value})
         validate_personal_data(result)
     return result
 
@@ -260,7 +266,24 @@ def validate_personal_data(payload: dict) -> dict[str, list[dict]]:
         editions.append({"key": key, "value": {"text": text, "revision": revision, "edited": bool(raw["value"].get("edited"))}})
     if total_text > 100_000_000:
         raise ValueError("personal_backup_too_large")
-    return {"annotations": annotations, "editions": editions}
+    from .personal_review_records import validate_review
+    raw_reviews = payload.get("personal_reviews", [])
+    if not isinstance(raw_reviews, list) or len(raw_reviews) > 100_000:
+        raise ValueError("personal_backup_reviews_invalid")
+    reviews, review_keys = [], set()
+    for item in raw_reviews:
+        if not isinstance(item, dict) or set(item) != {"key", "value"} or not isinstance(item["key"], str):
+            raise ValueError("personal_backup_reviews_invalid")
+        key = item["key"]
+        if key in review_keys or not re.fullmatch(r"[a-f0-9]{64}", key):
+            raise ValueError("personal_backup_reviews_invalid")
+        review_keys.add(key)
+        value = validate_review(item["value"], key)
+        total_text += len(json.dumps(value, ensure_ascii=False))
+        if total_text > 100_000_000:
+            raise ValueError("personal_backup_too_large")
+        reviews.append({"key": key, "value": value})
+    return {"annotations": annotations, "editions": editions, "personal_reviews": reviews}
 
 
 def prepare_personal_restore(payload: dict):

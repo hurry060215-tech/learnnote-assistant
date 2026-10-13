@@ -14,7 +14,7 @@ from typing import Any
 from .models import TaskRecord, TranscriptResult
 from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, summary_failure_message
 from .storage import get_task, task_dir
-from .text_cleanup import read_canonical_text
+from .text_cleanup import read_canonical_text, decode_text_bytes
 
 
 def public_summary_task(record: TaskRecord) -> TaskRecord:
@@ -36,6 +36,12 @@ def read_task_note(task_id: str) -> str:
     path = Path(record.note_path)
     if not path.is_file():
         return ""
+    return decode_task_note(record, path.read_bytes())
+
+
+def decode_task_note(record: TaskRecord, content: bytes) -> str:
+    """Apply the same note rules to bytes already read through a safe descriptor."""
+    path = Path(record.note_path)
     diagnostics = record.summary_diagnostics or {}
     if (record.summary_source == "transcript-draft"
             and record.error_code == "transcript_review_required"
@@ -46,8 +52,8 @@ def read_task_note(task_id: str) -> str:
             and path.name == "draft.review.md"):
         # These are generated UTF-8 drafts, not an alternate decoder for formal
         # notes. Keep the warning and unresolved words exactly as preserved.
-        return path.read_bytes().decode("utf-8")
-    return read_canonical_text(path).text
+        return content.decode("utf-8")
+    return decode_text_bytes(content, source=path.name).text
 
 
 def read_task_transcript(task_id: str) -> dict[str, Any]:

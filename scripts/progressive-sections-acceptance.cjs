@@ -374,6 +374,9 @@ async function runScenario(scenario, out) {
             report.editionRequests.push({ revision: fixture.edition.revision, status: fixture.task.status, summary_source: fixture.task.summary_source, updated_at: fixture.task.updated_at });
             return await json(fixture.edition);
           }
+          if (url.pathname === `/api/tasks/editions/task/${TASK_ID}/personal-review`)
+            return await json({ status: "unmarked", context_revision: null, note_revision: fixture.edition.revision, review_revision: "0".repeat(64),
+              can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
           if (url.pathname === `/api/personal/task/${TASK_ID}`) return await json({ annotations: [] });
           if (url.pathname === "/api/library/materials") return await json({ materials: [] });
           if (url.pathname === "/api/preferences") return await json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
