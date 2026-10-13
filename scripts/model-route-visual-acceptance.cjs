@@ -4,6 +4,7 @@ const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 const output = path.resolve(process.argv[3] || "build/model-route-ui");
 const base = new URL(process.argv[2] || "http://127.0.0.1:8765");
@@ -85,6 +86,39 @@ const routeReport = {
     await page.locator("#createDialog [data-close]").first().click();
     await page.locator("#newNote").click();
     assert.match(await page.locator("#contentModeExplanation").innerText(), /不调用转写或总结模型/);
+    await page.locator("#createDialog [data-close]").first().click();
+    // Obtain the real local planner's public declaration; no SDK/client/key.
+    const declared = JSON.parse(execFileSync("python", ["-c", [
+      "import json",
+      "from app.models import TaskOptions",
+      "from app.model_route import plan_route",
+      "print(json.dumps(plan_route(TaskOptions(llm_base_url='https://api.groq.com/openai/v1', llm_model='qwen/qwen3.8-27b', vision_batch_size=4))))",
+    ].join("\n")], { cwd: root, env: { ...process.env, PYTHONPATH: path.join(root, "backend") }, encoding: "utf8" }));
+    Object.assign(fixture, { base_url: "https://api.groq.com/openai/v1", model: "qwen/qwen3.8-27b" });
+    routeReport.capability_catalog.image_limit = declared.capability_catalog.image_limit;
+    routeReport.vision_batch_plan = declared.vision_batch_plan;
+    report.declaredImageLimit = declared.vision_batch_plan;
+    assert.equal(report.declaredImageLimit.effective_size, 3);
+    assert.equal(report.declaredImageLimit.image_limit.status, "declared");
+    await page.reload();
+    await page.locator('#welcome[data-ready="true"]').waitFor();
+    await page.locator("#settings").click();
+    await page.locator('[data-settings-section="model"]').click();
+    if (!await page.locator("#modelRouteCapabilities").isVisible()) await page.locator("#modelRouteHeading").click();
+    await page.locator("#refreshModelRoute").click();
+    await page.locator("#modelRouteCapabilities").filter({ hasText: "实际每批最多 3 张" }).waitFor();
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      for (const theme of ["light", "dark"]) {
+        await page.evaluate(dark => document.body.classList.toggle("dark", dark), theme === "dark");
+        const detail = page.locator("#modelRouteCapabilities");
+        await detail.scrollIntoViewIfNeeded();
+        assert.match(await detail.innerText(), /官方声明.*未实测.*上下文限制仍未检查.*设置每批 4 张.*实际每批最多 3 张/);
+        assert(await detail.evaluate(node => node.scrollWidth <= node.clientWidth + 1), "Declaration must wrap within settings");
+        const file = `declared-limit-${width}-${theme}.png`;
+        await page.screenshot({ path: path.join(output, file), fullPage: true }); report.screenshots.push(file);
+      }
+    }
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.unexpected, []);
     assert(!report.requests.some(value => /setup\/check|\/prepare|tasks\/from/.test(value)));
@@ -94,5 +128,5 @@ const routeReport = {
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify(report, null, 2));
     await browser.close();
   }
-  console.log("PASS: no-key readiness, visible uncertainty and pre-submit data disclosure; no model/source requests");
+  console.log("PASS: no-key readiness, declared image-count batching, visible uncertainty and data disclosure; no model/source requests");
 })().catch(error => { console.error(error); process.exitCode = 1; });

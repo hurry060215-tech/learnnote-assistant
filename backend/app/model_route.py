@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .models import TaskOptions
+from .model_capabilities import vision_batch_plan
 
 
 ROUTE_SCHEMA_VERSION = 2
@@ -22,6 +23,13 @@ def plan_route(
     capability_catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected = options or TaskOptions()
+    from .config import LLM_BASE_URL, LLM_MODEL
+    batch_plan = vision_batch_plan(selected.llm_base_url or LLM_BASE_URL,
+                                  selected.llm_model or LLM_MODEL, selected.vision_batch_size)
+    catalog = dict(capability_catalog or {})
+    image_limit = dict(batch_plan["image_limit"])
+    image_limit["detail"] += f" 设置每批 {batch_plan['requested_size']} 张，实际每批最多 {batch_plan['effective_size']} 张；选中的窗口按原顺序拆分。"
+    catalog["image_limit"] = image_limit
     asr_configured = model_configured if asr_configured is None else asr_configured
     local_model = urlparse(selected.llm_base_url or "").hostname in {"localhost", "127.0.0.1", "::1"}
     remote_asr = str(selected.transcriber or "").strip().lower() in REMOTE_ASR_NAMES
@@ -85,7 +93,8 @@ def plan_route(
         "offline_ready": bool(source_available_offline) and all(item["ready"] and item["network"] != "required" for item in requested_routes),
         "offline_source_confirmed": bool(source_available_offline),
         "readiness_scope": "Configuration and cached files only; no network or model probe was performed. A local gateway may itself forward requests.",
-        "capability_catalog": capability_catalog or {},
+        "capability_catalog": catalog,
+        "vision_batch_plan": batch_plan,
         "data_leaving_device": sorted({value for item in requested_routes if item["kind"] == "remote" for value in item.get("data_types", [])}),
         "local_fallback": {
             "content_mode": "subtitles",

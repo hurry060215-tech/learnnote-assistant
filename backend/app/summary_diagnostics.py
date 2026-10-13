@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, TASK_DIR
 from .model_connections import connected_api_key
+from .model_capabilities import vision_batch_plan
 from .summary_outcome import safe_summary_diagnostics, safe_summary_events
 from .models import FrameGrid, TaskOptions, VisualWindow
 from .summarizer import (
@@ -122,7 +123,8 @@ def build_summary_diagnostics(
     omitted_vision_window_ids = [window_id(index) for index in range(len(grids)) if index not in eligible_index_set]
     total_image_count = sum(1 for grid in grids if grid.path and Path(grid.path).is_file())
     eligible_image_count = sum(1 for grid in eligible_grids if grid.path and Path(grid.path).is_file())
-    vision_batch_size = max(1, int(options.vision_batch_size or MAX_GRIDS_PER_VISION_CALL))
+    vision_batch_size = vision_batch_plan(effective_llm_base_url, effective_llm_model,
+        max(1, int(options.vision_batch_size or MAX_GRIDS_PER_VISION_CALL)))["effective_size"]
     vision_call_plan = []
     for batch_index, start in enumerate(range(0, len(eligible_entries), vision_batch_size), start=1):
         batch_entries = eligible_entries[start: start + vision_batch_size]
@@ -201,6 +203,7 @@ def build_summary_diagnostics(
         "available_grid_image_count": total_image_count,
         "vision_grid_limit": MAX_VISION_GRIDS,
         "vision_batch_size": vision_batch_size,
+        "vision_requested_batch_size": options.vision_batch_size,
         "vision_concurrency": 1 if options.low_resource_mode else options.vision_concurrency,
         "vision_cache_hit_count": sum(
             1 for event in safe_llm_events

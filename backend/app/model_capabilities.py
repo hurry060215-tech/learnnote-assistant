@@ -10,7 +10,41 @@ from .config import DATA_DIR
 _lock = threading.Lock()
 _FLASH = {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"}
 CAPABILITY_SCHEMA_VERSION = 1
-CAPABILITY_CATALOG_VERSION = 1
+CAPABILITY_CATALOG_VERSION = 2
+
+
+def declared_image_limit(base_url: str, model: str, api: str = "chat.completions") -> dict:
+    """A dated official declaration, not a successful provider probe.
+
+    Match the documented endpoint/model/API exactly (apart from a trailing
+    slash). Proxies, aliases and similar model names do not inherit limits.
+    """
+    if (base_url in {"https://api.groq.com/openai/v1", "https://api.groq.com/openai/v1/"}
+            and model == "qwen/qwen3.8-27b" and api == "chat.completions"):
+        return {"value": 3, "unit": "images_per_request", "status": "declared",
+                "source_url": "https://console.groq.com/docs/vision", "checked_on": "2026-10-13",
+                "api": api, "model": model, "catalog_version": CAPABILITY_CATALOG_VERSION,
+                "detail": "图片上限：官方声明每次最多 3 张（2026-10-13 核对文档，未实测）；仅适用于所选精确端点与型号，尺寸、请求体和上下文限制仍未检查。"}
+    return {"value": None, "unit": "images_per_request", "status": "unknown",
+            "detail": "图片上限：未知；支持图片不代表已知数量、尺寸或请求体限制。"}
+
+
+def vision_batch_plan(base_url: str, model: str, requested: int) -> dict:
+    limit = declared_image_limit(base_url, model)
+    effective = min(requested, limit["value"]) if limit["value"] is not None else requested
+    return {"requested_size": requested, "effective_size": effective, "image_limit": limit}
+
+
+def check_image_count(base_url: str, model: str, messages: list[dict]) -> None:
+    """Check the final Chat Completions payload without reading image bytes."""
+    limit = declared_image_limit(base_url, model)["value"]
+    if limit is None:
+        return
+    count = sum(1 for message in messages if isinstance(message, dict)
+                for item in (message.get("content") if isinstance(message.get("content"), list) else [])
+                if isinstance(item, dict) and item.get("type") == "image_url")
+    if count > limit:
+        raise ValueError("declared_image_limit_exceeded")
 
 
 def _key(base_url: str, model: str) -> str:
@@ -80,6 +114,5 @@ def route_capabilities(provider: str, base_url: str, model: str, *, configured: 
                           ("ASR：本地组件与权重已就绪；实际转写时仍需加载验证。" if local_asr_available else "ASR：本地组件或模型权重尚未准备完成。")},
         "context_limit": {"value": None, "unit": "tokens", "status": "unknown",
                           "detail": "上下文上限：未知；没有此接口与型号的已验证限制。"},
-        "image_limit": {"value": None, "unit": "images_per_request", "status": "unknown",
-                        "detail": "图片上限：未知；支持图片不代表已知数量、尺寸或请求体限制。"},
+        "image_limit": declared_image_limit(base_url, model),
     }
