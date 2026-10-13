@@ -125,16 +125,19 @@ def grouping_state(evidence: list[dict], history: dict, terms: list[str]) -> tup
     return groups, unresolved
 
 
-def assemble_snapshot(course: dict, sources: list[dict], evidence: list[dict], history: dict, query: str, filters: dict) -> dict:
+def assemble_snapshot(course: dict, sources: list[dict], evidence: list[dict], history: dict, query: str, filters: dict, *, schema_version=2) -> dict:
+    if type(schema_version) is not int or schema_version not in (1, 2):
+        raise ValueError("graph_snapshot_invalid")
     if len(evidence) > MAX_EVIDENCE or len(sources) > MAX_SOURCES:
         raise ValueError("graph_snapshot_too_large")
     terms = set(query_terms(query)) | {event["request"]["term"] for event in history["events"]}
     if sum(len(row["text"].encode("utf-8")) for row in evidence) * len(terms) > MAX_GROUP_SCAN:
         raise ValueError("graph_snapshot_too_large")
     fingerprints = {row["evidence_id"]: row["original_fingerprint"] for row in evidence}
-    graph = build_comparison(evidence, history, query, **filters, complete=True, fingerprints=fingerprints, max_edges=MAX_EDGES)
+    graph = build_comparison(evidence, history, query, **filters, complete=True, fingerprints=fingerprints,
+                             max_edges=MAX_EDGES, _legacy_excerpt_offsets=schema_version == 1)
     groups, unresolved = grouping_state(evidence, history, graph["terms"])
-    snapshot = {"format": FORMAT, "schema_version": 1, "course": course, "sources": sources,
+    snapshot = {"format": FORMAT, "schema_version": schema_version, "course": course, "sources": sources,
                 "scope": {"query": query, "terms": graph["terms"], "filters": graph["filters"]},
                 "evidence": evidence, "history": history, "group_state": groups, "unresolved": unresolved, "graph": graph,
                 "limits": LIMITS, "completeness": "complete_within_exported_scope",
@@ -238,7 +241,7 @@ def verify_snapshot(value: dict) -> dict:
     try:
         if len(encoded(value)) > MAX_BYTES:
             raise ValueError("graph_snapshot_too_large")
-        if value["format"] != FORMAT or value["schema_version"] != 1:
+        if value["format"] != FORMAT or type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2):
             raise ValueError
         course, sources, evidence = value["course"], value["sources"], value["evidence"]
         _validate_sources(course, sources)
@@ -287,7 +290,8 @@ def verify_snapshot(value: dict) -> dict:
         filters = normalize_filters(**scope["filters"])
         if scope != {"query": scope["query"], "terms": query_terms(scope["query"]), "filters": filters}:
             raise ValueError
-        rebuilt = assemble_snapshot(course, sources, evidence, history, scope["query"], filters)
+        rebuilt = assemble_snapshot(course, sources, evidence, history, scope["query"], filters,
+                                    schema_version=value["schema_version"])
         if encoded(rebuilt) != encoded(value):
             raise ValueError
         return {"snapshot": value, "graph": rebuilt["graph"], "read_only": True}

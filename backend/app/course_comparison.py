@@ -5,6 +5,7 @@ import math
 import re
 
 from .concept_identity import assignments, identity_groups, identity_key
+from .text_indices import original_casefold_offset
 
 WARNING = "共同关键词不代表同义、因果或观点一致。含义分组仅是你的整理选择，请核对各自原文。"
 DISPLAY_LIMITS = {"nodes": 40, "matches": 100, "edges": 100}
@@ -46,7 +47,7 @@ def time_bounds(item: dict) -> tuple[float, float] | None:
 
 
 def build_comparison(evidence: list[dict], history: dict, query: str, *, source_id="", source_kind="", start=None, end=None,
-                     complete=False, fingerprints=None, max_edges=20_000) -> dict:
+                     complete=False, fingerprints=None, max_edges=20_000, _legacy_excerpt_offsets=False) -> dict:
     filters = normalize_filters(source_id, source_kind, start, end)
     terms = query_terms(query)
     chosen = {term: assignments(history, term) for term in terms}
@@ -64,10 +65,14 @@ def build_comparison(evidence: list[dict], history: dict, query: str, *, source_
             if bounds is None or (start is not None and bounds[1] < start) or (end is not None and bounds[0] > end):
                 continue
         text = str(item.get("text") or "")
-        hits = [term for term in terms if term in text.casefold()]
+        folded = text.casefold()
+        hits = [term for term in terms if term in folded]
         if not hits:
             continue
-        offset = min(text.casefold().find(term) for term in hits)
+        offset = min(folded.find(term) for term in hits)
+        # Only schema-1 snapshot verification retains the historical offsets.
+        if not _legacy_excerpt_offsets:
+            offset = original_casefold_offset(text, offset)
         key = f"{source['kind']}:{source['id']}"
         node = groups.setdefault(key, {"id": key, "title": source["title"], "evidence_ids": [], "terms": [], "term_evidence": {}})
         node["evidence_ids"].append(item["evidence_id"])

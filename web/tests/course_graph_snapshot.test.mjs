@@ -188,6 +188,30 @@ test("preview uses recomputed graph and preserves validated original for reexpor
   assert.equal(JSON.parse(await h.blobs[0].text()).graph.edges.length, 1);
 });
 
+test("only legacy snapshots warn about historical excerpt offsets and both versions reexport exactly", async () => {
+  for (const version of [1, 2]) {
+    const h = harness(); h.importer(); const value = snapshot(); value.schema_version = version;
+    await h.accept(value);
+    assert.equal(h.nodes("[data-snapshot-legacy-excerpts]").length, version === 1 ? 1 : 0);
+    if (version === 1) assert.match(h.find("[data-snapshot-legacy-excerpts]").textContent, /旧版.*摘要位置可能偏移.*完整出处.*原快照/);
+    await h.find("[data-graph-snapshot-reexport]").click();
+    assert.deepEqual(JSON.parse(await h.blobs[0].text()), value);
+    assert.equal(h.requests.length, 1);
+  }
+});
+
+test("export and preview accept both known numeric versions and reject unknown or coerced versions", async () => {
+  for (const version of [1, 2, 3, true, "2"]) {
+    const h = harness(); h.exporter(); const value = snapshot(); value.schema_version = version;
+    const exporting = h.find("[data-graph-snapshot-export]").click(); h.requests[0].resolve(value); await exporting;
+    const accepted = version === 1 || version === 2;
+    assert.equal(h.downloads.length, accepted ? 1 : 0);
+    if (accepted) assert.deepEqual(JSON.parse(await h.blobs[0].text()), value);
+    h.root.replaceChildren(); h.importer(); await h.accept(value);
+    assert.equal(h.nodes("[data-graph-snapshot-preview]").length, accepted ? 1 : 0);
+  }
+});
+
 test("file cancellation preserves the preview and choosing the same file validates again", async () => {
   const h = harness(); h.importer(); await h.accept(); const original = h.find("[data-graph-snapshot-preview]"), input = h.find("[data-graph-snapshot-file]");
   input.files = []; await input.listeners.change();
