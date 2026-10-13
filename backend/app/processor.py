@@ -1301,22 +1301,27 @@ def _process_video_file(
         )
         if not (options.visual_understanding or options.local_ocr):
             timing["status"] = "skipped"
+    _check_cancel(task_id)
     frames = visual_artifacts.frames
     frame_samples = visual_artifacts.frame_samples
     grids = visual_artifacts.grids
     frame_extraction_warning = visual_artifacts.warning
     visual_windows = build_visual_windows(transcript, grids)
-    visual_index_path = write_visual_index(
-        task_id,
-        title,
-        page_url,
-        frame_samples,
-        visual_windows,
-        extraction_metrics=visual_artifacts.metrics,
-    )
+    # A text/OCR-only retry must not erase the published picture/W-ID mapping
+    # while the previous note is still visible (including if summarization fails).
+    published_visuals = get_task(task_id)
+    if options.visual_understanding or not (published_visuals.visual_windows or published_visuals.frame_grids or published_visuals.visual_index_path):
+        visual_index_path = write_visual_index(
+            task_id,
+            title,
+            page_url,
+            frame_samples,
+            visual_windows,
+            extraction_metrics=visual_artifacts.metrics,
+        )
 
-    update_task(task_id, frame_grids=grids, visual_windows=visual_windows,
-                visual_index_path=str(visual_index_path))
+        update_task(task_id, frame_grids=grids, visual_windows=visual_windows,
+                    visual_index_path=str(visual_index_path))
     mark_checkpoint(task_id, "visual_ready")
     extraction_metrics = visual_artifacts.metrics.get("frame_extraction") or {}
     record_stage_duration(

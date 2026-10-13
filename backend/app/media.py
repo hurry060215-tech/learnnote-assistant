@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import json
 import math
+import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -24,7 +27,8 @@ class MediaProcessingError(RuntimeError):
     pass
 
 
-FRAME_CACHE_SCHEMA_VERSION = 2
+FRAME_CACHE_SCHEMA_VERSION = 3
+FRAME_EXTRACTOR_VERSION = "adaptive-batch-v3-exact"
 DEFAULT_FRAME_EXTRACT_BATCH_SIZE = 12
 _cancel_check = ContextVar("media_cancel_check", default=None)
 
@@ -466,23 +470,18 @@ def _hamming_distance(left: int, right: int) -> int:
 def _should_keep_sampled_frame(
     *,
     current_hash: str,
-    current_average_hash: int,
     timestamp: float,
     last_hash: str,
-    last_average_hash: int | None,
     last_kept_timestamp: float | None,
     coverage_gap: int,
-    current_mean_luma: float | None = None,
-    last_mean_luma: float | None = None,
 ) -> bool:
     if not last_hash or last_kept_timestamp is None:
         return True
     exact_duplicate = current_hash == last_hash
-    near_duplicate = last_average_hash is not None and _hamming_distance(current_average_hash, last_average_hash) <= 1
-    if near_duplicate and current_mean_luma is not None and last_mean_luma is not None:
-        near_duplicate = abs(current_mean_luma - last_mean_luma) <= 8
-    is_duplicate = exact_duplicate or near_duplicate
-    if not is_duplicate:
+    # A perceptual hash cannot prove equality: even a changed subtitle/operator
+    # or small colored diagram can have the same reduced grayscale pixels.
+    # Callers supply the full encoded-image SHA256; unequal bytes stay retained.
+    if not exact_duplicate:
         return True
     return timestamp - last_kept_timestamp >= max(1, coverage_gap)
 
@@ -503,33 +502,37 @@ def _normalize_frame_anchor_timestamps(duration: float, anchor_timestamps: list[
     return sorted(normalized)
 
 
+def _evenly_spaced(values, limit: int) -> list[int]:
+    if limit <= 0 or not values:
+        return []
+    if len(values) <= limit:
+        return list(values)
+    if limit == 1:
+        return [values[len(values) // 2]]
+    return [values[round(index * (len(values) - 1) / (limit - 1))] for index in range(limit)]
+
+
 def _sample_frame_timestamps(
     duration: float,
     interval: int,
     max_frames: int = 900,
     anchor_timestamps: list[float] | None = None,
 ) -> list[int]:
-    if duration <= 0 or max_frames <= 0:
+    if not math.isfinite(duration) or duration <= 0 or max_frames <= 0:
         return []
     interval = max(1, int(interval or 1))
-    duration_int = int(duration)
-    timestamps = list(range(0, duration_int, interval))
-    if not timestamps:
-        timestamps = [0]
-
-    tail = max(0, int(duration) - 1)
-    tail_gap = tail - timestamps[-1]
-    if tail > timestamps[-1] and tail_gap >= max(5, int(interval * 0.5)):
-        timestamps.append(tail)
-
+    tail = max(0, int(math.ceil(duration)) - 1)
+    baseline = range(0, tail + 1, interval)
     anchors = _normalize_frame_anchor_timestamps(duration, anchor_timestamps)
-    if not anchors:
-        return timestamps[:max_frames]
-
-    selected = anchors[:max_frames]
-    if len(selected) < max_frames:
-        selected.extend(timestamp for timestamp in timestamps if timestamp not in anchors)
-    return sorted(selected[:max_frames])
+    selected = [0]
+    if max_frames > 1 and tail:
+        selected.append(tail)
+    for timestamp in _evenly_spaced([value for value in anchors if value not in selected], max_frames - len(selected)):
+        selected.append(timestamp)
+    # Sample the entire range before applying the budget, never its prefix only.
+    candidates = _evenly_spaced(baseline, max_frames)
+    selected.extend(_evenly_spaced([value for value in candidates if value not in selected], max_frames - len(selected)))
+    return sorted(selected)
 
 
 def detect_scene_change_timestamps(
@@ -575,7 +578,7 @@ def _adaptive_frame_plan(
     scene_timestamps: list[int],
     anchor_timestamps: list[float] | None,
 ) -> list[tuple[int, list[str]]]:
-    if duration <= 0 or max_frames <= 0:
+    if not math.isfinite(duration) or duration <= 0 or max_frames <= 0:
         return []
     baseline = _sample_frame_timestamps(duration, interval, max_frames=max_frames)
     anchors = _normalize_frame_anchor_timestamps(duration, anchor_timestamps)
@@ -596,26 +599,20 @@ def _adaptive_frame_plan(
     reasons.setdefault(last_seekable, set()).add("tail")
 
     if max_frames == 1:
-        selected = {anchors[0] if anchors else baseline[0]}
+        selected = {0}
         return [(value, sorted(reasons[value])) for value in sorted(selected)]
 
     def evenly_spaced(values: list[int], limit: int) -> list[int]:
-        unique = sorted(set(values))
-        if limit <= 0:
-            return []
-        if len(unique) <= limit:
-            return unique
-        if limit == 1:
-            return [unique[len(unique) // 2]]
-        indices = {round(index * (len(unique) - 1) / (limit - 1)) for index in range(limit)}
-        return [unique[index] for index in sorted(indices)]
+        return _evenly_spaced(sorted(set(values)), limit)
 
     # Coverage owns the majority of the budget and is selected across the full
     # timeline before scene changes are considered.
     coverage_budget = min(len(baseline), max(2, int(math.ceil(max_frames * 0.60))))
     coverage_values = evenly_spaced(baseline, coverage_budget)
-    selected_order = []
-    for value in [*anchors, *coverage_values]:
+    # Endpoints have first claim on the bounded budget, even with many anchors.
+    selected_order = sorted({0, last_seekable})
+    anchor_values = evenly_spaced([value for value in anchors if value not in selected_order], max_frames - len(selected_order))
+    for value in [*anchor_values, *coverage_values]:
         if value not in selected_order and len(selected_order) < max_frames:
             selected_order.append(value)
 
@@ -649,7 +646,7 @@ def _frame_cache_payload(
     stat = video_path.stat()
     return {
         "schema_version": FRAME_CACHE_SCHEMA_VERSION,
-        "extractor_version": "adaptive-batch-v2",
+        "extractor_version": FRAME_EXTRACTOR_VERSION,
         "source_sha256": file_sha256(video_path),
         "source_size": stat.st_size,
         "source_mtime_ns": stat.st_mtime_ns,
@@ -746,6 +743,62 @@ def _valid_frame_file(path: Path) -> bool:
         return False
 
 
+def _publish_evidence(source: Path, target: Path) -> None:
+    """Publish without replacing any already referenced evidence bytes."""
+    try:
+        # Staging and target share the same directory/filesystem. Linking the
+        # completed bytes is atomic and cannot replace an existing target.
+        os.link(source, target)
+    except FileExistsError:
+        if target.is_symlink() or target.read_bytes() != source.read_bytes():
+            raise MediaProcessingError("已有画面证据校验不一致，已停止写入并保留原文件；请在新任务中重新提取。")
+    except OSError as exc:
+        if exc.errno not in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS} and getattr(exc, "winerror", None) not in {1, 50}:
+            raise MediaProcessingError("无法保存画面证据，已停止写入；请检查资料目录和剩余空间。") from exc
+        # Some user-selected volumes do not support hardlinks. Exclusively
+        # create a new target, never replace one. No URL/cache is published until
+        # copying finishes. A caught failure removes only our new partial file;
+        # after process death a mismatch fails closed on the next attempt.
+        try:
+            destination = target.open("xb")
+        except FileExistsError:
+            if target.is_symlink() or target.read_bytes() != source.read_bytes():
+                raise MediaProcessingError("已有画面证据校验不一致，已停止写入并保留原文件。")
+            return
+        try:
+            with destination, source.open("rb") as stream:
+                shutil.copyfileobj(stream, destination)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+
+
+def _sampling_coverage(duration, interval, max_frames, plan, samples, scenes, anchors) -> dict:
+    tail = max(0, math.ceil(duration) - 1)
+    endpoints = sorted({0, tail})
+    selected = {timestamp for timestamp, _ in plan}
+    retained = {int(sample.timestamp) for sample in samples}
+    baseline_count = len(range(0, tail + 1, interval)) + int(tail % interval != 0)
+    baseline_selected = sum(timestamp % interval == 0 or timestamp == tail for timestamp in selected)
+    omitted_anchors = sorted(set(_normalize_frame_anchor_timestamps(duration, anchors)) - selected)
+    requested_scenes = {min(tail, max(0, int(timestamp))) for timestamp in scenes}
+    scene_context = {point for timestamp in requested_scenes for point in (max(0, timestamp - 1), min(tail, timestamp + 1))}
+    omitted_scenes = len((requested_scenes | scene_context) - selected)
+    missing_endpoints = sorted(set(endpoints) - retained)
+    limited = baseline_selected < baseline_count or bool(omitted_anchors) or omitted_scenes > 0
+    return {
+        "status": "incomplete" if missing_endpoints else "budget_limited" if limited else "sampled",
+        "frame_budget": max_frames,
+        "budget_limited": limited,
+        "endpoint_timestamps": endpoints,
+        "missing_endpoint_timestamps": missing_endpoints,
+        "omitted_anchor_timestamps": omitted_anchors,
+        "omitted_coverage_count": max(0, baseline_count - baseline_selected),
+        "omitted_scene_context_count": omitted_scenes,
+        "unsampled_changes_possible": True,
+    }
+
+
 def extract_frames_adaptive(
     video_path: Path,
     frame_dir: Path,
@@ -759,122 +812,122 @@ def extract_frames_adaptive(
     ffmpeg = ffmpeg_bin()
     frame_dir.mkdir(parents=True, exist_ok=True)
     duration = probe_duration(video_path)
-    if duration <= 0:
+    if not math.isfinite(duration) or duration <= 0:
         return [], []
     interval = max(1, interval)
     coverage_gap = max(5, interval)
+    check = _cancel_check.get() or (lambda: None)
+    check()
     scene_timestamps = detect_scene_change_timestamps(
-        video_path,
-        threshold=scene_threshold,
-        max_scenes=max_frames,
+        video_path, threshold=scene_threshold, max_scenes=max_frames,
     )
     plan = _adaptive_frame_plan(duration, interval, max_frames, scene_timestamps, anchor_timestamps)
     batch_size = max(1, min(32, int(batch_size or DEFAULT_FRAME_EXTRACT_BATCH_SIZE)))
-    cache_path = frame_dir / "frame_cache.json"
-    cache_signature = _frame_cache_payload(
-        video_path,
-        plan,
-        interval=interval,
-        scene_threshold=scene_threshold,
-    )
-    cached_state = _read_frame_cache(cache_path)
-    cache_valid = cached_state.get("signature") == cache_signature
-    cached_kept_outputs = {
-        str(name)
-        for name in cached_state.get("kept_outputs", [])
-        if isinstance(name, str)
-    } if cache_valid else set()
-    planned_outputs = [
-        (timestamp, frame_dir / f"frame_{index:04d}_{timestamp:06d}.jpg")
-        for index, (timestamp, _reasons) in enumerate(plan)
-    ]
+    signature = _frame_cache_payload(video_path, plan, interval=interval, scene_threshold=scene_threshold)
+    generation = hashlib.sha256(json.dumps(signature, sort_keys=True).encode("utf-8")).hexdigest()
+    # The old cache and all its referenced images remain untouched on upgrade.
+    cache_path = frame_dir / f"frame_cache_v3_{generation}.json"
+    cached = _read_frame_cache(cache_path)
+    entries = cached.get("entries")
+    cache_valid = cached.get("signature") == signature and isinstance(entries, list) and len(entries) == len(plan)
     if cache_valid:
-        pending = [
-            (timestamp, output)
-            for timestamp, output in planned_outputs
-            if output.name in cached_kept_outputs
-            and not _valid_frame_file(output)
-        ]
-    else:
-        pending = list(planned_outputs)
+        previous_digest, previous_timestamp = "", None
+        for index, ((timestamp, reasons), entry) in enumerate(zip(plan, entries)):
+            if not isinstance(entry, dict) or entry.get("timestamp") != timestamp:
+                cache_valid = False
+                break
+            digest = entry.get("sha256", "")
+            if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+                cache_valid = False
+                break
+            important = bool({"scene_change", "content_change", "interaction_context", "playback_anchor", "start", "tail"}.intersection(reasons))
+            expected_keep = important or _should_keep_sampled_frame(current_hash=digest, timestamp=timestamp,
+                last_hash=previous_digest, last_kept_timestamp=previous_timestamp, coverage_gap=coverage_gap)
+            if entry.get("kept") is not expected_keep:
+                cache_valid = False
+                break
+            if expected_keep:
+                previous_digest, previous_timestamp = digest, timestamp
+            expected = f"frame_{index:04d}_{timestamp:06d}_{digest}.jpg"
+            if entry.get("kept") is True:
+                path = frame_dir / expected
+                if entry.get("name") != expected or path.is_symlink() or not _valid_frame_file(path) or file_sha256(path) != digest:
+                    cache_valid = False
+                    break
+            elif entry.get("kept") is not False or entry.get("name") != "":
+                cache_valid = False
+                break
     started_at = time.monotonic()
-    batch_process_count = 0
-    fallback_process_count = 0
-    for start in range(0, len(pending), batch_size):
-        requests = pending[start: start + batch_size]
-        for _timestamp, output in requests:
-            output.unlink(missing_ok=True)
-        batch_process_count += 1
-        batch_ok = _extract_frame_batch(ffmpeg, video_path, requests)
-        missing = [
-            (timestamp, output)
-            for timestamp, output in requests
-            if not _valid_frame_file(output)
-        ]
-        if not batch_ok or missing:
-            for timestamp, output in missing:
-                output.unlink(missing_ok=True)
-                fallback_process_count += 1
-                _extract_single_frame(ffmpeg, video_path, timestamp, output)
-
+    batch_process_count = fallback_process_count = 0
     frames: list[Path] = []
     samples: list[FrameSample] = []
+    failed_timestamps: list[int] = []
+    new_entries = []
     last_hash = ""
-    last_average_hash: int | None = None
-    last_mean_luma: float | None = None
-    last_kept_timestamp: float | None = None
-    for index, (ts, reasons) in enumerate(plan):
-        out = frame_dir / f"frame_{index:04d}_{ts:06d}.jpg"
-        if cache_valid and out.name not in cached_kept_outputs:
-            continue
-        if not _valid_frame_file(out):
-            continue
-        current_hash = _md5(out)
-        current_average_hash = _average_hash(out)
-        current_mean_luma = _mean_luma(out)
-        important = bool({"scene_change", "content_change", "interaction_context", "playback_anchor", "start", "tail"}.intersection(reasons))
-        if not important and not _should_keep_sampled_frame(
-            current_hash=current_hash,
-            current_average_hash=current_average_hash,
-            current_mean_luma=current_mean_luma,
-            timestamp=float(ts),
-            last_hash=last_hash,
-            last_average_hash=last_average_hash,
-            last_mean_luma=last_mean_luma,
-            last_kept_timestamp=last_kept_timestamp,
-            coverage_gap=coverage_gap,
-        ):
-            out.unlink(missing_ok=True)
-            continue
-        last_hash = current_hash
-        last_average_hash = current_average_hash
-        last_mean_luma = current_mean_luma
-        last_kept_timestamp = float(ts)
-        frames.append(out)
-        samples.append(FrameSample(
-            path=str(out),
-            timestamp=float(ts),
-            reasons=reasons,
-            important=important,
-            sha256=file_sha256(out),
-        ))
-    _write_frame_cache(
-        cache_path,
-        {
-            "signature": cache_signature,
-            "kept_outputs": [path.name for path in frames],
-        },
-    )
+    last_kept_timestamp = None
+    with tempfile.TemporaryDirectory(prefix=".extract-", dir=frame_dir) as temporary:
+        staged = [(timestamp, Path(temporary) / f"{index}.jpg") for index, (timestamp, _) in enumerate(plan)]
+        if not cache_valid:
+            for start in range(0, len(staged), batch_size):
+                check()
+                requests = staged[start:start + batch_size]
+                batch_process_count += 1
+                _extract_frame_batch(ffmpeg, video_path, requests)
+                check()
+                for timestamp, output in requests:
+                    if not _valid_frame_file(output):
+                        output.unlink(missing_ok=True)
+                        fallback_process_count += 1
+                        _extract_single_frame(ffmpeg, video_path, timestamp, output)
+                        check()
+        for index, (timestamp, reasons) in enumerate(plan):
+            check()
+            if cache_valid:
+                entry = entries[index]
+                if not entry["kept"]:
+                    new_entries.append(entry)
+                    continue
+                out = frame_dir / entry["name"]
+                digest = entry["sha256"]
+            else:
+                source = staged[index][1]
+                if not _valid_frame_file(source):
+                    failed_timestamps.append(timestamp)
+                    continue
+                digest = file_sha256(source)
+                out = frame_dir / f"frame_{index:04d}_{timestamp:06d}_{digest}.jpg"
+            important = bool({"scene_change", "content_change", "interaction_context", "playback_anchor", "start", "tail"}.intersection(reasons))
+            keep = important or _should_keep_sampled_frame(
+                current_hash=digest, timestamp=float(timestamp),
+                last_hash=last_hash,
+                last_kept_timestamp=last_kept_timestamp, coverage_gap=coverage_gap,
+            )
+            new_entries.append({"timestamp": timestamp, "name": out.name if keep else "", "sha256": digest, "kept": keep})
+            if not keep:
+                continue
+            if not cache_valid:
+                _publish_evidence(source, out)
+            last_hash, last_kept_timestamp = digest, float(timestamp)
+            frames.append(out)
+            samples.append(FrameSample(path=str(out), timestamp=float(timestamp), reasons=reasons, important=important, sha256=digest))
+        check()
+        # An incomplete extraction is never a complete duplicate cache: retry it.
+        if not failed_timestamps:
+            _write_frame_cache(cache_path, {"signature": signature, "entries": new_entries})
+    coverage = _sampling_coverage(duration, interval, max_frames, plan, samples, scene_timestamps, anchor_timestamps)
+    if failed_timestamps:
+        coverage["status"] = "incomplete"
     metrics = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "extractor_version": FRAME_EXTRACTOR_VERSION,
+        "duplicate_policy": "encoded-sha256-equal-only",
+        "source_sha256": signature["source_sha256"],
         "planned_frame_count": len(plan),
-        "cached_frame_count": sum(
-            1
-            for _timestamp, output in planned_outputs
-            if cache_valid and output.name in cached_kept_outputs and _valid_frame_file(output)
-        ),
-        "cached_duplicate_skip_count": max(0, len(plan) - len(cached_kept_outputs)) if cache_valid else 0,
+        "cached_frame_count": len(frames) if cache_valid else 0,
+        "cached_duplicate_skip_count": len(plan) - len(frames) if cache_valid else 0,
         "kept_frame_count": len(frames),
+        "failed_timestamps": failed_timestamps,
+        "sampling_coverage": coverage,
         "batch_size": batch_size,
         "ffmpeg_batch_process_count": batch_process_count,
         "ffmpeg_fallback_process_count": fallback_process_count,
@@ -969,6 +1022,8 @@ def build_frame_grids(
     group_size = max(1, columns * rows)
     grids: list[FrameGrid] = []
     for idx in range(0, len(frames), group_size):
+        if _cancel_check.get() is not None:
+            _cancel_check.get()()
         group = frames[idx: idx + group_size]
         if not group:
             continue
@@ -989,8 +1044,13 @@ def build_frame_grids(
             tile.paste(image, (x, y))
             _draw_tile_labels(tile, timestamps[pos], window_index, pos + 1, tile_count)
             canvas.paste(tile, ((pos % columns) * 320, (pos // columns) * 180))
-        path = grid_dir / f"grid_{grid_index:03d}.jpg"
-        canvas.save(path, quality=82)
+        # Grid composition changes with retained frames. Never overwrite an old
+        # grid URL when a new extraction policy changes window membership.
+        with tempfile.TemporaryDirectory(prefix=".grid-", dir=grid_dir) as temporary:
+            staged_grid = Path(temporary) / "grid.jpg"
+            canvas.save(staged_grid, quality=82)
+            path = grid_dir / f"grid_{grid_index:03d}_{file_sha256(staged_grid)}.jpg"
+            _publish_evidence(staged_grid, path)
         start = min(timestamps) if timestamps else float(idx * interval)
         end = max(timestamp + max(1, interval) for timestamp in timestamps) if timestamps else float((idx + len(group)) * interval)
         if media_duration is not None and media_duration > 0:

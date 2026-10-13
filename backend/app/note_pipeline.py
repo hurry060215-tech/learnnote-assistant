@@ -186,7 +186,7 @@ def finish_note_task(
             status="success",
             phase="completed",
             progress=100,
-            message="任务完成，但未生成视觉切片" if frame_extraction_warning else "任务完成",
+            message=("任务完成，请查看画面采样提示" if grids else "任务完成，但未生成视觉切片") if frame_extraction_warning else "任务完成",
             **final_fields,
         )
         mark_checkpoint(task_id, "note_ready")
