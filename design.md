@@ -214,6 +214,37 @@ text / essential graphics at >=3:1. New touch controls target 44px; current comp
 controls require a dedicated accessibility pass rather than an unreviewed global
 resize.
 
+## Public website
+
+The existing `site/index.html`, `site/privacy.html`, and `site/security.html` share
+`site/home.css`. They reuse the light canvas, panel, ink, muted, line, accent, and
+tint values above, with the same 7px control / 12px bounded-preview radii. The site
+has no dark-mode control. Do not imply that app theme preferences apply to it.
+
+- Main container: min(1120px, viewport minus 64px), centered; 20px side gutters
+  at <=700px. Hero text has its own centered 760px maximum column (700px at
+  <=1000px); it deliberately does not share the wider preview's leading edge.
+- Website body: 16px / 1.8, weight 400. Hero title: clamp(36px, 3.8vw, 52px) /
+  1.35, weight 600; <=700px uses clamp(30px, 8.5vw, 42px) / 1.4. Hero explanation:
+  18px / 1.85, becoming 16px on narrow screens.
+- Main sections have 64px vertical padding and 72px two-column gaps; <=1000px
+  gaps reduce to 40px; <=700px sections stack with 40px padding and 32px gaps.
+  Section titles are 34–36px desktop and 29px narrow; supporting text is 15–18px.
+- Legal reading column: min(760px, viewport minus 64px), 56px top / 72px bottom
+  spacing; <=700px uses 20px side gutters and 36px / 48px vertical spacing.
+  Legal title is 36px (30px narrow), subheadings 22px (21px narrow), body 16px / 1.85.
+- Links and tabs have >=44px targets; primary CTA has >=48px height. Hover uses
+  the same 140ms color transition; reduced-motion removes smooth scrolling and
+  transitions. The product illustration is labeled as an interactive example,
+  with synthetic content and a release-version caveat, not a live user record.
+
+`LearnNote Site Sans` is the existing licensed, self-hosted character subset,
+followed by the app's Chinese-capable sans stack. It is not a full arbitrary-text
+font: see `site/assets/fonts/README.md` for coverage and fallback limits. The site
+visual gate records actual rendered fonts, including legal text fallback. Keep
+download, documentation, store, privacy, and security destinations on their
+existing routes; visual changes do not authorize analytics or external scripts.
+
 ## Required visual review
 
 Run `node scripts/design-visual-acceptance.cjs http://127.0.0.1:8765 build/design-ui`

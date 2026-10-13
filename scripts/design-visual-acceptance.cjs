@@ -209,6 +209,22 @@ async function main() {
         await page.keyboard.press("Escape");
         assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
         assert.equal(await page.evaluate(() => document.activeElement === document.querySelector("#readerOptions > summary")), true);
+        // Moving the export trigger into a disclosure must not strand focus in
+        // hidden content after closing either the menu or its dialog.
+        await page.keyboard.press("Enter");
+        await page.locator("#export").focus();
+        await page.locator("#document h1").click();
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
+        assert.equal(await page.evaluate(() => document.querySelector("#readerOptions .reader-options-menu").contains(document.activeElement)), false);
+        await page.locator("#readerOptions > summary").focus();
+        await page.keyboard.press("Enter");
+        await page.locator("#export").click();
+        await page.locator("#toolsDialog h2").getByText("统一导出", { exact: true }).waitFor();
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
+        await page.locator("#toolsDialog [data-close-tool]").click();
+        await page.waitForFunction(() => !document.querySelector("#toolsDialog").open &&
+          document.activeElement === document.querySelector("#readerOptions > summary"));
+        report.cases.at(-1).interactions = ["keyboard-open", "escape-focus-return", "outside-pointer-close", "export-open-close-focus-return"];
         await sidebar(true);
         await page.locator("#search").fill("no-such-synthetic-design-note");
         assert.equal(await page.locator("#notes [data-id]").count(), 0);

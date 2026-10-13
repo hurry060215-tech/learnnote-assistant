@@ -87,6 +87,27 @@ const { execFileSync } = require("node:child_process");
         report.cases.push({ name, geometry, fonts: await fonts(fontSelectors) });
       }
       async function ready() {
+        await page.waitForLoadState("load", { timeout: 15000 });
+        await page.locator("h1").waitFor({ state: "visible", timeout: 15000 });
+        // Legal pages have no font preload. Wait for the destination stylesheet,
+        // then force its first layout before observing FontFaceSet readiness.
+        // An earlier document.fonts.ready may resolve before a font is requested.
+        const headingFamily = await page.locator("h1").evaluate(heading => {
+          heading.getBoundingClientRect();
+          return getComputedStyle(heading).fontFamily;
+        });
+        assert(headingFamily.startsWith('"LearnNote Site Sans"'),
+          `Expected the shared website font on ${page.url()}: ${headingFamily}`);
+        try {
+          await page.waitForFunction(() => [...document.fonts].some(
+            font => font.family === "LearnNote Site Sans" && font.status === "loaded"),
+          null, { timeout: 15000 });
+        } catch (error) {
+          const state = await page.evaluate(() => [...document.fonts].map(font => ({
+            family: font.family, status: font.status,
+          })));
+          throw new Error(`Self-hosted subset failed to load on ${page.url()}: ${JSON.stringify(state)}`, { cause: error });
+        }
         await page.evaluate(() => document.fonts.ready);
         assert(await page.evaluate(() => [...document.fonts].some(
           font => font.family === "LearnNote Site Sans" && font.status === "loaded")), "Self-hosted subset failed to load");
@@ -175,7 +196,11 @@ const { execFileSync } = require("node:child_process");
 
       for (const filename of legalPages) {
         const legal = filename.replace(".html", "");
-        await page.locator(`a[href="${filename}"]`).first().click();
+        const destination = new URL(filename, page.url()).href;
+        await Promise.all([
+          page.waitForURL(destination, { waitUntil: "load", timeout: 15000 }),
+          page.locator(`a[href="${filename}"]`).first().click(),
+        ]);
         await ready();
         assert((await page.title()).includes(legal === "privacy" ? "隐私" : "安全"));
         assert.equal(await page.locator(`.legal-header a[href="${legal}.html"]`).getAttribute("aria-current"), "page");
@@ -183,7 +208,12 @@ const { execFileSync } = require("node:child_process");
         if (primaryWidths.includes(width))
           await page.screenshot({ path: path.join(out, `site-${width}-${legal}-full.png`), fullPage: true });
       }
-      await page.locator('.legal-header nav a[href="./"]').click();
+      const home = new URL("./", page.url()).href;
+      await Promise.all([
+        page.waitForURL(home, { waitUntil: "load", timeout: 15000 }),
+        page.locator('.legal-header nav a[href="./"]').click(),
+      ]);
+      await ready();
       assert.equal(await page.locator("#hero-title").count(), 1);
       await context.close();
     }
