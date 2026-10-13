@@ -226,6 +226,13 @@ async function multipart(request) {
           if (materialRead[2] === "anchors") return json({ anchors: [] });
           return json({ material: materials.get(id) });
         }
+        const personalReview = pathname.match(/^\/api\/tasks\/editions\/(material|task)\/([^/]+)\/personal-review$/);
+        if (personalReview && request.method() === "GET") {
+          const item = (personalReview[1] === "material" ? materials : tasks).get(decodeURIComponent(personalReview[2]));
+          assert(item, `Unknown fixture review source: ${pathname}`);
+          return json({ status: "unmarked", context_revision: null, note_revision: "fixture", review_revision: "0".repeat(64),
+            can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
+        }
         const edition = pathname.match(/^\/api\/tasks\/editions\/(material|task)\/([^/]+)$/);
         if (edition && request.method() === "GET") {
           const item = (edition[1] === "material" ? materials : tasks).get(decodeURIComponent(edition[2]));

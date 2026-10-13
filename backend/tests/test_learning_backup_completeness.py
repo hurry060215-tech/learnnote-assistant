@@ -251,7 +251,7 @@ class LearningBackupCompletenessTests(unittest.TestCase):
                     self.assertEqual(backup["personal"], {
                         "annotations": [{"key": "material-synthetic", "items": []},
                                         {"key": "task-synthetic", "items": [annotation]}],
-                        "editions": [edition],
+                        "editions": [edition], "personal_reviews": [],
                     })
                     self.assertEqual(backup["study"]["plan"]["title"], "Synthetic export plan")
                     self.assertEqual(len(backup["study"]["cards"]), 1)
@@ -271,7 +271,7 @@ class LearningBackupCompletenessTests(unittest.TestCase):
                 repaired = {"schema_version": 2, "annotations": [repaired_annotation]} if kind == "annotation" else repaired_edition["value"]
                 self._write(root, relative, json.dumps(repaired, ensure_ascii=False, indent=4) + "\n")
                 before = self._state(root)
-                expected = {"annotations": [{"key": "task-first", "items": [annotation]}], "editions": [edition]}
+                expected = {"annotations": [{"key": "task-first", "items": [annotation]}], "editions": [edition], "personal_reviews": []}
                 if kind == "annotation":
                     expected["annotations"].append({"key": "task-last", "items": [repaired_annotation]})
                 else:
@@ -292,7 +292,7 @@ class LearningBackupCompletenessTests(unittest.TestCase):
             response = client.get("/api/study/backup")
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(response.json()["personal"], {
-                "annotations": [{"key": "task-first", "items": [annotation]}], "editions": [edition],
+                "annotations": [{"key": "task-first", "items": [annotation]}], "editions": [edition], "personal_reviews": [],
             })
             self.assertEqual(self._state(root), before)
 

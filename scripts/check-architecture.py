@@ -164,8 +164,11 @@ def module_size_violations() -> list[str]:
     runtime_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name in active_names)
     legacy_lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in styles if path.name not in active_names)
     # Bounded TOC resize/settings and note editor controls retain the existing visual effects.
-    if runtime_lines > 2310:
-        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is 2310")
+    # +17 lines for the bounded whole-note personal-review panel: existing
+    # reading insets/tokens, wrapped touch targets and responsive alignment.
+    runtime_budget = 2310 + 17
+    if runtime_lines > runtime_budget:
+        violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is {runtime_budget}")
     if legacy_lines > 23000:
         violations.append(f"Historical web CSS has {legacy_lines} lines; budget is 23000")
     return violations

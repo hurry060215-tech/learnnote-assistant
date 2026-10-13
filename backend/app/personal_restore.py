@@ -51,7 +51,7 @@ def _invalid_constant(value):
 def _object(content: bytes) -> dict:
     try:
         value = json.loads(content.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
-    except (UnicodeError, ValueError) as exc:
+    except (UnicodeError, ValueError, RecursionError) as exc:
         raise ValueError("personal_restore_target_invalid") from exc
     if not isinstance(value, dict):
         raise ValueError("personal_restore_target_invalid")
@@ -113,7 +113,7 @@ class PersonalRestore:
         self.attempted: list[_Change] = []
         self.recovery: Path | None = None
         self.recovery_identity: tuple[int, int] | None = None
-        self.counts = {"restored_annotations": 0, "restored_editions": 0}
+        self.counts = {"restored_annotations": 0, "restored_editions": 0, "restored_personal_reviews": 0}
         existing_bytes = 0
         for group in snapshot["annotations"]:
             path = data_dir / "personal-notes" / f"{group['key']}.json"
@@ -138,8 +138,25 @@ class PersonalRestore:
             if before is not None:
                 _edition_file(before, item["key"], validate)
             else:
-                self.changes.append(_Change(path, None, json.dumps(item["value"], ensure_ascii=False)))
+                # Restoring is a new local write, even when its text equals the
+                # generated note. Never replay a backed-up assistant write ID.
+                restored = {**item["value"], "write_id": uuid4().hex}
+                self.changes.append(_Change(path, None, json.dumps(restored, ensure_ascii=False)))
                 self.counts["restored_editions"] += 1
+            if existing_bytes > _MAX_EXISTING_BYTES:
+                raise ValueError("personal_restore_targets_too_large")
+        from .personal_review_records import validate_review, imported_review
+        for item in snapshot.get("personal_reviews", []):
+            path = data_dir / "personal-reviews" / f"{item['key']}.json"
+            before = _read_existing(path)
+            existing_bytes += len(before or b"")
+            if before is not None:
+                # Every local state wins, including revoked and stale records.
+                validate_review(_object(before), item["key"])
+            else:
+                value = imported_review(validate_review(item["value"], item["key"]))
+                self.changes.append(_Change(path, None, json.dumps(value, ensure_ascii=False)))
+                self.counts["restored_personal_reviews"] += 1
             if existing_bytes > _MAX_EXISTING_BYTES:
                 raise ValueError("personal_restore_targets_too_large")
 

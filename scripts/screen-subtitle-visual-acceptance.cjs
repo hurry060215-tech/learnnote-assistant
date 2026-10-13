@@ -54,7 +54,11 @@ const result = () => ({ status: ocr.status === "success" ? "ready" : "cancelled"
         if (name === "/api/assistant/skills") return json({ skills: [], features: [] });
         if (name === "/api/assistant/history") return json({ items: [] });
         if (name === "/api/update/status") return json({ status: "up_to_date", preferences: { auto_check: false, auto_download: false } });
-        if (/^\/api\/tasks\/editions\/task\//.test(name)) return json({ text: "# Synthetic OCR source\n\nOriginal ASR and note remain unchanged.", revision: "fixture-revision", edited: false });
+        if (name.endsWith("/personal-review")) {
+          if (tasks.some(item => name === `/api/tasks/editions/task/${item.id}/personal-review`))
+            return json({ status: "unmarked", context_revision: null, note_revision: "fixture-revision", review_revision: "0".repeat(64),
+              can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
+        } else if (/^\/api\/tasks\/editions\/task\//.test(name)) return json({ text: "# Synthetic OCR source\n\nOriginal ASR and note remain unchanged.", revision: "fixture-revision", edited: false });
         if (/^\/api\/personal\/task\//.test(name)) return json({ annotations: [] });
         if (name.endsWith("/events")) return json({ events: [] });
         if (name.endsWith("/events/stream")) return route.fulfill({ contentType: "text/event-stream", body: "event: task_terminal\ndata: {}\n\n" });

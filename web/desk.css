@@ -907,6 +907,20 @@ button:has(svg) {
   margin-top: 18px;
   padding: 24px 48px;
 }
+.personal-review {
+  max-width: var(--reader-width, 940px);
+  margin: 0 auto;
+  padding: 24px 32px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  overflow-wrap: anywhere;
+}
+.personal-review h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+.personal-review p { margin: 8px 0; font-size: 13px; }
+.personal-review .personal-review-scope { margin-top: 0; }
+#personalReviewState { font-size: 15px; font-weight: 600; }
+.personal-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.personal-review-actions button { min-height: 44px; border: 1px solid var(--line); white-space: normal; }
 .workspace:has(#reading:not([hidden])) {
   padding-bottom: 20px;
 }
@@ -1397,7 +1411,8 @@ body.assistant-visible .workspace {
   .workspace #reading {
     padding: 0 16px;
   }
-  .document {
+  .document,
+  .personal-review {
     padding: 30px;
   }
   .reader-strip {
@@ -1467,6 +1482,7 @@ body.assistant-visible .workspace {
     padding: 0 10px;
   }
   .document,
+  .personal-review,
   .annotations {
     padding: 24px 18px;
   }
@@ -1623,6 +1639,7 @@ body.assistant-full .assistant-panel form {
   }
   .document,
   .annotations,
+  .personal-review,
   .editor {
     padding-inline: 20px;
   }

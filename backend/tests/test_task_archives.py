@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack, chdir
+import copy
 import hashlib
 import io
 import json
@@ -46,7 +47,12 @@ def member_content(content):
 
 
 def public_contract():
-    schema = main.app.openapi()
+    schema = copy.deepcopy(main.app.openapi())
+    # #151 adds exactly this independently tested endpoint/model. Preserve the
+    # frozen pre-extraction contract for every pre-existing operation/schema;
+    # arbitrary new or changed routes must still fail this comparison.
+    schema["paths"].pop("/api/tasks/editions/{kind}/{source_id}/personal-review")
+    schema["components"]["schemas"].pop("PersonalReviewRequest")
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),

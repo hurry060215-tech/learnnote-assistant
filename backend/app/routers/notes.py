@@ -8,7 +8,8 @@ import json
 import re
 from uuid import uuid4
 from contextlib import contextmanager
-from pydantic import BaseModel, Field
+from typing import Literal
+from pydantic import BaseModel, Field, ConfigDict
 from ..config import DATA_DIR
 from ..storage import atomic_write_text
 from ..library import get_material, material_content
@@ -150,6 +151,72 @@ def save_edition_locked(kind: str, source_id: str, text: str, revision: str, wri
     state = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": True, "write_id": marker}
     atomic_write_text(_edition_path(kind, source_id), json.dumps(state, ensure_ascii=False))
     return state
+
+
+class PersonalReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["mark", "revoke"]
+    expected_context_revision: str = Field(max_length=64)
+    expected_review_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _personal_review_context(kind: str, source_id: str):
+    from ..personal_restore import _read_existing, _edition_file
+    from ..personal_notes import validate_personal_data
+    from ..personal_review_context import source_context
+    content = _read_existing(_edition_path(kind, source_id))
+    if content is not None:
+        _edition_file(content, _edition_path(kind, source_id).stem, validate_personal_data)
+        edition = json.loads(content.decode("utf-8"))
+        if edition.get("edited") is not True:
+            raise ValueError("personal_review_edition_invalid")
+        if "write_id" in edition and (not isinstance(edition["write_id"], str) or re.fullmatch(r"[A-Za-z0-9_-]{8,64}", edition["write_id"]) is None):
+            raise ValueError("personal_review_edition_invalid")
+    elif kind == "task":
+        from ..personal_anchors import _opened_artifact, MAX_ARTIFACT_BYTES
+        from ..task_artifacts import decode_task_note
+        task = get_task(source_id)
+        with _opened_artifact(source_id, task.note_path) as stream:
+            if stream is None:
+                raise ValueError("personal_review_source_unavailable")
+            raw = stream.read(MAX_ARTIFACT_BYTES + 1)
+        if len(raw) > MAX_ARTIFACT_BYTES:
+            raise ValueError("personal_review_source_unavailable")
+        text = decode_task_note(task, raw)
+        edition = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": False}
+    else:
+        text = _edition_source(kind, source_id)
+        edition = {"text": text, "revision": hashlib.sha256(text.encode()).hexdigest(), "edited": False}
+    try:
+        return source_context(kind, source_id, edition)
+    except HTTPException as exc:
+        raise ValueError("personal_review_source_unavailable") from exc
+
+
+def _personal_review_call(kind: str, source_id: str, request=None):
+    from ..personal_reviews import read_review, change_review, ReviewConflict
+    reader = lambda: _personal_review_context(kind, source_id)
+    try:
+        if request is None:
+            return read_review(DATA_DIR, kind, source_id, reader)
+        return change_review(DATA_DIR, kind, source_id, reader, **request.model_dump())
+    except PersonalRecoveryRequired as exc:
+        raise HTTPException(409, {"code": "personal_restore_recovery_required", "message": RECOVERY_MESSAGE}) from exc
+    except ReviewConflict as exc:
+        raise HTTPException(409, "笔记、来源或核对记录已更新。请刷新后重新核对；本次未覆盖现有记录。") from exc
+    except (PersonalStorageError, ValueError, OSError) as exc:
+        raise HTTPException(409, "个人核对记录暂时无法安全读取或写入，原记录未改动。请检查本地存储或恢复备份。") from exc
+
+
+@notes_router.get("/editions/{kind}/{source_id}/personal-review")
+def get_personal_review(kind: str, source_id: str):
+    return _personal_review_call(kind, source_id)
+
+
+@notes_router.post("/editions/{kind}/{source_id}/personal-review")
+def post_personal_review(kind: str, source_id: str, request: PersonalReviewRequest):
+    return _personal_review_call(kind, source_id, request)
 
 
 @notes_router.get("/editions/{kind}/{source_id}/exports/{format}")
