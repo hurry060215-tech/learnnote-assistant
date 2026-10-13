@@ -1310,7 +1310,7 @@ def _process_video_file(
     # A text/OCR-only retry must not erase the published picture/W-ID mapping
     # while the previous note is still visible (including if summarization fails).
     published_visuals = get_task(task_id)
-    if options.visual_understanding or not (published_visuals.visual_windows or published_visuals.frame_grids or published_visuals.visual_index_path):
+    if options.visual_understanding or not (published_visuals.visual_windows or published_visuals.frame_grids):
         visual_index_path = write_visual_index(
             task_id,
             title,

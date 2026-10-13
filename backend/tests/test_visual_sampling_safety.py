@@ -338,6 +338,36 @@ class SamplingSafetyTests(unittest.TestCase):
             self.assertEqual(get_task(task.id).visual_windows, [window])
             self.assertEqual(note.read_text(), '# Original W001 note')
 
+    def test_ocr_only_retry_can_refresh_an_index_without_published_windows(self):
+        from app.models import MediaIntegrity, TranscriptSegment
+        from app.processor import _process_video_file
+        from app.storage import create_task, task_dir, update_task
+        from app.transcript_pipeline import TranscriptArtifacts
+        from app.visual_pipeline import VisualArtifacts
+        with patch('app.storage.TASK_DIR', self.root / 'tasks'):
+            options = TaskOptions(content_mode='auto', visual_understanding=False, local_ocr=True)
+            self.assertTrue(options.local_ocr)
+            self.assertFalse(options.visual_understanding)
+            task = create_task('local', 'Synthetic OCR index', options=options)
+            directory = task_dir(task.id)
+            media = directory / 'media.mp4'
+            media.write_bytes(b'synthetic source')
+            index = directory / 'visual_index.json'
+            index.write_text('{"frames":[],"windows":[],"previous":true}')
+            update_task(task.id, status='failed', phase='failed', media_path=str(media), visual_index_path=str(index))
+            transcript = TranscriptResult(source='browser-subtitle', full_text='Synthetic transcript',
+                segments=[TranscriptSegment(start=0, end=10, text='Synthetic transcript')])
+            sample = FrameSample(path=str(directory / 'frames' / 'new.jpg'), timestamp=7)
+            with patch('app.processor.probe_media_integrity', return_value=MediaIntegrity(status='ready', duration=10, has_audio=True, has_video=True)), \
+                 patch('app.processor.normalize_video'), \
+                 patch('app.processor.prepare_transcript', return_value=TranscriptArtifacts(transcript, '', None, '', directory / 'transcript.json')), \
+                 patch('app.processor.extract_visual_evidence', return_value=VisualArtifacts([], [sample], [], '')), \
+                 patch('app.processor.finish_note_task') as finish:
+                _process_video_file(task.id, media, task.title, '', options)
+            self.assertEqual(finish.call_args.args[5], [])
+            self.assertEqual(json.loads(index.read_text())['frames'][0]['timestamp'], 7)
+            self.assertEqual(json.loads(index.read_text())['windows'], [])
+
     def test_no_hardlink_filesystem_copy_is_exclusive_and_cleans_its_own_failure(self):
         import errno
         from app.media import _publish_evidence
