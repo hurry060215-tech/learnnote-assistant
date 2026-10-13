@@ -38,7 +38,7 @@ module.exports = async function courseMediaReuseAcceptance(context, base, out) {
     await page.goto(base);
     await page.locator(`[data-id="${fixture.task_id}"][data-kind="task"]`).first().click();
     await page.locator("#document").getByText(/Synthetic shared evidence remains stable/).waitFor();
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="add-to-course"]').click();
     await page.locator(`[data-add-course="${fixture.owner_id}"]`).click();
     for (const id of [fixture.legacy_id, fresh.id]) {

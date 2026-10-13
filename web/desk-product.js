@@ -95,6 +95,7 @@ export function installProductWorkspace(ctx) {
   pane.hidden = true;
   pane.innerHTML = `<header><strong>${icons.ai} 全局助手</strong><span id="assistantSourceTag" class="assistant-source-tag">自由提问</span><div><button id="fullAssistant" title="铺满工作区">全屏</button><button id="closeAssistant" aria-label="关闭 全局助手">×</button></div></header><div id="assistantHistory" class="assistant-history" role="log" aria-live="polite"></div><div class="assistant-prompts"><header><span>可以试试</span><button id="hideAssistantPrompts" type="button" title="隐藏快捷建议">隐藏</button></header><div class="assistant-prompt-items"><span class="assistant-prompt-item"><button data-prompt="你有哪些功能？怎么使用？" data-prompt-key="help">使用帮助</button><button data-dismiss-prompt="help" aria-label="关闭使用帮助建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="总结这份内容的核心观点，并给出对应出处" data-prompt-key="summary">总结要点</button><button data-dismiss-prompt="summary" aria-label="关闭总结要点建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="解释这份内容中最重要的概念和它们的关系" data-prompt-key="explain">解释概念</button><button data-dismiss-prompt="explain" aria-label="关闭解释概念建议">×</button></span><span class="assistant-prompt-item"><button data-prompt="根据原文给出三道自测问题，并附上参考答案和出处" data-prompt-key="quiz">帮我自测</button><button data-dismiss-prompt="quiz" aria-label="关闭帮我自测建议">×</button></span></div></div><form id="aiForm"><label class="sr-only" for="aiQuestion">向全局助手提问</label><textarea id="aiQuestion" maxlength="1000" rows="3" required placeholder="问操作方法、查资料，或围绕当前内容提问…"></textarea><footer><small id="aiStatus" role="status"></small><button id="aiStop" type="button" hidden>停止</button><button id="aiSend" class="primary">发送</button></footer></form>`;
   document.body.append(pane);
+  const assistantPrompts = pane.querySelector(".assistant-prompts");
   installAssistantOperations(ctx);
   installAssistantRuns(ctx);
   const conversations = createAssistantConversations();
@@ -269,8 +270,10 @@ export function installProductWorkspace(ctx) {
     }
   }
   function renderPromptVisibility(historyCount = 0) {
-    const group = pane.querySelector(".assistant-prompts");
-    if (!group) return;
+    const group = assistantPrompts;
+    const empty = $("assistantHistory").querySelector(".assistant-empty");
+    if (empty && historyCount === 0) empty.after(group);
+    else if (group.parentElement === $("assistantHistory")) assistantOptions.before(group);
     const preferences = promptPreferences();
     const hiddenGroup = preferences.hidden === true || historyCount > 0;
     group.hidden = hiddenGroup;
@@ -438,6 +441,7 @@ export function installProductWorkspace(ctx) {
           '<strong>暂时无法读取对话记录</strong><p>草稿已保留，可以稍后重试。</p><button type="button">重新读取记录</button>';
         empty.querySelector("button").onclick = loadHistory;
         $("assistantHistory").replaceChildren(empty);
+        renderPromptVisibility(1);
       }
     }
   }
@@ -677,9 +681,27 @@ export function installProductWorkspace(ctx) {
   readerNav.className = "reader-strip";
   readerNav.id = "readerStrip";
   readerNav.hidden = true;
-  readerNav.innerHTML = `<div id="readerMetadata"></div><div><button id="editSummary" type="button">编辑正文</button><button id="readingLayout" type="button">正文排版</button><button id="openOutline">${icons.outline} 内容目录</button><button id="sourceFrames">画面索引</button><button id="openVersions">${icons.history} 历史版本</button><button id="focusReading">专注阅读</button></div>`;
+  readerNav.innerHTML = `<div id="readerMetadata"></div><div class="reader-actions"><button id="openOutline" type="button">${icons.outline} 内容目录</button><details id="readerOptions" class="reader-options"><summary>更多操作</summary><div class="reader-options-menu"><div id="readerDocumentActions" class="reader-options-group" role="group" aria-label="笔记操作"></div><div class="reader-options-group" role="group" aria-label="阅读设置"><button id="readingLayout" type="button">正文排版</button><button id="sourceFrames" type="button">画面索引</button><button id="openVersions" type="button">${icons.history} 历史版本</button><button id="focusReading" type="button">专注阅读</button></div></div></details></div>`;
   toolbar.after(readerNav);
-  $("editSummary").onclick = () => $("edit").click();
+  $("readerDocumentActions").append($("export"), $("moreTools"));
+  const readerOptions = $("readerOptions"), readerOptionsTrigger = readerOptions.querySelector("summary");
+  readerOptions.addEventListener("click", event => {
+    if (!event.target.closest("button")) return;
+    // Restore a visible focus target before an action opens its own dialog.
+    readerOptions.open = false;
+    readerOptionsTrigger.focus();
+  }, true);
+  readerOptions.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !readerOptions.open) return;
+    event.preventDefault(); event.stopPropagation(); readerOptions.open = false; readerOptionsTrigger.focus();
+  });
+  document.addEventListener("pointerdown", event => {
+    if (readerOptions.open && !readerOptions.contains(event.target)) {
+      if (readerOptions.contains(document.activeElement)) readerOptionsTrigger.focus();
+      readerOptions.open = false;
+    }
+  });
+  window.addEventListener("learnnote:selection", () => { readerOptions.open = false; });
   $("readingLayout").onclick = () => {
     $("settings").click();
     document.querySelector('[data-settings-section="appearance"]').click();

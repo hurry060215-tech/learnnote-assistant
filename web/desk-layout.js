@@ -54,6 +54,7 @@ export function installLayout() {
     const strip =
       document.querySelector(".reader-strip")?.getBoundingClientRect().height ||
       0;
+    document.body.style.setProperty("--toolbar-height", `${toolbar}px`);
     document.body.style.setProperty(
       "--source-sticky-top",
       `${toolbar + strip}px`,

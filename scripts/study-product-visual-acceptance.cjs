@@ -90,7 +90,7 @@ async function main(){
     await api(`/api/study/cards/${cards[1].card_id}/review`,{method:"POST",data:{rating:1,idempotency_key:`visual-${marker}`}});
     await api("/api/study/plan",{method:"PUT",data:{title:"Synthetic local review",daily_target:3,paused:false,timezone:"Asia/Shanghai"}});
     await page.goto(base);await page.locator(`[data-id="${material.material_id}"][data-kind="material"]`).first().click();await page.locator("#document").getByText(/Learning rate controls/).waitFor();
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     const rebuildReply=page.waitForResponse(response=>response.request().method()==="POST"&&response.url().endsWith(`/api/library/materials/${material.material_id}/rebuild`));
     await page.locator('[data-action="rebuild-material"]').click();assert.equal((await rebuildReply).status(),200);
     await page.getByText(/已从本机原文件恢复 .* 条出处；现有引用 ID 保留。/).waitFor();
@@ -101,7 +101,7 @@ async function main(){
     report.material_encoding=await require("./reader-encoding-acceptance.cjs")({page,api,base,out,restoreMaterial:material});
     const openStudio=async()=>{
       if(await page.locator("#toolsDialog").evaluate(el=>el.open))await page.locator("[data-close-tool]").click();
-      await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();
+      await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();await page.locator('[data-action="add-to-course"]').click();await page.locator(`[data-add-course="${course.id}"]`).click();await page.locator('[data-action="course-review"]').click();await page.locator("#studyVideoFilter").waitFor();
     };
     const capture=async(name,selector)=>{const g=await geometry(page,selector);await page.screenshot({path:path.join(out,name+".png"),fullPage:true});assert(g.scrollWidth<=g.viewport+1,`${name} page overflow: ${JSON.stringify(g)}`);assert(g.left>=-1&&g.right<=g.viewport+1,`${name} clipped surface`);assert.deepEqual(g.clipped,[],`${name} clipped controls`);assert(g.contrast>=4.5,`${name} contrast ${g.contrast}`);return g;};
     report.objective_cloze=await require("./study-quiz-acceptance.cjs")({page,api,openStudio,evidence,cards,capture});

@@ -217,7 +217,7 @@ const assert = require("node:assert/strict"),
     );
     await page.locator("#closeAssistant").click();
     await page.locator(`#notes [data-id="${id}"]`).click();
-    await page.locator("#openVersions").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#openVersions").click();
     await page.locator("[data-summary-version]").first().click();
     await page.locator(".summary-version-preview h2").waitFor();
     assert.match(
@@ -261,7 +261,7 @@ const assert = require("node:assert/strict"),
     );
     await page.keyboard.press("Escape");
     versionFails = true;
-    await page.locator("#openVersions").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#openVersions").click();
     await page.locator("[data-retry-versions]").waitFor();
     versionFails = false;
     await page.locator("[data-retry-versions]").click();

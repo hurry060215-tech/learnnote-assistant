@@ -41,7 +41,7 @@ module.exports = async function courseDeletionAcceptance(context, base, out) {
   const taskSource = id => ({ kind: "task", id });
   const openCourse = async id => {
     if (await page.locator("#toolsDialog").evaluate(el => el.open)) await page.locator("[data-close-tool]").click();
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="add-to-course"]').click();
     await page.locator(`[data-add-course="${id}"]`).click();
     await page.locator('[data-action="delete-course"]').click();

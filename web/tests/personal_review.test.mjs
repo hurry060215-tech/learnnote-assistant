@@ -150,3 +150,15 @@ test("failed reads and partial/mismatched reader surfaces never permit a mark", 
   assert.equal(f.requests.length, 1); assert.equal(f.$("personalReview").hidden, true);
   assert.equal(personalReviewView(record({ note_revision: "other" }), "note-1").mark, false);
 });
+
+
+test("details are opt-in and reset only for a changed reader; status remains read-only", async () => {
+  const f = fixture(); await f.load();
+  assert.equal(f.$("personalReviewDetails").open, false);
+  f.$("personalReviewDetails").open = true;
+  await f.load(); assert.equal(f.$("personalReviewDetails").open, true);
+  f.render("second", "note-2");
+  assert.equal(f.$("personalReviewDetails").open, false);
+  assert.equal(f.requests.filter(request => request.options).length, 0);
+  assert.match(code, /个人操作记录，不代表内容已被证实/);
+});

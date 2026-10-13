@@ -21,7 +21,7 @@ export function installPersonalReview({ state, api, refreshNote, document: doc =
   const reader = doc.getElementById("document"), host = doc.createElement("section");
   host.id = "personalReview"; host.className = "personal-review"; host.hidden = true;
   host.setAttribute("aria-labelledby", "personalReviewHeading");
-  host.innerHTML = '<h2 id="personalReviewHeading">个人核对</h2><p class="muted personal-review-scope">当前整篇笔记 · 本机个人核对</p><p id="personalReviewState" role="status"></p><p id="personalReviewSources" class="muted"></p><p class="muted">仅记录你的核对动作，不验证身份，也不保证内容正确。原有不确定性提示仍然适用。</p><div class="personal-review-actions"><button id="markPersonalReview" class="primary" type="button">我已核对当前整篇笔记</button><button id="revokePersonalReview" type="button" hidden>撤销核对</button><button id="refreshPersonalReview" type="button">刷新核对状态</button></div><p id="personalReviewFeedback" class="muted" aria-live="polite" hidden></p>';
+  host.innerHTML = '<details id="personalReviewDetails"><summary><span id="personalReviewHeading">个人核对</span><span id="personalReviewState" role="status"></span><span class="personal-review-disclosure">详情与操作</span></summary><div class="personal-review-body"><p class="muted personal-review-scope">当前整篇笔记 · 本机个人核对</p><p id="personalReviewSources" class="muted"></p><p class="muted">只记录本机核对动作，不验证身份。原有不确定性提示仍然适用。</p><div class="personal-review-actions"><button id="markPersonalReview" class="primary" type="button">我已核对当前整篇笔记</button><button id="revokePersonalReview" type="button" hidden>撤销核对</button><button id="refreshPersonalReview" type="button">刷新核对状态</button></div></div></details><p class="muted personal-review-boundary">个人操作记录，不代表内容已被证实。</p><p id="personalReviewFeedback" class="muted" aria-live="polite" hidden></p>';
   reader.after(host);
   const $ = id => host.querySelector(`#${id}`), mark = $("markPersonalReview"), revoke = $("revokePersonalReview");
   const refresh = $("refreshPersonalReview"), status = $("personalReviewState"), sources = $("personalReviewSources"), feedback = $("personalReviewFeedback");
@@ -56,7 +56,7 @@ export function installPersonalReview({ state, api, refreshNote, document: doc =
     host.setAttribute("aria-busy", String(busy || loading));
   }
   function reset() {
-    sequence++; value = owner = null; busy = loading = false; host.hidden = true; message(""); draw();
+    sequence++; value = owner = null; busy = loading = false; host.hidden = true; $("personalReviewDetails").open = false; message(""); draw();
   }
   async function load({ explanation = "" } = {}) {
     if (busy) return;
@@ -64,7 +64,7 @@ export function installPersonalReview({ state, api, refreshNote, document: doc =
     if (!selected) { reset(); return; }
     const token = ++sequence;
     const changed = !same(owner, selected);
-    if (changed) value = null;
+    if (changed) { value = null; $("personalReviewDetails").open = false; }
     owner = selected; loading = true; host.hidden = false;
     if (explanation || changed) message(explanation);
     draw();

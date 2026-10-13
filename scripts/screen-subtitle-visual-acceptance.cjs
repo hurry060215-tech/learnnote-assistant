@@ -92,7 +92,7 @@ const result = () => ({ status: ocr.status === "success" ? "ready" : "cancelled"
     const capture = async name => { fs.mkdirSync(output,{recursive:true}); await page.screenshot({path:path.join(output,name),fullPage:true}); report.screenshots.push(name); };
     await page.goto(base.href); await page.locator('#welcome[data-ready="true"]').waitFor();
     await page.locator('#notes [data-id="source"]').click(); await page.locator('#document').getByText('Original ASR and note remain unchanged.').waitFor();
-    const openPanel = async () => { await page.locator('#moreTools').click(); await page.locator('[data-action="screen-subtitles"]').click(); await page.locator('[data-start-screen]').waitFor({state:'visible'}); await page.waitForFunction(() => !document.querySelector('[data-start-screen]').disabled); };
+    const openPanel = async () => { await page.locator("#readerOptions > summary").click(); await page.locator('#moreTools').click(); await page.locator('[data-action="screen-subtitles"]').click(); await page.locator('[data-start-screen]').waitFor({state:'visible'}); await page.waitForFunction(() => !document.querySelector('[data-start-screen]').disabled); };
     await openPanel();
     assert.equal(await page.locator('[name="generateNote"]').isChecked(),false);
     await page.locator('[name="cropTop"]').fill('60'); await page.locator('[name="interval"]').fill('1'); await page.locator('[name="language"]').selectOption('zh'); await page.locator('[name="previewTime"]').fill('35');

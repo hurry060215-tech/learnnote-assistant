@@ -49,7 +49,7 @@ async function main() {
     await page.locator('#sourceWindow figure[data-window-id="window-2"]').waitFor();
     await page.waitForFunction(() => { const image = document.querySelector("#sourceWindow img"); return image?.complete && image.naturalWidth === 480; });
     await page.locator("#closeSource").click();
-    await page.locator("#moreTools").click(); await page.locator('[data-action="add-to-course"]').click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click(); await page.locator('[data-action="add-to-course"]').click();
     await page.locator(`[data-add-course="${course.id}"]`).click(); await page.locator('[data-action="course-review"]').click();
     await page.locator('[data-action="start-review"]').click(); await page.locator("#skipReflection").click();
     await page.locator(`#reviewSources [data-evidence="${fixture.evidence_id}"]`).click();

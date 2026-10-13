@@ -28,7 +28,7 @@ async function main() {
     geometry: "Explicit overflow, centering, footer, drawer-shadow, and header line checks; independent of human pixel review.",
     reference_images_reviewed: false,
     native_webview_tested: false,
-    cases: [],
+    cases: [], fonts: [],
   };
   let material, showFixture = false;
   try {
@@ -86,6 +86,17 @@ async function main() {
       for (const button of heading.controls)
         assert(button.left >= 0 && button.right <= heading.viewport, `${name}: clipped header control ${button.id}`);
       return heading;
+    }
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
+    async function renderedFonts(selector, name) {
+      await page.evaluate(() => document.fonts.ready);
+      const { root } = await cdp.send("DOM.getDocument");
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      const result = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      const computed = await page.locator(selector).first().evaluate(node => ({ family: getComputedStyle(node).fontFamily,
+        size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight }));
+      report.fonts.push({ name, selector, ...computed, rendered: result.fonts });
     }
     async function capture(name, surface) {
       await page.evaluate(() => scrollTo(0, 0));
@@ -178,10 +189,45 @@ async function main() {
         assert.deepEqual(selectedSidebar, { expanded: String(width > 760), inert: width <= 760,
           onScreen: width > 760, focusInInertSidebar: false },
           `${prefix}: selecting a note must preserve the desktop sidebar or dismiss the mobile drawer consistently`);
+        await page.waitForFunction(() => document.querySelector("#personalReview")?.getAttribute("aria-busy") === "false");
+        assert.equal(await page.locator("#personalReviewDetails").evaluate(node => node.open), false);
+        const reviewHeight = await page.locator("#personalReview").evaluate(node => node.getBoundingClientRect().height);
+        assert(reviewHeight < (width === 390 ? 160 : 125), `${prefix}: collapsed review competes with reading`);
+        await renderedFonts("#document > h1 + p", `${prefix}-reader-chinese`);
+        await renderedFonts("#document > h2 + p", `${prefix}-reader-mixed`);
+        await renderedFonts("#breadcrumb", `${prefix}-ui`);
         for (const open of [true, false]) {
           await sidebar(open);
           await capture(`${prefix}-reader-sidebar-${open ? "open" : "closed"}`, "#document");
         }
+        // Native disclosure remains keyboard reachable and returns focus on Escape.
+        await page.locator("#readerOptions > summary").focus();
+        await page.keyboard.press("Enter");
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), true);
+        assert(await page.locator("#export").isVisible());
+        assert(await page.locator("#moreTools").isVisible());
+        await capture(`${prefix}-reading-actions`, "#readerOptions .reader-options-menu");
+        await page.keyboard.press("Escape");
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
+        assert.equal(await page.evaluate(() => document.activeElement === document.querySelector("#readerOptions > summary")), true);
+        // Moving the export trigger into a disclosure must not strand focus in
+        // hidden content after closing either the menu or its dialog.
+        await page.keyboard.press("Enter");
+        await page.locator("#export").focus();
+        // Metadata stays outside the popup even when its overlay covers the
+        // note heading on a narrow screen; use a real unobstructed pointer target.
+        await page.locator("#readerMetadata").click();
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
+        assert.equal(await page.evaluate(() => document.querySelector("#readerOptions .reader-options-menu").contains(document.activeElement)), false);
+        await page.locator("#readerOptions > summary").focus();
+        await page.keyboard.press("Enter");
+        await page.locator("#export").click();
+        await page.locator("#toolsDialog h2").getByText("统一导出", { exact: true }).waitFor();
+        assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
+        await page.locator("#toolsDialog [data-close-tool]").click();
+        await page.waitForFunction(() => !document.querySelector("#toolsDialog").open &&
+          document.activeElement === document.querySelector("#readerOptions > summary"));
+        report.cases.at(-1).interactions = ["keyboard-open", "escape-focus-return", "outside-pointer-close", "export-open-close-focus-return"];
         await sidebar(true);
         await page.locator("#search").fill("no-such-synthetic-design-note");
         assert.equal(await page.locator("#notes [data-id]").count(), 0);
@@ -190,6 +236,13 @@ async function main() {
         await sidebar(false);
         await page.locator("#aiAssistant").click();
         await page.locator(".assistant-empty").waitFor();
+        assert(await page.locator("#assistantHistory .assistant-prompts").isVisible(), "Empty-state prompts share the conversation surface");
+        const focus = await page.locator("#aiQuestion").evaluate(node => {
+          const css = getComputedStyle(node);
+          return { active: node === document.activeElement, outline: css.outlineWidth,
+            offset: css.outlineOffset, border: css.borderTopColor };
+        });
+        assert.deepEqual(focus, { active: true, outline: "2px", offset: "-1px", border: "rgba(0, 0, 0, 0)" });
         const heading = await assistantHeading(prefix);
         await capture(`${prefix}-empty-assistant`, "#assistantPanel");
         report.cases.at(-1).heading = heading;
@@ -253,6 +306,7 @@ async function main() {
     report.passed = true;
     console.log(JSON.stringify({ passed: true, screenshots: report.cases.length, out }));
   } finally {
+    if (!report.passed) await page.screenshot({ path: path.join(out, "failure-current.png"), animations: "disabled" }).catch(() => {});
     report.errors = errors;
     report.external_requests = externalRequests;
     fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
