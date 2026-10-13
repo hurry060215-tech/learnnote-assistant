@@ -201,6 +201,8 @@ class SamplingSafetyTests(unittest.TestCase):
         windows = build_visual_windows(TranscriptResult(full_text='', segments=[]), result.grids)
         self.assertEqual([(w.id, w.start, w.end, w.grid_url) for w in windows], [('W001', 0, 20, '/original-grid')])
         self.assertTrue(result.metrics['published_sampling_reused'])
+        self.assertEqual(result.metrics['frame_extraction']['cached_frame_count'], 1)
+        self.assertEqual(result.metrics['frame_extraction']['ffmpeg_batch_process_count'], 0)
         for path, content in original.items():
             self.assertEqual(path.read_bytes(), content)
 

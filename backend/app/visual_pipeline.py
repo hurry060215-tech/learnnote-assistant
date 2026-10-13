@@ -93,7 +93,11 @@ def _preserved_visual_evidence(work_dir: Path, media: Path, task=None) -> Visual
                 raise ValueError("published grids differ from index")
         if not grids:
             raise ValueError("missing windows")
-        metrics = {**metrics, "published_sampling_reused": True}
+        metrics = {**metrics, "published_sampling_reused": True, "grid_build_ms": 0,
+            "frame_extract_wall_ms": 0, "frame_count": len(samples), "grid_count": len(grids),
+            "frame_extraction": {**extraction, "cached_frame_count": len(samples),
+                "ffmpeg_batch_process_count": 0, "ffmpeg_fallback_process_count": 0,
+                "elapsed_ms": 0}}
         return VisualArtifacts([Path(sample.path) for sample in samples], samples, grids,
             "已复用此任务原有画面采样和窗口，保留旧引用；如需采用新的采样规则，请从保存的媒体创建新任务。", metrics=metrics)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
