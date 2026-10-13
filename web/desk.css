@@ -10,9 +10,9 @@
   --accent: var(--chosen-accent, #303832);
   --tint: #edf2eb;
   --danger: #a13a2c;
-  font-family:
-    "Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei UI",
-    "Microsoft YaHei", system-ui, sans-serif;
+  --ui-font: "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--ui-font);
   font-size: 15px;
   font-synthesis: none;
 }
@@ -905,20 +905,29 @@ button:has(svg) {
   border-top: 1px solid var(--line);
   border-radius: 0;
   margin-top: 18px;
-  padding: 24px 48px;
+  padding: 24px 32px;
 }
 .personal-review {
   max-width: var(--reader-width, 940px);
   margin: 0 auto;
-  padding: 24px 32px;
+  padding: 12px 32px;
   border-top: 1px solid var(--line);
   background: var(--paper);
   overflow-wrap: anywhere;
 }
-.personal-review h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+.personal-review details { margin: 0; padding: 0; border: 0; }
+.personal-review summary::after { content: none; }
+.personal-review summary { padding: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 44px; cursor: pointer; list-style: none; }
+.personal-review summary::-webkit-details-marker { display: none; }
+#personalReviewHeading { font-size: 14px; font-weight: 650; }
+.personal-review-disclosure { margin-left: auto; color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 8px; }
+.personal-review-disclosure::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .15s ease; }
+.personal-review details[open] .personal-review-disclosure::after { transform: rotate(225deg); }
+.personal-review-body { padding: 8px 0 12px; }
+.personal-review .personal-review-boundary { margin: 0; font-size: 12px; }
 .personal-review p { margin: 8px 0; font-size: 13px; }
 .personal-review .personal-review-scope { margin-top: 0; }
-#personalReviewState { font-size: 15px; font-weight: 600; }
+#personalReviewState { font-size: 13px; font-weight: 500; color: var(--muted); }
 .personal-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .personal-review-actions button { min-height: 44px; border: 1px solid var(--line); white-space: normal; }
 .workspace:has(#reading:not([hidden])) {
@@ -1153,14 +1162,24 @@ button:has(svg) {
   padding: 20px;
 }
 .assistant-empty {
-  padding: 24px 8px;
+  padding: 20px 4px 12px;
   color: var(--muted);
   font-size: 13px;
 }
+.assistant-empty strong,
 .assistant-empty h3 {
   color: var(--ink);
-  font-size: 16px;
+  font-size: 20px;
+  font-weight: 650;
 }
+.assistant-empty p { margin: 10px 0 0; font-size: 14px; line-height: 1.7; }
+.assistant-history:has(.assistant-empty) { display: flex; flex-direction: column; justify-content: safe center; }
+.assistant-history > .assistant-prompts { padding: 8px 4px 24px; border: 0; overflow: visible; }
+.assistant-history .assistant-prompt-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.assistant-history .assistant-prompt-item { min-width: 0; justify-content: space-between; border: 1px solid var(--line); background: transparent; }
+.assistant-history .assistant-prompt-item > button { background: transparent; min-height: 40px; }
+.assistant-history .assistant-prompt-item > button:first-child { flex: 1; text-align: left; padding: 8px 10px; }
+.assistant-history .assistant-prompt-item > button:last-child { min-width: 28px; }
 .assistant-turn {
   margin-bottom: 26px;
   font-size: 15px;
@@ -2324,4 +2343,39 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
     flex-wrap: wrap;
     justify-content: flex-start;
   }
+}
+
+/* Reading refinements: quiet utility navigation, shared edges, explicit focus. */
+.reader-strip { padding-block: 4px; top: var(--toolbar-height, 72px); }
+.reader-actions { align-items: center; }
+.reader-actions > button, .reader-options > summary { min-height: 44px; }
+.reader-options { position: relative; margin: 0; border: 0; padding: 0; }
+.reader-options > summary { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 7px; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; list-style: none; }
+.reader-options > summary::-webkit-details-marker { display: none; }
+.reader-options > summary::after { position: static; content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .15s ease; }
+.reader-options[open] > summary { background: var(--tint); }
+.reader-options[open] > summary::after { transform: rotate(225deg); }
+.reader-options-menu { position: absolute; right: 0; top: calc(100% + 5px); width: 216px; max-width: calc(100vw - 24px); max-height: calc(100dvh - var(--source-sticky-top, 124px) - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #00000011; z-index: 8; }
+.reader-options-group { display: grid; }
+.reader-options-group + .reader-options-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.reader-options-menu button { min-height: 44px; width: 100%; text-align: left; justify-content: flex-start; font-size: 13px; white-space: normal; }
+.reader-options-menu button svg { width: 17px; height: 17px; }
+.assistant-options > summary { font-size: 12px; }
+@media (max-width: 1250px) {
+  .annotations { padding-inline: 30px; }
+  .personal-review { padding-block: 12px; }
+}
+@media (max-width: 760px) {
+  .reader-strip { gap: 2px 10px; padding-block: 4px; }
+  #readerMetadata { flex: 1; min-width: 0; font-size: 11px; }
+  .reader-actions { margin-left: auto; }
+  .annotations { padding-inline: 18px; }
+  .personal-review { padding-block: 10px; }
+  .personal-review summary { gap: 4px 10px; }
+}
+@container (max-width: 720px) {
+  .annotations { padding-inline: 20px; }
+}
+@container assistant (max-width: 300px) {
+  .assistant-history .assistant-prompt-items { grid-template-columns: minmax(0, 1fr); }
 }

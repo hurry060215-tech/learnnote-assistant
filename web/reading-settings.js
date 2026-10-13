@@ -60,7 +60,7 @@ export function validateReadingPatch(patch) {
 export function applyReadingAppearance(value, { document, preview } = {}) {
   const p = normalizeReading(value);
   const fonts = {
-    sans: '"Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+    sans: "var(--ui-font)",
     serif: '"Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "SimSun", serif',
     mono: 'Consolas, "Microsoft YaHei", monospace',
   };

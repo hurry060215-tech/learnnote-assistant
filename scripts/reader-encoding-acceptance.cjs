@@ -17,7 +17,7 @@ module.exports = async function readerEncodingAcceptance({ page, api, base, out,
   const onDialog = dialog => confirmations.push(dialog.message());
   page.on("request", onRequest); page.on("dialog", onDialog);
   const open = async () => {
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="material-encoding"]').click();
     await page.locator("#materialEncodingForm").waitFor();
   };

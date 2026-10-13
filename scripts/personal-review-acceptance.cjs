@@ -81,7 +81,12 @@ async function until(check, label, timeout = 15000) {
       const panel = document.querySelector("#personalReview");
       return panel && !panel.hidden && panel.dataset.status === expected && panel.getAttribute("aria-busy") === "false";
     }, status);
+    const expandReview = async () => {
+      if (!await page.locator("#personalReviewDetails").evaluate(node => node.open))
+        await page.locator("#personalReviewDetails > summary").click();
+    };
     const clickAction = async (selector, expectedStatus = 200) => {
+      await expandReview();
       const response = page.waitForResponse(r => r.url() === reviewEndpoint && r.request().method() === "POST");
       await page.locator(selector).click();
       const result = await response; assert.equal(result.status(), expectedStatus, await result.text()); return result.json();
@@ -109,7 +114,12 @@ async function until(check, label, timeout = 15000) {
     await page.goto(`${base}/#material/${id}`); await ready("unmarked");
     assert.equal(fs.existsSync(recordPath), false);
     assert.equal(report.action_requests.length, 0);
+    assert.equal(await page.locator("#personalReviewDetails").evaluate(node => node.open), false);
+    assert.equal(await page.locator("#markPersonalReview").isVisible(), false);
+    assert.match(await page.locator("#personalReview").innerText(), /个人操作记录，不代表内容已被证实/);
+    await page.locator("#personalReviewDetails > summary").focus(); await page.keyboard.press("Enter");
     assert.match(await page.locator("#personalReview").innerText(), /当前整篇笔记 · 本机个人核对/);
+    assert.equal(report.action_requests.length, 0, "Expanding details must not record a review");
     const readerBefore = await page.locator("#document").innerText();
     const first = await clickAction("#markPersonalReview"); await ready("current");
     assert.equal(first.status, "current"); assert.equal(diskRecord().state, "marked");
@@ -143,7 +153,7 @@ async function until(check, label, timeout = 15000) {
     const restored = await page.request.post(base + "/api/study/backup/restore", { data: backup });
     assert.equal(restored.status(), 200, await restored.text());
     assert.equal((await restored.json()).merge.restored_personal_reviews, 1);
-    await page.locator("#refreshPersonalReview").click(); await ready("imported");
+    await expandReview(); await page.locator("#refreshPersonalReview").click(); await ready("imported");
     assert.equal(diskRecord().state, "imported");
     await screenshots("imported");
     report.checks.push("revoke persists; restored mark stays imported until another explicit click");
@@ -167,7 +177,7 @@ async function until(check, label, timeout = 15000) {
       && document.querySelector("#personalReview").getAttribute("aria-busy") === "false");
     assert.equal(await page.locator("#markPersonalReview").isDisabled(), true);
     assert.equal(diskRecord().state, "imported");
-    await page.locator("#refreshPersonalReview").click(); await ready("imported");
+    await expandReview(); await page.locator("#refreshPersonalReview").click(); await ready("imported");
     assert.match(await page.locator("#document").innerText(), /另一页面保存的版本/);
     const posts = report.action_requests.length;
     await clickAction("#markPersonalReview"); await ready("current");
@@ -181,7 +191,7 @@ async function until(check, label, timeout = 15000) {
     const editionBytes = fs.readFileSync(editionPath);
     fs.writeFileSync(editionPath, "invalid synthetic edition");
     try {
-      await page.locator("#refreshPersonalReview").click(); await ready("stale");
+      await expandReview(); await page.locator("#refreshPersonalReview").click(); await ready("stale");
       assert.equal(await page.locator("#markPersonalReview").isDisabled(), true);
       assert.equal(await page.locator("#revokePersonalReview").isEnabled(), true);
       await clickAction("#revokePersonalReview"); await ready("revoked");

@@ -1,8 +1,10 @@
 # LearnNote design contract
 
-Status: **current baseline; user reference images pending**. This document records
-the shipped workspace, plus the narrow alignment fixes accompanying it. It does
-not approve a new visual direction. Review actual reference pixels before changing
+Status: **user-authorized reading refinement; visual reference images pending**.
+This document records the quiet reading workspace and its hierarchy refinements.
+The current direction is deliberate subtraction: reading first, concise review
+status, discoverable secondary tools, and one coherent assistant empty state.
+It does not adopt a new theme from an unseen reference image. Review actual reference pixels before changing
 the palette, type family, composition, or visual identity.
 
 Every new page, dialog, navigation item, and component must follow this contract.
@@ -63,11 +65,14 @@ tokens to copy. Status must also have text or a shape cue.
 
 ## Typography
 
-UI family: `"Noto Sans SC", "Segoe UI", "PingFang SC", "Microsoft YaHei UI",
-"Microsoft YaHei", system-ui, sans-serif`. No remote font download is required.
-The reading sans family uses the existing preference stack, which omits
-`"Microsoft YaHei UI"` and ends in `sans-serif`. Font rendering can differ by OS;
-inspect actual Windows Edge pixels before approving type changes.
+UI and default reading sans share `--ui-font`: `"Noto Sans SC", "Noto Sans CJK SC",
+"PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui,
+sans-serif`. Chinese-capable families precede the Latin system fallback. No remote
+font download is required. Serif/mono remain explicit reader preferences. Font
+rendering can differ by OS; the visual gate records actual platform fonts for
+Chinese/mixed body text and UI labels through Edge DevTools. A CSS stack alone
+is not proof that those fonts rendered. Do not reuse the website's limited
+character subset for arbitrary user notes.
 
 | Role | Size | Weight | Line height |
 | --- | --- | --- | --- |
@@ -134,8 +139,11 @@ component rather than making a new general spacing scale from every literal.
   inset is 24px block / 32px inline; <=1250px uses 30px; <=760px uses 24px / 18px.
   The workspace container query at <=720px sets 20px inline reading insets.
   Outer reading gutters are 24px, then 16px at <=1250px, then 10px at <=760px.
-- Annotation and editor widths follow `--reader-width`. Preserve the existing
-  wider annotation inset until its alignment is reviewed against fresh pixels.
+- Annotation, personal review, and editor widths follow `--reader-width`. Body,
+  review summary, and annotation content share the same inline insets at every
+  breakpoint. Personal review defaults to a 44px summary plus one concise, visible
+  truthfulness boundary. Details and explicit mark/revoke/refresh actions expand
+  only on request; navigation resets the disclosure, polling does not.
 - Assistant: 430px default; 320–720px user range within available room. Above
   1100px it reserves main-column space; at <=1100px it overlays. At <=760px it is
   full width. At assistant-container widths <=600px, including desktop side panels,
@@ -175,6 +183,15 @@ their existing component. Primary hover retains the accent and applies brightnes
 2px `--accent` outline, offset 3px. Do not remove focus to improve screenshots.
 
 Use one main action per task area. Keep destructive controls secondary and labeled.
+The top reader toolbar keeps editing, source, and assistant access. The utility
+strip keeps source state and contents visible, with export, learning tools,
+typography, frame index, versions, and focus mode in a native “更多操作” disclosure.
+There is one edit entry. The disclosure closes on selection, outside pointer, or
+Escape; Escape returns focus, and dialog actions inherit a visible return target.
+The assistant's empty explanation and dismissible suggestions share the history
+surface. Sending begins a regular history; hidden/dismissed preference state is
+preserved. The composer has one 2px focus ring, never competing inner/outer rings.
+Keep processing details collapsed and visually secondary; warnings stay visible.
 Empty states name the missing content and give a relevant next action; keep them
 within the same surface grid. Avoid adding decorative cards around every line.
 

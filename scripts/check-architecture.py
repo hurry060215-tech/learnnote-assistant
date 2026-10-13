@@ -166,7 +166,10 @@ def module_size_violations() -> list[str]:
     # Bounded TOC resize/settings and note editor controls retain the existing visual effects.
     # +17 lines for the bounded whole-note personal-review panel: existing
     # reading insets/tokens, wrapped touch targets and responsive alignment.
-    runtime_budget = 2310 + 17
+    # +64 bounded lines for the reader utility disclosure, compact personal-review
+    # summary, unified empty assistant suggestions and responsive/focus states.
+    # No second runtime stylesheet or separate token system is introduced.
+    runtime_budget = 2310 + 17 + 64
     if runtime_lines > runtime_budget:
         violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is {runtime_budget}")
     if legacy_lines > 23000:

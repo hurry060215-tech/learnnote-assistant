@@ -36,7 +36,7 @@ const fs = require("node:fs");
       .fill("# 完整工作台验收\n\n保存后的修订 EXPORT_EDIT_MARKER\n");
     await p.locator("#save").click();
     await p.waitForSelector("#editor", { state: "hidden" });
-    await p.locator("#moreTools").click();
+    await p.locator("#readerOptions > summary").click(); await p.locator("#moreTools").click();
     await p.locator('[data-action="exports"]').click();
     await p.locator("#previewUnifiedExport").click();
     await p.waitForFunction(() => document.querySelector("#unifiedExportStatus").textContent.includes("预览已更新"));
@@ -65,7 +65,7 @@ const fs = require("node:fs");
     await p.getByRole("button", { name: "暂停计划", exact: true }).waitFor();
     await p.screenshot({ path: `${out}/learning-space.png` });
     await p.getByRole("button", { name: "关闭学习空间", exact: true }).click();
-    await p.locator("#moreTools").click();
+    await p.locator("#readerOptions > summary").click(); await p.locator("#moreTools").click();
     await p.locator('[data-action="propose"]').click();
     await p.waitForSelector("#cardsForm input[data-card-index]");
     await p.locator("#cardsForm button.primary").click();
@@ -87,7 +87,7 @@ const fs = require("node:fs");
           "\n\n",
       });
     });
-    await p.locator("#moreTools").click();
+    await p.locator("#readerOptions > summary").click(); await p.locator("#moreTools").click();
     await p.locator('[data-action="ask"]').click();
     await p.locator("#aiQuestion").fill("学习率");
     await p.locator("#aiSend").click();
@@ -104,7 +104,7 @@ const fs = require("node:fs");
         .querySelector("#annotationList")
         .textContent.includes("需要编辑"),
     );
-    await p.locator("#moreTools").click();
+    await p.locator("#readerOptions > summary").click(); await p.locator("#moreTools").click();
     await p.locator('[data-action="annotations"]').click();
     await p.waitForSelector(".annotation-edit");
     await p
@@ -141,7 +141,7 @@ const fs = require("node:fs");
     await p.screenshot({ path: `${out}/storage.png` });
     await p.locator("[data-close-tool]").click();
     await p.setViewportSize({ width: 390, height: 844 });
-    await p.locator("#moreTools").click();
+    await p.locator("#readerOptions > summary").click(); await p.locator("#moreTools").click();
     await p.screenshot({ path: `${out}/tools-mobile.png` });
     assert(
       await p.evaluate(

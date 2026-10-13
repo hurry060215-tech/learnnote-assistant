@@ -60,7 +60,7 @@ async function main() {
     report.screenshots.push(name);
   }
   async function open(courseId = "course-a") {
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('#toolBody [data-action="courses"]').click();
     await page.locator(`[data-course="${courseId}"]`).click();
     await page.locator('[data-action="course-question"]').click();

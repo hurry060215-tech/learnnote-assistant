@@ -30,7 +30,7 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
   };
   const open = async () => {
     await close();
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="courses"]').click();
     await page.locator(`[data-course="${course.id}"]`).click();
     await page.getByText("对照不同来源", { exact: true }).click();
@@ -59,7 +59,7 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
   };
   const openSnapshotImport = async () => {
     await close();
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="courses"]').click();
     await page.locator("[data-graph-snapshot-import]").click();
     await page.locator("[data-graph-snapshot-file]").waitFor({ state: "attached" });

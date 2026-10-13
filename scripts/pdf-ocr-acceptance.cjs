@@ -36,7 +36,7 @@ async function main() {
     await reader.getByText(/Synthetic optional OCR unavailable/).waitFor();
     assert.equal(await reader.locator("details").count(), 2, "Prior confidence remains available after failure");
     await page.screenshot({ path: path.join(out, "partial-confidence-retry.png"), fullPage: true });
-    await page.locator("#moreTools").click();
+    await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click();
     await page.locator('[data-action="run-material-ocr"]').click();
     const tools = page.locator("#toolsDialog");
     await tools.getByRole("button", { name: /继续识别未完成页面/ }).click();

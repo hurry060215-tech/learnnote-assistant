@@ -46,6 +46,12 @@ document.querySelectorAll("[data-open-heading]").forEach((button) =>
   button.addEventListener("click", () => {
     const tab = document.getElementById("demo-note-tab");
     tab.click();
-    tab.focus({ preventScroll: true });
+    const heading = document.getElementById(`demo-${button.dataset.openHeading}`);
+    if (heading) {
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({ block: "nearest", behavior: "auto" });
+    } else {
+      tab.focus({ preventScroll: true });
+    }
   }),
 );
