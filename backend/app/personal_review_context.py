@@ -40,9 +40,14 @@ def _file_witness(path: Path) -> dict:
     final = path.lstat()
     def identity(value):
         return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
-    if identity(opened) != identity(after) or identity(after) != identity(final):
+    # On Windows, path-stat ctime can mean creation time while fstat ctime
+    # means change time (CPython #157671). Compare each clock with itself;
+    # compare descriptor/path ownership using device, inode and size only.
+    if (identity(opened) != identity(after) or identity(before) != identity(final)
+            or (after.st_dev, after.st_ino, after.st_size) != (final.st_dev, final.st_ino, final.st_size)):
         raise ValueError("personal_review_source_changed")
-    return {"hash": result.hexdigest(), "generation": list(identity(final))}
+    return {"hash": result.hexdigest(), "generation": list(identity(final)),
+        "descriptor_generation": list(identity(after))}
 
 
 def source_context(kind: str, source_id: str, edition: dict) -> dict:
