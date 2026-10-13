@@ -121,7 +121,7 @@ export function mountGraphSnapshotExport(root, { api, course, scope, isCurrent }
     try {
       const snapshot = await api(path);
       if (!active()) return;
-      if (snapshot?.format !== "learnnote.filtered-comparison" || snapshot.schema_version !== 1) throw new Error("服务返回的快照格式无效，未导出。");
+      if (snapshot?.format !== "learnnote.filtered-comparison" || ![1, 2].includes(snapshot.schema_version)) throw new Error("服务返回的快照格式无效，未导出。");
       downloadSnapshot(snapshotBlob(snapshot));
       message.textContent = "完整筛选关系图已导出，可导入为独立只读预览。";
     } catch (error) {
@@ -166,6 +166,11 @@ function renderSnapshotPreview(root, snapshot, graph, { isCurrent }) {
     catch (error) { message.textContent = snapshotError(error); }
   });
   root.append(heading, provenance, paragraph("共同关键词不代表同义、因果或观点一致。含义分组仅是整理选择。"), course, query, terms, scope, digest, reexport, message);
+  if (snapshot.schema_version === 1) {
+    const legacy = paragraph("旧版快照保留原有摘要，含 ß 等字符时摘要位置可能偏移。请点击文件内完整出处核对；重新导出保留原快照，从当前课程导出可生成修正后的新版。");
+    legacy.dataset.snapshotLegacyExcerpts = "true";
+    root.append(legacy);
+  }
   mountGraphCompleteness(root, graph);
   const graphView = relationshipGraph(graph);
   if (graphView) root.append(graphView);
@@ -329,7 +334,7 @@ export function mountGraphSnapshotImport(root, { api, isCurrent }) {
       // Parsing and reserializing here would erase conflicting file contents.
       const result = await api("/api/courses/graph-snapshot/preview", { method: "POST", body: '{"snapshot":' + text + '}' });
       if (!active()) return;
-      if (result?.read_only !== true || result.snapshot?.format !== "learnnote.filtered-comparison" || result.snapshot.schema_version !== 1 || !result.graph) throw new Error("服务未返回有效的只读快照预览。");
+      if (result?.read_only !== true || result.snapshot?.format !== "learnnote.filtered-comparison" || ![1, 2].includes(result.snapshot.schema_version) || !result.graph) throw new Error("服务未返回有效的只读快照预览。");
       const content = document.createElement("section");
       preview.append(content);
       renderSnapshotPreview(content, result.snapshot, result.graph, { isCurrent: active });

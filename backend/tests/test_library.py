@@ -14,6 +14,25 @@ from app.models import SourceIdentity, TaskRecord
 
 
 class LocalLibraryIndexTests(unittest.TestCase):
+    def test_indexed_unicode_search_keeps_the_match_and_original_note_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tasks = root / "tasks"
+            task_dir = tasks / "unicode-task"
+            task_dir.mkdir(parents=True)
+            note = task_dir / "note.md"
+            content = "Straße " * 100 + "scale is an ordered set."
+            original = content.encode("utf-8")
+            note.write_bytes(original)
+            record = TaskRecord(id="unicode-task", source_type="local", mode="local", title="Synthetic Unicode",
+                                note_path=str(note), created_at="2026-08-21T00:00:00+00:00", updated_at="2026-08-21T00:00:00+00:00")
+            with patch("app.library.DATA_DIR", root), patch("app.library.TASK_DIR", tasks), patch("app.knowledge.DATA_DIR", root):
+                self.assertTrue(index_task(record))
+                result = search_library("scale")[0]
+                self.assertEqual(result["task_id"], record.id)
+                self.assertEqual(result["snippet"], "…" + content[610:])
+                self.assertEqual(note.read_bytes(), original)
+
     def test_index_search_and_rebuild_from_task_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

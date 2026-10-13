@@ -1,0 +1,405 @@
+{
+  "format": "learnnote.filtered-comparison",
+  "schema_version": 1,
+  "course": {
+    "schema_version": 1,
+    "id": "2e1cac7502b7458394111a1ef55e10b6",
+    "title": "Synthetic <course>",
+    "paused": false,
+    "revision": 1,
+    "sources": [
+      {
+        "kind": "task",
+        "id": "88e8c727e417",
+        "url": "",
+        "title": "Synthetic video"
+      },
+      {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "url": "",
+        "title": "synthetic"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "position": 0,
+      "reference": {
+        "kind": "task",
+        "id": "88e8c727e417",
+        "url": "",
+        "title": "Synthetic video"
+      },
+      "resolved_source": {
+        "kind": "task",
+        "id": "88e8c727e417",
+        "title": "Synthetic video"
+      },
+      "canonical_owner": {
+        "kind": "task",
+        "id": "88e8c727e417"
+      },
+      "owner_revision": "b9bf3cebc0ad7f005da365600b9eeebbf2c2d4f08c3541e28019c1025be62d16",
+      "status": "ready",
+      "evidence_ids": [
+        "video-original"
+      ],
+      "missing_evidence_ids": [],
+      "excluded_evidence_ids": [],
+      "reference_fingerprint": "f707bbd31656e7884d61a5e952b9d49431fd9ab1828734088cd7fe8255d3a193",
+      "redacted_fields": []
+    },
+    {
+      "position": 1,
+      "reference": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "url": "",
+        "title": "synthetic"
+      },
+      "resolved_source": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "title": "synthetic"
+      },
+      "canonical_owner": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279"
+      },
+      "owner_revision": "ae198c5186056b3b90628b98dfbdd95a8e94f633a5c84f7d86d770f1c7383395",
+      "status": "ready",
+      "evidence_ids": [
+        "material-e7d3dc6b17f74563b3d93d79ad396279-0001",
+        "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+        "material-e7d3dc6b17f74563b3d93d79ad396279-0003"
+      ],
+      "missing_evidence_ids": [],
+      "excluded_evidence_ids": [],
+      "reference_fingerprint": "8de677715d941c388f8704e86976476ff5b49a6545b81eb438cd70e38f3572c9",
+      "redacted_fields": []
+    }
+  ],
+  "scope": {
+    "query": "scale",
+    "terms": [
+      "scale"
+    ],
+    "filters": {
+      "source_id": "",
+      "source_kind": "",
+      "start": null,
+      "end": null
+    }
+  },
+  "evidence": [
+    {
+      "evidence_id": "video-original",
+      "source_type": "video",
+      "title": "",
+      "source_uri": "local://tasks/88e8c727e417",
+      "locator": "12.345-18.765s",
+      "text": "Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße Straße scale is an ordered set.",
+      "task_id": "88e8c727e417",
+      "schema_version": 1,
+      "metadata": {
+        "kind": "transcript",
+        "start": 12.345,
+        "end": 18.765,
+        "frame_timestamp": 15.25,
+        "window_id": "window-1"
+      },
+      "course_source": {
+        "kind": "task",
+        "id": "88e8c727e417",
+        "title": "Synthetic video"
+      },
+      "canonical_owner": {
+        "kind": "task",
+        "id": "88e8c727e417"
+      },
+      "original_fingerprint": "0a3216fe700612e66248635841ab035f386ae294c8485e81bf50a525823025d0",
+      "redacted_fields": [],
+      "snapshot_fingerprint": "5a54811b0de8e30c5b2b29117bd6adb1fcd5e7a113fbf07e00ce074bc10ed9fb"
+    },
+    {
+      "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0001",
+      "source_type": "markdown",
+      "title": "synthetic",
+      "source_uri": "local://materials/e7d3dc6b17f74563b3d93d79ad396279",
+      "locator": "section 1 · Document",
+      "text": "# Document",
+      "task_id": "",
+      "schema_version": 1,
+      "metadata": {
+        "kind": "material",
+        "material_id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "source_revision": "b578b799a011b56a9477ea41df5105aa061a156b6855e6e7323d7bf67ee29b86"
+      },
+      "course_source": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "title": "synthetic"
+      },
+      "canonical_owner": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279"
+      },
+      "original_fingerprint": "0ea53c1c063bbaf7970b8b19fbc6d0e8f6ecf6715c16099bca13056c1911b12b",
+      "redacted_fields": [
+        "metadata"
+      ],
+      "snapshot_fingerprint": "0a142e72a24f3b409c1bd337688f7824233c6a4c24c811938a3b519b376c2d66"
+    },
+    {
+      "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+      "source_type": "markdown",
+      "title": "synthetic",
+      "source_uri": "local://materials/e7d3dc6b17f74563b3d93d79ad396279",
+      "locator": "section 2 · Document",
+      "text": "scale has no video time.",
+      "task_id": "",
+      "schema_version": 1,
+      "metadata": {
+        "kind": "material",
+        "material_id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "source_revision": "3f1519e0e543db57476aab0a7d678087e4571e7a5b888ff810fc1694b1e24dd2"
+      },
+      "course_source": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "title": "synthetic"
+      },
+      "canonical_owner": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279"
+      },
+      "original_fingerprint": "49327a9636d2a43b1726eecc75dc23e2045ab7d18e57297eaa1bdc0edf836658",
+      "redacted_fields": [
+        "metadata"
+      ],
+      "snapshot_fingerprint": "564c63fbcc20bd497ea60132c70f26eaffb9710d9722acfe596d6d161090e8e2"
+    },
+    {
+      "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0003",
+      "source_type": "markdown",
+      "title": "synthetic",
+      "source_uri": "local://materials/e7d3dc6b17f74563b3d93d79ad396279",
+      "locator": "section 3 · Document",
+      "text": "scale second anchor.",
+      "task_id": "",
+      "schema_version": 1,
+      "metadata": {
+        "kind": "material",
+        "material_id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "source_revision": "ac1f58307a752e2f30795eb82d7dc1654f52fd6d0d3e904daa5db227eaf73f00"
+      },
+      "course_source": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279",
+        "title": "synthetic"
+      },
+      "canonical_owner": {
+        "kind": "material",
+        "id": "e7d3dc6b17f74563b3d93d79ad396279"
+      },
+      "original_fingerprint": "1e788fc98205f476485095834209d8b3c2d99bd719a30688d81968ecbcfa6663",
+      "redacted_fields": [
+        "metadata"
+      ],
+      "snapshot_fingerprint": "4585039c216b2a9b2ef53476547b1cc99a130334579873d73588a0e3d103915a"
+    }
+  ],
+  "history": {
+    "schema_version": 1,
+    "course_id": "2e1cac7502b7458394111a1ef55e10b6",
+    "events": []
+  },
+  "group_state": [
+    {
+      "term": "scale",
+      "scope_revision": "bd1347afa799d367a9320fbf16cf2183ebc4c18a0b892b91005e640550435caf",
+      "groups": [
+        {
+          "id": "unassigned",
+          "label": "未区分含义",
+          "evidence_ids": [
+            "video-original",
+            "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+            "material-e7d3dc6b17f74563b3d93d79ad396279-0003"
+          ],
+          "unresolved_ids": []
+        }
+      ]
+    }
+  ],
+  "unresolved": [],
+  "graph": {
+    "mode": "local_cited_comparison",
+    "query": "scale",
+    "terms": [
+      "scale"
+    ],
+    "query_terms_truncated": false,
+    "matches": [
+      {
+        "evidence_id": "video-original",
+        "title": "Synthetic video",
+        "locator": "12.345-18.765s",
+        "excerpt": "set.",
+        "matched_terms": [
+          "scale"
+        ],
+        "source": {
+          "kind": "task",
+          "id": "88e8c727e417",
+          "title": "Synthetic video"
+        }
+      },
+      {
+        "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+        "title": "synthetic",
+        "locator": "section 2 · Document",
+        "excerpt": "scale has no video time.",
+        "matched_terms": [
+          "scale"
+        ],
+        "source": {
+          "kind": "material",
+          "id": "e7d3dc6b17f74563b3d93d79ad396279",
+          "title": "synthetic"
+        }
+      },
+      {
+        "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0003",
+        "title": "synthetic",
+        "locator": "section 3 · Document",
+        "excerpt": "scale second anchor.",
+        "matched_terms": [
+          "scale"
+        ],
+        "source": {
+          "kind": "material",
+          "id": "e7d3dc6b17f74563b3d93d79ad396279",
+          "title": "synthetic"
+        }
+      }
+    ],
+    "total_matches": 3,
+    "nodes": [
+      {
+        "id": "task:88e8c727e417",
+        "title": "Synthetic video",
+        "evidence_ids": [
+          "video-original"
+        ],
+        "terms": [
+          "scale"
+        ]
+      },
+      {
+        "id": "material:e7d3dc6b17f74563b3d93d79ad396279",
+        "title": "synthetic",
+        "evidence_ids": [
+          "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+          "material-e7d3dc6b17f74563b3d93d79ad396279-0003"
+        ],
+        "terms": [
+          "scale"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "task:88e8c727e417",
+        "to": "material:e7d3dc6b17f74563b3d93d79ad396279",
+        "kind": "keyword_cooccurrence",
+        "terms": [
+          "scale"
+        ],
+        "identity_group": "unassigned",
+        "evidence_ids": [
+          "video-original",
+          "material-e7d3dc6b17f74563b3d93d79ad396279-0002"
+        ],
+        "citations": [
+          {
+            "evidence_id": "video-original",
+            "title": "Synthetic video",
+            "locator": "12.345-18.765s",
+            "excerpt": "set.",
+            "matched_terms": [
+              "scale"
+            ],
+            "source": {
+              "kind": "task",
+              "id": "88e8c727e417",
+              "title": "Synthetic video"
+            }
+          },
+          {
+            "evidence_id": "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+            "title": "synthetic",
+            "locator": "section 2 · Document",
+            "excerpt": "scale has no video time.",
+            "matched_terms": [
+              "scale"
+            ],
+            "source": {
+              "kind": "material",
+              "id": "e7d3dc6b17f74563b3d93d79ad396279",
+              "title": "synthetic"
+            }
+          }
+        ]
+      }
+    ],
+    "inference": false,
+    "identity_revision": 0,
+    "concepts": [
+      {
+        "term": "scale",
+        "scope_revision": "bd1347afa799d367a9320fbf16cf2183ebc4c18a0b892b91005e640550435caf",
+        "groups": [
+          {
+            "id": "unassigned",
+            "label": "未区分含义",
+            "evidence_ids": [
+              "video-original",
+              "material-e7d3dc6b17f74563b3d93d79ad396279-0002",
+              "material-e7d3dc6b17f74563b3d93d79ad396279-0003"
+            ],
+            "unresolved_ids": []
+          }
+        ]
+      }
+    ],
+    "filters": {
+      "source_id": "",
+      "source_kind": "",
+      "start": null,
+      "end": null
+    },
+    "counts": {
+      "nodes": 2,
+      "matches": 3,
+      "edges": 1
+    },
+    "truncated": {
+      "nodes": false,
+      "matches": false,
+      "edges": false
+    },
+    "warning": "共同关键词不代表同义、因果或观点一致。含义分组仅是你的整理选择，请核对各自原文。"
+  },
+  "limits": {
+    "bytes": 20000000,
+    "evidence": 10000,
+    "sources": 200,
+    "edges": 20000,
+    "grouping_scan_bytes": 100000000
+  },
+  "completeness": "complete_within_exported_scope",
+  "provenance": "Imported source claims and original fingerprints are unverified. URI userinfo/query/fragment, path-like locators and non-allowlisted metadata are omitted explicitly; titles, original text and HTTP(S) URL paths are retained and are not automatically scrubbed for secrets.",
+  "digest": "5199be16e54d25336b92ed1bd9bfd5df6e22b96bfbd9d3bd6c1df20899021e4b"
+}

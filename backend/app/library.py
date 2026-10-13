@@ -18,6 +18,7 @@ from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
 from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
+from .text_indices import original_casefold_offset
 from . import assistant_operation_store as assistant_records
 from .catalog_guard import CatalogUnavailable, catalog_guard, connect_catalog
 from .catalog_health import catalog_status
@@ -718,7 +719,8 @@ def list_materials(limit: int = 100, source_type: str = "") -> list[dict[str, ob
 def _library_search_result(row: sqlite3.Row, query: str = "") -> dict[str, object]:
     content = " ".join(str(row["content"] or "").split())
     needle = str(query or "").strip().casefold()
-    start = max(0, content.casefold().find(needle) - 90) if needle and needle in content.casefold() else 0
+    offset = content.casefold().find(needle) if needle else -1
+    start = max(0, original_casefold_offset(content, offset) - 90) if offset >= 0 else 0
     snippet = content[start : start + 320]
     if start:
         snippet = "…" + snippet

@@ -87,6 +87,59 @@ class GraphSnapshotTests(unittest.TestCase):
         self.assertEqual(self.export(q="Scale scale"), value)
         self.assertEqual(verify_snapshot(json.loads(encoded(value)))["snapshot"], value)
 
+    def test_unicode_live_comparison_and_v2_snapshot_keep_correct_citations(self):
+        original = evidence_for_task(self.task.id)[0]
+        text = "Straße " * 100 + "scale is an ordered set."
+        add_evidence(SourceEvidence(**{key: original[key] for key in SourceEvidence.model_fields}).model_copy(update={"text": text}))
+        before = self.hashes()
+        history = read_history(self.course["id"])
+        response = self.client.get(self.base + "/compare", params={"q": "scale"})
+        self.assertEqual(response.status_code, 200, response.text)
+        value = self.export()
+        self.assertEqual(value["schema_version"], 2)
+        expected = text[620:1140]
+        for graph in (response.json(), value["graph"], self.preview(value).json()["graph"]):
+            match = next(row for row in graph["matches"] if row["evidence_id"] == "video-original")
+            citation = next(row for row in graph["edges"][0]["citations"] if row["evidence_id"] == "video-original")
+            self.assertEqual(match["excerpt"], expected)
+            self.assertEqual(citation["excerpt"], expected)
+            self.assertEqual(citation["locator"], "12.345-18.765s")
+            self.assertIn("scale", expected)
+        embedded = next(row for row in value["evidence"] if row["evidence_id"] == "video-original")
+        self.assertEqual(embedded["text"], text)
+        self.assertEqual(embedded["metadata"]["start"], 12.345)
+        self.assertEqual(evidence_for_task(self.task.id)[0]["text"], text)
+        self.assertEqual(read_history(self.course["id"]), history)
+        self.assertEqual(self.hashes(), before)
+        changed = deepcopy(value)
+        changed["schema_version"] = 1
+        changed["digest"] = digest({key: item for key, item in changed.items() if key != "digest"})
+        self.assertEqual(self.preview(changed).status_code, 409, "Changing the version cannot bypass exact reconstruction")
+
+    def test_frozen_legacy_unicode_snapshot_is_preserved_and_still_strictly_verified(self):
+        # Captured with unmodified main 770720c3, before the offset correction.
+        raw = (Path(__file__).parent / "fixtures" / "graph_snapshot_unicode_v1.json").read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), "5a718bc121f35fb2f27f1f3c36744281bd7e2625fc8e1b64c93f7960a38862a2")
+        value = json.loads(raw)
+        self.assertEqual(value["schema_version"], 1)
+        match = next(row for row in value["graph"]["matches"] if row["evidence_id"] == "video-original")
+        self.assertEqual(match["excerpt"], "set.")
+        before = self.hashes()
+        response = self.preview(value)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"snapshot": value, "graph": value["graph"], "read_only": True})
+        mutations = [lambda x: x["graph"]["matches"][0].update(excerpt="replacement"),
+                     lambda x: x["graph"]["edges"][0]["citations"][0].update(excerpt="replacement"),
+                     lambda x: x["graph"]["edges"][0].update(kind="semantic_consensus"),
+                     lambda x: x.update(schema_version=2), lambda x: x.update(schema_version=True)]
+        for mutation in mutations:
+            changed = deepcopy(value)
+            mutation(changed)
+            changed["digest"] = digest({key: item for key, item in changed.items() if key != "digest"})
+            with self.subTest(mutation=mutation):
+                self.assertEqual(self.preview(changed).status_code, 409)
+        self.assertEqual(self.hashes(), before)
+
     def test_all_filters_reconstruct_exact_scope_and_report_query_term_cap(self):
         cases = [({"source_kind": "task"}, {"video-original"}),
                  ({"source_id": self.material["material_id"]}, set(self.material["evidence_ids"][1:])),

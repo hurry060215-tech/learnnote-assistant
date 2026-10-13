@@ -31,9 +31,22 @@ The existing lexical search uses the first eight distinct case-folded terms;
 the exact input and evaluated terms are both recorded, with a visible notice
 when further terms were not evaluated.
 
-## Version 1 contract
+## Version 2 contract and version 1 compatibility
 
-`format` is `learnnote.filtered-comparison`; `schema_version` is `1`.
+`format` is `learnnote.filtered-comparison`; new exports use `schema_version: 2`.
+Version 2 maps case-folded match positions back to original characters before
+slicing citation excerpts. Expanding characters such as `ß`, `İ` and `ﬃ` no
+longer shift the excerpt past its matching text. Original evidence text, IDs,
+anchors, grouping history, matching rules and excerpt length limits are unchanged.
+
+Version 1 imports remain supported using their exact historical excerpt rule
+for reconstruction. Their preview warns that an excerpt may be offset and links
+to the complete embedded source. Reexport preserves the validated original
+snapshot, including its old excerpts; exporting from the current course creates
+version 2. Both versions retain full digest, membership and graph consistency
+validation. Excerpt differences are never ignored, and import does not modify
+the snapshot or live data. This fixes [#341](https://github.com/hurry060215-tech/learnnote-assistant/issues/341),
+not the broader semantic relationship requirements in #142.
 
 - `course`: identity, revision, original title, paused state and ordered source
   references. The manifest does not contain absolute source paths.

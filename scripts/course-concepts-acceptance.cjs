@@ -7,7 +7,7 @@ const path = require("node:path");
 module.exports = async function conceptAcceptance({ page, api, base, out, restoreMaterial }) {
   const materials = [], screenshots = [], marker = String(Date.now());
   const hostileText = '<img src="snapshot-fixture-invalid" onerror="window.__snapshotFixtureExecuted=true"><script>window.__snapshotFixtureExecuted=true</script>';
-  const completeText = `A scale orders musical pitches. ${"This is synthetic full-length evidence retained beyond the comparison excerpt. ".repeat(16)}END OF COMPLETE SNAPSHOT EVIDENCE ${hostileText}`;
+  const completeText = `${"Straße ".repeat(100)}A scale orders musical pitches. ${"This is synthetic full-length evidence retained beyond the comparison excerpt. ".repeat(16)}END OF COMPLETE SNAPSHOT EVIDENCE ${hostileText}`;
   const snapshotPath = `/api/courses/graph-snapshot/preview`;
   const deletedMaterials = new Set();
   let course, courseDeleted = false, catalogRoute, oversizeRoute, observedRequests;
@@ -166,7 +166,7 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     const exported = await exportSnapshot("filtered-comparison.json");
     const snapshot = exported.snapshot;
     assert.equal(snapshot.format, "learnnote.filtered-comparison");
-    assert.equal(snapshot.schema_version, 1);
+    assert.equal(snapshot.schema_version, 2);
     assert.equal(snapshot.course.id, course.id);
     assert.equal(snapshot.course.revision, course.revision);
     assert.equal(snapshot.scope.query, query);
@@ -182,6 +182,11 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     const embedded = snapshot.evidence.find(item => item.evidence_id === ids[0]);
     assert(embedded, "Snapshot embeds the matching evidence record");
     assert.equal(embedded.text, completeText);
+    const expectedExcerpt = completeText.slice(completeText.indexOf("scale") - 80, completeText.indexOf("scale") + 440);
+    assert.equal(snapshot.graph.matches.find(item => item.evidence_id === ids[0]).excerpt, expectedExcerpt);
+    assert(snapshot.graph.edges.flatMap(edge => edge.citations).filter(item => item.evidence_id === ids[0]).every(item => item.excerpt === expectedExcerpt));
+    const liveComparison = await api(`/api/courses/${course.id}/compare?q=scale`);
+    assert.equal(liveComparison.matches.find(item => item.evidence_id === ids[0]).excerpt, expectedExcerpt);
     assert.equal(embedded.course_source.id, materials[0].material_id);
     assert.equal(snapshot.graph.edges.length, 3);
     assert(snapshot.graph.edges.every(edge => edge.citations.length === 2 && edge.citations.every(citation => snapshot.evidence.some(item => item.evidence_id === citation.evidence_id))));
@@ -243,6 +248,7 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     assert.deepEqual(validated.graph, snapshot.graph);
     const preview = page.locator("[data-graph-snapshot-preview]");
     await preview.waitFor();
+    assert.equal(await preview.locator("[data-snapshot-legacy-excerpts]").count(), 0);
     assert.match(await preview.innerText(), /只读快照 · 关键词共现 · 未验证来源真实性/);
     assert.equal(await preview.locator(".relationship-edge").count(), 3);
     assert.equal(await preview.locator("[data-concept-action], [data-concept-restore], [data-evidence]").count(), 0, "Preview offers no live grouping or source actions");
@@ -283,6 +289,35 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     await reexported.saveAs(reexportPath);
     assert.deepEqual(JSON.parse(fs.readFileSync(reexportPath, "utf8")), snapshot, "Reexport preserves the validated original snapshot losslessly");
 
+    // The frozen old export was produced before the fix. It must remain usable
+    // without relaxing graph validation or silently rewriting its excerpts.
+    const legacy = JSON.parse(fs.readFileSync(path.join(__dirname, "../backend/tests/fixtures/graph_snapshot_unicode_v1.json"), "utf8"));
+    const legacyReply = await importSnapshot(legacy);
+    assert.equal(legacyReply.status(), 200);
+    assert.deepEqual((await legacyReply.json()).snapshot, legacy);
+    const legacyWarning = page.locator("[data-snapshot-legacy-excerpts]");
+    await legacyWarning.waitFor({ state: "visible" });
+    assert.match(await legacyWarning.innerText(), /旧版.*摘要位置可能偏移.*完整出处/);
+    await page.locator("[data-graph-snapshot-preview]").getByText("关系列表（虚线为关键词共现；不表示事实关系）", { exact: true }).click();
+    await page.locator('[data-snapshot-citation="video-original"]:visible').first().click();
+    const legacyEvidence = page.locator('[data-snapshot-evidence="video-original"]');
+    assert.equal(await legacyEvidence.evaluate(el => el.open), true);
+    assert((await legacyEvidence.innerText()).includes("Straße ".repeat(100) + "scale is an ordered set."));
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await legacyWarning.scrollIntoViewIfNeeded();
+      const box = await legacyWarning.boundingBox();
+      assert(box && box.x >= -1 && box.x + box.width <= width + 1);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      const file = `graph-snapshot-legacy-${width}.png`;
+      await page.screenshot({ path: path.join(out, file), fullPage: true }); screenshots.push(file);
+    }
+    const legacyDownloading = page.waitForEvent("download");
+    await page.locator("[data-graph-snapshot-reexport]").click();
+    const legacyPath = path.join(out, "legacy-comparison-reexport.json");
+    await (await legacyDownloading).saveAs(legacyPath);
+    assert.deepEqual(JSON.parse(fs.readFileSync(legacyPath, "utf8")), legacy);
+
     // Zero and integer-valued time bounds must survive the browser's JSON
     // number serialization and the server's digest validation as well.
     const importedTimed = await importSnapshot(timed.snapshot);
@@ -312,7 +347,7 @@ module.exports = async function conceptAcceptance({ page, api, base, out, restor
     catalogRoute = null;
     assert(!(await api("/api/courses")).courses.some(item => item.id === course.id), "Import does not recreate the removed course");
     return { passed: true, actual_backend: true, synthetic_sources: true, screenshots,
-      graph_snapshot: { exact_captured_scope: true, source_and_time_filters: true, complete_embedded_text: true, portable_missing_course_and_sources: true, catalog_failure_import: true, local_citations: true, lossless_reexport: true, hostile_text_inert: true, tampered_rejected: true, read_only: true, mocked_failures: ["graph_snapshot_too_large", "course_catalog_unavailable"] },
+      graph_snapshot: { unicode_original_excerpts: true, legacy_warning_and_lossless_reexport: true, exact_captured_scope: true, source_and_time_filters: true, complete_embedded_text: true, portable_missing_course_and_sources: true, catalog_failure_import: true, local_citations: true, lossless_reexport: true, hostile_text_inert: true, tampered_rejected: true, read_only: true, mocked_failures: ["graph_snapshot_too_large", "course_catalog_unavailable"] },
       checks: ["split, reopen, merge", "lossless JSON grouping backup", "old backup preserves later edit", "missing evidence stays unresolved", "rebuild retains identity", "exact source navigation", "filtered graph snapshot export and read-only import", "390/1024 light/dark grouping and snapshot layout"] };
   } finally {
     if (observedRequests) page.off("request", observedRequests);
