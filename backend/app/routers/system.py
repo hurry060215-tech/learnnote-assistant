@@ -155,6 +155,7 @@ def api_model_route(content_mode: Literal["auto", "subtitles", "text", "visual"]
     configured = bool(connection.get("configured")) if model else bool(_model_key(TaskOptions()))
     options = TaskOptions(llm_base_url=base_url, llm_model=model_name, content_mode=content_mode,
         transcriber=transcriber, whisper_model=whisper_model, visual_understanding=visual_understanding,
+        vision_batch_size=get_preferences()["task_options"]["vision_batch_size"],
         use_saved_connection=bool(model.get("use_saved_connection")))
     # Reuse execution's endpoint-bound credential rule. Loopback alone is not
     # sufficient for the compatible audio client; no key crosses this API.
@@ -417,6 +418,8 @@ def get_preferences() -> dict:
         return {"task_options": TaskOptions().model_dump(exclude={"llm_api_key", "llm_base_url", "llm_model"})}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            payload = {}
         options = TaskOptions.model_validate(payload.get("task_options") or {})
     except (OSError, ValueError, ValidationError):
         options = TaskOptions()

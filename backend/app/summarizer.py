@@ -100,13 +100,15 @@ def chat_completion_provider_kwargs(base_url: str) -> dict:
 
 
 def _compatible_completion(client, *, events: list[dict] | None, stage: str,
-                           cancel_check: Callable[[], None] | None = None, **kwargs):
+                           cancel_check: Callable[[], None] | None = None, base_url: str = "", **kwargs):
     """One same-request retry for an explicitly unsupported sampling option.
 
     Never infer compatibility from exception prose, and never remove output
     budgets, thinking controls, safety fields or source data. Each actual
     attempt keeps the existing provider-reported usage accounting.
     """
+    from .model_capabilities import check_image_count
+    check_image_count(base_url, kwargs.get("model", ""), kwargs.get("messages", []))
     try:
         return tracked_completion(client, **kwargs)
     except Exception as exc:
@@ -126,6 +128,7 @@ def _compatible_completion(client, *, events: list[dict] | None, stage: str,
         try:
             if cancel_check is not None:
                 cancel_check()
+            check_image_count(base_url, compatible.get("model", ""), compatible.get("messages", []))
             response = tracked_completion(client, **compatible)
         except SummarizationCancelled:
             event["retry_outcome"] = "cancelled"
@@ -1362,7 +1365,8 @@ def summarize_with_llm(
     if use_vision:
         partials: list[str] = []
         failed_batches = 0
-        batches = _grid_batches(grids, options.vision_batch_size)
+        from .model_capabilities import vision_batch_plan
+        batches = _grid_batches(grids, vision_batch_plan(base_url, model, options.vision_batch_size)["effective_size"])
 
         def batch_prompt(index: int, batch: list[VisionGridEntry]) -> str:
             return (
@@ -1405,7 +1409,7 @@ def summarize_with_llm(
                 try:
                     check_cancel()
                     response = _compatible_completion(client, events=events, stage="vision_batch", cancel_check=check_cancel,
-                        model=model,
+                        model=model, base_url=base_url,
                         messages=[{"role": "user", "content": content}],
                         **provider_kwargs,
                     )
