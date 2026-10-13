@@ -1162,6 +1162,7 @@ button:has(svg) {
   padding: 20px;
 }
 .assistant-empty {
+  flex-shrink: 0;
   padding: 20px 4px 12px;
   color: var(--muted);
   font-size: 13px;
@@ -1229,6 +1230,7 @@ button:has(svg) {
 .assistant-panel textarea {
   font-size: 15px;
 }
+#aiQuestion:focus { border-color: transparent; outline: 2px solid var(--accent); outline-offset: -1px; }
 .assistant-panel form footer {
   display: flex;
   align-items: center;
@@ -2311,6 +2313,7 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
   .assistant-panel {
     overflow-y: auto;
   }
+  .assistant-history:has(.assistant-empty) { min-height: 240px; flex-shrink: 0; }
 }
 @container assistant (max-width: 600px) {
   .assistant-panel > header {

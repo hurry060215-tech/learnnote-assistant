@@ -193,7 +193,8 @@ async function main() {
         assert.equal(await page.locator("#personalReviewDetails").evaluate(node => node.open), false);
         const reviewHeight = await page.locator("#personalReview").evaluate(node => node.getBoundingClientRect().height);
         assert(reviewHeight < (width === 390 ? 160 : 125), `${prefix}: collapsed review competes with reading`);
-        await renderedFonts("#document > p", `${prefix}-reader`);
+        await renderedFonts("#document > h1 + p", `${prefix}-reader-chinese`);
+        await renderedFonts("#document > h2 + p", `${prefix}-reader-mixed`);
         await renderedFonts("#breadcrumb", `${prefix}-ui`);
         for (const open of [true, false]) {
           await sidebar(open);
@@ -234,6 +235,12 @@ async function main() {
         await page.locator("#aiAssistant").click();
         await page.locator(".assistant-empty").waitFor();
         assert(await page.locator("#assistantHistory .assistant-prompts").isVisible(), "Empty-state prompts share the conversation surface");
+        const focus = await page.locator("#aiQuestion").evaluate(node => {
+          const css = getComputedStyle(node);
+          return { active: node === document.activeElement, outline: css.outlineWidth,
+            offset: css.outlineOffset, border: css.borderTopColor };
+        });
+        assert.deepEqual(focus, { active: true, outline: "2px", offset: "-1px", border: "rgba(0, 0, 0, 0)" });
         const heading = await assistantHeading(prefix);
         await capture(`${prefix}-empty-assistant`, "#assistantPanel");
         report.cases.at(-1).heading = heading;
@@ -297,6 +304,7 @@ async function main() {
     report.passed = true;
     console.log(JSON.stringify({ passed: true, screenshots: report.cases.length, out }));
   } finally {
+    if (!report.passed) await page.screenshot({ path: path.join(out, "failure-current.png"), animations: "disabled" }).catch(() => {});
     report.errors = errors;
     report.external_requests = externalRequests;
     fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
