@@ -23,6 +23,44 @@ def _ratio(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 1.0
 
 
+def _candidate_result(claim: dict[str, object], expected_id: str) -> dict[str, object]:
+    ids = list(claim.get("candidate_evidence_ids") or [])
+    return {
+        "expected_source_rank": ids.index(expected_id) + 1 if expected_id in ids else None,
+        "candidate_evidence_ids": ids,
+        "candidate_count": len(ids),
+        "direct_source_linked": expected_id in (claim.get("evidence_ids") or []),
+        "predicted": claim["verification"],
+    }
+
+
+def _candidate_summary(rows: list[dict[str, object]], mode: str) -> dict[str, object]:
+    def coverage(selected: list[dict[str, object]]) -> dict[str, object]:
+        ranks = [row["candidate_retrieval"][mode]["expected_source_rank"] for row in selected]
+        hits = sum(rank is not None for rank in ranks)
+        return {
+            "case_count": len(selected),
+            "source_hit_count": hits,
+            "source_recall": hits / len(selected) if selected else None,
+            "source_top1_count": sum(rank == 1 for rank in ranks),
+            "source_top3_count": sum(rank is not None and rank <= 3 for rank in ranks),
+            "missed_case_ids": [row["case_id"] for row, rank in zip(selected, ranks) if rank is None],
+        }
+
+    supported = [row for row in rows if row["gold"] == "direct"]
+    unrelated = [row for row in rows if row["gold"] == "pending_review"]
+    return {
+        "supported_claims": coverage(supported),
+        # The existing fixture names its hand-written variants explicitly.
+        "supported_paraphrases": coverage([row for row in supported if row["case_id"].endswith("-paraphrase")]),
+        "gold_pending_review": {
+            "case_count": len(unrelated),
+            "cases_with_candidates": [row["case_id"] for row in unrelated if row["candidate_retrieval"][mode]["candidate_count"]],
+            "contract": "candidate presence only; pooled cross-source pairs are not exhaustively relevance-labeled",
+        },
+    }
+
+
 def evaluate() -> dict[str, object]:
     corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
     if corpus.get("schema_version") != 1:
@@ -38,12 +76,12 @@ def evaluate() -> dict[str, object]:
     review_tp = review_fp = review_fn = 0
     pending_tp = pending_fp = pending_fn = 0
 
+    documents = []
     for source in corpus.get("sources") or []:
         source_id = str(source.get("id") or "")
         source_url = str(source.get("url") or "")
         evidence_text = str(source.get("evidence") or "").strip()
-        language = str(source.get("language") or "")
-        if not source_id or not source_url.startswith("https://") or not evidence_text:
+        if not source_id or source_id in source_ids or not source_url.startswith("https://") or not evidence_text:
             raise ValueError(f"invalid_public_source:{source_id or 'missing'}")
         source_ids.add(source_id)
         document = {
@@ -54,6 +92,10 @@ def evaluate() -> dict[str, object]:
             "text": evidence_text,
             "metadata": {"public_corpus_id": corpus.get("corpus_id"), "source_id": source_id},
         }
+        documents.append(document)
+
+    for source, document in zip(corpus.get("sources") or [], documents):
+        source_id, language = str(source["id"]), str(source.get("language") or "")
         for variant in source.get("claims") or []:
             case_id = str(variant.get("id") or "")
             note = str(variant.get("text") or "").strip()
@@ -73,6 +115,17 @@ def evaluate() -> dict[str, object]:
             if len(claims) != 1:
                 raise ValueError(f"claim_projection_count:{case_id}:{len(claims)}")
             claim = claims[0]
+            # Preserve the original single-source classification evaluation.
+            # A separate projection tests candidate ranking among distractors.
+            pooled = build_claim_evidence_map(
+                f"public-benchmark-{source_id}",
+                str(source.get("title") or source_id),
+                note,
+                TranscriptResult(),
+                document_evidence=documents,
+            )
+            if len(pooled.get("claims") or []) != 1:
+                raise ValueError(f"pooled_claim_projection_count:{case_id}")
             predicted = str(claim.get("verification") or "pending_review")
             if predicted not in LABELS:
                 raise ValueError(f"unknown_verification_status:{case_id}:{predicted}")
@@ -97,6 +150,11 @@ def evaluate() -> dict[str, object]:
                 "predicted": predicted,
                 "review_required": predicted_review,
                 "passed_review_gate": not (gold_review and not predicted_review),
+                "expected_evidence_id": document["evidence_id"],
+                "candidate_retrieval": {
+                    "single_source": _candidate_result(claim, document["evidence_id"]),
+                    "pooled_sources": _candidate_result(pooled["claims"][0], document["evidence_id"]),
+                },
             })
 
     case_count = len(results)
@@ -118,6 +176,7 @@ def evaluate() -> dict[str, object]:
         "schema_version": 1,
         "corpus_id": corpus.get("corpus_id"),
         "status": "pass" if passed else "fail",
+        "status_scope": "existing direct-support/review-gate regression only; not a candidate-retrieval or semantic-quality pass",
         "case_count": case_count,
         "source_count": len(source_ids),
         "language_counts": dict(sorted(language_counts.items())),
@@ -137,6 +196,12 @@ def evaluate() -> dict[str, object]:
             "contract": "gold non-direct claims should remain visibly reviewable",
         },
         "pending_review_class": {"precision": pending_precision, "recall": pending_recall},
+        "candidate_retrieval": {
+            "contract": "annotated source candidate hit/rank on this fixed corpus; a candidate does not establish semantic support",
+            "pooled_source_count": len(documents),
+            "single_source": _candidate_summary(results, "single_source"),
+            "pooled_sources": _candidate_summary(results, "pooled_sources"),
+        },
         "interpretation": "See confusion_matrix and per-case results. A located_only or inference status for a supported paraphrase is a direct-support false negative, not an unsupported-fact false positive.",
         "network_attempted": False,
         "results": results,
