@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.config import DATA_DIR
-from app.media import _average_hash, _hamming_distance, _sample_frame_timestamps, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration, probe_media_integrity
+from app.media import _average_hash, _hamming_distance, _sample_frame_timestamps, _timestamp_from_frame_path, _should_keep_sampled_frame, build_frame_grids, extract_audio, extract_embedded_subtitle, extract_frames, probe_duration, probe_media_integrity
 from app.runtime import ffmpeg_bin
 
 
@@ -17,30 +17,28 @@ TEST_RUN_DIR = DATA_DIR / "test-runs"
 
 @unittest.skipUnless(ffmpeg_bin(), "ffmpeg is required for media pipeline tests")
 class MediaPipelineTests(unittest.TestCase):
-    def test_frame_sampling_adds_tail_anchor_when_end_gap_is_large(self) -> None:
-        self.assertEqual(_sample_frame_timestamps(59.2, 20), [0, 20, 40, 58])
+    def test_frame_sampling_reserves_endpoints_and_spreads_bounded_coverage(self) -> None:
+        self.assertEqual(_sample_frame_timestamps(59.2, 20), [0, 20, 40, 59])
         self.assertEqual(_sample_frame_timestamps(61.0, 20), [0, 20, 40, 60])
-        self.assertEqual(_sample_frame_timestamps(42.0, 20), [0, 20, 40])
-        self.assertEqual(_sample_frame_timestamps(59.2, 20, max_frames=3), [0, 20, 40])
+        self.assertEqual(_sample_frame_timestamps(42.0, 20), [0, 20, 40, 41])
+        self.assertEqual(_sample_frame_timestamps(59.2, 20, max_frames=3), [0, 40, 59])
 
     def test_frame_sampling_prioritizes_playhead_anchor(self) -> None:
         self.assertEqual(
             _sample_frame_timestamps(120, 20, max_frames=4, anchor_timestamps=[47.4]),
-            [0, 20, 40, 47],
+            [0, 47, 60, 119],
         )
         self.assertEqual(
             _sample_frame_timestamps(120, 20, max_frames=1, anchor_timestamps=[47.6]),
-            [48],
+            [0],
         )
 
-    def test_near_duplicate_frames_keep_periodic_timeline_anchors(self) -> None:
+    def test_exact_duplicate_frames_keep_periodic_timeline_anchors(self) -> None:
         self.assertFalse(
             _should_keep_sampled_frame(
                 current_hash="same",
-                current_average_hash=10,
                 timestamp=4,
                 last_hash="same",
-                last_average_hash=10,
                 last_kept_timestamp=0,
                 coverage_gap=5,
             )
@@ -49,10 +47,8 @@ class MediaPipelineTests(unittest.TestCase):
         self.assertTrue(
             _should_keep_sampled_frame(
                 current_hash="same",
-                current_average_hash=10,
                 timestamp=5,
                 last_hash="same",
-                last_average_hash=10,
                 last_kept_timestamp=0,
                 coverage_gap=5,
             )
@@ -60,10 +56,8 @@ class MediaPipelineTests(unittest.TestCase):
         self.assertTrue(
             _should_keep_sampled_frame(
                 current_hash="changed",
-                current_average_hash=27,
                 timestamp=1,
                 last_hash="same",
-                last_average_hash=10,
                 last_kept_timestamp=0,
                 coverage_gap=5,
             )
@@ -71,12 +65,8 @@ class MediaPipelineTests(unittest.TestCase):
         self.assertTrue(
             _should_keep_sampled_frame(
                 current_hash="changed",
-                current_average_hash=10,
-                current_mean_luma=240,
                 timestamp=1,
                 last_hash="same",
-                last_average_hash=10,
-                last_mean_luma=12,
                 last_kept_timestamp=0,
                 coverage_gap=5,
             )
@@ -217,7 +207,7 @@ class MediaPipelineTests(unittest.TestCase):
 
             frames = extract_frames(video, root / "frames", interval=1)
 
-            timestamps = [int(frame.stem.rsplit("_", 1)[-1]) for frame in frames]
+            timestamps = [int(_timestamp_from_frame_path(frame, -1)) for frame in frames]
             self.assertIn(0, timestamps)
             self.assertIn(5, timestamps)
             self.assertLess(len(frames), 7)
@@ -257,7 +247,7 @@ class MediaPipelineTests(unittest.TestCase):
 
             frames = extract_frames(video, root / "frames", interval=10)
 
-            timestamps = [int(frame.stem.rsplit("_", 1)[-1]) for frame in frames]
+            timestamps = [int(_timestamp_from_frame_path(frame, -1)) for frame in frames]
             self.assertIn(0, timestamps)
             self.assertIn(18, timestamps)
 
