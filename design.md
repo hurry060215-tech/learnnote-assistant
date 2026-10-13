@@ -255,7 +255,8 @@ and checks horizontal overflow, reader centering, footer bounds, the hidden draw
 shadow, and assistant header wrapping. Four additional assistant captures use
 195x422 CSS pixels for effective 200% reflow of a 390x844 area; this is not native
 browser zoom. Actual wheel input reveals the empty-history explanation and
-composer; both scroll positions are captured in each theme (68 PNGs total).
+composer; both scroll positions are captured in each theme (76 PNGs total,
+including the eight utility-menu states).
 View the PNGs. Geometry assertions are not
 an aesthetic approval. The existing study-product gate separately covers effective
 200% viewport scaling, reduced effects, forced colors, and source workflows.

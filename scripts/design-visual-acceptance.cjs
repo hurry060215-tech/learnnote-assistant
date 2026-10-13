@@ -214,7 +214,9 @@ async function main() {
         // hidden content after closing either the menu or its dialog.
         await page.keyboard.press("Enter");
         await page.locator("#export").focus();
-        await page.locator("#document h1").click();
+        // Metadata stays outside the popup even when its overlay covers the
+        // note heading on a narrow screen; use a real unobstructed pointer target.
+        await page.locator("#readerMetadata").click();
         assert.equal(await page.locator("#readerOptions").evaluate(node => node.open), false);
         assert.equal(await page.evaluate(() => document.querySelector("#readerOptions .reader-options-menu").contains(document.activeElement)), false);
         await page.locator("#readerOptions > summary").focus();
