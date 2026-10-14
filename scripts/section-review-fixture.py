@@ -10,6 +10,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+def configure_import_paths(root: Path) -> None:
+    # Direct script execution must expose desktop.credentials on Windows.
+    sys.path[:0] = [str(root), str(root / "backend")]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True)
@@ -21,7 +26,7 @@ def main():
         if name.startswith(("LEARNNOTE_", "OPENAI_", "AZURE_", "ANTHROPIC_")) or name.upper().endswith("_PROXY"):
             del os.environ[name]
     os.environ.update(LEARNNOTE_DATA_DIR=str(data), LEARNNOTE_DEPLOYMENT_MODE="local", PYTHONUTF8="1")
-    sys.path.insert(0, str(root / "backend"))
+    configure_import_paths(root)
     spec = importlib.util.spec_from_file_location("offline_acceptance", root / "scripts/test-backend-offline.py")
     offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
     with offline.offline_network():
