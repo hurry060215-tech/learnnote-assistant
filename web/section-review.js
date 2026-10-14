@@ -38,12 +38,16 @@ export function installSectionReview({ state, dialog, show, status, generation }
       <details class="section-review-limits"><summary>范围、预算与关闭说明</summary>
       <p class="muted">仅核对本次选取的文字，不读取画面，不验证课程本身真假。每次最多 12 条结论、6,000 结论字符、12,000 原文字符、2,000 输出 token、1 次请求；单次模型请求 30 秒超时。金额未知，不会自动处理下一批。</p>
       <p class="muted">关闭窗口不撤回已经发送的请求；远端可能继续处理或计费。结果只在本窗口显示，不改动原文和原有核对记录。</p></details>
-      <button id="sectionReviewPrepare" class="primary" type="button">预览本次发送内容</button>
+      <div class="section-review-actions"><button id="sectionReviewPrepare" class="primary" type="button">预览本次发送内容</button></div>
       <div id="sectionReviewPreview"></div><div id="sectionReviewResult" aria-live="polite"></div></div>`;
     const $ = id => document.getElementById(id), selector = $("sectionReviewChapter"), button = $("sectionReviewPrepare");
     let offset = 0, nextOffset = null;
     const current = serial => session.current() && serial === session.sequence;
     function paragraph(parent, text, tag = "p") { const node = document.createElement(tag); node.textContent = text; parent.append(node); return node; }
+    function action(parent, text) {
+      const row = document.createElement("div"); row.className = "section-review-actions"; parent.append(row);
+      const button = paragraph(row, text, "button"); button.type = "button"; return button;
+    }
     function sync() { if (session.current()) button.disabled = pending.has(taskId); }
     session.sync = sync;
     function resultView(value, serial) {
@@ -64,7 +68,7 @@ export function installSectionReview({ state, dialog, show, status, generation }
       paragraph(host, `已请求 1 次 · 输入 token ${value.usage?.input_tokens ?? "未知"} · 输出 token ${value.usage?.output_tokens ?? "未知"} · 金额未知`);
       nextOffset = value.coverage.next_offset;
       if (nextOffset !== null) {
-        const next = paragraph(host, "预览下一批（需另行确认）", "button"); next.type = "button";
+        const next = action(host, "预览下一批（需另行确认）");
         next.addEventListener("click", () => { if (current(serial)) { offset = nextOffset; prepare(); } });
       }
     }
@@ -78,7 +82,7 @@ export function installSectionReview({ state, dialog, show, status, generation }
         if (!current(serial)) return;
         if (result.task_id !== taskId || result.revision !== revision || result.fingerprint !== value.fingerprint) throw new Error("返回版本已变化，请重新预览。");
         $("sectionReviewPreview").replaceChildren(); resultView(result, serial); status("本次核对已返回，正文保持原样。");
-      } catch (error) { if (current(serial)) { $("sectionReviewPreview").replaceChildren(); status(`${error.message} 未自动重试，请重新预览后决定是否再次发送。`); } }
+      } catch (error) { if (current(serial)) { $("sectionReviewPreview").replaceChildren(); status(`${error.message}${error.message.includes("未自动重试") ? "" : " 未自动重试。"} 请重新预览后决定是否再次发送。`); } }
       finally { pending.delete(taskId); active?.sync?.(); }
     }
     async function prepare() {
@@ -103,7 +107,7 @@ export function installSectionReview({ state, dialog, show, status, generation }
         const label = document.createElement("label"); label.className = "tool-choice";
         const consent = document.createElement("input"); consent.type = "checkbox"; consent.id = "sectionReviewConsent";
         label.append(consent, document.createTextNode("我同意把以上结论和原文发送到这个模型，可能产生费用")); host.append(label);
-        const send = paragraph(host, "确认发送一次核对请求", "button"); send.type = "button"; send.id = "sectionReviewSend"; send.disabled = true;
+        const send = action(host, "确认发送一次核对请求"); send.id = "sectionReviewSend"; send.disabled = true;
         session.preview = value;
         consent.addEventListener("change", () => { send.disabled = !consent.checked || pending.has(taskId) || !current(serial); });
         send.addEventListener("click", () => confirm(value, serial, consent, send)); status("请查看发送内容后决定是否继续。");
