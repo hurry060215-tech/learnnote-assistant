@@ -26,7 +26,7 @@ on:
       - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, "feat/verified-partial-sections-20261014"]
     paths:
       - "package.json"
       - "package-lock.json"

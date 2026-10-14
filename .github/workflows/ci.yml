@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/verified-partial-sections-20261014"]
     tags: ["v*"]
   pull_request:
 
