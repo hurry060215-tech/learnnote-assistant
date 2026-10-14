@@ -64,8 +64,12 @@
           const node = document.createElement("article"), badge = document.createElement("p"), text = document.createElement("pre");
           node.dataset.sectionId = item.id; node.className = "progress-section";
           badge.className = "progress-draft-label"; badge.textContent = t(outline ? "progress_excerpt" : "progress_draft");
-          node.append(badge, text); entry = { node, text, kind: item.kind }; nodes.set(item.id, entry);
+          node.append(badge, text); entry = { node, badge, text, kind: item.kind }; nodes.set(item.id, entry);
         }
+        const progress = item.evidence_status;
+        entry.badge.textContent = !outline && progress?.schema_version === 1 && progress.method === "literal_prose" &&
+          Number.isInteger(progress.claim_count) && Number.isInteger(progress.matching_count) && progress.matching_count > 0 && progress.matching_count <= progress.claim_count
+          ? t("progress_matching", { matched: progress.matching_count, total: progress.claim_count }) : t(outline ? "progress_excerpt" : "progress_draft");
         // Never replace an unchanged text node, even when metadata advances.
         if (entry.text.textContent !== body) entry.text.textContent = body;
         const index = seen.size - 1;

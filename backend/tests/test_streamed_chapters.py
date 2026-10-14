@@ -442,7 +442,7 @@ class StreamedChapterTests(unittest.TestCase):
         def changed_source(*args, **kwargs):
             write_json(self.task.id, "transcript.json", self.transcript.model_copy(update={"full_text": "changed"}).model_dump(mode="json"))
             return build_claim_evidence_map(*args, **kwargs)
-        with patch("app.partial_section_content.build_claim_evidence_map", side_effect=changed_source):
+        with patch("app.section_evidence_status.build_claim_evidence_map", side_effect=changed_source):
             callback(value)
         self.assertEqual(self.document(), {})
 
@@ -473,7 +473,7 @@ class StreamedChapterTests(unittest.TestCase):
                 errors.append(exc)
         older = threading.Thread(target=publish, daemon=True)
         newer = threading.Thread(target=update_other_and_attempt, daemon=True)
-        with patch("app.partial_section_content.build_claim_evidence_map", side_effect=slow_claims):
+        with patch("app.section_evidence_status.build_claim_evidence_map", side_effect=slow_claims):
             older.start()
             try:
                 self.assertTrue(entered.wait(5))

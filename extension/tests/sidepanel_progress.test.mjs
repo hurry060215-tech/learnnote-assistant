@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { harness, section, flush } from './progressive_harness.mjs';
 
+test('literal chapter badge never changes prose or promotes a draft to verified', async () => {
+  const h = await harness();
+  h.state.partial.sections[0].evidence_status = { schema_version: 1, method: 'literal_prose', claim_count: 3, matching_count: 1, review_count: 2 };
+  await h.start();
+  const node = h.sections.children[0], body = node.children[1];
+  assert.equal(node.children[0].textContent, 'progress_matching');
+  h.state.partial.sections[0].evidence_status.matching_count = 9;
+  h.streams[0].event(1); await flush();
+  assert.equal(h.sections.children[0], node); assert.equal(node.children[1], body);
+  assert.equal(node.children[0].textContent, 'progress_draft'); h.reader.destroy();
+});
+
 // Deterministic DOM/transport contracts. Real browser selection is also covered in Edge CI.
 test('drafts stay literal and unverified; unchanged sections and selection nodes survive insertion', async () => {
   const h = await harness();

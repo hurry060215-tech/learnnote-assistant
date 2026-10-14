@@ -182,7 +182,8 @@ class FullResponseDraftTests(unittest.TestCase):
         self.assertEqual(len(payloads), 1)
         self.assertIn("InventedUnsupportedTerm", self.document()["sections"][0]["markdown"])
         self.assertFalse(self.document()["sections"][0]["verified"])
-        self.assertIn("【待核对：未找到支持来源】", read_task_note(self.task.id))
+        self.assertNotIn("【待核对：未找到支持来源】", read_task_note(self.task.id))
+        self.assertGreater(self.document()["sections"][0]["evidence_status"]["review_count"], 0)
 
     def test_cancellation_before_publication_keeps_source_draft_and_skips_gate(self):
         def completion(**kwargs):
@@ -206,7 +207,7 @@ class FullResponseDraftTests(unittest.TestCase):
         gate.assert_not_called()
         self.assertEqual(len(self.events()), 1)
         self.assertFalse(self.document()["sections"][0]["verified"])
-        self.assertIn("待最终来源检查", read_task_note(self.task.id))
+        self.assertIn("未完成最终校验", read_task_note(self.task.id))
         self.assertFalse((self.work / "note.md").exists())
 
     def test_all_actual_cue_bounds_are_bound_without_generated_attribution(self):
@@ -249,7 +250,7 @@ class FullResponseDraftTests(unittest.TestCase):
         self.assertEqual(self.document(), previous)
 
     def test_source_changes_during_preparation_are_rechecked_before_publication(self):
-        from app.partial_section_content import build_claim_evidence_map
+        from app.claims import build_claim_evidence_map
         publish = partial_section_callback(self.task.id, self.transcript)
         publish(self.payload())
         previous = copy.deepcopy(self.document())
@@ -257,7 +258,7 @@ class FullResponseDraftTests(unittest.TestCase):
             result = build_claim_evidence_map(*args, **kwargs)
             write_json(self.task.id, "transcript.json", TranscriptResult(full_text="Changed during preparation").model_dump(mode="json"))
             return result
-        with patch("app.partial_section_content.build_claim_evidence_map", side_effect=claims):
+        with patch("app.section_evidence_status.build_claim_evidence_map", side_effect=claims):
             publish({**self.payload(), "markdown": "Late response"})
         self.assertEqual(self.document(), previous)
         self.assertEqual(len(self.events()), 1)
@@ -299,7 +300,7 @@ class FullResponseDraftTests(unittest.TestCase):
             self.assertEqual(len(self.document()["sections"]), 1)
             self.assertFalse(self.document()["verified"])
             self.assertFalse(self.document()["sections"][0]["verified"])
-            self.assertIn("待最终来源检查", (self.work / "draft.partial.md").read_text(encoding="utf-8"))
+            self.assertIn("未完成最终校验", (self.work / "draft.partial.md").read_text(encoding="utf-8"))
             self.assertEqual((self.work / "note.md").exists(), status == "success")
             if status == "failed":
                 self.assertEqual(get_task(self.task.id).error_code, "summary_unavailable")

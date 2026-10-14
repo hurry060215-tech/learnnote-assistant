@@ -13,6 +13,7 @@ from .processor_state import check_cancel
 from .storage import atomic_write_text, get_task, read_json, update_task, write_json
 from .storage import _lock as _task_data_lock
 from .partial_section_content import prepare_partial_section
+from .section_evidence_status import evidence_status_label
 from .partial_note_projection import partial_revision as _revision, valid_partial_section as _valid_section, prepare_legacy_partial, preserve_previous_partial
 
 
@@ -107,10 +108,10 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
     source_draft = root / "draft.md"
     prefix = source_draft.read_text(encoding="utf-8") if source_draft.is_file() else "# 分段草稿\n"
     lines = [prefix.rstrip(), "", "## 已生成的分段草稿", "",
-             "> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。", ""]
+             "> 草稿：以下批次已生成，后续批次、合并与最终检查尚未全部完成。章节状态只说明原文匹配进度，不代表事实核验，请回源核对。", ""]
     for item in document["sections"]:
         first, _, body = item["markdown"].partition("\n")
-        lines.extend(["#" + first, "", "> 草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查", "", body.strip(), ""])
+        lines.extend(["#" + first, "", "> " + evidence_status_label(item), "", body.strip(), ""])
     target = root / "draft.partial.md"
     rendered = "\n".join(lines)
     try:

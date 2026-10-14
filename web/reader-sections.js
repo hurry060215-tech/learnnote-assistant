@@ -110,14 +110,20 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
         entry?.node.remove();
         const node = make("article", undefined, "progressive-visual");
         node.dataset.readerBatch = item.id;
-        node.append(make("p", "图文草稿 · 证据补充中 · 未完成最终校验", "muted"));
+        const badge = make("p", "图文草稿 · 证据补充中 · 未完成最终校验", "muted"); node.append(badge);
         const provenance = make("p");
         provenance.append(make("span", item.spans > 1 ? "跨段批次，放在首个重叠段。来源：" : item.spans === 0 ? "未匹配字幕段。来源：" : "来源："));
         for (const window of item.source_windows) provenance.append(sourceButton(window.start, window.end), doc.createTextNode(" "));
         const body = make("div"); renderMarkdown(body, item.markdown); decorate(body, item.id);
         node.append(provenance, body);
-        entry = { node, revision: item.revision, media: "", figures: null }; batches.set(item.id, entry); changed = true;
+        entry = { node, badge, revision: item.revision, media: "", figures: null }; batches.set(item.id, entry); changed = true;
       }
+      const progress = item.evidence_status;
+      const label = progress?.schema_version === 1 && progress.method === "literal_prose" &&
+        Number.isInteger(progress.claim_count) && Number.isInteger(progress.matching_count) && progress.matching_count > 0 && progress.matching_count <= progress.claim_count
+        ? `图文草稿 · ${progress.matching_count}/${progress.claim_count} 条正文结论与原文字面匹配 · 未完成最终校验`
+        : "图文草稿 · 证据补充中 · 未完成最终校验";
+      if (entry.badge.textContent !== label) { entry.badge.textContent = label; changed = true; }
       // Only exact time-matched, task-owned grids can supplement the batch.
       const grids = (task.frame_grids || []).concat((task.visual_windows || []).map(window => ({ ...window, url: window.grid_url })));
       const images = [...new Set(item.source_windows.flatMap(window => grids

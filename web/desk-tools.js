@@ -7,6 +7,7 @@ import { fullVideoSource } from "/web/range-source.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { installCourseSynthesis } from "/web/course-synthesis.js";
+import { installSectionReview } from "/web/section-review.js";
 import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
 import { relationshipGraph as snapshotRelationshipGraph, mountGraphCompleteness, mountGraphSnapshotExport, mountGraphSnapshotImport } from "/web/course-graph-snapshot.js";
 import {
@@ -53,6 +54,7 @@ export function installTools(ctx) {
   }
   const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
   const synthesizeCourse = installCourseSynthesis({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
+  const reviewSection = installSectionReview({ state, dialog, show, status, generation: () => generation });
   const courseQuestion = installCourseQuestion({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice, synthesizeCourse });
   async function run(button, work) {
     const token = generation;
@@ -703,7 +705,7 @@ export function installTools(ctx) {
     const s = current();
     show(
       "笔记工具",
-      `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
+      `<div class="tool-menu"><button data-action="exports">导出笔记与原始资料</button><button data-action="propose">创建复习卡</button><button data-action="ask">围绕内容提问</button><button data-action="annotations">管理我的补充</button><button data-action="add-to-course">归入课程</button>${s.kind === "task" ? '<button data-action="section-review">核对章节概括</button><button data-action="regenerate">重新整理视频笔记</button><button data-action="range">学习视频片段</button><button data-action="ocr">查看画面文字</button><button data-action="diagnostics">查看处理记录</button><button data-action="community">独立社区观点</button>' : ""}<button class="danger" data-action="delete-source">删除当前内容</button></div>`,
     );
     const courseTools = document.createElement("button");
     courseTools.type = "button";
@@ -841,6 +843,7 @@ export function installTools(ctx) {
     });
   };
   const actions = {
+    "section-review": reviewSection,
     "graph-snapshot": graphSnapshot,
     "material-encoding": materialEncoding,
     community,

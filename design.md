@@ -192,6 +192,17 @@ The assistant's empty explanation and dismissible suggestions share the history
 surface. Sending begins a regular history; hidden/dismissed preference state is
 preserved. The composer has one 2px focus ring, never competing inner/outer rings.
 Keep processing details collapsed and visually secondary; warnings stay visible.
+Progressive generated chapters keep their prose readable and show one concise
+draft boundary. Literal source-matching counts describe wording only, never
+fact verification; final publication retains its independent evidence gate.
+The secondary “核对章节概括” tool previews one bounded set of generated claims,
+the exact selected source text, and the saved model destination. Every request
+needs a fresh explicit checkbox and send action, including the next batch.
+Show model opinions as supporting, contradicting, or insufficient selected
+text, with expandable verbatim quotations. Results are ephemeral and never
+rewrite a note or change personal review records. Reuse tools-dialog styles,
+semantic colors, left alignment, and 44px controls; preserve loading, unavailable,
+rejected, closed, and stale-request states without automatic requests or retries.
 Empty states name the missing content and give a relevant next action; keep them
 within the same surface grid. Avoid adding decorative cards around every line.
 

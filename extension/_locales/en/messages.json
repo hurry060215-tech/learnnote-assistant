@@ -830,6 +830,9 @@
   "progress_draft": {
     "message": "Draft · Evidence pending · Unverified"
   },
+  "progress_matching": {
+    "message": "Draft · {matched}/{total} prose claims match source wording · Not fact-verified"
+  },
   "progress_workspace": {
     "message": "View the final result or cancel processing in the workspace."
   },

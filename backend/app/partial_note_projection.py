@@ -15,6 +15,7 @@ from .storage import get_task, task_file
 from .text_chunk_sections import valid_text_chunk
 from .full_response_sections import valid_full_response
 from .chapter_sections import valid_chapter
+from .section_evidence_status import project_evidence_status
 
 
 _TASK_PROVENANCE = {"id", "created_at", "status", "retry_count", "source_identity", "options", "mode",
@@ -143,7 +144,7 @@ def prepare_legacy_partial(root: Path, previous: dict, attempt: str, source: str
         return False
 
 
-def _partial_sections(document: object, transcript: TranscriptResult, media_sha256: str) -> list[dict]:
+def _partial_sections(document: object, transcript: TranscriptResult, media_sha256: str, task_id="") -> list[dict]:
     if (not isinstance(document, dict) or type(document.get("schema_version")) is not int
             or document["schema_version"] != 1 or document.get("status") != "draft"
             or document.get("verified") is not False):
@@ -175,7 +176,7 @@ def _partial_sections(document: object, transcript: TranscriptResult, media_sha2
             projected.update(chapter_index=section["chapter_index"], source_blocks=section["source_blocks"], title=section["title"])
         if section["kind"] == "full_response":
             projected["source_blocks"] = section["source_blocks"]
-        result.append(projected)
+        result.append({**projected, **project_evidence_status(section, task_id, transcript, blocks)})
     return result
 
 
@@ -187,7 +188,7 @@ def _generated_partial(root: Path, task, attempt: str, transcript: TranscriptRes
         document = _partial_json(root, root / "partial_note.json")
         if isinstance(document, dict) and document.get("attempt_id") and document["attempt_id"] != attempt:
             return {**result, "reason": "attempt_mismatch"}
-        sections = _partial_sections(document, transcript, task.source_identity.media_sha256)
+        sections = _partial_sections(document, transcript, task.source_identity.media_sha256, task.id)
         if document.get("attempt_id") != attempt:
             return {**result, "reason": "legacy_unproven"}
         try:

@@ -63,6 +63,24 @@ version-history feature.
 
 ## Native assistant operations
 
+The optional **核对章节概括** tool first prepares a local preview. Only after the
+user explicitly confirms that preview does it send the shown generated claims,
+selected original text, coarse source locators and coverage counts to the saved
+model endpoint. A loopback gateway may forward this request to another provider.
+Each confirmation permits one request, up to 12 claims, 6,000 claim characters,
+12,000 source characters and 2,000 output tokens, with a 30-second model timeout.
+There is no automatic next batch, retry, repair request or provider fallback.
+The amount charged is unknown, and closing the dialog or timing out cannot
+withdraw content already sent or guarantee that remote processing/billing stops.
+
+Review previews expire after ten minutes and are held only in backend memory.
+Results remain in the current dialog; they do not rewrite generated/source text,
+personal editions, claim maps or personal review records. The ordinary local
+token-usage log may record request metadata and provider-reported token counts,
+but not the preview text or response body. Source/model changes invalidate the
+preview or returned result. Exact quotation checks establish attribution only;
+the model's supporting/contradicting/insufficient judgment is not fact proof.
+
 The optional bounded note workflow requires an explicit per-workflow sharing choice.
 It sends the current requirement, fixed selected source and actual read results to
 the selected text model; subsequent decisions may resend those results and incur

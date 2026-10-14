@@ -68,6 +68,23 @@ function harness() {
   return { reader, element, scroller, doc, rendered, opened, notices };
 }
 
+test("literal chapter counts update metadata without replacing prose or implying verified truth", () => {
+  const h = harness(), one = outline("one", 0, 10), item = batch("vision-one", 0, 10);
+  item.evidence_status = { schema_version: 1, method: "literal_prose", claim_count: 5, matching_count: 2, review_count: 3 };
+  h.reader.render(projection([one, item]), task, {});
+  const node = h.element.querySelector("[data-reader-batch]"), body = node.children[2];
+  assert.match(node.children[0].textContent, /2\/5 条正文结论与原文字面匹配/);
+  assert.match(node.children[0].textContent, /未完成最终校验/);
+  item.evidence_status = { ...item.evidence_status, matching_count: 3, review_count: 2 };
+  h.reader.render(projection([one, item]), task, {});
+  assert.equal(h.element.querySelector("[data-reader-batch]"), node); assert.equal(node.children[2], body);
+  assert.equal(h.rendered.length, 1); assert.match(node.children[0].textContent, /3\/5/);
+  for (const invalid of [{ matching_count: 8 }, { matching_count: true }, { schema_version: 9 }, { method: "model_verified" }]) {
+    h.reader.render(projection([one, { ...item, evidence_status: { ...item.evidence_status, ...invalid } }]), task, {});
+    assert.match(node.children[0].textContent, /证据补充中/);
+  }
+});
+
 test("new visual batches keep source and existing batch nodes; replay has no mutation", () => {
   const h = harness(), one = outline("one", 0, 10), two = outline("two", 20, 30);
   h.reader.render(projection([one, two, batch("second", 20, 30)]), task, {});

@@ -830,6 +830,9 @@
   "progress_draft": {
     "message": "草稿 · 证据补充中 · 未验证"
   },
+  "progress_matching": {
+    "message": "草稿 · {matched}/{total} 条正文结论与原文字面匹配 · 不代表事实核验"
+  },
   "progress_workspace": {
     "message": "在工作台查看最终结果或取消处理。"
   },

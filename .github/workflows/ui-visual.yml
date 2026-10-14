@@ -18,6 +18,7 @@ on:
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
@@ -41,6 +42,7 @@ on:
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
@@ -101,6 +103,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Bounded assistant workflow Edge/API/disk gate failed" }
             node scripts/personal-review-acceptance.cjs build/personal-review-ui
             if ($LASTEXITCODE -ne 0) { throw "Personal whole-note review Edge/API/disk gate failed" }
+            node scripts/section-review-acceptance.cjs build/section-review-ui
+            if ($LASTEXITCODE -ne 0) { throw "Chapter review consent and Edge/API/disk gate failed" }
             node scripts/assistant-controls-visual-acceptance.cjs build/assistant-controls-ui
             if ($LASTEXITCODE -ne 0) { throw "Native task/course controls Edge/API/SDK/disk gate failed" }
             node scripts/chat-stream-acceptance.cjs http://127.0.0.1:8765 build/chat-stream-ui
@@ -206,6 +210,7 @@ jobs:
             build/assistant-operations-ui
             build/assistant-runs-ui
             build/personal-review-ui
+            build/section-review-ui
             build/assistant-controls-ui
             build/chat-stream-ui
             build/layout-ui

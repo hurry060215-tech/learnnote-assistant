@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import re
 
-from .claims import build_claim_evidence_map, mark_claims_for_review
+from .section_evidence_status import section_claim_map, evidence_status
 from .note_document import normalize_note_markdown
 from .processor_state import check_cancel
 from .reading_notes import source_block_entries, stamp
@@ -65,13 +65,15 @@ def prepare_partial_section(task_id, transcript, payload, *, attempt_id, expecte
         normalized = normalize_note_markdown(heading, text, generate_questions=task.options.generate_questions)
         if normalized.report["blocking"] or (payload.get("kind") in {"topic_chapter", "full_response"} and not chapter_markdown_complete(normalized.markdown)):
             return
-        # Apply the same conservative local claim markers as final publication.
-        # Even literal quotations stay in an evidence-pending draft section.
-        claims = build_claim_evidence_map(task_id, heading, normalized.markdown, transcript)
-        markdown = mark_claims_for_review(normalized.markdown, claims)
+        # Keep draft prose readable. The chapter-level status reports the same
+        # conservative claim map; no claim is promoted to factual verification.
+        # Final publication still runs its existing independent evidence gate.
+        claims = section_claim_map(task_id, source, normalized.markdown, transcript, text_blocks)
+        markdown = normalized.markdown
     except TextDecodingError:
         return
     section = {**source, "status": "evidence_pending", "verified": False,
-               "summary_generated": True, "markdown": markdown, "revision": _revision(markdown)}
+               "summary_generated": True, "markdown": markdown, "revision": _revision(markdown),
+               "evidence_status": evidence_status(claims, transcript)}
     return root, source_revision, text_blocks, section
 

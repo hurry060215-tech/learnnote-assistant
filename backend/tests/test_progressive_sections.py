@@ -72,7 +72,8 @@ class ProgressiveSectionTests(unittest.TestCase):
         section = self.sections()["sections"][0]
         self.assertEqual(section["status"], "evidence_pending")
         self.assertFalse(section["verified"])
-        self.assertIn("【待核对：未找到支持来源】", section["markdown"])
+        self.assertNotIn("【待核对：未找到支持来源】", section["markdown"])
+        self.assertEqual(section["evidence_status"]["review_count"], 1)
         self.assertTrue(index_task(current))
         self.assertEqual(search_library("DistinctiveUnverifiedDraft"), [])
         self.assertTrue(search_library("Original source"))
@@ -85,7 +86,8 @@ class ProgressiveSectionTests(unittest.TestCase):
         export = client.get(f"/api/tasks/editions/task/{self.task.id}/exports/markdown")
         self.assertEqual(export.status_code, 200)
         self.assertIn("草稿 · 证据补充中 · 未完成最终校验", export.text)
-        self.assertIn("【待核对：未找到支持来源】", export.text)
+        self.assertNotIn("【待核对：未找到支持来源】", export.text)
+        self.assertIn("不代表事实核验", export.text)
         self.assertEqual(self.source_bytes, self.transcript_path.read_bytes())
         self.assertEqual(self.draft_bytes, (self.work / "draft.md").read_bytes())
 

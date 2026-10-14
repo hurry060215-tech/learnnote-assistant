@@ -165,7 +165,7 @@ class TextChunkSectionTests(unittest.TestCase):
         self.assertEqual(result[1], "local-template")
         self.assertEqual(len(calls), 2)
         self.assertEqual(len(self.sections()["sections"]), 1)
-        self.assertIn("待最终来源检查", read_task_note(self.task.id))
+        self.assertIn("未完成最终校验", read_task_note(self.task.id))
         self.assertFalse((self.work / "note.md").exists())
 
     def test_cancellation_after_first_or_last_callback_stops_generation(self):
@@ -286,7 +286,7 @@ class TextChunkSectionTests(unittest.TestCase):
         self.assertEqual(published.read_bytes(), b"# Previous published note\n")
         self.assertEqual(get_task(self.task.id).note_path, str(published))
 
-    def test_text_drafts_keep_claim_markers_and_stay_out_of_retrieval_after_failure(self):
+    def test_text_drafts_keep_chapter_boundary_and_stay_out_of_retrieval_after_failure(self):
         from app.knowledge import evidence_for_task
         from app.library import index_task, search_library
         from app.main import _task_qa_context, task_artifact_status
@@ -294,7 +294,9 @@ class TextChunkSectionTests(unittest.TestCase):
         update_task(self.task.id, status="failed", phase="failed", summary_source="local-template", error_code="summary_unavailable")
         current = get_task(self.task.id)
         self.assertTrue(task_artifact_status(current)["partial_draft_available"])
-        self.assertIn("【待核对：未找到支持来源】", read_task_note(self.task.id))
+        self.assertNotIn("【待核对：未找到支持来源】", read_task_note(self.task.id))
+        self.assertIn("未完成最终校验", read_task_note(self.task.id))
+        self.assertEqual(self.sections()["sections"][0]["evidence_status"]["review_count"], 1)
         self.assertNotIn("DistinctiveUnverifiedChunk", _task_qa_context(current)[0])
         self.assertFalse(any(e["metadata"].get("kind") == "note" for e in evidence_for_task(self.task.id)))
         self.assertTrue(index_task(current))
@@ -324,7 +326,7 @@ class TextChunkSectionTests(unittest.TestCase):
                 process_saved_transcript_task(self.task.id, self.options)
             self.assertEqual(get_task(self.task.id).error_code, error)
             self.assertFalse((self.work / "note.md").exists())
-            self.assertIn("待最终来源检查", read_task_note(self.task.id))
+            self.assertIn("未完成最终校验", read_task_note(self.task.id))
             self.assertEqual(self.path.read_bytes(), original)
 
         def success(*args, **kwargs):

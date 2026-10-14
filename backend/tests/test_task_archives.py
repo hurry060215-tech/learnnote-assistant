@@ -53,6 +53,13 @@ def public_contract():
     # arbitrary new or changed routes must still fail this comparison.
     schema["paths"].pop("/api/tasks/editions/{kind}/{source_id}/personal-review")
     schema["components"]["schemas"].pop("PersonalReviewRequest")
+    # The opt-in chapter review adds three independently tested operations. They
+    # do not mutate notes, but confirm sends one potentially billable model call.
+    # Freeze every existing operation, task schema and export byte.
+    for suffix in ("", "/preview", "/confirm"):
+        schema["paths"].pop("/api/tasks/{task_id}/section-review" + suffix)
+    for name in ("SectionReviewPreview", "SectionReviewConfirm"):
+        schema["components"]["schemas"].pop(name)
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),

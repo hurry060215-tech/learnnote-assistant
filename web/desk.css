@@ -745,6 +745,11 @@ details[open] > summary::after {
 .tool-choice small {
   display: block;
 }
+.tools-dialog .section-review button,
+.tools-dialog .section-review select,
+.tools-dialog .section-review summary,
+.tools-dialog .section-review .tool-choice { min-height: 44px; }
+.section-review p { overflow-wrap: anywhere; }
 .tool-menu {
   display: grid;
   grid-template-columns: 1fr 1fr;

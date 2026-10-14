@@ -20,10 +20,13 @@ from ..storage import get_task
 from ..storage import read_json
 from ..task_artifacts import read_task_note
 from ..partial_note_projection import read_partial_note
+from .section_reviews import section_reviews_router
 from ..personal_storage import RECOVERY_MESSAGE, PersonalStorageError, PersonalRecoveryRequired, lock as _edition_lock, personal_transaction
 
 
 notes_router = APIRouter(prefix="/api/tasks", tags=["notes"])
+notes_router.include_router(section_reviews_router)
+
 
 
 @notes_router.get("/{task_id}/partial-note")

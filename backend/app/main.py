@@ -147,6 +147,7 @@ async def enforce_structured_write_budget(request: Request, call_next):
         or path.endswith("/learn-range")
         or path == "/api/knowledge/evidence"
         or path.endswith("/community-context")
+        or (path.startswith("/api/tasks/") and path.endswith(("/section-review/preview", "/section-review/confirm")))
     )
     if bounded and request.method.upper() in WRITE_METHODS:
         try:
