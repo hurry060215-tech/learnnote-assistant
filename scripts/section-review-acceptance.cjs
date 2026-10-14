@@ -75,10 +75,15 @@ async function until(check, label, timeout = 20000) {
         const geometry = await page.locator("#toolsDialog").evaluate(node => {
           const box = node.getBoundingClientRect();
           return { left: box.left, right: box.right, width: innerWidth, overflow: node.scrollWidth > node.clientWidth + 1,
-            controls: [...node.querySelectorAll(".section-review button, .section-review select")].map(item => ({ height: item.getBoundingClientRect().height })) };
+            controls: [...node.querySelectorAll(".section-review button, .section-review select")].map(item => {
+              const control = item.getBoundingClientRect(), body = node.querySelector(".section-review").getBoundingClientRect();
+              return { height: control.height, offset: Math.abs((control.left + control.right - body.left - body.right) / 2) };
+            }), textAlign: getComputedStyle(node.querySelector(".section-review p")).textAlign };
         });
         assert(!geometry.overflow && geometry.left >= 0 && geometry.right <= geometry.width + 1, JSON.stringify(geometry));
         assert(geometry.controls.every(item => item.height >= 44), "New controls retain 44px targets");
+        assert(geometry.controls.every(item => item.offset <= 1), "Chapter actions and input stay centered");
+        assert(["left", "start"].includes(geometry.textAlign), "Body content remains left-aligned");
         const filename = `${name}-${theme}-${width}.png`;
         await page.screenshot({ path: path.join(out, filename), animations: "disabled" }); report.screenshots.push(filename);
       }
@@ -110,6 +115,7 @@ async function until(check, label, timeout = 20000) {
     await mode("reject"); await send();
     await page.waitForFunction(() => document.querySelector("#toolStatus").textContent.includes("未自动重试"));
     await capture("rejected"); assert.equal((await readState()).calls, 2);
+    assert.equal(((await page.locator("#toolStatus").innerText()).match(/未自动重试/g) || []).length, 1);
     await mode("delay"); await preview(); await send(); await until(async () => (await readState()).calls === 3, "pending provider request");
     await page.locator("[data-close-tool]").click(); await open();
     assert.equal(await page.locator("#sectionReviewPrepare").isDisabled(), true);
@@ -124,6 +130,15 @@ async function until(check, label, timeout = 20000) {
     const partial = await page.locator("#document").innerText(); assert.match(partial, /字面匹配/); assert.doesNotMatch(partial, /【待核对/);
     assert.match(partial, /未完成最终校验/);
     await page.screenshot({ path: path.join(out, "partial-reading.png"), animations: "disabled" }); report.screenshots.push("partial-reading.png");
+    const boundary = page.locator("#document").getByText(/条正文结论与原文字面匹配/).first();
+    for (const theme of ["light", "dark"]) for (const width of [1280, 1440, 768, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await page.evaluate(theme => document.body.classList.toggle("dark", theme === "dark"), theme);
+      await boundary.evaluate(node => node.scrollIntoView({ block: "center" }));
+      assert.match(await boundary.innerText(), /未完成最终校验/);
+      const filename = `partial-chapter-${theme}-${width}.png`;
+      await page.screenshot({ path: path.join(out, filename), animations: "disabled" }); report.screenshots.push(filename);
+    }
     await mode("normal"); await open(); await preview(); assert.equal((await readState()).calls, 3);
     await page.keyboard.press("Escape");
     report.checks.push("Partial draft uses one chapter boundary; review opens for actual current-attempt draft without calling model");

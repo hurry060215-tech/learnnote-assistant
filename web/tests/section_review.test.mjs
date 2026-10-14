@@ -75,7 +75,8 @@ async function prepared(h, value = preview()) { const work = h.prepare(); h.requ
   assert.match(text(h.$("sectionReviewResult")), /<Model reason>/);
   assert.match(text(h.$("sectionReviewResult")), /金额未知/);
   assert.equal(h.requests.length, 2, "No automatic next batch");
-  const next = h.$("sectionReviewResult").children.find(item => item.tag === "button");
+  const row = h.$("sectionReviewResult").children.find(item => item.className === "section-review-actions");
+  const next = row.children.find(item => item.tag === "button");
   next.listeners.get("click")(); await tick(); assert.equal(h.requests.length, 3);
   assert.equal(JSON.parse(h.calls.at(-1).options.body).offset, 12);
   h.requests.at(-1).resolve(preview({ offset: 12 })); await tick();
@@ -109,6 +110,14 @@ for (const phase of ["preview", "confirm"]) {
   assert.equal(h.requests.length, phase === "preview" ? 1 : 2);
   assert.equal(h.$("sectionReviewPrepare").disabled, false);
   assert.match(h.$("toolStatus").textContent, /Synthetic timeout/);
+}
+for (const message of ["请求失败；未自动重试，费用可能未知。", "Synthetic timeout; remote billing unknown"]) {
+  const h = harness(); await h.open(); await prepared(h); h.check();
+  const work = h.confirm(); h.requests.at(-1).reject(new Error(message)); await work;
+  const status = h.$("toolStatus").textContent;
+  assert.equal((status.match(/未自动重试/g) || []).length, 1);
+  assert(status.includes(message), "Existing error/billing disclosure remains unchanged");
+  assert.match(status, /重新预览/); assert.equal(h.requests.length, 2);
 }
 for (const changes of [{ task_id: "foreign" }, { revision: "c".repeat(64) }, { section_id: "foreign" }, { connection: { ...route, model: "changed" } }]) {
   const h = harness(); await h.open(); await prepared(h, preview(changes));

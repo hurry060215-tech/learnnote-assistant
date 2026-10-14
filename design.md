@@ -200,7 +200,9 @@ the exact selected source text, and the saved model destination. Every request
 needs a fresh explicit checkbox and send action, including the next batch.
 Show model opinions as supporting, contradicting, or insufficient selected
 text, with expandable verbatim quotations. Results are ephemeral and never
-rewrite a note or change personal review records. Reuse tools-dialog styles,
+rewrite a note or change personal review records. Chapter-review action rows are
+centered inside the dialog while body/source text stays left-aligned; a rejected
+request shows its no-retry notice once. Reuse tools-dialog styles,
 semantic colors, left alignment, and 44px controls; preserve loading, unavailable,
 rejected, closed, and stale-request states without automatic requests or retries.
 Empty states name the missing content and give a relevant next action; keep them

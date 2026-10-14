@@ -750,6 +750,7 @@ details[open] > summary::after {
 .tools-dialog .section-review summary,
 .tools-dialog .section-review .tool-choice { min-height: 44px; }
 .section-review p { overflow-wrap: anywhere; }
+.section-review-actions { display: flex; justify-content: center; gap: 12px; margin-block: 12px; }
 .tool-menu {
   display: grid;
   grid-template-columns: 1fr 1fr;
