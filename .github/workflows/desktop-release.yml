@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing version tag to rebuild and publish after validation
+        description: Version tag to publish after validation (existing tag, or supply exact commit)
+        required: false
+        type: string
+      release_commit:
+        description: Exact 40-character commit SHA for a new tag; leave empty for existing tags
         required: false
         type: string
   push:
@@ -23,6 +27,7 @@ concurrency:
 env:
   ORT_DISABLE_TELEMETRY: "1"
   HF_HUB_DISABLE_TELEMETRY: "1"
+  RELEASE_COMMIT: ${{ inputs.release_commit }}
   RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
 jobs:
@@ -38,16 +43,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ inputs.release_commit || inputs.release_tag || github.ref }}
       - name: Validate release source
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -and $env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
           $commit = git rev-parse HEAD
-          if ($env:RELEASE_TAG) {
+          if ($env:RELEASE_COMMIT) {
+            if ($env:RELEASE_COMMIT -notmatch '^[0-9a-f]{40}$' -or $env:RELEASE_COMMIT -ne $commit -or -not $env:RELEASE_TAG) { throw "Exact release commit and version tag are required" }
+          } elseif ($env:RELEASE_TAG) {
             $expected = git rev-parse "$env:RELEASE_TAG^{commit}"
             if ($LASTEXITCODE -ne 0 -or $expected -ne $commit) { throw "Checkout does not match the requested release tag" }
           }
+          $version = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
+          if ($env:RELEASE_TAG -and "v$version" -ne $env:RELEASE_TAG) { throw "Release tag does not match client version" }
           "BUILD_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -227,4 +236,6 @@ jobs:
           if (-not $extensionAsset) {
             throw "Versioned browser extension asset was not found."
           }
+          python scripts/ensure-release-tag.py --tag "$env:RELEASE_TAG" --commit "$env:BUILD_COMMIT" --repository "${{ github.repository }}"
+          if ($LASTEXITCODE -ne 0) { throw "Release tag identity verification failed; nothing was published" }
           ./scripts/publish-release.ps1 -Tag "$env:RELEASE_TAG" -Repository "${{ github.repository }}"

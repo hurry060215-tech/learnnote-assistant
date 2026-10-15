@@ -140,7 +140,7 @@ class ReleaseHardeningContractTests(unittest.TestCase):
         self.assertIn("--version 7.1.0", workflow)
         self.assertIn("--scope machine --architecture x64", workflow)
         self.assertIn("LEARNNOTE_ISCC", workflow)
-        self.assertIn('ref: ${{ inputs.release_tag || github.ref }}', workflow)
+        self.assertIn('ref: ${{ inputs.release_commit || inputs.release_tag || github.ref }}', workflow)
         self.assertIn('Checkout does not match the requested release tag', workflow)
         self.assertIn('if: env.RELEASE_TAG !=', workflow)
 
