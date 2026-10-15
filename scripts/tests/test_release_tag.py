@@ -10,7 +10,7 @@ SPEC = importlib.util.spec_from_file_location("release_tag", ROOT / "scripts/ens
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 SHA = "a" * 40
-TAG = "v" + json.loads((ROOT / "web/release-notes.json").read_text())["current"]
+TAG = "v" + json.loads((ROOT / "web/release-notes.json").read_text(encoding="utf-8"))["current"]
 
 
 def result(out="", error="", code=0):
@@ -66,7 +66,7 @@ class ReleaseTagTests(unittest.TestCase):
             self.assertEqual(run.call_count, 3)
 
     def test_workflow_tags_only_after_build_and_upgrade_gates(self):
-        source = (ROOT / ".github/workflows/desktop-release.yml").read_text()
+        source = (ROOT / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
         for gate in ("python scripts/reliability-suite.py", "test-upgrade-installer.ps1", "Attest release build provenance"):
             self.assertLess(source.index(gate), source.index("python scripts/ensure-release-tag.py"))
         self.assertLess(source.index("python scripts/ensure-release-tag.py"), source.index("./scripts/publish-release.ps1"))
