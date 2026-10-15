@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.15 - Progressive drafts, explicit review and clearer reading
+
+- Refine reading hierarchy and responsive controls, preserve sidebar state, and align the public website with the current workspace.
+- Add opt-in whole-note and bounded chapter review with version/restore safety; keep AI drafts and reviewed content distinct.
+- Stream source-bound text/topic drafts and recoverable visual batches; expose conservative attempt timing and preserve unknown/partial token usage.
+- Separate claim candidate retrieval from support evaluation, repair Unicode excerpts and timestamp links, and respect declared vision image limits.
+- Preserve personal content across backup/restore failures, stabilize material catalogs, and make task cancellation/retry generation-safe.
+- Add reviewed native assistant editing/export tools, resumable local screen-subtitle extraction, and complete filtered graph exports.
+- Known limits: real-model quality, four-hour real-video acceptance, Word/WPS layout, Chrome permission/store installation, macOS acceptance and the full issue matrix remain incomplete. Windows builds are unsigned unless signing credentials are configured; macOS unsigned builds remain previews. GitHub publication does not submit extension stores.
+
 ## 0.2.14 - Bounded transcription and honest evidence review
 
 - Bound long-audio ASR to five-minute windows with identity-checked atomic checkpoints; recover completed windows instead of requiring an all-at-once allocation.

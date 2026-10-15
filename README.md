@@ -6,7 +6,7 @@
 
 [下载启动脚本](https://github.com/hurry060215-tech/learnnote-assistant) · [产品与使用流程](https://hurry060215-tech.github.io/learnnote-assistant/) · [安装浏览器扩展](docs/EXTENSION_CONNECTION.md) · [使用帮助](SUPPORT.md)
 
-> **本机后端 v0.2.14 / 扩展 v0.2.14：** 长音频分段转写与检查点恢复，改进任务调度、来源核对和导出。商店版本可能滞后于 GitHub；真实 B 站登录态的提取耗时仍待实测，不保证秒提取。AI 笔记仍需核对数字、名称与推断。
+> **本机后端 v0.2.15 / 扩展 v0.2.15：** 渐进草稿、显式整篇与分章节校对、来源核对和清晰阅读更新。商店版本可能滞后于 GitHub；真实模型质量、四小时真实视频和完整原生平台验收仍未全部完成。AI 笔记仍需核对数字、名称与推断。
 
 ![LearnNote 阅读工作台](site/assets/learnnote-reader-current.png)
 

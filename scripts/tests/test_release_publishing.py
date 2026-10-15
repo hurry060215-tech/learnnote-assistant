@@ -10,6 +10,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReleasePublishingTests(unittest.TestCase):
+    def test_reviewed_notes_are_preferred_with_old_tag_fallback(self):
+        source = (ROOT / "scripts/publish-release.ps1").read_text(encoding="utf-8")
+        self.assertIn("$Tag.TrimStart('v').Replace('.', '')", source)
+        self.assertIn('--notes-file $releaseNotes', source)
+        self.assertIn('--generate-notes', source)
+        self.assertIn('--draft --verify-tag --notes-file', source)
+
     def test_validation_checks_real_assets_and_never_invokes_github(self):
         pwsh = shutil.which("pwsh")
         if not pwsh:

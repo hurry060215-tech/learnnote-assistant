@@ -28,7 +28,12 @@ $lookup = & gh release view $Tag --repo $Repository --json isDraft,tagName 2>&1
 if ($LASTEXITCODE -eq 0) {
     $release = ($lookup -join "`n") | ConvertFrom-Json
 } elseif (($lookup -join " ") -match 'release not found|HTTP 404') {
-    & gh release create $Tag --repo $Repository --draft --verify-tag --generate-notes --title "LearnNote $Tag"
+    $releaseNotes = Join-Path "docs" ("RELEASE_" + $Tag.TrimStart('v').Replace('.', '') + ".md")
+    if (Test-Path -LiteralPath $releaseNotes -PathType Leaf) {
+        & gh release create $Tag --repo $Repository --draft --verify-tag --notes-file $releaseNotes --title "LearnNote $Tag"
+    } else {
+        & gh release create $Tag --repo $Repository --draft --verify-tag --generate-notes --title "LearnNote $Tag"
+    }
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft release" }
     $release = @{ isDraft = $true }
 } else {

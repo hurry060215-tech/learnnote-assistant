@@ -20,7 +20,7 @@ import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSour
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
-import { installTools } from "/web/desk-tools.js?v=0.2.14";
+import { installTools } from "/web/desk-tools.js?v=0.2.15";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
