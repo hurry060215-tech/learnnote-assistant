@@ -2,6 +2,15 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 
+function nativeModalFocusIsSafe(state) {
+  const inModal = state.insideModal === true && state.rootFallback === false;
+  const browserControls = state.insideModal === false && state.documentHasFocus === false
+    && state.rootFallback === true && ["BODY", "HTML"].includes(state.activeTag);
+  return state.open === true && state.modal === true && state.openDialogs === 1
+    && state.outcomePending === true && state.backgroundVisible === true && state.backgroundDisabled === false
+    && state.backgroundFocusRefused === true && (inModal || browserControls);
+}
+
 module.exports = async function checkModelDataConsent(page, output, report) {
   await page.locator("#settingsDialog [data-close]").first().click();
   const open = async () => page.evaluate(async () => {
@@ -18,11 +27,13 @@ module.exports = async function checkModelDataConsent(page, output, report) {
     }).then(value => { window.consentOutcome = value; });
   });
   const dialog = page.locator('dialog[aria-labelledby="modelDataConsentTitle"]');
+  report.taskDataConsentFocus = [];
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const theme of ["light", "dark"]) {
       await page.evaluate(dark => document.body.classList.toggle("dark", dark), theme === "dark");
-      await page.locator("#newNote").focus();
+      await page.locator("#welcomeNew").focus();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "welcomeNew", "Opener must be visible and focused");
       await open(); await dialog.waitFor();
       assert(await dialog.evaluate(node => {
         const bounds = node.getBoundingClientRect();
@@ -63,13 +74,34 @@ module.exports = async function checkModelDataConsent(page, output, report) {
         await page.screenshot({ path: path.join(output, bottom), fullPage: true }); report.screenshots.push(bottom);
       }
       await dialog.getByRole("button", { name: "取消", exact: true }).focus();
+      // Native Tab may visit browser chrome. The app behind a modal must
+      // remain inert; do not replace native browser navigation with a trap.
+      // https://html.spec.whatwg.org/multipage/interaction.html#sequential-focus-navigation
+      let browserExcursion = false;
       for (const key of ["Tab", "Shift+Tab"]) {
         await page.keyboard.press(key);
-        assert(await dialog.evaluate(node => node.contains(document.activeElement)), "Keyboard focus stays inside modal");
+        const focus = await dialog.evaluate(node => {
+          const active = document.activeElement, background = document.querySelector("#welcomeNew");
+          const state = { activeTag: active?.tagName, activeId: active?.id || "", documentHasFocus: document.hasFocus(),
+            insideModal: node.contains(active), rootFallback: active === document.body || active === document.documentElement,
+            open: node.open, modal: node.matches(":modal"), openDialogs: document.querySelectorAll("dialog[open]").length,
+            backgroundVisible: background.getClientRects().length > 0, backgroundDisabled: background.disabled,
+            outcomePending: window.consentOutcome === "pending" };
+          background.focus({ preventScroll: true });
+          state.backgroundFocusRefused = document.activeElement !== background;
+          return state;
+        });
+        report.taskDataConsentFocus.push({ width, theme, key, ...focus });
+        assert(nativeModalFocusIsSafe(focus),
+          `Native modal must retain focus or permit only browser controls with inert background: ${JSON.stringify(focus)}`);
+        if (browserExcursion) assert(focus.insideModal && focus.documentHasFocus,
+          `Reverse Tab must return from browser controls to the modal: ${JSON.stringify(focus)}`);
+        browserExcursion = !focus.insideModal && !focus.documentHasFocus && focus.rootFallback;
+        assert.equal(await page.locator("#modelDataConsent").isChecked(), false);
       }
       await dialog.getByRole("button", { name: "取消", exact: true }).click();
       await page.waitForFunction(() => window.consentOutcome === null);
-      assert.equal(await page.evaluate(() => document.activeElement?.id), "newNote", "Cancel restores opener focus");
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "welcomeNew", "Cancel restores opener focus");
     }
   }
   await open(); await page.locator("#allowModelPageContext").check();
@@ -79,11 +111,13 @@ module.exports = async function checkModelDataConsent(page, output, report) {
   assert.deepEqual(await page.evaluate(() => window.consentOutcome), {
     allow_model_page_context: true, allow_page_text_fallback: false, review_fingerprint: "synthetic-reviewed-source",
   });
-  await page.locator("#newNote").focus(); await open();
+  await page.locator("#welcomeNew").focus(); await open();
   assert.equal(await page.locator("#allowModelPageContext").isChecked(), false, "No remembered context approval");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => window.consentOutcome === null);
-  assert.equal(await page.evaluate(() => document.activeElement?.id), "newNote", "Escape restores opener focus");
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "welcomeNew", "Escape restores opener focus");
   report.taskDataConsent = { preview_and_cancel_send_nothing: true, independent_scopes: true, fresh_each_time: true,
-    initial_metadata_visible: true, mobile_bottom_actions_reachable: true, keyboard_focus_restored: true, keyboard_focus_contained: true };
+    initial_metadata_visible: true, mobile_bottom_actions_reachable: true, keyboard_focus_restored: true, native_background_inert: true };
 };
+
+module.exports.nativeModalFocusIsSafe = nativeModalFocusIsSafe;
