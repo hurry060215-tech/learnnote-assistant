@@ -7,6 +7,20 @@ from app.summarizer import llm_model_supports_vision
 
 
 class ModelCapabilityTests(unittest.TestCase):
+    def test_official_vision_declaration_does_not_follow_provider_label(self):
+        with patch.object(caps, "image_probe_verified", return_value=False):
+            for endpoint in ("https://proxy.example/v1", "https://api.deepseek.com.evil.example",
+                             "http://api.deepseek.com", "https://api.deepseek.com/custom",
+                             "https://api.deepseek.com?target=other", "https://user@api.deepseek.com"):
+                with self.subTest(endpoint=endpoint):
+                    description = caps.model_description("deepseek", endpoint, "deepseek-flash")
+                    self.assertIsNone(description["vision"])
+                    self.assertEqual(description["capability_source"], "unknown")
+            self.assertIsNone(caps.model_description("deepseek", "https://api.deepseek.com", "DEEPSEEK-FLASH")["vision"])
+            self.assertTrue(caps.model_description("deepseek", "https://api.deepseek.com/", "deepseek-flash")["vision"])
+        with patch.object(caps, "image_probe_verified", return_value=True):
+            self.assertEqual(caps.model_description("deepseek", "https://proxy.example/v1", "deepseek-flash")["capability_source"], "image_test")
+
     def test_deepseek_capabilities_are_per_model_not_per_provider(self):
         for model in ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]:
             self.assertTrue(llm_model_supports_vision("https://api.deepseek.com", model))

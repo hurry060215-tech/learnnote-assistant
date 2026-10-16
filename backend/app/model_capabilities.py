@@ -10,7 +10,7 @@ from .config import DATA_DIR
 _lock = threading.Lock()
 _FLASH = {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"}
 CAPABILITY_SCHEMA_VERSION = 1
-CAPABILITY_CATALOG_VERSION = 2
+CAPABILITY_CATALOG_VERSION = 3
 
 
 def declared_image_limit(base_url: str, model: str, api: str = "chat.completions") -> dict:
@@ -77,7 +77,11 @@ def save_image_probe(base_url: str, model: str) -> None:
 
 def model_description(provider: str, base_url: str, model: str) -> dict:
     verified = image_probe_verified(base_url, model)
-    official = provider == "deepseek" and model.lower() in _FLASH
+    # A provider picker is not proof of which service actually receives data.
+    # Scope published capabilities to the documented endpoint and exact IDs;
+    # proxies and aliases must retain their own explicit image-probe evidence.
+    official = (provider == "deepseek" and model in _FLASH
+                and base_url in {"https://api.deepseek.com", "https://api.deepseek.com/"})
     return {"id": model, "catalog_version": CAPABILITY_CATALOG_VERSION,
             "vision": True if verified or official else None,
             "capability_source": "image_test" if verified else "official_catalog" if official else "unknown",

@@ -24,3 +24,22 @@ macOS 进入实现前，Windows v0.2–v0.4 的任务恢复、来源适配、资
 The browser-first launchers do not require a native window or custom URI
 protocol. The optional native packaging files remain in the repository for
 compatibility, but they are not the recommended user path.
+
+## Isolated native acceptance
+
+`native-platform-acceptance.yml` is a separate, read-only-permission workflow
+with no signing secrets or release publication. On macOS it builds and launches
+the unsigned `.app`, confirms the native-window focus callback, and saves actual
+runner screenshots. On Linux it launches the source backend; that lane does not
+claim native desktop integration. Both lanes exercise UTF-8 document import,
+byte-identical original export, missing/corrupt input failures, a separate
+personal note, process restart, and backup restore into a fresh synthetic data
+directory. Logs, screenshots and a machine-readable report are retained as CI
+artifacts, including on failure.
+
+Run the workflow and inspect its report/screenshots before citing acceptance.
+The implementation of this harness is not a passing run. Restart is not
+application-version upgrade or rollback. Signed/notarized distribution,
+credential migration, extension pairing, real platform media, and native
+updater rollback remain separate requirements. No user vault, provider key,
+real browser profile or media-site account is used by this workflow.

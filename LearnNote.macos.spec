@@ -73,8 +73,12 @@ exe = EXE(
     entitlements_file=None,
 )
 
+collection = COLLECT(
+    exe, a.binaries, a.datas, strip=False, upx=False, name="LearnNote",
+)
+
 BUNDLE(
-    exe,
+    collection,
     name="LearnNote.app",
     bundle_identifier="tech.hurry060215.learnnote",
 )
