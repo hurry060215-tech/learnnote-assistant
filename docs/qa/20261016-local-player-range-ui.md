@@ -144,3 +144,27 @@ rerun and nested API calls return 409 without creating tasks. Original-source
 fallback remains explicit only for internal pending OCR clipping recovery (the
 range worker also retains its original input to perform the cut). Legacy finite
 offset-only records retain their existing ordinary-media behavior.
+
+The third hosted run, `38954330216` on exact
+`1b2a24af5146a347c8a1213683c547425a9e09d9`, verified the repaired queued-to-ready
+flow in Edge 154.0.4258.62 without reloading the selected task. The child media
+returned 409 while queued, its player had no `src`, and after processing the same
+selected child loaded its digest/generation URL with backend duration 10.56 seconds
+and actual player duration 10.564 seconds, paused. Requested bounds remained
+5.25–15.75 seconds; the nested form showed a logical 10.5-second maximum and
+rejected encoded padding. Its four light/dark wide/narrow range screenshots,
+queued screenshot and two nested-range screenshots were visually inspected:
+source titles, decimal fields, duration distinction and controls were readable
+without horizontal clipping.
+
+That run then truthfully failed the unchanged evidence gate: the nested 0–5.25
+clip contained only `SYNTHETIC_SECOND`, 16 non-whitespace characters. This is a
+fixture prerequisite failure, not a media-identity or timing-tolerance failure.
+The [retained report and failure screenshot](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38954330216/artifacts/12069916973)
+record `transcript_text` blocking summary generation. The fixture now gives each
+unique cue marker a substantive synthetic lesson sentence and the offline fixture
+regression processes the actual nested clip through the unchanged evidence gate,
+asserting success, exact parent/source bounds, exact cue text and the same 0.15
+second media-duration tolerance. No production threshold or helper assertion is
+relaxed. Later full-source and delayed seek/navigation checks still require the
+next hosted pass.

@@ -85,7 +85,7 @@ def verify_low_frame_rate_range(media: Path, subtitle: Path, options):
         assert abs(encoded - 10.5) > .15, encoded
         cues = client.get(f'/api/tasks/{task_id}/transcript').json()['segments']
         assert [(cue['start'], cue['end'], cue['text']) for cue in cues] == [
-            (0, 5.25, 'SYNTHETIC_SECOND'), (5.25, 10.5, 'SYNTHETIC_THIRD')]
+            (0, 5.25, 'SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds.'), (5.25, 10.5, 'SYNTHETIC_THIRD: This synthetic lesson explains why encoded padding is not additional source evidence.')]
         before = {task.id for task in list_tasks()}
         rejected = []
         for start, end in ((10.5, 11), (0, 10.500000001), (0, 10.505)):
@@ -139,7 +139,22 @@ def verify_range_preview_lifecycle(source, options):
         duration = probe_media_integrity(received).duration
         assert abs(duration - 10.5) < .15, duration
         process_range_task(task_id, Path(source.media_path), ready['title'], options)
+        assert client.get(f'/api/tasks/{task_id}').json()['task']['status'] == 'success'
         assert client.get(f'/api/tasks/{task_id}/media').content == served.content
+        nested = client.post(f'/api/tasks/{task_id}/learn-range', json={
+            'start':0, 'end':5.25, 'options':options.model_dump(mode='json')})
+        assert nested.status_code == 200, nested.text
+        nested_id = nested.json()['task_id']
+        process_range_task(nested_id, clip, nested.json()['task']['title'], options)
+        nested_task = client.get(f'/api/tasks/{nested_id}').json()['task']
+        assert nested_task['status'] == 'success', nested_task
+        assert nested_task['source_task_id'] == task_id
+        assert nested_task['learning_range'] == {
+            'start':0, 'end':5.25, 'original_start':5.25, 'original_end':10.5}
+        assert abs(nested_task['media_integrity']['duration'] - 5.25) < .15, nested_task
+        nested_cues = client.get(f'/api/tasks/{nested_id}/transcript').json()['segments']
+        assert [(cue['start'], cue['end'], cue['text']) for cue in nested_cues] == [
+            (0, 5.25, 'SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds.')]
         with patch('app.main.schedule_processing'):
             rerun = client.post(f'/api/tasks/{task_id}/rerun-from-media', json={'options':options.model_dump(mode='json')})
             assert rerun.status_code == 200, rerun.text
@@ -150,7 +165,10 @@ def verify_range_preview_lifecycle(source, options):
         return {'pending_status':409, 'partial_status':409, 'pending_rerun_status':409, 'pending_nested_status':409, 'ready_during_summary':True,
                 'served_duration':duration, 'served_sha256':hashlib.sha256(served.content).hexdigest(),
                 'equals_selected_clip':True, 'differs_from_parent':True, 'cache_control':'no-store',
-                'same_range_rerun_reused_clip':True, 'full_source_rerun_unchanged':True}
+                'same_range_rerun_reused_clip':True, 'full_source_rerun_unchanged':True,
+                'nested_pipeline':{'status':nested_task['status'], 'learning_range':nested_task['learning_range'],
+                    'duration':nested_task['media_integrity']['duration'], 'relative_cues':nested_cues,
+                    'evidence_can_summarize':nested_task['evidence_coverage']['can_summarize']}}
 
 
 def main():
@@ -181,19 +199,19 @@ def main():
         subtitle = data / 'synthetic.srt'
         subtitle.write_text('''1
 00:00:00,000 --> 00:00:05,250
-SYNTHETIC_FIRST
+SYNTHETIC_FIRST: This synthetic lesson introduces local playback and precise source-bound timestamps.
 
 2
 00:00:05,250 --> 00:00:10,500
-SYNTHETIC_SECOND
+SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds.
 
 3
 00:00:10,500 --> 00:00:15,750
-SYNTHETIC_THIRD
+SYNTHETIC_THIRD: This synthetic lesson explains why encoded padding is not additional source evidence.
 
 4
 00:00:15,750 --> 00:00:20,000
-SYNTHETIC_FOURTH
+SYNTHETIC_FOURTH: This synthetic lesson returns to the complete original media without changing its source.
 ''', encoding='utf-8')
         tasks = []
         for suffix in ('A', 'B'):

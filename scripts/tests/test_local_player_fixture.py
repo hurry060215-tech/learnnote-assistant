@@ -32,7 +32,7 @@ class LocalPlayerFixtureTests(unittest.TestCase):
             self.assertEqual(quantized['learning_range'], {
                 'start': 5.25, 'end': 15.75, 'original_start': 5.25, 'original_end': 15.75})
             self.assertEqual([(cue['start'], cue['end'], cue['text']) for cue in quantized['relative_cues']],
-                             [(0, 5.25, 'SYNTHETIC_SECOND'), (5.25, 10.5, 'SYNTHETIC_THIRD')])
+                             [(0, 5.25, 'SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds.'), (5.25, 10.5, 'SYNTHETIC_THIRD: This synthetic lesson explains why encoded padding is not additional source evidence.')])
             self.assertEqual(quantized['nested_padding_rejections'], [
                 {'start':10.5,'end':11,'status':422}, {'start':0,'end':10.500000001,'status':422},
                 {'start':0,'end':10.505,'status':422}])
@@ -42,6 +42,14 @@ class LocalPlayerFixtureTests(unittest.TestCase):
                 self.assertTrue(preview[key], preview)
             self.assertLess(abs(preview['served_duration'] - 10.5), .15)
             self.assertEqual(preview['cache_control'], 'no-store')
+            nested = preview['nested_pipeline']
+            self.assertEqual(nested['status'], 'success')
+            self.assertTrue(nested['evidence_can_summarize'])
+            self.assertEqual(nested['learning_range'], {
+                'start':0, 'end':5.25, 'original_start':5.25, 'original_end':10.5})
+            self.assertLess(abs(nested['duration'] - 5.25), .15)
+            self.assertEqual([(cue['start'],cue['end'],cue['text']) for cue in nested['relative_cues']], [
+                (0,5.25,'SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds.')])
             self.assertNotEqual(report['source_id'], report['other_id'])
             self.assertEqual(len(report['source_artifacts']), 2)
 

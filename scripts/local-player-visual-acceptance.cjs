@@ -176,7 +176,7 @@ async function main() {
     assert.deepEqual(clipped.learning_range, { start: 5.25, end: 15.75, original_start: 5.25, original_end: 15.75 });
     await duration("selected-range", clip, 10.5);
     const cues = (await read(`/api/tasks/${clip}/transcript`)).segments;
-    assert.deepEqual(cues.map(c => [c.start, c.end, c.text]), [[0, 5.25, "SYNTHETIC_SECOND"], [5.25, 10.5, "SYNTHETIC_THIRD"]]);
+    assert.deepEqual(cues.map(c => [c.start, c.end, c.text]), [[0, 5.25, "SYNTHETIC_SECOND: This synthetic lesson keeps the selected segment within its requested time bounds."], [5.25, 10.5, "SYNTHETIC_THIRD: This synthetic lesson explains why encoded padding is not additional source evidence."]]);
     await openRange(); assert.match(await page.locator("#toolBody").innerText(), /原视频 5.25–15.75 秒/);
     assert.equal(await page.locator("#rangeEnd").getAttribute("max"), "10.5");
     assert.match(await page.locator("#toolBody").innerText(), /编码媒体时长/);
