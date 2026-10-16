@@ -51,6 +51,39 @@ class ModelCapabilityTests(unittest.TestCase):
         payload[0]["content"].pop()
         caps.check_image_count("https://api.deepseek.com", "deepseek-flash", payload)
 
+    def test_dated_context_declaration_keeps_exact_scope_and_local_budgets(self):
+        from app.models import TaskOptions
+        before = TaskOptions.model_json_schema()
+        for model in (*sorted(caps._FLASH), "deepseek-v4-pro"):
+            for endpoint in ("https://api.deepseek.com", "https://api.deepseek.com/"):
+                with self.subTest(model=model, endpoint=endpoint):
+                    item = caps.declared_context_limit(endpoint, model)
+                    self.assertEqual(item["value"], 1048576)
+                    self.assertTrue(item["includes_output"])
+                    self.assertEqual(item["status"], "declared")
+                    self.assertEqual(item["checked_on"], "2026-10-16")
+                    self.assertEqual(item["source_url"], "https://api-docs.deepseek.com/api/list-models/")
+                    self.assertEqual(item["model"], model)
+                    self.assertEqual(item["served_model_version"],
+                        "DeepSeek-V4-Pro-0813" if model == "deepseek-v4-pro" else "DeepSeek-V4.1-Flash")
+                    self.assertIn("未实测", item["detail"])
+                    self.assertIn("输入与输出", item["detail"])
+                    self.assertIn("预算仍生效", item["detail"])
+        for endpoint in ("https://proxy.example/v1", "https://api.deepseek.com/v1",
+                         "https://api.deepseek.com?key=fixture", "http://api.deepseek.com",
+                         "https://user@api.deepseek.com", "https://api.deepseek.com.evil.invalid",
+                         "https://api.deepseek.com//", "https://api.deepseek.com#fragment"):
+            self.assertIsNone(caps.declared_context_limit(endpoint, "deepseek-flash")["value"])
+        for model in ("deepseek-chat", "deepseek-reasoner", "DEEPSEEK-FLASH", "deepseek-flash-custom"):
+            self.assertIsNone(caps.declared_context_limit("https://api.deepseek.com", model)["value"])
+        self.assertIsNone(caps.declared_context_limit("https://api.deepseek.com", "deepseek-flash", "responses")["value"])
+        with patch.object(caps, "image_probe_verified", return_value=True):
+            route = caps.route_capabilities("deepseek", "https://api.deepseek.com", "deepseek-flash",
+                configured=True, vision_allowed=True, remote_asr=False, local_asr_available=False)
+        self.assertEqual(route["context_limit"]["status"], "declared")
+        self.assertEqual(route["context_limit"]["catalog_version"], caps.CAPABILITY_CATALOG_VERSION)
+        self.assertEqual(before, TaskOptions.model_json_schema())
+
     def test_successful_probe_is_scoped_and_expires(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(caps,"DATA_DIR",Path(directory)), patch.object(caps.time,"time",return_value=1000000):
             caps.save_image_probe("https://api.deepseek.com","custom")

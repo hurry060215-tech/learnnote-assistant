@@ -10,7 +10,7 @@ from .config import DATA_DIR
 _lock = threading.Lock()
 _FLASH = {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"}
 CAPABILITY_SCHEMA_VERSION = 1
-CAPABILITY_CATALOG_VERSION = 4
+CAPABILITY_CATALOG_VERSION = 5
 
 
 def declared_image_limit(base_url: str, model: str, api: str = "chat.completions") -> dict:
@@ -35,6 +35,22 @@ def declared_image_limit(base_url: str, model: str, api: str = "chat.completions
                 "detail": "图片上限：官方声明每次最多 600 张（2026-10-16 核对，未实测）；两个旧 Flash 名称由当前 Flash 服务。应用自己的帧数和批量预算仍生效；请求体、单图尺寸和上下文限制尚未检查。"}
     return {"value": None, "unit": "images_per_request", "status": "unknown",
             "detail": "图片上限：未知；支持图片不代表已知数量、尺寸或请求体限制。"}
+
+
+def declared_context_limit(base_url: str, model: str, api: str = "chat.completions") -> dict:
+    """Expose dated documentation only; never expand task budgets or probe APIs."""
+    if (base_url in {"https://api.deepseek.com", "https://api.deepseek.com/"}
+            and model in _FLASH | {"deepseek-v4-pro"} and api == "chat.completions"):
+        return {"value": 1048576, "unit": "tokens", "status": "declared",
+                "includes_output": True,
+                "source_url": "https://api-docs.deepseek.com/api/list-models/",
+                "checked_on": "2026-10-16", "api": api, "model": model,
+                "served_model_version": "DeepSeek-V4.1-Flash" if model in _FLASH else "DeepSeek-V4-Pro-0813",
+                "alias_source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+                "catalog_version": CAPABILITY_CATALOG_VERSION,
+                "detail": "上下文上限：官方文档声明 1,048,576 tokens，包含输入与输出（2026-10-16 核对，未实测）；应用自己的材料、帧数与输出预算仍生效，实际请求是否满足限制尚未检查。"}
+    return {"value": None, "unit": "tokens", "status": "unknown",
+            "detail": "上下文上限：未知；没有此接口与型号的已验证限制。"}
 
 
 def vision_batch_plan(base_url: str, model: str, requested: int) -> dict:
@@ -124,7 +140,6 @@ def route_capabilities(provider: str, base_url: str, model: str, *, configured: 
                           ("files_ready" if local_asr_available else "not_ready"),
                 "detail": ("ASR：已选择兼容音频接口；尚未验证该服务和转写型号。" if asr_configured else "ASR：兼容音频接口需要 Key，本机地址也不会自动免除；当前未配置可用连接。") if remote_asr else
                           ("ASR：本地组件与权重已就绪；实际转写时仍需加载验证。" if local_asr_available else "ASR：本地组件或模型权重尚未准备完成。")},
-        "context_limit": {"value": None, "unit": "tokens", "status": "unknown",
-                          "detail": "上下文上限：未知；没有此接口与型号的已验证限制。"},
+        "context_limit": declared_context_limit(base_url, model),
         "image_limit": declared_image_limit(base_url, model),
     }
