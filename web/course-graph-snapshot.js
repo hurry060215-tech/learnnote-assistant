@@ -19,11 +19,23 @@ export function relationshipGraph(result) {
   const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
   title.textContent = "课程来源关系图";
   svg.append(title);
+  const pairs = new Map();
   for (const edge of edges) {
+    const key = JSON.stringify([edge.from, edge.to].sort());
+    if (!pairs.has(key)) pairs.set(key, []);
+    pairs.get(key).push(edge);
+  }
+  for (const edge of edges) {
+    const peers = pairs.get(JSON.stringify([edge.from, edge.to].sort()));
+    const spacing = Math.min(8, 32 / Math.max(1, peers.length - 1));
+    const offset = (peers.indexOf(edge) - (peers.length - 1) / 2) * spacing;
     const from = position.get(edge.from), to = position.get(edge.to);
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", String(from.x + 72)); line.setAttribute("y1", String(from.y + 25));
-    line.setAttribute("x2", String(to.x + 72)); line.setAttribute("y2", String(to.y + 25));
+    const first = position.get([edge.from, edge.to].sort()[0]), second = position.get([edge.from, edge.to].sort()[1]);
+    const length = Math.hypot(second.x - first.x, second.y - first.y) || 1;
+    const dx = -(second.y - first.y) / length * offset, dy = (second.x - first.x) / length * offset;
+    line.setAttribute("x1", String(from.x + 72 + dx)); line.setAttribute("y1", String(from.y + 25 + dy));
+    line.setAttribute("x2", String(to.x + 72 + dx)); line.setAttribute("y2", String(to.y + 25 + dy));
     line.setAttribute("class", "relationship-edge");
     const presentation = relationPresentation(edge);
     line.setAttribute("stroke-dasharray", presentation.dash);

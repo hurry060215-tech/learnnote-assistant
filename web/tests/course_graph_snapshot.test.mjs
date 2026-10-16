@@ -328,3 +328,28 @@ test("late catalog response cannot replace a snapshot preview opened while catal
   await h.find("[data-graph-snapshot-reexport]").click();
   assert.equal(h.downloads.length, old, "Closed tools cannot reexport");
 });
+
+
+test("parallel quoted and inferred edges remain separately visible, including reverse direction", () => {
+  const h = harness(), value = graph();
+  const original = {...value.edges[0], kind:"source_assertion"};
+  value.edges = [original, {...original, kind:"inferred"}, {...original, from:original.to, to:original.from, kind:"inferred"}];
+  h.root.append(h.context.relationshipGraph(value));
+  const lines = h.nodes("line");
+  assert.equal(lines.length, 3);
+  assert.equal(new Set(lines.map(line => line.getAttribute("y1"))).size, 3);
+  assert.deepEqual(lines.map(line => line.getAttribute("stroke-dasharray")), ["", "2 4", "2 4"]);
+  const single = harness(); single.root.append(single.context.relationshipGraph({...value,edges:[original]}));
+  assert.equal(single.nodes("line")[0].getAttribute("y1"), "41");
+});
+
+
+test("many parallel graph lanes stay inside the node-height band", () => {
+  const h = harness(), value = graph();
+  value.edges = Array.from({length:50}, (_, index) => ({...value.edges[0], kind:index % 2 ? "inferred" : "source_assertion"}));
+  h.root.append(h.context.relationshipGraph(value));
+  const ys = h.nodes("line").map(line => Number(line.getAttribute("y1")));
+  assert.equal(new Set(ys).size,50);
+  assert.equal(Math.max(...ys) - Math.min(...ys),32);
+  assert(ys.every(y => y >= 25 && y <= 57));
+});

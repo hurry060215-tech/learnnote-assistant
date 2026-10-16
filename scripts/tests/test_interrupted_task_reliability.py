@@ -84,3 +84,60 @@ class InterruptedTaskReliabilityTests(unittest.TestCase):
         paths = [line.strip() for line in workflow.splitlines() if line.strip().startswith('build/reliability/interrupted-local-task/')]
         self.assertEqual(paths, ['build/reliability/interrupted-local-task/*.json',
                                  'build/reliability/interrupted-local-task/*.log'])
+
+
+class InterruptedNetworkGuardTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('interrupted_guard', ROOT / 'scripts/interrupted-task-reliability.py')
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+
+    def test_self_pipe_requires_exact_code_socket_and_listener_endpoint(self):
+        from types import SimpleNamespace
+        sock, code = object(), object()
+        local = {'csock': sock, 'lsock': SimpleNamespace(getsockname=lambda: ('127.0.0.1', 43210)),
+                 'addr': '127.0.0.1', 'port': 43210}
+        frame = SimpleNamespace(f_code=code, f_locals=local)
+        check = self.module.is_socketpair_self_pipe
+        self.assertTrue(check(sock, ('127.0.0.1', 43210), frame, code))
+        self.assertFalse(check(sock, ('127.0.0.1', 43210), frame, object()))
+        self.assertFalse(check(sock, ('127.0.0.1', 43210), frame, None))
+        self.assertFalse(check(object(), ('127.0.0.1', 43210), frame, code))
+        for target in [('127.0.0.1', 43211), ('localhost', 43210), ('203.0.113.1', 443)]:
+            self.assertFalse(check(sock, target, frame, code))
+        for host in ['203.0.113.1', 'localhost', '0.0.0.0']:
+            local.update(addr=host, lsock=SimpleNamespace(getsockname=lambda: (host, 43210)))
+            self.assertFalse(check(sock, (host, 43210), frame, code))
+
+    def test_guard_denies_service_connections_in_main_and_concurrent_thread(self):
+        import socket
+        from concurrent.futures import ThreadPoolExecutor
+        from unittest.mock import patch
+        original = (socket.create_connection, socket.socket.connect, socket.socket.connect_ex)
+        with patch.object(socket, 'create_connection', original[0]), \
+             patch.object(socket.socket, 'connect', original[1]), \
+             patch.object(socket.socket, 'connect_ex', original[2]):
+            self.module.install_network_guard()
+            def assert_denied():
+                for endpoint in [('203.0.113.1', 443), ('api.deepseek.com', 443), ('127.0.0.1', 80), ('::1', 80)]:
+                    with self.assertRaisesRegex(AssertionError, 'Network is forbidden'):
+                        socket.create_connection(endpoint)
+                    with socket.socket() as sock:
+                        with self.assertRaisesRegex(AssertionError, 'Network is forbidden'):
+                            sock.connect(endpoint)
+                        with self.assertRaisesRegex(AssertionError, 'Network is forbidden'):
+                            sock.connect_ex(endpoint)
+            assert_denied()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(assert_denied).result()
+            # On Windows exercise the exact stdlib fallback used by Proactor.
+            if sys.platform == 'win32':
+                left, right = socket._fallback_socketpair()
+                try:
+                    left.sendall(b'synthetic-self-pipe')
+                    self.assertEqual(right.recv(64), b'synthetic-self-pipe')
+                finally:
+                    left.close()
+                    right.close()
+            assert_denied()
+        self.assertEqual((socket.create_connection, socket.socket.connect, socket.socket.connect_ex), original)

@@ -24,15 +24,45 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def worker(output: Path, mode: str, duration: int):
-    sys.path.insert(0, str(ROOT / 'backend'))
-    # Fail closed if an unexpected provider/network route is reached.
+def is_socketpair_self_pipe(sock, address, caller, fallback_code):
+    """Recognize only CPython's private loopback socketpair handshake.
+
+    Windows asyncio needs this TCP self-pipe. An ordinary localhost connect,
+    even during startup, is still forbidden; the caller, client identity and
+    freshly bound listener endpoint must all match the stdlib implementation.
+    """
+    if fallback_code is None or caller.f_code is not fallback_code:
+        return False
+    local = caller.f_locals
+    if local.get('csock') is not sock or local.get('lsock') is None:
+        return False
+    endpoint = local['lsock'].getsockname()[:2]
+    return (endpoint[0] in ('127.0.0.1', '::1') and endpoint[1] > 0
+            and address == endpoint == (local.get('addr'), local.get('port')))
+
+
+def install_network_guard():
     import socket
+    original_connect = socket.socket.connect
+    fallback_code = getattr(getattr(socket, '_fallback_socketpair', None), '__code__', None)
+
     def denied(*args, **kwargs):
         raise AssertionError('Network is forbidden in interrupted-task reliability')
+
+    def guarded_connect(sock, address):
+        if is_socketpair_self_pipe(sock, address, sys._getframe(1), fallback_code):
+            return original_connect(sock, address)
+        return denied()
+
     socket.create_connection = denied
-    socket.socket.connect = denied
+    socket.socket.connect = guarded_connect
     socket.socket.connect_ex = denied
+
+
+def worker(output: Path, mode: str, duration: int):
+    sys.path.insert(0, str(ROOT / 'backend'))
+    # No service connections; only the stdlib Windows asyncio self-pipe.
+    install_network_guard()
     from fastapi import BackgroundTasks
     from app import processor
     from app.config import DATA_DIR
@@ -138,6 +168,7 @@ def worker(output: Path, mode: str, duration: int):
                   'recovery_strategy': 'same task restarted through local pipeline; checkpoint artifacts may be recomputed',
                   'same_media_and_transcript_hashes': True, 'repeat_recovery_dispatched': 0,
                   'summary_source': final.summary_source, 'network_calls_allowed': False,
+                  'internal_socketpair_only': True,
                   'asr_attempted': False, 'summary_provider': 'deterministic test fixture',
                   'not_tested': ['remote model', 'ASR', 'authenticated website', 'OS power loss']}
         (output / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')

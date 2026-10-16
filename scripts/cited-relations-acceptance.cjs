@@ -34,6 +34,8 @@ module.exports = async function ({page, api, base, out, restoreMaterial}) {
     await page.locator('.relationship-graph > summary').click();
     assert.equal(await page.locator('.relationship-edge[stroke-dasharray=""]').count(),1);
     assert.equal(await page.locator('.relationship-edge[stroke-dasharray="2 4"]').count(),1);
+    const edgePositions = await page.locator('.relationship-edge').evaluateAll(lines => lines.map(line => ['x1','y1','x2','y2'].map(key => line.getAttribute(key)).join(',')));
+    assert.equal(new Set(edgePositions).size,2,'Quoted and inferred edges must not overlap');
     for (const width of [390,768,1280,1440]) {
       await page.setViewportSize({width,height:1000});
       for (const dark of [false,true]) {
