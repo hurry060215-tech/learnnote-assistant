@@ -208,6 +208,16 @@ rejected, closed, and stale-request states without automatic requests or retries
 Empty states name the missing content and give a relevant next action; keep them
 within the same surface grid. Avoid adding decorative cards around every line.
 
+The source panel keeps the original-page link outside the virtual transcript
+scroll area. Supported timestamp links are explicitly labeled; Bilibili's
+documented external player is named separately from the original page. Unknown
+page formats retain the unchanged original link and disclose a manual timestamp.
+Source navigation uses existing text, link and spacing styles, without a new
+color system. Playback preserves a focused virtual subtitle button and its scroll
+position; automatic following resumes after focus leaves only if Follow remains
+enabled. Current subtitle buttons expose `aria-current="time"` as well as the
+existing visible selection. Explicit Home/End/arrow navigation remains bounded.
+
 ## Motion and accessibility
 
 Preserve the motion that communicates state:

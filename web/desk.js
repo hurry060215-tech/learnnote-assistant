@@ -13,15 +13,15 @@ import { installLayout } from "/web/desk-layout.js";
 import { installNoteEditor } from "/web/desk-note-controls.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
-import { sourceVideoEmbed } from "/web/source-video.js";
+import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=timeline-navigation-20261016";
 import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
-import { createTranscriptWindow } from "/web/transcript-window.js";
+import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-focus-20261016";
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
-import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
+import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
-import { installTools } from "/web/desk-tools.js?v=course-upgrade-20261016";
+import { installTools } from "/web/desk-tools.js?v=course-timeline-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";
@@ -39,6 +39,7 @@ let renderedCues = [],
   activeCueIndex = -1,
   sourceCueRender = null,
   sourceWindowRender = null,
+  sourcePageRender = null,
   sourceCueCleanup = null;
 const state = {
   items: [],
@@ -794,6 +795,7 @@ function closeSource({ cancelEvidence = true } = {}) {
   sourceCueCleanup = null;
   sourceCueRender = null;
   sourceWindowRender = null;
+  sourcePageRender = null;
   if ($("sourceWindow")) { $("sourceWindow").replaceChildren(); $("sourceWindow").hidden = true; }
   delete $("sourcePanel").dataset.sourceKey;
   delete $("sourcePanel").dataset.sourceTaskId;
@@ -889,6 +891,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   panel.dataset.sourceTaskId = s.kind === "task" ? s.id : "";
   document.body.classList.add("source-open");
   const seek = () => {
+    sourcePageRender?.(seconds ?? Number(player.currentTime || 0));
     if (s.kind === "task" && s.id === state.selected?.id) claimTimeline.sync(seconds ?? Number(player.currentTime || 0), { scroll: false });
     sourceWindowRender?.(seconds ?? Number(player.currentTime || 0), target.windowId || "");
     if (s.kind === "material" && target.evidenceId && !highlightMaterialSource($("sourceContent"), target.evidenceId)) {
@@ -899,15 +902,20 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
       remote.src = sourceVideoEmbed(s.page_url, Number(seconds || 0), Number(s.learning_range?.start || 0));
     }
     if (seconds === undefined) return;
-    if (sourceCueRender) sourceCueRender(seconds);
     if (transcript) transcript.open = true;
+    if (sourceCueRender) {
+      sourceCueRender(seconds);
+      return;
+    }
     if (renderedCues.length) {
       const cue =
         renderedCues.findLast((item) => Number(item.dataset.time) <= seconds) ||
         renderedCues[0];
-      renderedCues.forEach((item) =>
-        item.classList.toggle("active", item === cue),
-      );
+      renderedCues.forEach((item) => {
+        item.classList.toggle("active", item === cue);
+        if (item === cue) item.setAttribute("aria-current", "time");
+        else item.removeAttribute("aria-current");
+      });
       const content = $("sourceContent"),
         box = content.getBoundingClientRect();
       content.scrollTop += cue.getBoundingClientRect().top - box.top - 8;
@@ -927,6 +935,13 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   sourceCueCleanup = null;
   sourceCueRender = null;
   sourceWindowRender = null;
+  let pageContainer = $("sourcePageLinks");
+  if (!pageContainer) {
+    pageContainer = document.createElement("p"); pageContainer.id = "sourcePageLinks";
+    (transcript || $("sourceContent")).before(pageContainer);
+  }
+  sourcePageRender = createSourcePageView({ container: pageContainer, source: s, navigation: sourcePageNavigation, timestamp });
+  sourcePageRender(seconds);
   let windowContainer = $("sourceWindow");
   if (!windowContainer) {
     windowContainer = document.createElement("section"); windowContainer.id = "sourceWindow";
@@ -975,14 +990,13 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     sourceCueRender = null;
     if (cues.length > 160) {
       const content = $("sourceContent");
-      content.innerHTML = s.page_url
-        ? '<a href="' + esc(/^https?:/.test(s.page_url) ? s.page_url : "#") + '" target="_blank" rel="noreferrer">打开原网页 ↗</a>'
-        : "";
+      content.replaceChildren();
       const viewport = document.createElement("div");
       viewport.className = "virtual-cues";
       content.append(viewport);
       const cueWindow = createTranscriptWindow({
         content, viewport, cues, timestamp,
+        followEnabled: () => Boolean($("followTranscript")?.checked),
         onRender: (buttons) => { renderedCues = buttons; activeCueIndex = -1; },
       });
       sourceCueRender = cueWindow.render;
@@ -998,9 +1012,6 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
       return;
     }
     $("sourceContent").innerHTML =
-      (s.page_url
-        ? `<a href="${esc(/^https?:/.test(s.page_url) ? s.page_url : "#")}" target="_blank" rel="noreferrer">打开原网页 ↗</a>`
-        : "") +
       cues
         .map(
           (c) =>
@@ -1029,14 +1040,20 @@ $("player").addEventListener("timeupdate", () => {
   const time = $("player").currentTime;
   if ($("sourcePanel").hidden || $("player").hidden || $("sourcePanel").dataset.contentMode !== "transcript") return;
   sourceWindowRender?.(time);
+  sourcePageRender?.(time);
   claimTimeline.sync(time);
-  if (sourceCueRender && $("followTranscript")?.checked) sourceCueRender(time);
+  if (sourceCueRender) {
+    sourceCueRender(time, undefined, { automatic: true });
+    return;
+  }
   const index = renderedCues.findLastIndex(
     (c) => Number(c.dataset.time) <= time,
   );
   if (index === activeCueIndex) return;
   renderedCues[activeCueIndex]?.classList.remove("active");
+  renderedCues[activeCueIndex]?.removeAttribute("aria-current");
   renderedCues[index]?.classList.add("active");
+  renderedCues[index]?.setAttribute("aria-current", "time");
   activeCueIndex = index;
   const cue = renderedCues[index];
   if (cue && $("followTranscript")?.checked && cue.getClientRects().length) {

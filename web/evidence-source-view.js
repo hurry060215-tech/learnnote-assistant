@@ -37,6 +37,28 @@ export function createSourceWindowView({ container, source, asset, timestamp, on
   };
 }
 
+export function createSourcePageView({ container, source, navigation, timestamp, document: doc = document }) {
+  const original = doc.createElement("a"), timed = doc.createElement("a"), hint = doc.createElement("small"), separator = doc.createElement("span");
+  original.textContent = "打开原网页 ↗";
+  separator.textContent = " · ";
+  for (const link of [original, timed]) { link.target = "_blank"; link.rel = "noopener noreferrer"; }
+  container.replaceChildren(original, separator, timed, hint);
+  return seconds => {
+    const target = navigation(source, seconds);
+    container.hidden = !target;
+    if (!target) return;
+    original.href = target.originalHref;
+    timed.hidden = !target.timedHref;
+    separator.hidden = !target.timedHref && !target.reason;
+    if (target.timedHref) {
+      timed.href = target.timedHref;
+      timed.textContent = `${target.provider === "Bilibili" ? "在 Bilibili 播放器打开" : "在原网页打开"} ${timestamp(target.seconds)} ↗`;
+    }
+    hint.textContent = target.reason === "invalid_time" ? "原视频时间信息无效，请打开原网页核对。"
+      : target.reason === "manual" ? `此页面没有已确认的时间跳转格式，请打开原网页后手动定位到 ${timestamp(target.seconds)}。` : "";
+  };
+}
+
 const materialViews = new WeakMap();
 export function renderMaterialSource(container, text, anchors) {
   container.replaceChildren();

@@ -51,7 +51,7 @@ var {
   mergeResource,
 } = globalThis.LearnNoteCaptureRanking;
 
-var { bestPageTitle, buildSourceIdentity, sourceIdentityMatches } = globalThis.LearnNoteSourceIdentity;
+var { bestPageTitle, buildSourceIdentity, sourceIdentityMatches, seekPageUrlMatches, isValidSeekSourceIdentity } = globalThis.LearnNoteSourceIdentity;
 var { hasByteRangeRequest, requestHeadersForUrl, addActiveVideoRequestContext, safePersistedRequestHeaders, requestBodyHasContent, safePersistedRequestBody, looksLikeMediaRequest, normalizeRequestHeaders, requestBodyFromFormData, requestBodyFromRaw, responseHeadersObject, responseResolvedUrl, requestContextUrl, responseResource } = globalThis.LearnNoteRequestContext;
 var { cookieLookupDetailsForUrls, cookieContextSummary, cookieUrlsForContext } = globalThis.LearnNoteCookieContext;
 var { cookiePartitionKeysForContext, cookiesForUrls } = globalThis.LearnNoteCookieContext.createCookieContext({ getCookies: () => chrome.cookies });
@@ -543,6 +543,7 @@ function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
     page_url: page.page_url || tab.url || "",
     page_text: page.page_text || "",
     active_video: page.active_video || null,
+    seek_token: String(page.seek_token || ""),
     browser_subtitles: normalizeBrowserSubtitles(page.browser_subtitles),
     chapters: Array.isArray(page.chapters) ? page.chapters.slice(0, 200) : [],
     resources: Array.isArray(page.resources) ? page.resources : [],
@@ -719,6 +720,7 @@ function mergePageContexts(tab = {}, pages = []) {
     page_url: tab.url || top.page_url || activePage?.page_url || "",
     page_text: textParts.join("\n\n--- iframe ---\n\n").slice(0, 60000),
     active_video: activePage?.active_video || null,
+    seek_token: activePage?.seek_token || "",
     browser_subtitles: browserSubtitles.sort((a, b) => a.start - b.start || a.end - b.end),
     chapters: activePage?.chapters || top.chapters || [],
     drm_detected: ordered.some(page => page.drm_detected || page.active_video?.drm_detected) || drmSignals.length > 0,
@@ -1107,7 +1109,7 @@ async function collectFramePageData(tab, frameId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
-        files: ["capture-classification.js", "content-study-evidence.js", "content-media-hints.js", "content.js"]
+        files: ["capture-classification.js", "source-identity.js", "content-study-evidence.js", "content-media-hints.js", "content.js"]
       });
       const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
       const page = rememberFramePage(tab.id, frameId, response, tab);
@@ -1625,21 +1627,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "seek-current-video") {
-      const tab = await tabForMessage(message);
-      if (message.expectedUrl && String(tab.url || "").split("#")[0] !== String(message.expectedUrl).split("#")[0]) {
-        sendResponse({ok:false,error:"视频页面已切换，请刷新字幕后再跳转。"});
+      const seconds = message.seconds;
+      if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+        sendResponse({ ok: false, error: "无效的视频时间点。", code: "invalid_seek_time" });
         return;
       }
-      const seconds = Number(message.seconds);
-      if (!Number.isFinite(seconds) || seconds < 0) {
-        sendResponse({ ok: false, error: "无效的视频时间点。" });
+      const targetTabId = message.targetTabId;
+      const identity = message.sourceIdentity;
+      if (!Number.isSafeInteger(targetTabId) || targetTabId < 0
+        || !isValidSeekSourceIdentity(identity) || identity.tab_id !== targetTabId) {
+        sendResponse({ ok: false, error: "视频页面已切换，请刷新字幕后再跳转。", code: "stale_source_identity" });
+        return;
+      }
+      // Seeking must never use tabForMessage's active-tab fallback.
+      let tab;
+      try { tab = await chrome.tabs.get(targetTabId); } catch { /* Original tab was closed. */ }
+      if (!tab || tab.id !== targetTabId) {
+        sendResponse({ ok: false, error: "视频页面已切换，请刷新字幕后再跳转。", code: "source_tab_unavailable" });
+        return;
+      }
+      if (!seekPageUrlMatches(identity.page_url, tab.url)
+        || identity.canonical_page_url !== buildSourceIdentity(tab).canonical_page_url) {
+        sendResponse({ ok: false, error: "视频页面已切换，请刷新字幕后再跳转。", code: "stale_source_identity" });
         return;
       }
       try {
-        const result = await chrome.tabs.sendMessage(tab.id, { type: "seek-current-video", seconds });
-        sendResponse(result || { ok: true });
+        const result = await chrome.tabs.sendMessage(tab.id,
+          { type: "seek-current-video", seconds, sourceIdentity: identity },
+          { frameId: identity.active_video.frame_id });
+        sendResponse(result?.ok === true ? result : {
+          ok: false, error: result?.error || "当前页面暂不支持定位视频。", code: result?.code || "seek_unconfirmed"
+        });
       } catch (error) {
-        sendResponse({ ok: false, error: error?.message || "当前页面暂不支持定位视频。" });
+        sendResponse({ ok: false, error: error?.message || "当前页面暂不支持定位视频。", code: "seek_unavailable" });
       }
       return;
     }

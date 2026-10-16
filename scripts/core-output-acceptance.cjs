@@ -33,7 +33,7 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
       window.testSeeks=[];
       const cues=Array.from({length:30},(_,i)=>({start:i*10,end:i*10+9,text:i===20?'关键词：音乐需要与角色的情绪相连。':`第 ${i+1} 句，来自视频的原始字幕，保留上下文和时间。`}));
       window.chrome={storage:{local:{get:async defaults=>({...defaults,backendUrl:'http://127.0.0.1:18956'}),set:async()=>{}}},tabs:{query:async()=>[{id:12,url}],get:async()=>({id:12,url})},runtime:{onMessage:{addListener:()=>{}},sendMessage:async message=>{
-        if(message.type==='get-current-context')return {tab:{id:12,url,title:'验收视频 · 音乐创作'},page:{page_url:url,title:'验收视频 · 音乐创作',active_video:{src:'https://example.test/video.mp4',duration:300,paused:false},browser_subtitles:cues},resources:[]};
+        if(message.type==='get-current-context')return {tab:{id:12,url,title:'验收视频 · 音乐创作'},page:{page_url:url,title:'验收视频 · 音乐创作',active_video:{current_src:'https://example.test/video.mp4',frame_id:0,frame_url:url,duration:300,paused:false},seek_token:'fixture-video-document',browser_subtitles:cues},resources:[]};
         if(message.type==='seek-current-video'){window.testSeeks.push(message);return {ok:true};}
         if(message.type==='preflight-current-page')return {report:{ok:true,ready:true}};
         return {};
@@ -47,10 +47,14 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     await ext.locator('#subtitleSearch').fill('关键词');
     const cue=ext.locator('#sourcePreviewContent [data-seek-time]');
     await cue.waitFor();assert.equal(await cue.count(),1);await cue.click();
-    assert.equal((await ext.evaluate(()=>window.testSeeks))[0].seconds,200);
-    assert.match((await ext.evaluate(()=>window.testSeeks))[0].expectedUrl,/av117233128837493/);
+    const seekMessage=(await ext.evaluate(()=>window.testSeeks))[0];
+    assert.equal(seekMessage.seconds,200);assert.equal(seekMessage.targetTabId,12);
+    assert.equal(seekMessage.sourceIdentity.tab_id,12);
+    assert.match(seekMessage.sourceIdentity.page_url,/av117233128837493/);
+    assert.equal(seekMessage.sourceIdentity.canonical_page_url,seekMessage.sourceIdentity.page_url);
+    assert.deepEqual(seekMessage.sourceIdentity.active_video,{current_src:'https://example.test/video.mp4',frame_id:0,frame_url:seekMessage.sourceIdentity.page_url,seek_token:'fixture-video-document'});
     assert(await ext.locator('.brand-mark').evaluate(image => image.complete && image.naturalWidth > 0));
     await ext.screenshot({path:path.join(out,'extension-preview.png'),fullPage:true});
-    assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['profile stats and mobile layout','no automatic model downloads','explicit model prepare','subtitle paragraphs and search','source-bound timestamp seek','no page errors'],out},null,2));
+    assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['profile stats and mobile layout','no automatic model downloads','explicit model prepare','subtitle paragraphs and search','mocked source-bound timestamp message','no page errors'],out},null,2));
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

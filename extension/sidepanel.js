@@ -162,10 +162,23 @@ function bindQuickSeek(container) {
 }
 async function seekSourceVideo(seconds) {
   const status = document.querySelector("#sourceSeekStatus");
-  if (!HAS_EXTENSION_API || !displayedIdentity?.tab_id) return;
+  if (!HAS_EXTENSION_API || !Number.isSafeInteger(displayedIdentity?.tab_id)) return;
+  const active = currentContext?.page?.active_video || {};
+  const sourceIdentity = {
+    tab_id: displayedIdentity.tab_id,
+    canonical_page_url: displayedIdentity.canonical_page_url,
+    platform_video_id: displayedIdentity.platform_video_id || displayedIdentity.BVID || "",
+    page_url: currentContext?.tab?.url || currentContext?.page?.page_url || "",
+    active_video: {
+      ...displayedIdentity.active_video,
+      frame_id: active.frame_id ?? 0,
+      frame_url: active.frame_url || currentContext?.page?.page_url || "",
+      seek_token: currentContext?.page?.seek_token || ""
+    }
+  };
   try {
-    const result = await chrome.runtime.sendMessage({type:"seek-current-video", targetTabId:displayedIdentity.tab_id,
-      expectedUrl:currentContext?.tab?.url || currentContext?.page?.page_url, seconds});
+    const result = await chrome.runtime.sendMessage({ type: "seek-current-video", targetTabId: displayedIdentity.tab_id,
+      sourceIdentity, seconds });
     if (!result?.ok) throw new Error(productMessage(result?.error) || t("ui_return_to_the_original_video_page_and_try_again"));
     if (status) status.textContent = t("seek_position", { time: formatCueTime(seconds) });
   } catch (error) { if (status) status.textContent = productMessage(error.message) || t("ui_unable_to_seek_open_the_original_video"); }

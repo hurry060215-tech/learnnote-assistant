@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-const source=readFileSync(new URL('../source-video.js',import.meta.url),'utf8');
+const rangeModule='data:text/javascript;base64,'+Buffer.from(readFileSync(new URL('../range-source.js',import.meta.url))).toString('base64');
+const source=readFileSync(new URL('../source-video.js',import.meta.url),'utf8').replace(/"\/web\/range-source\.js\?v=[^"]+"/,JSON.stringify(rangeModule));
 const {sourceVideoEmbed}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const av=new URL(sourceVideoEmbed('https://www.bilibili.com/video/av117233128837493?p=2',81));
 assert.equal(av.searchParams.get('aid'),'117233128837493');

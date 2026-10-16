@@ -156,9 +156,45 @@ function sourceIdentityMatches(expected, actual) {
   return Boolean(expectedUrl || actualUrl || expectedVideoId || actualVideoId || expectedSrc || actualSrc);
 }
 
+// Seek is stricter than task continuity: a displayed timestamp belongs to one
+// exact page/frame and video element. Never accept missing identity evidence.
+function seekPageUrlMatches(expected, actual) {
+  if (typeof expected !== "string" || !expected || typeof actual !== "string" || !actual) return false;
+  try { return new URL(expected).href === new URL(actual).href; } catch { return false; }
+}
+
+function isValidSeekSourceIdentity(identity) {
+  const active = identity?.active_video;
+  return Boolean(identity && Number.isSafeInteger(identity.tab_id) && identity.tab_id >= 0
+    && typeof identity.canonical_page_url === "string" && identity.canonical_page_url
+    && seekPageUrlMatches(identity.page_url, identity.page_url)
+    && active && Number.isSafeInteger(active.frame_id) && active.frame_id >= 0
+    && seekPageUrlMatches(active.frame_url, active.frame_url)
+    && typeof active.current_src === "string" && active.current_src.trim()
+    && typeof active.seek_token === "string" && active.seek_token);
+}
+
+function seekSourceIdentityMatches(expected, pageUrl, activeVideo = {}) {
+  if (!isValidSeekSourceIdentity(expected)) return false;
+  const active = expected.active_video;
+  if (!seekPageUrlMatches(active.frame_url, pageUrl)) return false;
+  if (active.frame_id === 0) {
+    if (!seekPageUrlMatches(expected.page_url, pageUrl)) return false;
+    const actual = buildSourceIdentity({ id: expected.tab_id }, { page_url: pageUrl });
+    if (expected.canonical_page_url !== actual.canonical_page_url) return false;
+    if (String(expected.platform_video_id || expected.BVID || "") !== actual.platform_video_id) return false;
+  }
+  const actualSrc = String(activeVideo.current_src || activeVideo.src || "").trim();
+  return Boolean(actualSrc && active.seek_token === activeVideo.seek_token
+    && stableSourceMediaUrl(active.current_src) === stableSourceMediaUrl(actualSrc));
+}
+
 root.LearnNoteSourceIdentity = Object.freeze({
   bestPageTitle,
   buildSourceIdentity,
   sourceIdentityMatches,
+  seekPageUrlMatches,
+  isValidSeekSourceIdentity,
+  seekSourceIdentityMatches,
 });
 })(globalThis);

@@ -88,6 +88,14 @@ const PLAYER_UI_SUBTITLE_MARKERS = [
 ];
 const VISIBLE_SUBTITLE_ATTR_RE = /^(data-|aria-|role$|lang$|srclang$|class$|id$|title$)/i;
 const VISIBLE_SUBTITLE_ROLE_RE = /^(log|status|marquee)$/i;
+// Opaque, in-memory provenance only: no page data, storage, observers or network.
+const seekDocumentToken = globalThis.crypto?.randomUUID?.() || `${Date.now()}:${Math.random()}`;
+const seekTokenByVideo = new WeakMap();
+let seekVideoSequence = 0;
+function videoSeekToken(video) {
+  if (!seekTokenByVideo.has(video)) seekTokenByVideo.set(video, `${seekDocumentToken}:${++seekVideoSequence}`);
+  return seekTokenByVideo.get(video);
+}
 const boundVideos = new WeakSet();
 const boundTextTracks = new WeakSet();
 const boundTextTrackLists = new WeakSet();
@@ -1168,6 +1176,7 @@ function activeVideoInfo() {
   const visibility = elementVisibilityEvidence(video);
   return {
     src: absoluteUrl(video.currentSrc || video.src),
+    seek_token: videoSeekToken(video),
     poster_url: absoluteUrl(video.poster || readAttribute(video, "poster")),
     ...srcObject,
     ...captureStream,
@@ -1625,6 +1634,8 @@ function collectPageData(forceFullScan = false) {
     byUrl.set(item.url, mergePageResource(byUrl.get(item.url), item));
   }
   const active = activeVideoInfo();
+  const seekToken = active?.seek_token || "";
+  if (active) delete active.seek_token;
   const drm = collectDrmSignals();
   const browserSubtitles = collectBrowserSubtitles();
   return {
@@ -1632,6 +1643,7 @@ function collectPageData(forceFullScan = false) {
     page_url: location.href,
     page_text: collectCourseText(forceFullScan),
     active_video: active,
+    seek_token: seekToken,
     browser_subtitles: browserSubtitles,
     chapters: collectChapterEvidence(),
     drm_detected: Boolean(active?.drm_detected || drm.length),
@@ -1801,10 +1813,22 @@ function installPerformanceObserver() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "seek-current-video") {
-    const seconds = Number(message.seconds);
+    const seconds = message.seconds;
+    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+      sendResponse({ ok: false, error: "无效的视频时间点。", code: "invalid_seek_time" });
+      return;
+    }
     const video = pickMainVideo(collectVideos())?.video || null;
-    if (!video || !Number.isFinite(seconds) || seconds < 0) {
-      sendResponse({ ok: false, error: "当前页面没有可定位的视频。" });
+    if (!video) {
+      sendResponse({ ok: false, error: "当前页面没有可定位的视频。", code: "stale_source_identity" });
+      return;
+    }
+    // Recheck synchronously on the exact element we will seek. Navigation or a
+    // same-URL player replacement after the background check must fail closed.
+    if (!globalThis.LearnNoteSourceIdentity?.seekSourceIdentityMatches(message.sourceIdentity, location.href, {
+      current_src: absoluteUrl(video.currentSrc || video.src), seek_token: videoSeekToken(video)
+    })) {
+      sendResponse({ ok: false, error: "视频页面已切换，请刷新字幕后再跳转。", code: "stale_source_identity" });
       return;
     }
     try {

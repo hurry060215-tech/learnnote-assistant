@@ -1,0 +1,11 @@
+{
+  "baseline": "e8c114604f4b10b1eb0524520607af9de8f68dd0",
+  "originalTabId": 11,
+  "originalUrl": "https://www.bilibili.com/video/BV1ABCDEF123/?p=1",
+  "activeTab": {
+    "id": 22,
+    "url": "https://www.bilibili.com/video/BV1ABCDEF123/?p=1"
+  },
+  "originalTabClosed": true,
+  "expectedCode": "source_tab_unavailable"
+}

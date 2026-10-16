@@ -4,7 +4,7 @@ import { mountSupportSummary } from "/web/support-summary.js";
 import { mountScreenSubtitles } from "/web/screen-subtitles.js";
 import { mountMaterialCatalogRecovery } from "/web/material-catalog-recovery.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
-import { fullVideoSource, requestedRangeDuration } from "/web/range-source.js?v=logical-range-20261016";
+import { fullVideoSource, requestedRangeDuration } from "/web/range-source.js?v=decimal-range-20261016";
 import { localPlaybackPosition, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";

@@ -1,11 +1,21 @@
 /* Real default UI, local HTTP assets and generated silence; no model calls. */
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { assertTranscriptKeyboardAcceptance } = require("./transcript-keyboard-acceptance.cjs");
+const { assertNativeTimelineZoom } = require("./timeline-native-zoom-acceptance.cjs");
 async function main() {
   const { chromium } = require("playwright"), base = process.argv[2] || "http://127.0.0.1:8765";
   const out = path.resolve(process.argv[3] || "build/evidence-source-ui"); fs.mkdirSync(out, { recursive: true });
-  const fixture = JSON.parse(execFileSync("python", ["scripts/seed-evidence-navigation.py"], { encoding: "utf8" }));
+  const fixture = JSON.parse(execFileSync("python", ["scripts/seed-evidence-navigation.py", "--source-page-fallbacks"], { encoding: "utf8" }));
   const browser = await chromium.launch({ channel: "msedge", headless: true }), page = await browser.newPage();
+  const interceptedProviderRequests = [], unexpectedRequests = [], origin = new URL(base).origin;
+  await page.context().route("**/*", async route => {
+    const url = new URL(route.request().url());
+    if (url.origin === origin || ["data:", "blob:"].includes(url.protocol)) return route.continue();
+    if (["https://player.bilibili.com", "https://www.youtube.com", "https://youtu.be", "https://course.example.test"].includes(url.origin)) interceptedProviderRequests.push(url.href);
+    else unexpectedRequests.push(url.href);
+    return route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Synthetic provider placeholder</title><p>No external platform request was sent.</p>" });
+  });
   const errors = []; page.on("pageerror", error => errors.push(error.message)); page.setDefaultTimeout(15000);
   const api = async (route, options) => { const response = await page.request.fetch(new URL(route, base).href, options); assert(response.ok(), `${route}: ${response.status()} ${await response.text()}`); return response.json(); };
   let course;
@@ -26,8 +36,12 @@ async function main() {
     page.on("request", recordWrite);
     await page.locator("#player").evaluate(async player => { player.currentTime = 9.8; player.muted = true; player.playbackRate = 2; await player.play(); });
     await page.waitForFunction(id => document.querySelector(`.note-claim-marker[data-claim-id="${id}"]`)?.getAttribute("aria-current") === "true", fixture.claim_ids[1]);
+    assert.match(await page.locator("#sourceContent .cue.active").innerText(), /Second synthetic window/);
+    assert.equal(await page.locator("#sourceWindow figure").getAttribute("data-window-id"), "window-2");
+    assert.equal(await page.locator("#player").evaluate(player => player.paused), false, "All three evidence tracks follow actual playback");
     await page.locator("#player").evaluate(player => player.pause());
     page.off("request", recordWrite); assert.deepEqual(playbackWrites, [], "Playback position is not sent as telemetry");
+    const transcriptKeyboard = await assertTranscriptKeyboardAcceptance(page, { taskId: fixture.task_id, out });
     await seek(12);
     await page.waitForFunction(id => document.querySelector(`.note-claim-marker[data-claim-id="${id}"]`)?.getAttribute("aria-current") === "true", fixture.claim_ids[1]);
     assert.equal(await marker(fixture.claim_ids[0]).getAttribute("aria-current"), null);
@@ -92,6 +106,7 @@ async function main() {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), "No horizontal overflow at 200% CSS zoom");
     await page.screenshot({ path: path.join(out, "claim-timeline-200-percent.png"), fullPage: true });
     await page.evaluate(() => document.body.style.zoom = "");
+    const nativeZoom = await assertNativeTimelineZoom({ base, taskId: fixture.task_id, claimId: fixture.claim_ids[1], out });
     await page.locator("#edit").click();
     assert.equal(await page.locator("#document .note-claim-marker").count(), 0);
     await page.locator("#noteText").fill("# Edited synthetic note\n\nThis revision has no matching saved claim spans.");
@@ -104,6 +119,32 @@ async function main() {
     assert.equal(await page.locator("#player").isVisible(), false);
     assert.match(await page.locator("#sourceContent .cue.active").innerText(), /Second synthetic window/);
     await page.screenshot({ path: path.join(out, "subtitle-only-claim.png"), fullPage: true });
+    const fallbackResults = [];
+    for (const item of fixture.fallback_tasks || []) {
+      await page.locator(`[data-id="${item.id}"][data-kind="task"]`).first().click();
+      await marker(item.claim_id).click();
+      assert.equal(await page.locator("#player").isVisible(), false);
+      const links = page.locator("#sourcePageLinks a"), original = links.nth(0), timed = links.nth(1);
+      assert.equal(await original.getAttribute("href"), item.page_url);
+      assert.equal(await original.getAttribute("rel"), "noopener noreferrer");
+      assert.match(await page.locator("#sourceContent .cue.active").innerText(), /Second synthetic window/);
+      let href = "";
+      if (item.provider === "generic") {
+        assert.equal(await timed.isVisible(), false);
+        assert.match(await page.locator("#sourcePageLinks").innerText(), /手动定位到 0:10/);
+      } else {
+        href = await timed.getAttribute("href"); const url = new URL(href);
+        assert.equal(url.searchParams.get("t"), item.provider === "range" ? "315s" : item.provider === "youtube" ? "10s" : "10");
+        if (item.provider === "bilibili") { assert.equal(url.searchParams.get("p"), "3"); assert.equal(url.searchParams.get("bvid"), "BV1ABCDEF123"); }
+        if (item.provider === "youtube") { assert.equal(url.searchParams.get("v"), "M7lc1UVf-VE"); assert.equal(url.searchParams.get("index"), "2"); }
+      }
+      await (item.provider === "generic" ? original : timed).focus();
+      const popupPromise = page.waitForEvent("popup"); await page.keyboard.press("Enter");
+      const popup = await popupPromise; await popup.waitForLoadState("domcontentloaded");
+      assert.equal(popup.url(), href || item.page_url); await popup.close();
+      await page.screenshot({ path: path.join(out, `subtitle-only-fallback-${item.provider}.png`), fullPage: true });
+      fallbackResults.push({provider:item.provider, original_page_retained:true, keyboard_opened:true, timed_link:href, generic_manual_time:item.provider === "generic"});
+    }
     // A delayed old map must not insert markers into a newer source, even when its prose is identical.
     let releaseMap, intercepted;
     const interceptedMap = new Promise(resolve => intercepted = resolve);
@@ -120,13 +161,20 @@ async function main() {
     assert.equal(await marker(fixture.claim_ids[1]).count(), 0);
 
     assert.deepEqual(errors, []);
+    assert.deepEqual(unexpectedRequests, []);
     const report = { passed: true, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), browser: browser.version(), playback_window_follow: true, claim_note_follow: true, real_local_playback: true, playback_writes: playbackWrites, repeated_disjoint_intervals: true, edited_note_rejected: true, stale_map_navigation_rejected: true, subtitle_only_claim: true, question_shared_anchor: true, keyboard_focus_preserved: true, layouts, css_zoom_percent: 200, card_window_id: "window-2", card_timestamp: 10, asset_width: 480, page_errors: errors, native_webview_tested: false };
     report.centered_reading = centeredReading;
+    report.transcript_keyboard = transcriptKeyboard;
+    report.native_browser_zoom = nativeZoom;
+    report.subtitle_only_fallbacks = fallbackResults;
+    report.intercepted_provider_requests = interceptedProviderRequests;
+    report.external_platform_requests_sent = 0;
+    report.unexpected_requests = unexpectedRequests;
     fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));
   } finally {
     await page.request.delete(new URL(`/api/study/cards/${fixture.card_id}?confirm=delete_card`, base).href).catch(() => {});
     if (course) await page.request.delete(new URL(`/api/courses/${course.id}`, base).href).catch(() => {});
-    for (const id of [fixture.task_id, fixture.subtitle_task_id]) await page.request.delete(new URL(`/api/tasks/${id}?confirm=delete_task`, base).href).catch(() => {});
+    for (const id of [fixture.task_id, fixture.subtitle_task_id, ...(fixture.fallback_tasks || []).map(item => item.id)]) await page.request.delete(new URL(`/api/tasks/${id}?confirm=delete_task`, base).href).catch(() => {});
     await browser.close();
   }
 }

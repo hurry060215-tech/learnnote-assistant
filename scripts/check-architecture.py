@@ -49,7 +49,7 @@ MODULE_SIZE_LIMITS = {
     "extension/background.js": 1800,
     "extension/content.js": 1850,
     "extension/content-study-evidence.js": 110,
-    "extension/source-identity.js": 170,
+    "extension/source-identity.js": 200,  # #139: exact tab/frame/document seek identity.
     "extension/request-context.js": 260,
     "extension/cookie-context.js": 230,
     "extension/backend-transport.js": 125,
@@ -154,7 +154,8 @@ EXTRACTED_BACKEND_MODULES = (
     "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance",
     "deferred_task_consent",
 )
-EXTENSION_SCRIPT_BUDGET_BYTES = 335000
+# #139 adds independently reviewed seek identity checks; see ISSUE_TIMELINE_SYNC_20261009.md.
+EXTENSION_SCRIPT_BUDGET_BYTES = 339500
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")
 CLASSIC_TASK_SCRIPT_BUDGET = 10100
 CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js")

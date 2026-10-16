@@ -85,6 +85,26 @@ no_media_map = build_claim_evidence_map(no_media_id, "Synthetic subtitles", note
 save_task(TaskRecord(id=no_media_id, title="Synthetic subtitles", source_type="local", mode="local", status="success",
     phase="completed", note_path=str(no_media_root / "note.md"), transcript_path=str(no_media_root / "transcript.json"),
     created_at=now_iso(), updated_at=now_iso()))
+# Public-shaped addresses are synthetic identifiers only. The browser acceptance
+# intercepts all external requests before opening any of these source panels.
+fallback_tasks = []
+for provider, page_url, selected_range in ((
+    ("youtube", "https://www.youtube.com/watch?v=M7lc1UVf-VE&list=PLfixture&index=2", {}),
+    ("bilibili", "https://www.bilibili.com/video/BV1ABCDEF123?p=3", {}),
+    ("range", "https://youtu.be/M7lc1UVf-VE", {"start": 5, "end": 36, "original_start": 305, "original_end": 336}),
+    ("generic", "https://course.example.test/lesson?chapterId=2#section", {}),
+) if "--source-page-fallbacks" in sys.argv else ()):
+    fallback_id = "navigation-fallback-" + uuid4().hex[:12]
+    fallback_root = TASK_DIR / fallback_id
+    fallback_root.mkdir()
+    (fallback_root / "note.md").write_text(note_text, encoding="utf-8")
+    (fallback_root / "transcript.json").write_text(json.dumps(transcript_data), encoding="utf-8")
+    mapped = build_claim_evidence_map(fallback_id, "Synthetic " + provider, note_text, TranscriptResult.model_validate(transcript_data))
+    (fallback_root / "claim_evidence_map.json").write_text(json.dumps(mapped), encoding="utf-8")
+    save_task(TaskRecord(id=fallback_id, title="Synthetic " + provider, source_type="local", mode="local", status="success",
+        phase="completed", page_url=page_url, learning_range=selected_range, note_path=str(fallback_root / "note.md"),
+        transcript_path=str(fallback_root / "transcript.json"), created_at=now_iso(), updated_at=now_iso()))
+    fallback_tasks.append({"id": fallback_id, "provider": provider, "page_url": page_url, "claim_id": mapped["claims"][1]["claim_id"]})
 print(json.dumps({"task_id": task_id, "evidence_id": evidence.evidence_id, "card_id": card.card_id,
     "claim_ids": [claim["claim_id"] for claim in claim_map["claims"]], "subtitle_task_id": no_media_id,
-    "subtitle_claim_ids": [claim["claim_id"] for claim in no_media_map["claims"]]}))
+    "subtitle_claim_ids": [claim["claim_id"] for claim in no_media_map["claims"]], "fallback_tasks": fallback_tasks}))

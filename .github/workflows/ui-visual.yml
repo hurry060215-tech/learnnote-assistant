@@ -313,7 +313,7 @@ jobs:
             extension_source = "unpacked checkout"
             data = "synthetic local fixtures only"
             exit_code = $smokeExit
-            scope = "heartbeat, content injection, MP4/HLS, POST request, iframe/cookie context, Side Panel handoff"
+            scope = "heartbeat, content injection, MP4/HLS, POST request, iframe/cookie context, Side Panel handoff, real timestamp seek and stale-source rejection"
             excluded = "real accounts, native optional-permission prompt, store install or upgrade, long-task recovery"
           } | ConvertTo-Json | Set-Content -Encoding UTF8 build/extension-smoke/report.json
           if ($smokeExit -ne 0) { throw "Real Edge extension smoke failed" }

@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import socket
@@ -268,11 +269,14 @@ def eval_service_worker(cdp: CdpWebSocket, expression: str, timeout: float = 90)
     return json.loads(value)
 
 
-def wait_for_page_target(debug_port: int, target_url: str, timeout_seconds: float = 15) -> dict:
+def wait_for_page_target(
+    debug_port: int, target_url: str, timeout_seconds: float = 15, *, exclude_target_ids: set[str] | None = None
+) -> dict:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         for target in debug_json(debug_port, "/json/list"):
-            if target.get("type") == "page" and target.get("url") == target_url:
+            if (target.get("type") == "page" and target.get("url") == target_url
+                    and target.get("id") not in (exclude_target_ids or set())):
                 return target
         time.sleep(0.25)
     raise RuntimeError(f"Timed out waiting for browser target: {target_url}")
@@ -516,6 +520,257 @@ async () => {{
         panel_cdp.close()
 
 
+def prepare_seek_video(cdp: CdpWebSocket, seconds: float, *, captions: bool = False, replace: bool = False) -> None:
+    # Fixture setup only. The positive seek below must come from a real cue click.
+    eval_service_worker(cdp, f"""
+async () => {{
+  let video = document.querySelector("video");
+  if (!video) throw new Error("synthetic seek video missing");
+  video.pause();
+  video.removeAttribute("autoplay");
+  if ({json.dumps(replace)}) {{
+    const replacement = video.cloneNode(true);
+    video.replaceWith(replacement);
+    video = replacement;
+    video.load();
+  }}
+  const deadline = Date.now() + 10000;
+  while (video.readyState < 2 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  if (video.readyState < 2 || video.duration < 7) throw new Error("synthetic seek video did not load");
+  video.currentTime = {json.dumps(seconds)};
+  while (video.seeking && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  if (video.seeking) throw new Error("synthetic seek setup did not settle");
+  if ({json.dumps(captions)}) {{
+    const track = video.addTextTrack("subtitles", "Synthetic seek smoke", "en");
+    track.mode = "hidden";
+    for (const [start, end, text] of [[0, 2, "Synthetic opening"], [3, 5, "Synthetic seek target"], [6, 7, "Synthetic ending"]]) {{
+      track.addCue(new VTTCue(start, end, text));
+    }}
+  }}
+  const state = {{ video, plays: 0, seeks: 0 }};
+  video.addEventListener("play", () => state.plays++);
+  video.addEventListener("seeking", () => state.seeks++);
+  globalThis.__learnnoteSeekVideo = state;
+  return {{ ready: true }};
+}}
+""")
+
+
+def read_seek_video(cdp: CdpWebSocket) -> dict:
+    return eval_page(cdp, """(() => {
+  const state = globalThis.__learnnoteSeekVideo;
+  const video = document.querySelector("video");
+  return { currentTime: video.currentTime, paused: video.paused, seeking: video.seeking,
+    currentSrc: video.currentSrc, pageUrl: location.href, plays: state.plays, seeks: state.seeks,
+    sameElement: video === state.video };
+})()""")
+
+
+def assert_seek_video(state: dict, seconds: float, label: str) -> None:
+    if (not isinstance(state.get("currentTime"), (int, float))
+            or not math.isfinite(state["currentTime"]) or abs(state["currentTime"] - seconds) > 0.05
+            or state.get("paused") is not True or state.get("seeking") is not False
+            or state.get("plays") != 0 or state.get("sameElement") is not True):
+        raise AssertionError(f"{label}: unexpected synthetic playback state: {state}")
+
+
+def assert_seek_unchanged(before: dict, after: dict, label: str) -> None:
+    assert_seek_video(after, before["currentTime"], label)
+    if any(after.get(key) != before.get(key) for key in ("currentSrc", "pageUrl", "plays", "seeks", "sameElement")):
+        raise AssertionError(f"{label}: synthetic playback changed during rejected seek")
+
+
+def assert_seek_binding(message: dict, tab_id: int, page_url: str, media_url: str) -> None:
+    parsed = urllib.parse.urlsplit(page_url)
+    query = urllib.parse.urlencode([(key, value) for key, value in urllib.parse.parse_qsl(parsed.query) if key != "seek-smoke"])
+    canonical_page_url = urllib.parse.urlunsplit(parsed._replace(query=query))
+    identity = message.get("sourceIdentity") or {}
+    active = identity.get("active_video") or {}
+    if (message.get("type") != "seek-current-video" or message.get("seconds") != 3
+            or message.get("targetTabId") != tab_id or identity.get("tab_id") != tab_id
+            or identity.get("page_url") != page_url or identity.get("canonical_page_url") != canonical_page_url
+            or active.get("frame_id") != 0
+            or active.get("frame_url") != page_url or active.get("current_src") != media_url
+            or not isinstance(active.get("seek_token"), str) or not active["seek_token"]):
+        # Never include the observed message or opaque token in diagnostics.
+        raise AssertionError("real timestamp click did not bind the expected tab/frame/source")
+
+
+def replay_rejected_seek(panel_cdp: CdpWebSocket, message: dict, code: str, watched: dict[str, CdpWebSocket]) -> None:
+    before = {label: read_seek_video(page) for label, page in watched.items()}
+    result = eval_service_worker(panel_cdp, f"""
+async () => {{
+  const result = await chrome.runtime.sendMessage({json.dumps(message)});
+  await new Promise(resolve => setTimeout(resolve, 200));
+  return {{ ok: result?.ok, code: result?.code }};
+}}
+""")
+    if result.get("ok") is not False or result.get("code") != code:
+        raise AssertionError(f"seek rejection expected {code}, received {result}")
+    for label, page in watched.items():
+        assert_seek_unchanged(before[label], read_seek_video(page), label)
+
+
+def check_sidepanel_seek(cdp: CdpWebSocket, debug_port: int, samples: str) -> None:
+    """Real extension listeners and DOM cue; stale-message replay only for negatives."""
+    page_url = f"{samples}/mp4.html?seek-smoke=1&p=1"
+    owned_tabs: list[int] = []
+    connections: list[CdpWebSocket] = []
+    try:
+        source_id = open_extension_tabs(cdp, [page_url])[page_url]
+        owned_tabs.append(source_id)
+        source_target = wait_for_page_target(debug_port, page_url)
+        source = CdpWebSocket(source_target["webSocketDebuggerUrl"])
+        connections.append(source)
+        prepare_seek_video(source, 0, captions=True)
+
+        twin_id = open_extension_tabs(cdp, [page_url])[page_url]
+        owned_tabs.append(twin_id)
+        twin_target = wait_for_page_target(debug_port, page_url, exclude_target_ids={source_target["id"]})
+        twin = CdpWebSocket(twin_target["webSocketDebuggerUrl"])
+        connections.append(twin)
+        prepare_seek_video(twin, 1)
+        source_before, twin_before = read_seek_video(source), read_seek_video(twin)
+        assert_seek_video(source_before, 0, "source setup")
+        assert_seek_video(twin_before, 1, "identical twin setup")
+        if source_before["pageUrl"] != twin_before["pageUrl"] or source_before["currentSrc"] != twin_before["currentSrc"]:
+            raise AssertionError("seek twin must have identical page and media URLs")
+
+        opened = eval_service_worker(cdp, f"""
+async () => {{
+  // Observe without answering, returning true, or replacing any browser API.
+  const requests = [];
+  const listener = message => {{
+    if (message?.type === "seek-current-video") requests.push(JSON.parse(JSON.stringify(message)));
+  }};
+  globalThis.__learnnoteSeekObserver = {{ requests, listener }};
+  chrome.runtime.onMessage.addListener(listener);
+  await chrome.tabs.update({source_id}, {{ active: true }});
+  const url = chrome.runtime.getURL("sidepanel.html?seek-smoke=1");
+  const panel = await chrome.tabs.create({{ url, active: false }});
+  return {{ id: panel.id, url }};
+}}
+""")
+        owned_tabs.append(int(opened["id"]))
+        panel_target = wait_for_page_target(debug_port, opened["url"])
+        panel = CdpWebSocket(panel_target["webSocketDebuggerUrl"])
+        connections.append(panel)
+        # Open the real preview and require a laid-out timestamp button. No
+        # production state, context, rendering, or sendMessage API is replaced.
+        clicked = eval_service_worker(panel, """
+async () => {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const preview = document.querySelector("#sourcePreviewCard");
+    const button = document.querySelector('#sourcePreviewContent [data-seek-time="3"]');
+    if (preview && !preview.hidden && button && !button.disabled) {
+      preview.open = true;
+      button.closest("details").open = true;
+      button.scrollIntoView({ block: "center" });
+      const rect = button.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        button.click();
+        return { clicked: true };
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return { clicked: false };
+}
+""")
+        if not clicked.get("clicked"):
+            raise AssertionError("real Side Panel timestamp was not rendered/clickable")
+        deadline = time.time() + 10
+        state = read_seek_video(source)
+        while (abs(state["currentTime"] - 3) > 0.05 or state["seeking"]) and time.time() < deadline:
+            time.sleep(0.1)
+            state = read_seek_video(source)
+        time.sleep(0.2)
+        state = read_seek_video(source)
+        assert_seek_video(state, 3, "real timestamp click")
+        if state["pageUrl"] != page_url or state["currentSrc"] != source_before["currentSrc"]:
+            raise AssertionError("real timestamp click changed the source page or media")
+        if state["seeks"] < 1:
+            raise AssertionError("real timestamp click did not emit a media seeking event")
+        assert_seek_unchanged(twin_before, read_seek_video(twin), "identical twin after real click")
+        observed = eval_service_worker(cdp, "async () => ({ requests: globalThis.__learnnoteSeekObserver.requests })")
+        if len(observed["requests"]) != 1:
+            raise AssertionError("expected exactly one observed real timestamp request")
+        message = observed["requests"][0]  # Memory only: never serialize to logs/artifacts.
+        assert_seek_binding(message, source_id, page_url, f"{samples}/media/sample.mp4")
+        print(f"PASS real Side Panel timestamp -> paused video: tab={source_id} frame=0 seconds=3 source_bound=true twin_unchanged=true")
+
+        watched = {"original": source, "identical twin": twin}
+        for invalid in (-1, None, "3"):
+            replay_rejected_seek(panel, {**message, "seconds": invalid}, "invalid_seek_time", watched)
+        part_url = page_url.replace("p=1", "p=2")
+        for url in (part_url, page_url):
+            eval_page(source, f"(() => {{ history.replaceState(null, '', {json.dumps(url)}); return {{ changed: true }}; }})()")
+            eval_service_worker(cdp, f"""
+async () => {{
+  const deadline = Date.now() + 5000;
+  while ((await chrome.tabs.get({source_id})).url !== {json.dumps(url)}) {{
+    if (Date.now() > deadline) throw new Error("synthetic part URL did not update");
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }}
+  return {{ ready: true }};
+}}
+""")
+            if url == part_url:
+                replay_rejected_seek(panel, message, "stale_source_identity", watched)
+        prepare_seek_video(source, 0, replace=True)
+        replacement = read_seek_video(source)
+        if replacement["pageUrl"] != page_url or replacement["currentSrc"] != source_before["currentSrc"]:
+            raise AssertionError("replacement must preserve the same page and media URLs")
+        replay_rejected_seek(panel, message, "stale_source_identity", watched)
+        twin_state = eval_service_worker(cdp, f"""
+async () => {{
+  await chrome.tabs.remove({source_id});
+  await chrome.tabs.update({twin_id}, {{ active: true }});
+  const twin = await chrome.tabs.get({twin_id});
+  return {{ active: twin.active, url: twin.url }};
+}}
+""")
+        owned_tabs.remove(source_id)
+        # This is the original regression: only the identical-URL twin survives.
+        if not twin_state["active"] or twin_state["url"] != page_url:
+            raise AssertionError("closed-tab rejection requires the identical twin to be active")
+        replay_rejected_seek(panel, message, "source_tab_unavailable", {"identical twin": twin})
+        assert_seek_unchanged(twin_before, read_seek_video(twin), "identical twin after all rejected seeks")
+        print("PASS real seek rejection: invalid time, changed part, same-URL replacement, closed original; identical twin unchanged")
+    finally:
+        primary_failure = sys.exc_info()[1]
+        cleanup_errors = []
+        for index, connection in enumerate(connections):
+            try:
+                connection.close()
+            except Exception:  # Attempt every owned connection and retain the primary failure.
+                cleanup_errors.append(f"connection {index}")
+        try:
+            cleanup = eval_service_worker(cdp, f"""
+async () => {{
+  const failures = [];
+  const observer = globalThis.__learnnoteSeekObserver;
+  try {{ if (observer) chrome.runtime.onMessage.removeListener(observer.listener); }}
+  catch {{ failures.push("observer"); }}
+  delete globalThis.__learnnoteSeekObserver;
+  for (const id of {json.dumps(owned_tabs)}) {{
+    try {{ await chrome.tabs.remove(id); }} catch {{ failures.push("owned tab " + id); }}
+  }}
+  return {{ cleaned: failures.length === 0 }};
+}}
+""")
+            if not cleanup.get("cleaned"):
+                cleanup_errors.append("observer/owned tabs")
+        except Exception:
+            cleanup_errors.append("observer/owned tabs transport")
+        if cleanup_errors:
+            detail = ", ".join(cleanup_errors)  # No messages, URLs or opaque tokens.
+            if primary_failure is None:
+                raise RuntimeError(f"Seek smoke cleanup failed: {detail}")
+            print(f"Seek smoke cleanup also failed ({detail}); retaining the primary failure")
+
+
 def run_browser_checks(cdp: CdpWebSocket, debug_port: int, backend: str, samples: str) -> None:
     mp4_page = f"{samples}/mp4.html"
     hls_page = f"{samples}/hls.html"
@@ -533,6 +788,8 @@ def run_browser_checks(cdp: CdpWebSocket, debug_port: int, backend: str, samples
     print(f"PASS Side Panel click -> client task: {sidepanel['taskId']} progress={sidepanel['progress']}")
     mp4_task = start_extension_download_only_task(cdp, backend, tab_ids[mp4_page], mp4)
     print(f"PASS extension start download_only mp4: {mp4_task.get('id')} -> {mp4_task.get('media_path')}")
+
+    check_sidepanel_seek(cdp, debug_port, samples)
 
     hls_context = collect_extension_context(cdp, hls_page, tab_ids[hls_page])
     hls = assert_resource(hls_context, "hls", lambda item: "/hls/master.m3u8" in item.get("url", "") and item.get("kind") == "hls")
