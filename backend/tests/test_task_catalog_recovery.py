@@ -1,5 +1,5 @@
 """Task-only rescue preserves original bytes and never fabricates documents."""
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 import hashlib
 import json
 import os
@@ -125,11 +125,13 @@ class TaskCatalogRecoveryTests(unittest.TestCase):
                 self.assertEqual(sidecar.read_bytes(), b"unresolved transaction")
                 sidecar.unlink()
         self.db.unlink()
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute("CREATE TABLE unknown_document (identity TEXT)")
             db.execute("INSERT INTO unknown_document VALUES ('keep-me')")
             page = db.execute("SELECT rootpage FROM sqlite_master WHERE name='unknown_document'").fetchone()[0]
             size = db.execute("PRAGMA page_size").fetchone()[0]
+        with self.assertRaises(sqlite3.ProgrammingError):
+            db.execute("SELECT 1")  # Closed before corrupting bytes or Windows cleanup.
         raw = bytearray(self.db.read_bytes())
         raw[(page - 1) * size] = 0  # Corrupt only table data; schema remains readable.
         self.db.write_bytes(raw)
