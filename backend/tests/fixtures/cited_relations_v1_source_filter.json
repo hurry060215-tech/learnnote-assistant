@@ -1,0 +1,351 @@
+{
+  "unfiltered": {
+    "format": "learnnote.cited-relations",
+    "schema_version": 1,
+    "scope": {
+      "kind": "library"
+    },
+    "members": [
+      {
+        "source": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c",
+          "title": "synthetic"
+        },
+        "status": "ready",
+        "canonical_owner": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c"
+        },
+        "owner_revision": "0ccce4dfef8dee11c25b0f94b12b92ec79e102e217d675c70437775e90a7a7a6",
+        "eligible": 1,
+        "excluded": 0,
+        "missing": 0
+      },
+      {
+        "source": {
+          "kind": "task",
+          "id": "9ef14134af7a",
+          "title": ""
+        },
+        "status": "ready",
+        "canonical_owner": {
+          "kind": "task",
+          "id": "9ef14134af7a"
+        },
+        "owner_revision": "bddf4f5c1d5355930a030214028edb9491f47cf883bfe2b6224a646c2cbcf367",
+        "eligible": 1,
+        "excluded": 0,
+        "missing": 0
+      }
+    ],
+    "evidence": [
+      {
+        "evidence_id": "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+        "source_type": "markdown",
+        "title": "synthetic",
+        "source_uri": "local://materials/fc85d41200f5408996efb10ddea0ad2c",
+        "locator": "section 1",
+        "text": "Gradient descent requires gradients.",
+        "task_id": "",
+        "schema_version": 1,
+        "metadata": {
+          "kind": "material",
+          "material_id": "fc85d41200f5408996efb10ddea0ad2c",
+          "source_revision": "cd0caf1a54b8ba66bf60cbcdc770ef5ddd1a11d10a00ddcfc482649f083a006c"
+        },
+        "course_source": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c",
+          "title": "synthetic"
+        },
+        "canonical_owner": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c"
+        },
+        "original_fingerprint": "8ad85459cb56bf3f2cc68680c647a45c2c41d760d54cd6adca8676c926ef40a5",
+        "redacted_fields": [
+          "metadata"
+        ],
+        "snapshot_fingerprint": "940fc61cdf50a26825fb303876c84a638a5a01248ed3133285c1680b4aac32bd",
+        "source_identity": "3960cd18639e203b09dea6f504391a0680f3997188de81659c746576ca17476f"
+      },
+      {
+        "evidence_id": "video",
+        "source_type": "video",
+        "title": "Synthetic video",
+        "source_uri": "local://tasks/9ef14134af7a",
+        "locator": "12-18s",
+        "text": "Gradient descent requires gradients.",
+        "task_id": "9ef14134af7a",
+        "schema_version": 1,
+        "metadata": {
+          "kind": "transcript",
+          "start": 12,
+          "end": 18
+        },
+        "course_source": {
+          "kind": "task",
+          "id": "9ef14134af7a",
+          "title": "Synthetic video"
+        },
+        "canonical_owner": {
+          "kind": "task",
+          "id": "9ef14134af7a"
+        },
+        "original_fingerprint": "f320082477f58233a11649320901a228dd8ad2490ee94017754e63e825710fa7",
+        "redacted_fields": [],
+        "snapshot_fingerprint": "5b94b221b5ab47af18e4d530bfb4dde2e38bb3cb1dc5b3a2205d091d8ab05096",
+        "source_identity": "0ea1d4bdfc0e487ab269e03c221295af634d3acdf63631d27aa2253750e53d63"
+      }
+    ],
+    "history": {
+      "schema_version": 1,
+      "course_id": "00000000000000000000000000000000",
+      "events": []
+    },
+    "graph": {
+      "mode": "local_cited_relations",
+      "query": "",
+      "filters": {
+        "source_id": "",
+        "source_kind": "",
+        "start": null,
+        "end": null
+      },
+      "nodes": [
+        {
+          "id": "concept-55e6aff28a63c1c1eb6c036e",
+          "label": "gradient descent",
+          "spellings": [
+            "Gradient descent"
+          ],
+          "evidence_ids": [
+            "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+            "video"
+          ],
+          "normalization": "NFC_whitespace_casefold_only",
+          "meaning_verified": false,
+          "identity_groups": []
+        },
+        {
+          "id": "concept-5ff2c7851aecf39060839405",
+          "label": "gradients",
+          "spellings": [
+            "gradients"
+          ],
+          "evidence_ids": [
+            "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+            "video"
+          ],
+          "normalization": "NFC_whitespace_casefold_only",
+          "meaning_verified": false,
+          "identity_groups": []
+        }
+      ],
+      "edges": [
+        {
+          "id": "relation-f464b70d25a87b64145db800",
+          "from": "concept-55e6aff28a63c1c1eb6c036e",
+          "to": "concept-5ff2c7851aecf39060839405",
+          "predicate": "requires",
+          "kind": "source_assertion",
+          "relation": "same_quoted_assertion",
+          "truth_verified": false,
+          "evidence_ids": [
+            "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+            "video"
+          ],
+          "citations": [
+            {
+              "evidence_id": "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+              "title": "synthetic",
+              "locator": "section 1",
+              "source": {
+                "kind": "material",
+                "id": "fc85d41200f5408996efb10ddea0ad2c"
+              },
+              "source_identity": "3960cd18639e203b09dea6f504391a0680f3997188de81659c746576ca17476f",
+              "source_type": "markdown",
+              "source_uri": "local://materials/fc85d41200f5408996efb10ddea0ad2c",
+              "anchors": {
+                "kind": "material",
+                "material_id": "fc85d41200f5408996efb10ddea0ad2c",
+                "source_revision": "cd0caf1a54b8ba66bf60cbcdc770ef5ddd1a11d10a00ddcfc482649f083a006c"
+              },
+              "standalone": true,
+              "quote": "Gradient descent requires gradients.",
+              "quote_start": 0,
+              "quote_end": 36,
+              "polarity": "positive"
+            },
+            {
+              "evidence_id": "video",
+              "title": "Synthetic video",
+              "locator": "12-18s",
+              "source": {
+                "kind": "task",
+                "id": "9ef14134af7a"
+              },
+              "source_identity": "0ea1d4bdfc0e487ab269e03c221295af634d3acdf63631d27aa2253750e53d63",
+              "source_type": "video",
+              "source_uri": "local://tasks/9ef14134af7a",
+              "anchors": {
+                "kind": "transcript",
+                "start": 12,
+                "end": 18
+              },
+              "standalone": true,
+              "quote": "Gradient descent requires gradients.",
+              "quote_start": 0,
+              "quote_end": 36,
+              "polarity": "positive"
+            }
+          ]
+        }
+      ],
+      "counts": {
+        "scanned_evidence": 2,
+        "filtered_evidence": 2,
+        "nodes": 2,
+        "edges": 1
+      },
+      "coverage": "supported_simple_sentences_only",
+      "inference": false,
+      "normalization": "NFC_whitespace_casefold_only",
+      "warning": "原文陈述仅证明出处含有这些文字，不证明内容真实。否定差异是待核对推断，不等于已证实冲突；不同来源也不保证作者独立。词形归一不证明同义。"
+    },
+    "provenance": "Local indexed sources only. Digests prove internal consistency, not source authenticity or truth. Text and titles are retained; URLs and metadata use the existing graph export redaction policy.",
+    "digest": "56a8a69f2d882f2ba6b590fd97fb4016ce70c037566e78eeeff0d35fb7c54b9d"
+  },
+  "selected_source": {
+    "format": "learnnote.cited-relations",
+    "schema_version": 1,
+    "scope": {
+      "kind": "library"
+    },
+    "members": [
+      {
+        "source": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c",
+          "title": "synthetic"
+        },
+        "status": "ready",
+        "canonical_owner": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c"
+        },
+        "owner_revision": "0ccce4dfef8dee11c25b0f94b12b92ec79e102e217d675c70437775e90a7a7a6",
+        "eligible": 1,
+        "excluded": 0,
+        "missing": 0
+      },
+      {
+        "source": {
+          "kind": "task",
+          "id": "9ef14134af7a",
+          "title": ""
+        },
+        "status": "ready",
+        "canonical_owner": {
+          "kind": "task",
+          "id": "9ef14134af7a"
+        },
+        "owner_revision": "bddf4f5c1d5355930a030214028edb9491f47cf883bfe2b6224a646c2cbcf367",
+        "eligible": 1,
+        "excluded": 0,
+        "missing": 0
+      }
+    ],
+    "evidence": [
+      {
+        "evidence_id": "material-fc85d41200f5408996efb10ddea0ad2c-0001",
+        "source_type": "markdown",
+        "title": "synthetic",
+        "source_uri": "local://materials/fc85d41200f5408996efb10ddea0ad2c",
+        "locator": "section 1",
+        "text": "Gradient descent requires gradients.",
+        "task_id": "",
+        "schema_version": 1,
+        "metadata": {
+          "kind": "material",
+          "material_id": "fc85d41200f5408996efb10ddea0ad2c",
+          "source_revision": "cd0caf1a54b8ba66bf60cbcdc770ef5ddd1a11d10a00ddcfc482649f083a006c"
+        },
+        "course_source": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c",
+          "title": "synthetic"
+        },
+        "canonical_owner": {
+          "kind": "material",
+          "id": "fc85d41200f5408996efb10ddea0ad2c"
+        },
+        "original_fingerprint": "8ad85459cb56bf3f2cc68680c647a45c2c41d760d54cd6adca8676c926ef40a5",
+        "redacted_fields": [
+          "metadata"
+        ],
+        "snapshot_fingerprint": "940fc61cdf50a26825fb303876c84a638a5a01248ed3133285c1680b4aac32bd",
+        "source_identity": "3960cd18639e203b09dea6f504391a0680f3997188de81659c746576ca17476f"
+      },
+      {
+        "evidence_id": "video",
+        "source_type": "video",
+        "title": "Synthetic video",
+        "source_uri": "local://tasks/9ef14134af7a",
+        "locator": "12-18s",
+        "text": "Gradient descent requires gradients.",
+        "task_id": "9ef14134af7a",
+        "schema_version": 1,
+        "metadata": {
+          "kind": "transcript",
+          "start": 12,
+          "end": 18
+        },
+        "course_source": {
+          "kind": "task",
+          "id": "9ef14134af7a",
+          "title": "Synthetic video"
+        },
+        "canonical_owner": {
+          "kind": "task",
+          "id": "9ef14134af7a"
+        },
+        "original_fingerprint": "f320082477f58233a11649320901a228dd8ad2490ee94017754e63e825710fa7",
+        "redacted_fields": [],
+        "snapshot_fingerprint": "5b94b221b5ab47af18e4d530bfb4dde2e38bb3cb1dc5b3a2205d091d8ab05096",
+        "source_identity": "0ea1d4bdfc0e487ab269e03c221295af634d3acdf63631d27aa2253750e53d63"
+      }
+    ],
+    "history": {
+      "schema_version": 1,
+      "course_id": "00000000000000000000000000000000",
+      "events": []
+    },
+    "graph": {
+      "mode": "local_cited_relations",
+      "query": "",
+      "filters": {
+        "source_id": "9ef14134af7a",
+        "source_kind": "",
+        "start": null,
+        "end": null
+      },
+      "nodes": [],
+      "edges": [],
+      "counts": {
+        "scanned_evidence": 2,
+        "filtered_evidence": 1,
+        "nodes": 0,
+        "edges": 0
+      },
+      "coverage": "supported_simple_sentences_only",
+      "inference": false,
+      "normalization": "NFC_whitespace_casefold_only",
+      "warning": "原文陈述仅证明出处含有这些文字，不证明内容真实。否定差异是待核对推断，不等于已证实冲突；不同来源也不保证作者独立。词形归一不证明同义。"
+    },
+    "provenance": "Local indexed sources only. Digests prove internal consistency, not source authenticity or truth. Text and titles are retained; URLs and metadata use the existing graph export redaction policy.",
+    "digest": "62b030e178ef3bda76fe1d49b7a1f994eed29f0084c7b94b74cc7cee2a08dc81"
+  }
+}

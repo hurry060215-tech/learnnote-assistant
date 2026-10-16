@@ -82,6 +82,7 @@ class ConceptRelationSourceTests(unittest.TestCase):
         whole = self.capture()
         scoped = self.capture(course_id=self.course["id"], revision=1)
         self.assertEqual(whole["scope"], {"kind": "library"})
+        self.assertEqual(whole["schema_version"], 2)
         self.assertEqual(len(whole["graph"]["edges"]), 1)
         self.assertEqual(whole["graph"], scoped["graph"])
         self.assertEqual(self.hashes(), before)
@@ -140,7 +141,7 @@ class ConceptRelationSourceTests(unittest.TestCase):
         self.assertEqual(self.capture(course_id=course["id"], revision=1)["graph"]["edges"], [])
 
     def test_filters_preserve_original_video_time_and_type(self):
-        for options in ({"start": 19}, {"source_id": self.task.id}, {"source_kind": "task"}, {"q": "unknown"}):
+        for options in ({"start": 19}, {"source_kind": "task"}, {"q": "unknown"}):
             self.assertEqual(self.capture(**options)["graph"]["edges"], [])
         value = self.capture(q="GRADIENT")
         citation = next(row for row in value["graph"]["edges"][0]["citations"] if row["source"]["kind"] == "task")
@@ -148,6 +149,39 @@ class ConceptRelationSourceTests(unittest.TestCase):
         self.assertEqual(citation["anchors"]["start"], 12)
         self.assertEqual(self.client.get("/api/concept-relations", params={"start": 20, "end": 5}).status_code, 409)
         self.assertEqual(self.client.get("/api/concept-relations", params={"course_id": self.course["id"], "revision": 2}).status_code, 409)
+
+    def test_selected_source_retains_counterpart_and_roundtrips_without_source_writes(self):
+        before = self.hashes()
+        for owner in (self.task.id, self.material["material_id"]):
+            value = self.capture(source_id=owner, course_id=self.course["id"], revision=1)
+            self.assertEqual(value["schema_version"], 2)
+            edge, = value["graph"]["edges"]
+            self.assertEqual({row["source"]["id"] for row in edge["citations"]}, {self.task.id, self.material["material_id"]})
+            response = self.client.post("/api/concept-relations/preview", json={"snapshot": value})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["snapshot"], value)
+        self.assertEqual(self.hashes(), before)
+
+    def test_original_v1_snapshots_keep_exact_graph_and_export_semantics(self):
+        path = Path(__file__).parent / "fixtures/cited_relations_v1_source_filter.json"
+        original = path.read_bytes()
+        before = self.hashes()
+        fixtures = json.loads(original)
+        for name, value in fixtures.items():
+            with self.subTest(name=name):
+                response = self.client.post("/api/concept-relations/preview", json={"snapshot": value})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()["snapshot"], value)
+                self.assertEqual(response.json()["graph"], value["graph"])
+        self.assertEqual(len(fixtures["unfiltered"]["graph"]["edges"]), 1)
+        self.assertEqual(fixtures["selected_source"]["graph"]["edges"], [])
+        for version in (2, 3, True):
+            changed = deepcopy(fixtures["selected_source"])
+            changed["schema_version"] = version
+            changed["digest"] = digest({key: value for key, value in changed.items() if key != "digest"})
+            self.assertEqual(self.client.post("/api/concept-relations/preview", json={"snapshot": changed}).status_code, 409)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.hashes(), before)
 
     def test_review_generated_missing_and_wrong_ownership_evidence_are_excluded(self):
         add_evidence(SourceEvidence(evidence_id="review", task_id=self.task.id, source_type="video", title="Draft", text=TEXT, locator="1-2s", metadata={"review_required": True}))

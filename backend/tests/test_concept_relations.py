@@ -96,13 +96,54 @@ class ConceptRelationTests(unittest.TestCase):
             self.assertEqual(self.graph(evidence("a", context + "\nGradient descent requires gradients."),
                                        evidence("b", "Gradient descent requires gradients."))["edges"], [])
 
-    def test_source_time_filters_and_noncanonical_evidence_are_applied_before_edges(self):
+    def test_time_type_filters_and_noncanonical_evidence_are_applied_before_edges(self):
         a, b = evidence("a", "Gradient descent requires gradients."), evidence("b", "Gradient descent requires gradients.")
-        for options in ({"source_id": "a"}, {"source_kind": "material"}, {"start": 5}, {"end": 0}):
+        for options in ({"source_kind": "material"}, {"start": 5}, {"end": 0}):
             self.assertEqual(self.graph(a, b, **options)["edges"], [])
         self.assertEqual(len(self.graph(a, b, start=2, end=3)["edges"]), 1)
         for changes in ({"source_type": "community"}, {"locator": "generated-note"}, {"metadata": {"review_required": True}}):
             self.assertEqual(self.graph(a, {**b, **changes})["edges"], [])
+
+    def test_source_filter_keeps_incident_edges_with_counterpart_citations(self):
+        rows = [evidence(key, "Gradient descent requires gradients.") for key in ("a", "b", "c")]
+        rows += [evidence(key, "An engine requires fuel.") for key in ("d", "e")]
+        for selected in ("a", "b", "c"):
+            graph = self.graph(*rows, source_id=selected)
+            self.assertEqual(len(graph["edges"]), 1)
+            edge = graph["edges"][0]
+            self.assertEqual(set(edge["evidence_ids"]), {"a", "b", "c"})
+            self.assertEqual(edge["citations"][0]["source"]["id"], selected)
+            self.assertFalse(edge["truth_verified"])
+        self.assertEqual(self.graph(*rows, source_id="absent")["edges"], [])
+
+    def test_selected_third_source_is_retained_in_opposing_pair(self):
+        rows = [evidence(key, "Gradient descent requires gradients.") for key in ("a", "b", "c")]
+        rows += [evidence(key, "Gradient descent does not require gradients.") for key in ("d", "e", "f")]
+        for selected in ("c", "f"):
+            edges = self.graph(*rows, source_id=selected)["edges"]
+            conflict = next(edge for edge in edges if edge["kind"] == "inferred")
+            self.assertIn(selected, conflict["evidence_ids"])
+            self.assertEqual(len({row["source_identity"] for row in conflict["citations"]}), 2)
+            self.assertEqual({row["polarity"] for row in conflict["citations"]}, {"positive", "negative"})
+            self.assertTrue(all(selected in edge["evidence_ids"] for edge in edges))
+
+    def test_selected_alias_is_kept_without_manufacturing_support(self):
+        a, b = evidence("a", "Gradient descent requires gradients."), evidence("b", "Gradient descent requires gradients.")
+        alias = evidence("alias", a["text"], source_identity=a["source_identity"])
+        edge = self.graph(a, b, alias, source_id="alias")["edges"][0]
+        self.assertEqual(set(edge["evidence_ids"]), {"alias", "b"})
+        self.assertEqual(self.graph(a, alias, source_id="alias")["edges"], [])
+        negative = evidence("negative", "Gradient descent does not require gradients.", source_identity=a["source_identity"])
+        self.assertEqual(self.graph(a, negative, source_id="negative")["edges"], [])
+
+    def test_source_selection_never_relaxes_other_filters_or_single_source_gate(self):
+        a, b = evidence("a", "Gradient descent requires gradients."), evidence("b", "Gradient descent requires gradients.")
+        self.assertEqual(len(self.graph(a, b, source_id="a", source_kind="task", start=2, end=3, query="gradient")["edges"]), 1)
+        for options in ({"source_kind": "material"}, {"start": 5}, {"end": 0}, {"query": "fuel"}):
+            self.assertEqual(self.graph(a, b, source_id="a", **options)["edges"], [])
+        later = evidence("later", a["text"], metadata={"start": 10, "end": 20})
+        self.assertEqual(self.graph(a, later, source_id="a", start=2, end=3)["edges"], [])
+        self.assertEqual(self.graph(a, source_id="a")["edges"], [])
 
     def test_split_and_stale_user_identity_prevent_automatic_remerging(self):
         a, b = evidence("a", "Gradient descent requires gradients."), evidence("b", "Gradient descent requires gradients.")

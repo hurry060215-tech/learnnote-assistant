@@ -52,7 +52,12 @@ module.exports = async function ({page, api, base, out, restoreMaterial}) {
     await page.setViewportSize({width:1440,height:1000}); await page.evaluate(()=>document.body.classList.remove('dark'));
     const download=page.waitForEvent('download'); await page.locator('[data-cited-relation-export]').click();
     const file=path.join(out,'cited-relations.json');await(await download).saveAs(file);assert.deepEqual(JSON.parse(fs.readFileSync(file,'utf8')),snapshot);
-    await page.locator('#relation-source_id').fill(materials[0].material_id); await generate();assert.equal(await page.locator('[data-cited-relation-kind]').count(),0);
+    await page.locator('#relation-source_id').fill(materials[0].material_id); const selected=await generate();
+    assert.equal(selected.schema_version,2);assert.equal(await page.locator('[data-cited-relation-kind]').count(),2);
+    assert(selected.graph.edges.every(edge=>edge.citations.some(citation=>citation.source.id===materials[0].material_id)));
+    assert(selected.graph.edges.every(edge=>new Set(edge.citations.map(citation=>citation.source_identity)).size>=2));
+    await page.locator('[data-cited-relation-kind]').first().scrollIntoViewIfNeeded();
+    const selectedName='cited-relations-selected-source.png';await page.screenshot({path:path.join(out,selectedName),fullPage:false});screenshots.push(selectedName);
     await page.locator('#relation-source_id').fill('');await page.locator('#relation-start').fill('10');await generate();assert.equal(await page.locator('[data-cited-relation-kind]').count(),0);
     await page.locator('#relation-start').fill('');await generate();
     const evidenceId=await page.locator('[data-cited-relation-open]').first().getAttribute('data-cited-relation-open');
@@ -71,8 +76,15 @@ module.exports = async function ({page, api, base, out, restoreMaterial}) {
     const bad=structuredClone(snapshot);bad.graph.edges[0].truth_verified=true;
     const rejected=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/concept-relations/preview');
     await fileInput.setInputFiles({name:'tampered.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bad))});assert.equal((await rejected).status(),409);assert.equal(await page.locator('[data-cited-relation-export]').count(),0);
+    const legacy=JSON.parse(fs.readFileSync(path.join(__dirname,'../backend/tests/fixtures/cited_relations_v1_source_filter.json'),'utf8')).selected_source;
+    const legacyReply=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/concept-relations/preview');
+    await fileInput.setInputFiles({name:'legacy-source-filter.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacy))});assert.equal((await legacyReply).status(),200);
+    await page.getByText('旧版文件先筛选单个来源，因此没有跨来源关系。此处保留原文件结果；需要新筛选方式时，请从本机来源重新生成。',{exact:true}).waitFor();
+    assert.equal(await page.locator('[data-cited-relation-kind]').count(),0);assert.equal(await page.locator('[data-cited-relation-open]').count(),0);
+    const legacyDownload=page.waitForEvent('download');await page.locator('[data-cited-relation-export]').click();
+    const legacyFile=path.join(out,'cited-relations-v1-reexport.json');await(await legacyDownload).saveAs(legacyFile);assert.deepEqual(JSON.parse(fs.readFileSync(legacyFile,'utf8')),legacy);
     assert.deepEqual(await Promise.all(materials.map(item=>api(`/api/library/materials/${item.material_id}/content`))),originals);
-    return {passed:true,actual_backend:true,synthetic_only:true,screenshots,checks:['course/full-library','two-source quoted vs inferred display','source/time filters','canonical source opening','lossless snapshot export/import','tamper rejection','unchanged original material']};
+    return {passed:true,actual_backend:true,synthetic_only:true,screenshots,checks:['course/full-library','two-source quoted vs inferred display','selected-source relations retain counterpart citations','source/time filters','canonical source opening','lossless snapshot export/import','legacy v1 source-filter roundtrip','tamper rejection','unchanged original material']};
   } finally {
     await close();await page.setViewportSize({width:1440,height:900});await page.evaluate(()=>document.body.classList.remove('dark'));
     if(course)await page.request.delete(new URL(`/api/courses/${course.id}`,base).href);

@@ -144,7 +144,7 @@ def capture_relations(*, course_id="", revision=None, query="", **filters):
         scope = {"kind": "course", "id": course_id, "revision": revision, "title": course["title"]} if course else {"kind": "library"}
         evidence.sort(key=lambda row: row["evidence_id"])
         graph = build_relations(evidence, history, query=query, **filters)
-        snapshot = {"format": FORMAT, "schema_version": 1, "scope": scope, "members": members, "evidence": evidence,
+        snapshot = {"format": FORMAT, "schema_version": 2, "scope": scope, "members": members, "evidence": evidence,
                     "history": history, "graph": graph, "provenance": "Local indexed sources only. Digests prove internal consistency, not source authenticity or truth. Text and titles are retained; URLs and metadata use the existing graph export redaction policy."}
         snapshot["digest"] = digest(snapshot)
         if len(encoded(snapshot)) > MAX_BYTES:

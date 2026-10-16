@@ -168,3 +168,23 @@ asserting success, exact parent/source bounds, exact cue text and the same 0.15
 second media-duration tolerance. No production threshold or helper assertion is
 relaxed. Later full-source and delayed seek/navigation checks still require the
 next hosted pass.
+
+The fourth run, `38956384233` on `cc150884d0657ba10d5fa1a751dfe309bb10ca72`,
+reached full-source upgrade, delayed metadata latest/Close/switch cases, and the
+B-source stale-clock rejection. Those retained screenshots were inspected: the
+whole source and B show 0:00/0:20, Close removes the source panel, and B's range
+dialog visibly rejects A's position. The latest-seek screenshot had scrolled the
+player out of view, so subsequent non-dialog snapshots bring a visible player
+into the viewport and retain its exact source/revision/time alongside the image.
+
+This run is still failed: an unobserved delayed-edition Playwright callback threw
+`Route is already handled!` during route removal. Node exited before the old final
+report writer ran; the [artifact retains the screenshots and backend log](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38956384233/artifacts/12071570463),
+not a completed acceptance report. The harness now settles held real requests
+before unregistering handlers, records unexpected callback rejection, and writes
+completed checks/duration samples/screenshots incrementally with `ok:false` until
+all checks pass. Only a confirmed `net::ERR_ABORTED` in the deliberate source-switch
+case is treated as cancellation; connection failures remain fatal. Deterministic
+route tests cover exactly-once release, cancellation, unexpected rejection and
+browser teardown. Product behavior, timing bounds and evidence gates are unchanged.
+The delayed-transcript and late-range-response cases still need a hosted pass.

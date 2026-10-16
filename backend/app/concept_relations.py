@@ -90,7 +90,7 @@ def _selected_identity(history: dict, item: dict, label: str):
     return groups
 
 
-def build_relations(evidence: list[dict], history: dict, *, query="", source_id="", source_kind="", start=None, end=None) -> dict:
+def build_relations(evidence: list[dict], history: dict, *, query="", source_id="", source_kind="", start=None, end=None, _legacy_source_filter=False) -> dict:
     filters = normalize_filters(source_id, source_kind, start, end)
     if not isinstance(query, str) or len(query) > 200:
         raise ValueError("invalid_comparison_query")
@@ -103,7 +103,7 @@ def build_relations(evidence: list[dict], history: dict, *, query="", source_id=
             continue
         seen.add(item["evidence_id"])
         owner = item["canonical_owner"]
-        if source_id and owner["id"] != source_id or source_kind and owner["kind"] != source_kind:
+        if (_legacy_source_filter and source_id and owner["id"] != source_id) or (source_kind and owner["kind"] != source_kind):
             continue
         bounds = time_bounds(item)
         if start is not None or end is not None:
@@ -136,6 +136,10 @@ def build_relations(evidence: list[dict], history: dict, *, query="", source_id=
             groups[(endpoints[0], assertion["predicate"], endpoints[1])][assertion["polarity"]].append(citation)
     edges = []
     def append(key, kind, relation, citations):
+        # A selected source chooses incident relations, never removes their
+        # counterpart evidence. Prefer its citation when a known alias repeats it.
+        if source_id and not _legacy_source_filter:
+            citations = sorted(citations, key=lambda row: row["source"]["id"] != source_id)
         # One canonical source contributes at most one vote, even with many
         # segments, repeated evidence or separately registered copies.
         unique, owners = {}, set()
@@ -146,7 +150,7 @@ def build_relations(evidence: list[dict], history: dict, *, query="", source_id=
             owners.add(owner)
             unique.setdefault(citation["source_identity"], citation)
         citations = list(unique.values())
-        if len(citations) < 2:
+        if len(citations) < 2 or (source_id and not any(row["source"]["id"] == source_id for row in citations)):
             return
         if len(edges) >= MAX_RELATIONS:
             raise ValueError("concept_relations_too_large")
@@ -169,7 +173,17 @@ def build_relations(evidence: list[dict], history: dict, *, query="", source_id=
         positive_sources = {row["source_identity"]: row for row in positives if row["standalone"]}
         negative_sources = {row["source_identity"]: row for row in negatives if row["standalone"]}
         pair = None
-        if positive_sources and negative_sources:
+        if source_id and not _legacy_source_filter:
+            # The default two-source pair might omit the selected third source.
+            # Keep its exact assertion and one distinct opposing source instead.
+            for selected, opposite in ((positives, negative_sources), (negatives, positive_sources)):
+                chosen = next((row for row in selected if row["standalone"] and row["source"]["id"] == source_id), None)
+                if chosen:
+                    other = next((row for row in opposite.values() if row["source_identity"] != chosen["source_identity"] and row["source"] != chosen["source"]), None)
+                    if other:
+                        pair = [chosen, other] if chosen["polarity"] == "positive" else [other, chosen]
+                        break
+        elif positive_sources and negative_sources:
             a, b = next(iter(positive_sources.values())), next(iter(negative_sources.values()))
             if a["source_identity"] == b["source_identity"]:
                 a = next((row for key, row in positive_sources.items() if key != b["source_identity"]), a)

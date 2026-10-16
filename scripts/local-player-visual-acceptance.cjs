@@ -3,20 +3,12 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
+const { installRouteGate } = require("./local-player-route-gate.cjs");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const deferred = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 async function until(check, label, timeout = 20000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) { if (await check()) return; await delay(40); }
   throw new Error(`Timed out: ${label}`);
-}
-async function bounded(promise, label, timeout = 20000) {
-  let timer;
-  try {
-    return await Promise.race([promise, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Timed out: ${label}`)), timeout);
-    })]);
-  } finally { clearTimeout(timer); }
 }
 function assertPlayer(snapshot, id, seconds, revision) {
   assert.equal(snapshot.taskId, id, "Rendered player must belong to the expected task");
@@ -38,7 +30,17 @@ async function main() {
     browser: "Microsoft Edge", synthetic_only: true, actual_http: true, actual_media: true,
     summary_provider: "deterministic fixture", media_checks: [], checks: [], screenshots: [], writes: [], errors: [], blocked_requests: [],
     not_tested: ["physical native seekbar interaction", "desktop native webview", "real sites/accounts", "extension permissions", "ASR", "external model quality"] };
-  const releases = [];
+  const gates = [];
+  const saveReport = () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
+  const check = message => { report.checks.push(message); saveReport(); };
+  const routeGate = async (pattern, label, options = {}) => {
+    const gate = await installRouteGate(page, pattern, { label, ...options,
+      onError: error => { report.ok = false; report.errors.push(`${label}: ${error.stack || error}`); saveReport(); },
+      onCanceled: error => { (report.route_cancellations ||= []).push({ label, error }); saveReport(); },
+    });
+    gates.push(gate); return gate;
+  };
+  saveReport();
   let backend, browser, page, fixture, failure, buffer = "";
   try {
     const env = {};
@@ -73,11 +75,11 @@ async function main() {
     });
     page = await context.newPage();
     page.setDefaultTimeout(20000);
-    page.on("pageerror", error => report.errors.push(error.message));
+    page.on("pageerror", error => { report.errors.push(error.message); saveReport(); });
     page.on("request", request => {
       const url = new URL(request.url());
       if (request.method() === "POST" && /\/(learn-range|rerun-from-media)$/.test(url.pathname))
-        report.writes.push({ path: url.pathname, body: request.postDataJSON() });
+        { report.writes.push({ path: url.pathname, body: request.postDataJSON() }); saveReport(); }
     });
     const read = async route => {
       const response = await page.request.get(base + route); assert(response.ok(), await response.text()); return response.json();
@@ -102,17 +104,21 @@ async function main() {
       await page.locator("#rangeForm").waitFor();
     };
     const snapshot = async name => {
+      if (!await page.locator('dialog[open]').count() && await page.locator('#player').isVisible())
+        await page.locator('#player').scrollIntoViewIfNeeded();
+      (report.player_states ||= []).push({ screenshot:name, ...await player() });
+      saveReport();
       const geometry = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth + 1,
         dialogs: [...document.querySelectorAll("dialog[open]")].map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; }) }));
       assert(!geometry.overflow, JSON.stringify(geometry));
       for (const d of geometry.dialogs) assert(d.left >= 0 && d.right <= d.width + 1);
-      const file = `${name}.png`; await page.screenshot({ path: path.join(out, file), animations: "disabled" }); report.screenshots.push(file);
+      const file = `${name}.png`; await page.screenshot({ path: path.join(out, file), animations: "disabled" }); report.screenshots.push(file); saveReport();
     };
     const duration = async (label, id, expected) => {
       const task = (await read(`/api/tasks/${id}`)).task;
       const actual = { label, expected_seconds: expected, backend_seconds: task.media_integrity?.duration,
         learning_range: task.learning_range, player: await player() };
-      report.media_checks.push(actual);
+      report.media_checks.push(actual); saveReport();
       assert(Math.abs(actual.backend_seconds - expected) < .15, JSON.stringify(actual));
       assert(Math.abs(actual.player.duration - expected) < .15, JSON.stringify(actual));
     };
@@ -124,9 +130,11 @@ async function main() {
     const createRange = async (start, end, sourceId, checkPending = false) => {
       if (checkPending) assert((await page.request.post(base + '/_fixture/range-gate/hold')).ok());
       await page.locator("#rangeStart").fill(String(start)); await page.locator("#rangeEnd").fill(String(end));
-      const response = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${sourceId}/learn-range`));
-      await page.locator("#rangeForm button.primary").click();
-      const reply = await response; assert.equal(reply.status(), 200, await reply.text());
+      const [reply] = await Promise.all([
+        page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${sourceId}/learn-range`)),
+        page.locator("#rangeForm button.primary").click(),
+      ]);
+      assert.equal(reply.status(), 200, await reply.text());
       const sent = reply.request().postDataJSON();
       assert.equal(sent.start, start); assert.equal(sent.end, end);
       assert.equal(new URL(reply.url()).pathname, `/api/tasks/${sourceId}/learn-range`);
@@ -139,7 +147,7 @@ async function main() {
           const pending = await page.request.get(`${base}/api/tasks/${value.task_id}/media`);
           assert.equal(pending.status(), 409, await pending.text());
           await snapshot('queued-range-no-parent-media');
-          report.checks.push('Queued child media returns 409 and the actual UI does not load parent bytes under its ID');
+          check('Queued child media returns 409 and the actual UI does not load parent bytes under its ID');
         } finally { await page.request.post(base + '/_fixture/range-gate/release'); }
       }
       await complete(value.task_id);
@@ -169,7 +177,7 @@ async function main() {
     await page.locator("#rangeStart").fill("10"); await page.locator("#rangeEnd").fill("5");
     const beforeInvalid = report.writes.length; await page.locator("#rangeForm button.primary").click();
     await page.locator("#toolStatus").getByText(/结束位置必须晚于/).waitFor(); assert.equal(report.writes.length, beforeInvalid);
-    report.checks.push("Actual cue seek, decimal current-position default/button and invalid custom bounds");
+    check("Actual cue seek, decimal current-position default/button and invalid custom bounds");
     const clip = await createRange(5.25, 15.75, a, true);
     const clipped = (await read(`/api/tasks/${clip}`)).task;
     assert.equal(clipped.source_task_id, a);
@@ -190,29 +198,30 @@ async function main() {
       await page.setViewportSize({ width, height:900 }); await snapshot(`nested-range-${width}`);
     }
     await page.setViewportSize({ width:1440, height:1000 });
-    report.checks.push("Nested range max is the requested 10.5 seconds; measured encoded padding is disclosed and rejected");
+    check("Nested range max is the requested 10.5 seconds; measured encoded padding is disclosed and rejected");
     const nested = await createRange(0, 5.25, clip);
     await openRange();
     page.once("dialog", dialog => { assert.match(dialog.message(), /Synthetic local player A/); dialog.accept(); });
-    const wholeReply = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${a}/rerun-from-media`));
-    await page.locator('[data-action="learn-full-source"]').click();
-    const wholeResponse = await wholeReply; assert.equal(wholeResponse.status(), 200, await wholeResponse.text());
+    const [wholeResponse] = await Promise.all([
+      page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${a}/rerun-from-media`)),
+      page.locator('[data-action="learn-full-source"]').click(),
+    ]);
+    assert.equal(wholeResponse.status(), 200, await wholeResponse.text());
     const whole = await wholeResponse.json(), wholeTask = await complete(whole.task_id);
     assert.deepEqual(wholeTask.learning_range, {}); assert.equal(wholeTask.source_task_id, a);
     await page.goto(`${base}/#task/${whole.task_id}`); await selected(whole.task_id);
     await duration("whole-source", whole.task_id, 20); await snapshot("whole-source-upgrade");
-    report.checks.push("Rendered custom range and nested range use clip-local seconds; full upgrade resolves root A and real 20-second media");
+    check("Rendered custom range and nested range use clip-local seconds; full upgrade resolves root A and real 20-second media");
 
     // Delay real media HTTP, not a fake player property. Metadata remains unavailable.
     for (const action of ["latest", "close", "switch"]) {
-      const reached = deferred(), release = deferred(); releases.push(release.resolve);
       const pattern = `**/api/tasks/${a}/media*`;
-      await page.route(pattern, async route => { reached.resolve(); await release.promise; await route.continue().catch(() => {}); });
+      const mediaGate = await routeGate(pattern, `delayed media ${action}`, { allowCanceled: action === "switch" });
       // Start with the 5.25-second nested clip already loaded, then replace it
       // with the 20-second source. New seeks must not use old duration metadata.
       await page.goto(`${base}/#task/${nested}`); await selected(nested);
       await duration(`nested-before-${action}`, nested, 5.25);
-      await page.evaluate(id => { location.hash = `task/${id}`; }, a); await bounded(reached.promise, "delayed media request");
+      await page.evaluate(id => { location.hash = `task/${id}`; }, a); await mediaGate.waitReached();
       await page.locator('#sourceContent [data-time="5.25"]').waitFor({ state: "attached" });
       if (!await page.locator("#sourceTranscript").evaluate(el => el.open)) await page.locator("#sourceTranscript > summary").click();
       await page.locator('#sourceContent [data-time="5.25"]').click();
@@ -220,66 +229,66 @@ async function main() {
       if (action === "latest") await page.locator('#sourceContent [data-time="10.5"]').click();
       if (action === "close") await page.locator("#closeSource").click();
       if (action === "switch") await go(b);
-      release.resolve(); await page.unroute(pattern);
+      await mediaGate.finish();
       if (action === "latest") { await selected(a); await until(async () => Math.abs((await player()).currentTime - 10.5) < .08, "newest metadata seek"); assertPlayer(await player(), a, 10.5); }
       if (action === "close") { await until(async () => (await player()).readyState >= 1, "metadata after Close"); assert.equal(await page.locator("#sourcePanel").isVisible(), false); assert.equal((await player()).currentTime, 0); assert.equal((await player()).paused, true); }
       if (action === "switch") { assertPlayer(await player(), b, 0); assert.match(await page.locator("#breadcrumb").innerText(), /player B/); }
       await snapshot(`metadata-${action}`);
     }
-    report.checks.push("Real delayed metadata: latest citation wins; Close and source switch cancel pending seeks; no autoplay");
+    check("Real delayed metadata: latest citation wins; Close and source switch cancel pending seeks; no autoplay");
 
     // Keep A's ready player while B's edition is still loading. The B range
     // dialog must reject A's clock even before B replaces the media element.
     await go(a); await seek(12.5);
-    const editionSeen = deferred(), editionRelease = deferred(); releases.push(editionRelease.resolve);
     const editionRoute = `**/api/tasks/editions/task/${b}`;
-    await page.route(editionRoute, async route => { editionSeen.resolve(); await editionRelease.promise; await route.continue(); });
-    await page.evaluate(id => { location.hash = `task/${id}`; }, b); await bounded(editionSeen.promise, "delayed edition request");
+    const editionGate = await routeGate(editionRoute, "delayed edition");
+    await page.evaluate(id => { location.hash = `task/${id}`; }, b); await editionGate.waitReached();
     await openRange(); assert.equal(await page.locator("#rangeStart").inputValue(), "0");
     assert.match(await page.locator("#toolBody").innerText(), /Synthetic local player B/);
     await page.locator('[data-action="range-position"]').click();
     await page.locator("#toolStatus").getByText(/未使用其他来源/).waitFor();
     await snapshot("source-B-rejects-stale-A-position");
-    await page.locator("[data-close-tool]").click(); editionRelease.resolve(); await page.unroute(editionRoute); await selected(b);
+    await page.locator("[data-close-tool]").click(); await editionGate.finish(); await selected(b);
 
     // Citation seek begins while transcript HTTP is pending. A subsequent
     // real seeking-event/manual-position simulation must survive the old transcript completion.
-    const transcriptSeen = deferred(), transcriptRelease = deferred(); releases.push(transcriptRelease.resolve);
     const transcriptRoute = `**/api/tasks/${a}/transcript`;
-    await page.route(transcriptRoute, async route => { transcriptSeen.resolve(); await transcriptRelease.promise; await route.continue(); });
-    await page.evaluate(id => { location.hash = `task/${id}`; }, a); await bounded(transcriptSeen.promise, "delayed transcript request");
+    const transcriptGate = await routeGate(transcriptRoute, "delayed transcript");
+    await page.evaluate(id => { location.hash = `task/${id}`; }, a); await transcriptGate.waitReached();
     await selected(a); await page.locator('#document .time-link').filter({ hasText: "[00:05]" }).first().click();
     await until(async () => Math.abs((await player()).currentTime - 5) < .08, "citation seek while transcript is loading");
-    await seek(12.5); transcriptRelease.resolve(); await page.unroute(transcriptRoute);
+    await seek(12.5); await transcriptGate.finish();
     await page.waitForFunction(() => document.querySelector("#sourcePanel").dataset.contentMode === "transcript");
     assertPlayer(await player(), a, 12.5); await snapshot("media-position-survives-transcript-loading");
-    report.checks.push("B refuses stale A clock; a newer real media seeking-event simulation survives delayed source transcript rendering");
+    check("B refuses stale A clock; a newer real media seeking-event simulation survives delayed source transcript rendering");
 
     // A pending old request must not replace the newer source or create twice.
     await go(a); await openRange();
-    const received = deferred(), releaseReply = deferred(); releases.push(releaseReply.resolve);
     const rangeRoute = `**/api/tasks/${a}/learn-range`;
     let postCount = 0, accepted;
-    await page.route(rangeRoute, async route => {
-      postCount++; const response = await route.fetch(); accepted = await response.json(); received.resolve();
-      await releaseReply.promise; await route.fulfill({ response });
+    const rangeGate = await routeGate(rangeRoute, "accepted range reply", {
+      prepare: async route => { postCount++; const response = await route.fetch(); accepted = await response.json(); return response; },
+      settle: (route, response) => route.fulfill({ response }),
     });
     await page.locator("#rangeStart").fill("5.25"); await page.locator("#rangeEnd").fill("15.75");
-    await page.locator("#rangeForm button.primary").click(); await bounded(received.promise, "accepted range request");
+    await page.locator("#rangeForm button.primary").click(); await rangeGate.waitReached();
     await page.locator("#rangeForm").evaluate(form => form.requestSubmit());
     await page.locator("[data-close-tool]").click(); await go(b);
-    const returned = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${a}/learn-range`));
-    releaseReply.resolve(); await returned; await page.unroute(rangeRoute); await complete(accepted.task_id);
+    await Promise.all([
+      page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${a}/learn-range`)),
+      rangeGate.finish(),
+    ]);
+    await complete(accepted.task_id);
     await page.waitForTimeout(250); assert.equal(postCount, 1); assertPlayer(await player(), b, 0);
     assert.equal(await page.locator("#toolsDialog").evaluate(el => el.open), false);
     await snapshot("late-range-response-keeps-B");
-    report.checks.push("Repeated submit creates once; late real response after Close/navigation cannot reopen or replace source B");
+    check("Repeated submit creates once; late real response after Close/navigation cannot reopen or replace source B");
     assert.deepEqual(await read("/_fixture/originals"), fixture.source_artifacts);
     assert.deepEqual(report.blocked_requests, []); assert.deepEqual(report.errors, []);
     report.source_artifacts_unchanged = true; report.source_ids = { original: a, other: b, clip, nested, whole: whole.task_id };
     report.ok = true;
   } catch (error) {
-    report.errors.push(error.stack || error.message); process.exitCode = 1;
+    report.errors.push(error.stack || error.message); process.exitCode = 1; saveReport();
     if (page && !page.isClosed()) {
       report.failure_state = await page.evaluate(() => {
         const player = document.querySelector("#player");
@@ -293,14 +302,23 @@ async function main() {
     }
   }
   finally {
-    releases.forEach(release => release());
+    for (const gate of gates) gate.release();
+    for (const gate of gates) {
+      try { await gate.finish(); }
+      catch (error) {
+        report.ok = false; process.exitCode = 1;
+        const detail = error.stack || error.message;
+        if (!report.errors.some(existing => existing.includes(detail))) report.errors.push(detail);
+        saveReport();
+      }
+    }
     if (browser) await browser.close();
     if (backend && backend.exitCode === null) {
       backend.kill(); await Promise.race([new Promise(resolve => backend.once("exit", resolve)), delay(5000)]);
       if (backend.exitCode === null && backend.signalCode === null) { backend.kill("SIGKILL"); await new Promise(resolve => backend.once("exit", resolve)); }
     }
     fs.rmSync(data, { recursive: true, force: true }); report.temporary_data_removed = !fs.existsSync(data);
-    fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
+    saveReport();
     console.log(JSON.stringify({ ok: report.ok, checks: report.checks, out }));
   }
 }

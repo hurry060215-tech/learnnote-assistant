@@ -53,6 +53,12 @@ class LocalPlayerFixtureTests(unittest.TestCase):
             self.assertNotEqual(report['source_id'], report['other_id'])
             self.assertEqual(len(report['source_artifacts']), 2)
 
+    @unittest.skipUnless(shutil.which('node'), 'Node required')
+    def test_delayed_http_route_settlement_is_owned_and_teardown_safe(self):
+        result = subprocess.run(['node', str(ROOT / 'scripts/tests/local-player-route-gate.test.cjs')],
+                                capture_output=True, text=True, encoding='utf-8', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_nonempty_fixture_directory_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             sentinel = Path(directory) / 'keep.txt'

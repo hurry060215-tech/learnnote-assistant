@@ -1,8 +1,8 @@
 # Local cited relation candidates
 
-Status: bounded backend delivery for #142. This does **not** close the general
-semantic-graph acceptance gate. Existing keyword comparisons and version-1/2
-comparison snapshots retain their original behavior.
+Status: bounded local backend and graph/list UI delivery for #142. Issue closure
+still depends on the concrete acceptance checks below. Existing keyword
+comparisons and version-1/2 comparison snapshots retain their original behavior.
 
 ## Read-only API
 
@@ -18,17 +18,30 @@ Optional parameters:
   are deliberately not applied to unrelated library sources.
 - `q`: a case/spacing-normalized literal phrase, up to 200 characters; empty means
   all supported assertions. This is not a synonym search.
-- `source_id`, `source_kind` (`task` or `material`), `start`, `end`: select canonical
-  source identity and overlapping video seconds. Document anchors with no video
-  times do not enter a time-filtered result.
+- `source_id`: keep relations involving the selected canonical source, retaining
+  their counterpart citations. Every returned relation still has at least two
+  distinct canonical sources. A selected third source is included in the chosen
+  positive/negative pair; known aliases never count as independent support.
+- `source_kind` (`task` or `material`), `start`, `end`: restrict **all** evidence
+  contributing to a relation by type and overlapping video seconds. Document
+  anchors with no video times do not enter a time-filtered result. Combining these
+  filters can legitimately leave fewer than two sources and therefore no edge.
 
-The response is the complete bounded `learnnote.cited-relations` version-1 JSON
+The response is the complete bounded `learnnote.cited-relations` version-2 JSON
 snapshot. It includes `scope`, source eligibility/missing counts, portable original
 evidence, course grouping history, graph, and an integrity digest. Saving this
 response provides an offline export. `POST /api/concept-relations/preview` accepts
 `{"snapshot": <that response>}` and strictly reconstructs the graph from its
 embedded evidence without consulting or changing the local catalog. Imported
 source identities and content remain unverified even when all digests match.
+
+Version 1 imports retain the original evidence-first `source_id` semantics and
+their exact graph, digest, and re-exported snapshot data. Those old single-source
+exports contain no cross-source edges. The preview displays this limitation
+without upgrading or consulting live data. Generate a fresh version-2 snapshot
+from local sources to use incident-relation filtering. The type/time/query and
+course-identity rules are unchanged; the graph's evidence count is the eligible
+construction scope, including counterpart evidence, not just the selected source.
 
 The Courses catalog now offers a whole-library cited-relation view; each course
 also offers a scoped view. Generation is explicit. Filters include literal query,
@@ -106,14 +119,21 @@ Review before sharing outside the machine.
 
 ## Remaining acceptance for #142
 
-- General full-library semantic entity normalization, including synonyms and
-  homonyms outside explicit course grouping, is not implemented.
-- General fact/inference, consensus/conflict and concept-evolution quality need
-  an independent human-labeled benchmark and an authorized real-model run if a
-  model-based implementation is selected. Current tests prove deterministic
-  attribution/abstention/deduplication contracts, not semantic accuracy.
-- The new graph/list integration requires successful hosted real-browser
-  screenshots and accessibility acceptance on the final integrated commit.
+- Re-run the hosted real-browser acceptance on the final source-filter change:
+  selecting one source must retain cited counterpart relations, and old version-1
+  snapshots must remain read-only and re-export unchanged.
+- The underlying task index can be rebuilt when missing, but a corrupt catalog
+  is currently blocked by the ordinary rebuild action. Existing document-catalog
+  recovery requires a suitable metadata snapshot. A safe explicit task-only
+  corruption recovery route without a prior catalog snapshot remains separate work.
 - Existing grouping history remains reversible through its established workflow;
   the new derived graph itself has no mutation/undo operation. Offline snapshot
   preview never restores or overwrites a course or its history.
+
+General synonym resolution, autonomous homonym disambiguation and universal
+semantic consensus/conflict accuracy are not implemented. They are limitations
+of this intentionally bounded feature, not extra original acceptance criteria:
+the issue explicitly permits same-name meanings to be split/merged by the user.
+Current tests establish attribution, abstention, deduplication and filtering, not
+general semantic correctness. A future broader semantic engine would need its
+own independent quality evaluation and explicit authorization for external models.

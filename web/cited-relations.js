@@ -32,7 +32,8 @@ export function mountCitedRelations(root, { api, course = null, isCurrent, openE
     const option = element("option", label); option.value = value; kind.append(option);
   }
   form.append(kindLabel, kind);
-  const source = field("source_id", "具体来源 ID（可留空，可从下方出处选取）");
+  const source = field("source_id", "关系涉及的来源 ID（可留空，可从下方出处选取）");
+  form.append(element("p", "选择具体来源会保留与它相关的关系及对照出处；来源类型与时间范围仍适用于每条出处。"));
   field("start", "起点（秒，可留空）", "number"); field("end", "终点（秒，可留空）", "number");
   const generate = element("button", course ? "生成本课程引用关系" : "生成全库引用关系");
   generate.type = "submit"; form.append(generate);
@@ -61,10 +62,13 @@ export function mountCitedRelations(root, { api, course = null, isCurrent, openE
     const warning = element("p", imported ? "文件内部一致性已核对，身份与内容真实性未验证。只读查看文件内出处，不访问或重建本机资料。" : "这是本次生成时的出处快照。来源修改后请重新生成；导出不会自动刷新或改变原文。");
     const scope = element("p", snapshot.scope.kind === "course" ? "范围：课程 · " : "范围：本机已索引资料库");
     if (snapshot.scope.title) scope.append(literalText(snapshot.scope.title));
-    const counts = element("p", `扫描 ${graph.counts.scanned_evidence} 条出处，筛选后 ${graph.counts.filtered_evidence} 条；${graph.nodes.length} 个词形节点，${graph.edges.length} 条候选关系。仅覆盖可识别的简单句。`);
+    const counts = element("p", `扫描 ${graph.counts.scanned_evidence} 条出处，构图范围内 ${graph.counts.filtered_evidence} 条；${graph.nodes.length} 个词形节点，${graph.edges.length} 条候选关系。关系保留完整对照出处，仅覆盖可识别的简单句。`);
     const exporting = button(imported ? "重新导出原文件快照" : "导出当前引用关系快照", download);
     exporting.dataset.citedRelationExport = "true";
     results.append(warning, scope, counts, element("p", graph.warning), element("p", "文件保留完整出处文字与标题；分享前请检查隐私。"), exporting);
+    if (imported && snapshot.schema_version === 1 && graph.filters?.source_id) {
+      results.append(element("p", "旧版文件先筛选单个来源，因此没有跨来源关系。此处保留原文件结果；需要新筛选方式时，请从本机来源重新生成。"));
+    }
     const view = relationshipGraph({ ...graph, nodes: graph.nodes.map(node => ({ ...node, title: node.spellings[0] || node.label })) });
     if (view) results.append(view);
     if (!imported) {
@@ -97,7 +101,7 @@ export function mountCitedRelations(root, { api, course = null, isCurrent, openE
         if (!imported) {
           const open = button("打开本机出处", () => openEvidence(citation.evidence_id));
           open.dataset.citedRelationOpen = citation.evidence_id;
-          section.append(open, button("仅看此来源", () => { source.value = citation.source.id; return load(); }));
+          section.append(open, button("查看涉及此来源的关系", () => { source.value = citation.source.id; return load(); }));
         }
         card.append(section);
       }

@@ -16,7 +16,7 @@ def verify_relation_snapshot(snapshot):
     try:
         if len(encoded(snapshot)) > MAX_BYTES:
             raise ValueError("concept_relations_too_large")
-        if set(snapshot) != {"format", "schema_version", "scope", "members", "evidence", "history", "graph", "provenance", "digest"} or snapshot["format"] != FORMAT or type(snapshot["schema_version"]) is not int or snapshot["schema_version"] != 1:
+        if set(snapshot) != {"format", "schema_version", "scope", "members", "evidence", "history", "graph", "provenance", "digest"} or snapshot["format"] != FORMAT or type(snapshot["schema_version"]) is not int or snapshot["schema_version"] not in {1, 2}:
             raise ValueError
         scope = snapshot["scope"]
         if scope == {"kind": "library"}:
@@ -69,7 +69,9 @@ def verify_relation_snapshot(snapshot):
             if digest({key: value for key, value in row.items() if key != "snapshot_fingerprint"}) != row["snapshot_fingerprint"]:
                 raise ValueError
         graph = snapshot["graph"]
-        rebuilt = build_relations(evidence, history, query=graph["query"], **graph["filters"])
+        # V1 filtered evidence before constructing edges; its selected-source
+        # graphs were empty. Preserve those exact exports instead of upgrading.
+        rebuilt = build_relations(evidence, history, query=graph["query"], **graph["filters"], _legacy_source_filter=snapshot["schema_version"] == 1)
         if encoded(rebuilt) != encoded(graph) or digest({key: value for key, value in snapshot.items() if key != "digest"}) != snapshot["digest"]:
             raise ValueError
         return {"snapshot": snapshot, "graph": rebuilt, "read_only": True,

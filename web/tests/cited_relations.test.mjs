@@ -31,6 +31,8 @@ function harness(course=null) {
  h.requests[0].resolve(snapshot());await h.flush();assert(h.find(n=>n.textContent==='Exact <source>'));assert(!source.includes('innerHTML'));
  await h.button('打开本机出处').listeners.click();assert.deepEqual(h.opened,['one']);
  await h.find(n=>n.dataset.citedRelationExport).listeners.click();assert.deepEqual(JSON.parse(await h.blobs[0].text()),snapshot());
+ const selected=h.button('查看涉及此来源的关系').listeners.click();assert.equal(new URL('http://local'+h.requests[1].path).searchParams.get('source_id'),'task-one');
+ h.requests[1].resolve(snapshot());await selected;assert(h.find(n=>n.dataset.citedRelationKind));
  h.set('relation-q','changed');assert(!h.find(n=>n.dataset.citedRelationExport));
 }
 {
@@ -40,8 +42,14 @@ function harness(course=null) {
 {
  const h=harness(),file=h.input('relation-file'),raw=JSON.stringify(snapshot());file.files=[{size:raw.length,text:async()=>raw}];const work=file.listeners.change();await h.flush();
  assert.equal(h.requests[0].path,'/api/concept-relations/preview');assert.equal(h.requests[0].options.body,`{"snapshot":${raw}}`);h.requests[0].resolve({snapshot:snapshot(),warning:'Read only'});await work;
- assert(!h.find(n=>n.dataset.citedRelationOpen));assert(!h.button('仅看此来源'));await h.find(n=>n.dataset.citedRelationExport).listeners.click();assert.deepEqual(JSON.parse(await h.blobs[0].text()),snapshot());
+ assert(!h.find(n=>n.dataset.citedRelationOpen));assert(!h.button('查看涉及此来源的关系'));await h.find(n=>n.dataset.citedRelationExport).listeners.click();assert.deepEqual(JSON.parse(await h.blobs[0].text()),snapshot());
  file.files=[{size:20_000_001,text:()=>{throw Error('must not read');}}];await file.listeners.change();assert.equal(h.requests.length,1);assert(!h.find(n=>n.dataset.citedRelationExport));
  file.files=[{size:12,text:async()=>'{"x":1,"x":2}'}];const duplicate=file.listeners.change();await h.flush();assert(h.requests[1].options.body.includes('"x":1,"x":2'));h.requests[1].reject(Error('invalid duplicate'));await duplicate;assert(!h.find(n=>n.dataset.citedRelationExport));
+}
+{
+ const h=harness(),legacy={...snapshot(),schema_version:1};legacy.graph.filters={source_id:'task-one'};legacy.graph.edges=[];
+ const raw=JSON.stringify(legacy),file=h.input('relation-file');file.files=[{size:raw.length,text:async()=>raw}];const work=file.listeners.change();await h.flush();
+ h.requests[0].resolve({snapshot:legacy,warning:'Read only'});await work;assert(h.find(n=>n.textContent.includes('旧版文件先筛选单个来源')));
+ await h.find(n=>n.dataset.citedRelationExport).listeners.click();assert.deepEqual(JSON.parse(await h.blobs[0].text()),legacy);
 }
 console.log('Cited relation scope, stale responses, literal sources, read-only imports and bounded exports pass');
