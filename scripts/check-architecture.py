@@ -10,7 +10,7 @@ from javascript_graph import javascript_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -19,15 +19,17 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "web/platform-signals.js": 220,
     "web/cited-relations.js": 180,
     "backend/app/concept_relations.py": 240,
     "backend/app/concept_relation_sources.py": 220,
     "backend/app/concept_relation_snapshot.py": 130,
     "backend/app/routers/concept_relations.py": 90,
-    "backend/app/main.py": 4705,
+    "backend/app/main.py": 4270,
+    "backend/app/task_recovery_guidance.py": 451,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
-    "web/app.js": 9455,
+    "web/app.js": 9265,
     "web/styles.css": 12262,
     "backend/app/media_source_context.py": 300,
     "backend/app/media_url_parsing.py": 290,
@@ -99,6 +101,7 @@ PURE_MODULE_DEPENDENCIES = {
     "media_discovery": {"models", "media_kinds", "media_candidate_ranking", "media_json_discovery", "media_url_parsing"},
     "qa_evidence": {"models", "transcript_passages"},
     "qa_history": {"models", "qa_evidence"},
+    "task_recovery_guidance": {"models"},
     "task_archives": {"models"},
     "models": {"app", "subtitle_probe"},
     "subtitle_probe": set(),
@@ -136,12 +139,12 @@ def import_violations(app_root: Path = APP) -> list[str]:
 EXTRACTED_BACKEND_BUDGET = 9300
 EXTRACTED_BACKEND_MODULES = (
     "main", "downloader", "media_source_context", "media_url_parsing", "media_json_discovery",
-    "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives",
+    "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")
 CLASSIC_TASK_SCRIPT_BUDGET = 10100
-CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js")
+CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js")
 
 
 def aggregate_size_violations() -> list[str]:

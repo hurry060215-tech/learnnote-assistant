@@ -1,0 +1,1869 @@
+[
+  {
+    "case": "running",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "running",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "",
+      "diagnosis": "任务仍可继续按阶段审计检查媒体、转写、切片和总结产物。",
+      "severity": "ok",
+      "confidence": "medium",
+      "next_action": "inspect_audit",
+      "primary_action": {
+        "label": "查看阶段审计",
+        "ui_intent": "inspect_audit",
+        "detail": "检查媒体、转写、切片、总结各阶段产物是否齐全。",
+        "key": "inspect_audit",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "查看阶段审计",
+          "ui_intent": "inspect_audit",
+          "detail": "检查媒体、转写、切片、总结各阶段产物是否齐全。",
+          "key": "inspect_audit",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "如果任务未完成，先查看下载尝试的错误码；当前页直取失败时可以改用本地视频入口走同一套切片总结。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "drm_or_encrypted",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "drm_or_encrypted",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "drm_or_encrypted",
+      "diagnosis": "页面没有暴露可还原的直接媒体资源，或触发了 DRM/EME 边界。",
+      "severity": "hard_boundary",
+      "confidence": "medium",
+      "next_action": "local_upload",
+      "primary_action": {
+        "label": "上传本地视频",
+        "ui_intent": "local_upload",
+        "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+        "key": "local_upload",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "primary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "页面触发 DRM/EME 或只暴露不可还原 blob 时，本工具不会录制、破解或绕过 DRM；请改用本地视频入口。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "不会录制、破解或绕过 DRM/EME；blob 只有在扩展捕获到真实 manifest/媒体请求时才可直取。"
+      ]
+    }
+  },
+  {
+    "case": "auth_required",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "auth_required",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "auth_required",
+      "diagnosis": "登录态或 Cookie 已失效，后端无法复用浏览器当前权限下载。",
+      "severity": "recoverable",
+      "confidence": "high",
+      "next_action": "refresh_login_and_retry",
+      "primary_action": {
+        "label": "重新登录后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "回到原课程页确认登录有效，播放几秒后从扩展重新检测并创建任务。",
+        "key": "refresh_login_and_retry",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "重新登录后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "回到原课程页确认登录有效，播放几秒后从扩展重新检测并创建任务。",
+          "key": "refresh_login_and_retry",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "重新打开课程页面并确认登录有效，播放几秒后立刻从扩展侧栏重新创建任务，让 Cookie 和媒体请求保持新鲜。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "network_tls_error",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "network_tls_error",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "network_tls_error",
+      "diagnosis": "视频服务器的 TLS 连接在下载过程中被提前断开；这不是 HTTP 拒绝，通常可以重试。",
+      "severity": "recoverable",
+      "confidence": "high",
+      "next_action": "refresh_playback_and_retry",
+      "primary_action": {
+        "label": "继续播放后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+        "key": "refresh_playback_and_retry",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "继续播放后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+          "key": "refresh_playback_and_retry",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "视频服务器的 TLS 连接被提前断开；后端已自动重试。请稍后重试一次，并检查代理、网络过滤或安全软件是否中断大文件 HTTPS 连接。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "download_forbidden",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "download_forbidden",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "download_forbidden",
+      "diagnosis": "媒体地址被防盗链、时效签名、Referer/Origin 或服务端策略拒绝。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "refresh_playback_and_retry",
+      "primary_action": {
+        "label": "继续播放后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+        "key": "refresh_playback_and_retry",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "继续播放后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+          "key": "refresh_playback_and_retry",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "unsupported_manifest",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "unsupported_manifest",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "unsupported_manifest",
+      "diagnosis": "已看到媒体线索，但 manifest 或分片不足以在本地合并。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "play_longer_and_redetect",
+      "primary_action": {
+        "label": "播放更久后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "让播放器继续加载完整 manifest，再从扩展重新检测候选资源。",
+        "key": "play_longer_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放更久后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "让播放器继续加载完整 manifest，再从扩展重新检测候选资源。",
+          "key": "play_longer_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "如果只有分片或无法合并的 manifest，继续播放后重新检测，优先选择完整 mp4/FLV/m3u8/mpd 候选。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "no_media_found",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "no_media_found",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "no_media_found",
+      "diagnosis": "当前页还没有暴露 mp4、m3u8、mpd 或 yt-dlp 可解析的下载入口。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "play_and_redetect",
+      "primary_action": {
+        "label": "播放几秒后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        "key": "play_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放几秒后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+          "key": "play_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "unknown_error",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "unknown_error",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "no_media_found",
+      "diagnosis": "当前页还没有暴露 mp4、m3u8、mpd 或 yt-dlp 可解析的下载入口。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "play_and_redetect",
+      "primary_action": {
+        "label": "播放几秒后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        "key": "play_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放几秒后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+          "key": "play_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "blob",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "selected_resource": {
+        "url": "blob:https://example.test/synthetic",
+        "kind": "blob"
+      }
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "no_media_found",
+      "diagnosis": "当前只有 blob 播放线索，尚未发现可直接下载的 manifest 或媒体文件。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "play_and_redetect",
+      "primary_action": {
+        "label": "播放几秒后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        "key": "play_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放几秒后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+          "key": "play_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 1,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [
+          "unknown"
+        ],
+        "candidate_kinds": [
+          "blob"
+        ],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "blob",
+      "selected_source": "unknown",
+      "selected_url": "blob:https://example.test/synthetic",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "mse",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "selected_resource": {
+        "url": "blob:https://example.test/synthetic",
+        "kind": "blob"
+      }
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": "synthetic MSE boundary"
+    },
+    "expected": {
+      "code": "no_media_found",
+      "diagnosis": "synthetic MSE boundary 需要继续播放并重新检测真实 manifest/mp4 请求。",
+      "severity": "recoverable",
+      "confidence": "high",
+      "next_action": "play_and_redetect",
+      "primary_action": {
+        "label": "播放几秒后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        "key": "play_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放几秒后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+          "key": "play_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 1,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [
+          "unknown"
+        ],
+        "candidate_kinds": [
+          "blob"
+        ],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "blob",
+      "selected_source": "unknown",
+      "selected_url": "blob:https://example.test/synthetic",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "synthetic MSE boundary 请继续播放几秒并重新检测真实 manifest/mp4 请求；如果仍只有 blob/MSE 证据，就使用本地视频入口。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "synthetic MSE boundary 这只能作为播放证据，不能替代直接媒体下载。"
+      ]
+    }
+  },
+  {
+    "case": "fallback",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "download_forbidden",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "note_path": "note.md",
+      "summary_diagnostics": {
+        "used_page_text_fallback": true
+      }
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "fallback_note_ready",
+      "diagnosis": "视频直取失败，但已用页面文本和浏览器字幕生成兜底学习笔记；可以先导出 Markdown 复习，再按诊断重新尝试直取或改用本地视频。",
+      "severity": "partial",
+      "confidence": "high",
+      "next_action": "export_markdown",
+      "primary_action": {
+        "label": "导出 Markdown",
+        "ui_intent": "export_markdown",
+        "detail": "先导出现有笔记复习，再按诊断重新尝试直取。",
+        "key": "export_markdown",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "导出 Markdown",
+          "ui_intent": "export_markdown",
+          "detail": "先导出现有笔记复习，再按诊断重新尝试直取。",
+          "key": "export_markdown",
+          "priority": "primary"
+        },
+        {
+          "label": "继续播放后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+          "key": "refresh_playback_and_retry",
+          "priority": "secondary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。",
+        "视频直取失败但已有兜底笔记时，可先导出 Markdown/资料包复习，再根据诊断重新尝试直取。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "download",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "mode": "download_only",
+      "note_path": ""
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": true,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "download_ready",
+      "diagnosis": "synthetic.mp4 已按只下载模式保存到本地；下一步可复用该视频生成字幕、画面网格和图文笔记。",
+      "severity": "ok",
+      "confidence": "high",
+      "next_action": "continue_from_media",
+      "primary_action": {
+        "label": "继续切片总结",
+        "ui_intent": "continue_from_media",
+        "detail": "复用已下载到本地的 synthetic.mp4，继续生成字幕、画面网格和笔记。",
+        "key": "continue_from_media",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "继续切片总结",
+          "ui_intent": "continue_from_media",
+          "detail": "复用已下载到本地的 synthetic.mp4，继续生成字幕、画面网格和笔记。",
+          "key": "continue_from_media",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "media",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "mode": "video",
+      "note_path": ""
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": true,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "media_ready_for_rerun",
+      "diagnosis": "视频已保存到本地，但完整笔记尚未生成；优先复用 synthetic.mp4 继续转写、切片和图文总结。",
+      "severity": "recoverable",
+      "confidence": "high",
+      "next_action": "continue_from_media",
+      "primary_action": {
+        "label": "继续切片总结",
+        "ui_intent": "continue_from_media",
+        "detail": "复用已下载到本地的 synthetic.mp4，继续生成字幕、画面网格和笔记。",
+        "key": "continue_from_media",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "继续切片总结",
+          "ui_intent": "continue_from_media",
+          "detail": "复用已下载到本地的 synthetic.mp4，继续生成字幕、画面网格和笔记。",
+          "key": "continue_from_media",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "note_media",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "mode": "video",
+      "note_path": "note.md"
+    },
+    "evidence": {
+      "inventory": {},
+      "preflight": {},
+      "media_exists": true,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "no_media_found",
+      "diagnosis": "当前页还没有暴露 mp4、m3u8、mpd 或 yt-dlp 可解析的下载入口。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "play_and_redetect",
+      "primary_action": {
+        "label": "播放几秒后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+        "key": "play_and_redetect",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "播放几秒后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "先让视频真实播放，等待 mp4、m3u8、mpd 或播放接口请求暴露。",
+          "key": "play_and_redetect",
+          "priority": "primary"
+        },
+        {
+          "label": "继续切片总结",
+          "ui_intent": "continue_from_media",
+          "detail": "复用已下载到本地的 synthetic.mp4，继续生成字幕、画面网格和笔记。",
+          "key": "continue_from_media",
+          "priority": "secondary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出 Markdown",
+          "ui_intent": "export_markdown",
+          "detail": "先导出现有笔记复习，再按诊断重新尝试直取。",
+          "key": "export_markdown",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": false,
+      "chaoxing_profile": {
+        "detected": false,
+        "candidate_count": 0,
+        "ananas_candidate_count": 0,
+        "has_ananas_candidate": false,
+        "has_playurl": false,
+        "has_objectid": false,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": false,
+        "has_origin": false,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 0,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 0,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": false,
+        "safe_request_header_names": [],
+        "candidate_sources": [],
+        "candidate_kinds": [],
+        "page_preflight": {
+          "present": false,
+          "ready": false,
+          "candidate_count": 0,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": false,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "no_chaoxing_signal",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "",
+      "selected_source": "",
+      "selected_url": "",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。",
+        "视频直取失败但已有兜底笔记时，可先导出 Markdown/资料包复习，再根据诊断重新尝试直取。"
+      ],
+      "boundary_notes": [
+        "当前页直取失败时，本地视频上传会复用同一套转写、切片和图文总结管线。"
+      ]
+    }
+  },
+  {
+    "case": "chaoxing",
+    "task": {
+      "id": "frozen-task",
+      "source_type": "current_page",
+      "title": "Synthetic recovery",
+      "status": "failed",
+      "error_code": "download_forbidden",
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "page_url": "https://mooc1.chaoxing.com/synthetic",
+      "cookie_summary": {
+        "total": 2,
+        "partitioned_count": 1
+      },
+      "selected_resource": {
+        "url": "https://example.test/ananas?objectid=synthetic",
+        "kind": "mp4",
+        "request_headers": {
+          "Cookie": "synthetic-only",
+          "Authorization": "synthetic-only",
+          "Range": "bytes=0-",
+          "Referer": "https://example.test/"
+        }
+      }
+    },
+    "evidence": {
+      "inventory": {
+        "candidates": [
+          {
+            "url": "https://example.test/ananas",
+            "request_header_names": [
+              "Cookie",
+              "Origin"
+            ]
+          }
+        ]
+      },
+      "preflight": {
+        "ready": true,
+        "candidate_count": 1,
+        "page_scan": {
+          "attempted": true
+        }
+      },
+      "media_exists": false,
+      "media_name": "synthetic.mp4",
+      "mse_boundary_summary": ""
+    },
+    "expected": {
+      "code": "download_forbidden",
+      "diagnosis": "媒体地址被防盗链、时效签名、Referer/Origin 或服务端策略拒绝。",
+      "severity": "recoverable",
+      "confidence": "medium",
+      "next_action": "refresh_playback_and_retry",
+      "primary_action": {
+        "label": "继续播放后重检",
+        "ui_intent": "retry_current_page",
+        "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+        "key": "refresh_playback_and_retry",
+        "priority": "primary"
+      },
+      "actions": [
+        {
+          "label": "继续播放后重检",
+          "ui_intent": "retry_current_page",
+          "detail": "回到原页面继续播放，让 Referer、Cookie 和时效签名保持新鲜后重试。",
+          "key": "refresh_playback_and_retry",
+          "priority": "primary"
+        },
+        {
+          "label": "上传本地视频",
+          "ui_intent": "local_upload",
+          "detail": "改用本地文件，继续走同一套转写、切片、视觉窗口和总结管线。",
+          "key": "local_upload",
+          "priority": "secondary"
+        },
+        {
+          "label": "查看下载诊断",
+          "ui_intent": "inspect_diagnostics",
+          "detail": "查看每条下载路线的 URL、状态码、错误码和请求头证据。",
+          "key": "inspect_diagnostics",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出审计",
+          "ui_intent": "export_audit",
+          "detail": "导出阶段门报告，确认失败发生在哪个处理阶段。",
+          "key": "export_audit",
+          "priority": "secondary"
+        },
+        {
+          "label": "导出诊断",
+          "ui_intent": "export_diagnostics",
+          "detail": "导出诊断文件，便于复现登录态、签名或 manifest 问题。",
+          "key": "export_diagnostics",
+          "priority": "secondary"
+        }
+      ],
+      "is_chaoxing": true,
+      "chaoxing_profile": {
+        "detected": true,
+        "candidate_count": 2,
+        "ananas_candidate_count": 2,
+        "has_ananas_candidate": true,
+        "has_playurl": false,
+        "has_objectid": true,
+        "has_dtoken": false,
+        "has_httpmd": false,
+        "has_replay_body": false,
+        "replay_body_count": 0,
+        "has_referer": true,
+        "has_origin": true,
+        "has_x_requested_with": false,
+        "has_iframe_context": false,
+        "iframe_context_count": 0,
+        "cookie_count": 2,
+        "cookie_domain_count": 0,
+        "partitioned_cookie_count": 1,
+        "partition_key_count": 0,
+        "has_partitioned_cookies": true,
+        "safe_request_header_names": [
+          "Origin",
+          "Range",
+          "Referer"
+        ],
+        "candidate_sources": [
+          "resource_inventory",
+          "unknown"
+        ],
+        "candidate_kinds": [
+          "mp4"
+        ],
+        "page_preflight": {
+          "present": true,
+          "ready": true,
+          "candidate_count": 1,
+          "probed_count": 0,
+          "downloadable_count": 0,
+          "page_scan_attempted": true,
+          "page_scan_discovered_count": 0
+        },
+        "likely_issue": "anti_hotlink_or_expired_signature",
+        "boundary": "no_recording_no_progress_forgery"
+      },
+      "selected_kind": "mp4",
+      "selected_source": "unknown",
+      "selected_url": "https://example.test/ananas?objectid=synthetic",
+      "checkpoint": "",
+      "checkpoint_updated_at": "",
+      "attempt_count": 0,
+      "latest_attempt": null,
+      "steps": [
+        "检测到学习通/超星页面线索：请先在原课程页真实播放几秒，让 ananas/播放接口暴露 m3u8、mp4 或带 Referer 的媒体请求；本工具只复用你当前登录态可访问的资源，不刷课、不伪造进度、不自动答题。",
+        "媒体服务器拒绝下载时，优先检查 Referer/Origin、登录态和时效签名；回到原页面继续播放后重新检测，或选择另一个候选资源。",
+        "当前页没有暴露可直取媒体时，先让视频实际播放几秒再重检；仍失败就使用本地视频上传。",
+        "已捕获可复用请求头名：Range, Referer；诊断中不会保存 Cookie 或 Authorization 值。",
+        "Range 只作为浏览器播放证据；正式下载会去掉播放 Range，避免只保存一个视频片段。"
+      ],
+      "boundary_notes": [
+        "学习通/超星第一版只复用当前页面暴露的真实媒体 URL、Referer 和 Cookie，不刷课、不伪造学习进度、不自动答题。",
+        "已捕获可复用请求头名：Range, Referer；不会保存 Cookie 或 Authorization 值。",
+        "Range 请求只作为播放证据，正式下载会去掉 Range，避免只保存片段。"
+      ]
+    }
+  }
+]

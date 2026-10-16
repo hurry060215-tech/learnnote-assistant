@@ -93,6 +93,11 @@ jobs:
           python scripts/full-local-task-reliability.py `
             --duration-seconds 3600 `
             --output-dir build/reliability/full-local-task
+      - name: Interrupted local 60-minute task recovery
+        run: >
+          python scripts/interrupted-task-reliability.py
+          --duration-seconds 3600
+          --output-dir build/reliability/interrupted-local-task
       - name: Caption-to-outline reference p95 gate
         shell: pwsh
         run: |

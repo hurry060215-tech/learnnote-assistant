@@ -12,7 +12,8 @@ from urllib.parse import unquote, urlsplit
 
 
 CLASSIC_STYLE_LIMITS = {
-    "styles.css": 12262,
+    "styles.css": 7726,
+    "classic-workbench-overrides.css": 4536,
     "classic-workbench.css": 489,
     "classic-interactions.css": 78,
     "classic-study.css": 91,

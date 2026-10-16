@@ -41,7 +41,10 @@ module.exports = async function ({page, api, base, out, restoreMaterial}) {
         await page.locator('[data-cited-relation-form]').scrollIntoViewIfNeeded();
         const geometry=await page.locator('#toolsDialog').evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth+1}));
         assert(!geometry.overflow&&geometry.left>=-1&&geometry.right<=geometry.width+1,JSON.stringify(geometry));
-        const name=`cited-relations-${width}-${dark?'dark':'light'}.png`; await page.screenshot({path:path.join(out,name),fullPage:true});screenshots.push(name);
+        const name=`cited-relations-${width}-${dark?'dark':'light'}.png`; await page.screenshot({path:path.join(out,name),fullPage:false});screenshots.push(name);
+        await page.locator(".relationship-graph svg").scrollIntoViewIfNeeded();
+        const graphName=`cited-relations-graph-${width}-${dark?'dark':'light'}.png`;
+        await page.screenshot({path:path.join(out,graphName),fullPage:false});screenshots.push(graphName);
       }
     }
     await page.setViewportSize({width:1440,height:1000}); await page.evaluate(()=>document.body.classList.remove('dark'));

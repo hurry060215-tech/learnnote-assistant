@@ -187,7 +187,7 @@ context.window.localStorage.setItem("learnnote_model_settings", JSON.stringify({
 const webCode = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const markdownCode = await readFile(new URL("../markdown.js", import.meta.url), "utf8");
 const indexHtml = await readFile(new URL("../classic.html", import.meta.url), "utf8");
-const stylesCss = (await Promise.all(["styles.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css"]
+const stylesCss = (await Promise.all(["styles.css", "classic-workbench-overrides.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css"]
   .map(name => readFile(new URL(`../${name}`, import.meta.url), "utf8")))).join("");
 const workspaceCss = await readFile(new URL("../workspace.css", import.meta.url), "utf8");
 const productCss = await readFile(new URL("../product.css", import.meta.url), "utf8");
@@ -199,6 +199,7 @@ assert.match(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{[^}
 assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\s*"删除"/);
 vm.runInContext(markdownCode, context);
 vm.runInContext(await readFile(new URL("../task-format.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../platform-signals.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-list.js", import.meta.url), "utf8"), context);
 vm.runInContext(webCode, context);
@@ -535,7 +536,7 @@ assert.match(indexHtml, /id="restoreLibraryButton"/);
 assert.match(indexHtml, /id="libraryBackupInput"/);
 assert.match(webCode, /\/api\/tasks\?confirm=delete_all_tasks/);
 assert.match(matureCss, /\.danger-button\s*\{/);
-assert.match(indexHtml, /styles\.css\?v=classic-css-20261009/);
+assert.match(indexHtml, /styles\.css\?v=classic-css-20261016/);
 assert.match(indexHtml, /app\.js\?v=\d{8}-[a-z0-9-]+/);
 assert.match(indexHtml, /id="viewReleaseNotesButton"/);
 assert.match(indexHtml, /id="releaseNotesOverlay"/);

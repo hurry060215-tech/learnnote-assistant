@@ -129,3 +129,79 @@ OpenAPI 路径。独立测试覆盖模块无需导入主应用、可替换适配
 `background.js` / `content.js` 上限分别收紧到 1800 / 1850 行，全部新增依赖仍计入原有
 335000 字节合计预算。权限、epoch、主动采集和交接编排保留在入口；导入模块不触发采集或网络。
 该阶段不重新启用历史 page hook，也不替代最终组合树的真实扩展与长任务恢复验收。
+
+## Recovery guidance projection (2026-10-16, #143)
+
+`main.py` retains the existing `diagnostic_recovery_profile`,
+`diagnostic_recovery_steps`, and `chaoxing_evidence_profile` entry points.
+It reads saved inventory/preflight artifacts and validates local media, then
+passes a `TaskRecord` and inert `RecoveryEvidence` into
+`task_recovery_guidance.py`. That module imports only models: no filesystem,
+network, API registration, task writes, or processor dependency. It returns the
+unchanged recovery JSON, action order, privacy boundaries and user-facing text.
+A shared action specification table replaces rebuilding all action labels
+for each action. Media readiness is derived from task state and the supplied
+existence check rather than allowing contradictory readiness flags.
+
+Fifteen synthetic snapshots captured from e4ab6f1 cover running/failed,
+DRM/MSE/blob, authentication/TLS/forbidden/manifest failures, fallback notes,
+existing media, and Chaoxing evidence. The test checks complete JSON equality
+and input immutability. Existing API/export tests continue to exercise adapters.
+The entry-point budget drops from 4,705 to 4,270 lines; the new module is capped
+at 451 lines and included in the unchanged 9,300-line extraction-group budget.
+This stage can be reverted independently. It does not establish completion of
+#143: app.js/styles.css/page_hook.js still need meaningful reductions, and
+native UI/extension/long-task recovery evidence must match the integrated tree.
+
+### Classic platform-evidence presentation (2026-10-16)
+
+`web/platform-signals.js` owns the pure site-evidence projection and escaped HTML
+for accessible media/request/iframe/preflight diagnostics. Input is an existing
+plain task object; output is unchanged profile/header arrays and HTML strings.
+It depends only on `LearnNoteTaskFormat`, loaded earlier in `classic.html`, and
+has no DOM, storage, browser API, network or mutation side effects. `app.js`
+retains event handlers and rendering orchestration through the same function names.
+The complete original e4ab6f1 block (lines3047–3252) is preserved verbatim inside
+the module; baseline block SHA-256 is
+`9802d66e8339dd70e12391df2cca7bc115d97c9e2f825da706bc6cbe8ed5dc2c`.
+Sixteen frozen original outputs cover absent/malformed profiles, frame0/null,
+media kinds, request-body/header context, cookies/preflight and hostile text.
+The tests also reject any browser-global access and task mutation. This is a
+presentation boundary, not proof of real platform access or authorization.
+
+The classic entry shrinks9455→9265 lines; the extracted module is214 lines.
+The unchanged10100-line combined budget includes all five modules (10081 lines),
+and the dependency/load-order guards include the new module. Revert the isolated
+commit to restore the prior script and loader together. No task/API/export schema,
+permission, remote request, or source-capture behavior changes.
+
+`interrupted-task-reliability.py` adds a separate process-death acceptance gate:
+synthetic local video plus timed subtitles runs through the real durable queue,
+FFmpeg media processing, transcript/visual artifacts and `visual_ready`
+checkpoint. The parent kills that worker without graceful shutdown. A fresh
+worker runs the real FastAPI lifespan (staged-upload cleanup before recovery)
+and must complete the same task
+ID with identical media/transcript hashes and a final note. A context-required
+queued intent must stop with `resume_context_required`; a repeated recovery
+must dispatch nothing. Process IDs/exit status, intent sequence/generation, artifact mtimes, API read
+and Markdown export checks, and checkpoint results are saved. Recovery currently
+re-enters the local pipeline: matching hashes prove content preservation, not
+avoidance of media/transcript/frame recomputation.
+Only the external summarizer is an explicitly labeled deterministic fixture;
+network calls fail closed, and no ASR/provider/authenticated-site/OS-power-loss
+claim is made. The short script test runs when native FFmpeg is available;
+Reliability CI separately requires the 3,600-second media case.
+
+### Classic workbench override stylesheet (2026-10-16)
+
+The existing contiguous `BiliNote-style workbench refresh` section and its later
+workbench/cockpit/mobile refinements move from `styles.css` into the sibling
+`classic-workbench-overrides.css`. It remains immediately after the base sheet
+and before the previously extracted density/interaction/study sheets. No rule,
+selector, declaration, whitespace, relative asset base or cascade order changes.
+The original full-group SHA-256/byte/line snapshot is unchanged. The base shrinks
+12,262→7,726 lines; the new sheet has 4,536 lines. All five sheets retain the
+12,920-line aggregate cap and one cache version. Both native desktop specs
+exclude these classic-only assets, including the newly extracted platform script.
+This isolates the late workbench presentation layer; it does not remove legacy
+overrides or claim that the active reader design changed.

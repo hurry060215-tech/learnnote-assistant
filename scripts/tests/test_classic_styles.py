@@ -69,7 +69,7 @@ class ClassicStylesTests(unittest.TestCase):
         with patch.object(styles, "CLASSIC_STYLE_BUDGET", 3):
             errors = styles.classic_style_violations(root)
         self.assertEqual(len(errors), 1)
-        self.assertIn("4 lines; combined budget is 3", errors[0])
+        self.assertIn(f"{len(styles.CLASSIC_STYLE_LIMITS)} lines; combined budget is 3", errors[0])
         (root / "web/classic-study.css").write_text(".fixture {}\n" * 92, encoding="utf-8")
         errors = styles.classic_style_violations(root)
         self.assertEqual(len(errors), 1)
