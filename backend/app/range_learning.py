@@ -6,6 +6,7 @@ import math
 from .config import DATA_DIR
 from .media import extract_video_clip, media_cancellation
 from .models import TaskOptions
+from .range_media import completed_range_media, has_selected_range
 from .storage import get_task, create_task, update_task, task_dir, read_json, atomic_write_text, task_state_transaction, assistant_records
 from .task_queue import schedule_processing
 
@@ -80,10 +81,11 @@ def _create_range_task(source_id: str, start: float, end: float, options: TaskOp
             "content_mode": "subtitles" if options.content_mode == "subtitles" else "text",
             "visual_understanding": False, "local_ocr": False})
     duration = source.media_integrity.duration
-    if not all(math.isfinite(value) for value in (start, end)) or start < 0 or end <= start or duration <= 0 or end > duration + .01:
-        raise ValueError("invalid_learning_range")
     selected = source.learning_range
     if any(not math.isfinite(selected[key]) for key in ("start", "end", "original_start", "original_end") if key in selected):
+        raise ValueError("invalid_learning_range")
+    range_path = completed_range_media(source) if has_selected_range(source) else None
+    if not all(math.isfinite(value) for value in (start, end, duration)) or start < 0 or end <= start or duration <= 0 or end > duration + .01:
         raise ValueError("invalid_learning_range")
     if "start" in selected and "end" in selected:
         # Encoders can pad a clip beyond its requested evidence interval. The
@@ -91,7 +93,7 @@ def _create_range_task(source_id: str, start: float, end: float, options: TaskOp
         logical_duration = Decimal(str(selected["end"])) - Decimal(str(selected["start"]))
         if not logical_duration.is_finite() or logical_duration <= 0 or Decimal(str(end)) > logical_duration:
             raise ValueError("invalid_learning_range")
-    path = Path(source.media_path or source.source_media_path or "").resolve()
+    path = range_path or Path(source.media_path or source.source_media_path or "").resolve()
     if not path.is_file() or not path.is_relative_to(DATA_DIR.resolve()):
         raise ValueError("range_source_media_missing")
     base = Decimal(str(selected.get("original_start", selected.get("start", 0.0))))

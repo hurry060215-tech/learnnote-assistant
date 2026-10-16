@@ -1,16 +1,28 @@
 // Local playback uses task-local seconds. Never reuse another source's clock.
-export const localMediaUrl = taskId => `/api/tasks/${encodeURIComponent(taskId)}/media`;
+export const localMediaUrl = (taskId, revision = "") => `/api/tasks/${encodeURIComponent(taskId)}/media${revision ? `?v=${encodeURIComponent(revision)}` : ""}`;
+
+export function localMediaSource(task) {
+  if (task?.kind !== "task") return null;
+  const range = "start" in (task.learning_range || {}) && "end" in (task.learning_range || {});
+  // A queued range's source_media_path is the full parent, not this clip.
+  if (range && task.range_media_ready !== true) return null;
+  if (!(task.media_path || task.source_media_path)) return null;
+  const digest = task.media_integrity?.sha256 || task.source_identity?.media_sha256 || "";
+  return { id: task.id, revision: [digest, task.control_generation || ""].filter(Boolean).join(":") };
+}
 
 function hasSourceMetadata(player, taskId) {
   if (!player || player.dataset.sourceTaskId !== taskId ||
-      player.getAttribute("src") !== localMediaUrl(taskId) || player.readyState < 1) return false;
+      player.getAttribute("src") !== localMediaUrl(taskId, player.dataset.sourceRevision || "") || player.readyState < 1) return false;
   try {
     const current = new URL(player.currentSrc);
-    return current.pathname === localMediaUrl(taskId) && !current.search;
+    const expected = new URL(localMediaUrl(taskId, player.dataset.sourceRevision || ""), player.ownerDocument?.baseURI || current.origin);
+    return current.href === expected.href;
   } catch { return false; }
 }
 
-export function localPlaybackPosition(player, taskId) {
+export function localPlaybackPosition(player, taskId, revision) {
+  if (revision !== undefined && (player?.dataset.sourceRevision || "") !== revision) return null;
   if (!hasSourceMetadata(player, taskId) || !Number.isFinite(player.currentTime) || player.currentTime < 0) return null;
   return Math.round(player.currentTime * 1000) / 1000;
 }
@@ -24,14 +36,16 @@ export function createLocalPlayer(player) {
     player.removeEventListener("seeking", cancelSeek);
     pending = null;
   }
-  function setSource(taskId) {
-    const url = taskId ? localMediaUrl(taskId) : "";
+  function setSource(taskId, revision = "") {
+    const url = taskId ? localMediaUrl(taskId, revision) : "";
     if (player.dataset.sourceTaskId === taskId && player.getAttribute("src") === url) return;
     cancelSeek();
     player.pause();
     delete player.dataset.sourceTaskId;
+    delete player.dataset.sourceRevision;
     if (taskId) {
       player.dataset.sourceTaskId = taskId;
+      player.dataset.sourceRevision = revision;
       player.src = url;
     } else if (player.hasAttribute("src")) {
       player.removeAttribute("src");

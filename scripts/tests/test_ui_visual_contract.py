@@ -101,7 +101,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=local-player-range-20261016b", html)
+        self.assertIn("desk.js?v=local-player-media-20261016c", html)
         self.assertIn("desk-product.js?v=first-run-20260923", entry)
 
 

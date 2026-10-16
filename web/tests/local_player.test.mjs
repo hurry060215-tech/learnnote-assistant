@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../local-player.js", import.meta.url), "utf8");
-const {createLocalPlayer, localPlaybackPosition, localMediaUrl} = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+const {createLocalPlayer, localPlaybackPosition, localMediaUrl, localMediaSource} = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
 class Player extends EventTarget {
+  ownerDocument = {baseURI:"http://127.0.0.1/"};
   dataset = {}; attributes = {}; readyState = 0; currentTime = 0; duration = NaN; pauses = 0; plays = 0;
   getAttribute(key) { return this.attributes[key]; }
   set src(value) { this.attributes.src = value; this.readyState = 0; this.currentTime = 0; }
@@ -42,5 +43,21 @@ old.dispatchEvent(new Event("loadedmetadata"));
 assert.equal(old.currentTime, 0, "Queued old metadata cannot consume the new pending intent");
 old.metadata(20); assert.equal(old.currentTime, 12.5);
 controller.setSource(null); assert.equal(player.dataset.sourceTaskId, undefined); assert.equal(localPlaybackPosition(player, "failed"), null);
+const child = {kind:"task",id:"child",source_media_path:"parent.mp4",learning_range:{start:5.25,end:15.75},status:"queued"};
+assert.equal(localMediaSource(child), null, "Pending range cannot use its parent fallback");
+assert.deepEqual(localMediaSource({...child,status:"running",range_media_ready:true,media_integrity:{sha256:"clip"}}), {id:"child",revision:"clip"}, "An atomically completed clip is available during summary generation");
+assert.deepEqual(localMediaSource({...child,learning_range:{}}), {id:"child",revision:""}, "Full-source reuse keeps its fallback");
+controller.setSource("same-task", "old-digest"); player.metadata(20); controller.seek(6);
+const pauses = player.pauses;
+controller.setSource("same-task", "old-digest"); assert.equal(player.pauses, pauses, "Unchanged media does not reset playback");
+controller.setSource("same-task", "clip-digest"); controller.seek(5.25);
+assert.equal(localPlaybackPosition(player, "same-task", "old-digest"), null);
+player.readyState = 1; player.currentSrc = "http://127.0.0.1" + localMediaUrl("same-task", "old-digest");
+player.dispatchEvent(new Event("loadedmetadata")); assert.equal(player.currentTime, 0, "Old same-task revision metadata cannot consume the new seek");
+player.metadata(10.56); assert.equal(player.currentTime, 5.25);
+assert.equal(localPlaybackPosition(player, "same-task", "clip-digest"), 5.25);
+player.currentSrc += "&unexpected=1"; assert.equal(localPlaybackPosition(player, "same-task", "clip-digest"), null);
+player.currentSrc = "http://other.test" + localMediaUrl("same-task","clip-digest");
+assert.equal(localPlaybackPosition(player, "same-task", "clip-digest"), null, "Same path/revision on another origin is not the canonical source");
 assert.equal(player.plays, 0, "Source and seek controls never autoplay");
 console.log("Local player: subsecond seconds, identity, metadata ordering, latest seek, Close, replacement, native seek, errors and no autoplay passed");

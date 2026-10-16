@@ -129,8 +129,10 @@ class ScreenSubtitleRecoveryTests(unittest.TestCase):
         storage.update_task(self.task.id, learning_range={"start": 60, "end": 120})
         task = self.run_task()
         self.assertEqual(json.loads(Path(task.transcript_path).read_text(encoding="utf-8"))["provenance"]["original_time_offset"], 60)
-        task = storage.update_task(task.id, media_integrity=MediaIntegrity(duration=60))
-        with patch("app.range_learning.DATA_DIR", self.root), patch("app.range_learning.schedule_processing"):
+        retained = storage.task_dir(task.id) / "screen-subtitles-source.mp4"
+        retained.write_bytes(self.media.read_bytes())
+        task = storage.update_task(task.id, media_path=str(retained), media_integrity=MediaIntegrity(duration=60))
+        with patch("app.range_learning.DATA_DIR", self.root), patch("app.range_media.probe_duration", return_value=60), patch("app.range_learning.schedule_processing"):
             child = create_range_task(task.id, 10, 20, self.options, BackgroundTasks())
         self.assertEqual(child.learning_range["original_start"], 70)
         self.assertEqual(child.learning_range["original_end"], 80)

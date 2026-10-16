@@ -13,7 +13,9 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import threading
 import time
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,6 +102,57 @@ def verify_low_frame_rate_range(media: Path, subtitle: Path, options):
                 'limit': '1fps cannot represent quarter-second boundaries; encoded length is not an exact frame cut.'}
 
 
+def verify_range_preview_lifecycle(source, options):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.media import extract_video_clip, probe_media_integrity
+    from app.range_learning import process_range_task
+    from app.storage import task_dir, update_task, list_tasks
+    with TestClient(app) as client, patch('app.range_learning.schedule_processing'):
+        response = client.post(f'/api/tasks/{source.id}/learn-range', json={
+            'start':5.25, 'end':15.75, 'options':options.model_dump(mode='json')})
+        assert response.status_code == 200, response.text
+        task_id = response.json()['task_id']
+        assert client.get(f'/api/tasks/{task_id}').json()['task']['range_media_ready'] is False
+        pending = client.get(f'/api/tasks/{task_id}/media')
+        assert pending.status_code == 409, pending.text
+        before = {task.id for task in list_tasks()}
+        with patch('app.main.schedule_processing') as rerun_schedule:
+            rerun = client.post(f'/api/tasks/{task_id}/rerun-from-media', json={'options':options.model_dump(mode='json')})
+            assert rerun.status_code == 409, rerun.text
+            rerun_schedule.assert_not_called()
+        nested = client.post(f'/api/tasks/{task_id}/learn-range', json={'start':0,'end':5,'options':options.model_dump(mode='json')})
+        assert nested.status_code == 409, nested.text
+        assert {task.id for task in list_tasks()} == before, 'Pending range admission must not create a task'
+        root = task_dir(task_id)
+        (root / 'selected-range.partial.mp4').write_bytes(b'incomplete synthetic clip')
+        assert client.get(f'/api/tasks/{task_id}/media').status_code == 409
+        clip = extract_video_clip(Path(source.media_path), root / 'selected-range.mp4', 5.25, 15.75)
+        update_task(task_id, status='running', phase='summarizing')
+        ready = client.get(f'/api/tasks/{task_id}').json()['task']
+        assert ready['range_media_ready'] is True and ready['status'] == 'running'
+        served = client.get(f'/api/tasks/{task_id}/media?v=synthetic-ready')
+        assert served.status_code == 200 and served.headers['cache-control'] == 'no-store', (served.status_code,dict(served.headers),served.text[:150] if served.status_code != 200 else '')
+        assert served.content == clip.read_bytes()
+        assert served.content != Path(source.media_path).read_bytes()
+        received = root / 'received-preview.mp4'; received.write_bytes(served.content)
+        duration = probe_media_integrity(received).duration
+        assert abs(duration - 10.5) < .15, duration
+        process_range_task(task_id, Path(source.media_path), ready['title'], options)
+        assert client.get(f'/api/tasks/{task_id}/media').content == served.content
+        with patch('app.main.schedule_processing'):
+            rerun = client.post(f'/api/tasks/{task_id}/rerun-from-media', json={'options':options.model_dump(mode='json')})
+            assert rerun.status_code == 200, rerun.text
+            assert client.get(f"/api/tasks/{rerun.json()['task_id']}/media").content == served.content
+            whole = client.post(f'/api/tasks/{source.id}/rerun-from-media', json={'options':options.model_dump(mode='json')})
+            assert whole.status_code == 200, whole.text
+            assert client.get(f"/api/tasks/{whole.json()['task_id']}/media").content == Path(source.media_path).read_bytes()
+        return {'pending_status':409, 'partial_status':409, 'pending_rerun_status':409, 'pending_nested_status':409, 'ready_during_summary':True,
+                'served_duration':duration, 'served_sha256':hashlib.sha256(served.content).hexdigest(),
+                'equals_selected_clip':True, 'differs_from_parent':True, 'cache_control':'no-store',
+                'same_range_rerun_reused_clip':True, 'full_source_rerun_unchanged':True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, required=True)
@@ -158,10 +211,24 @@ SYNTHETIC_FOURTH
         if args.seed_only:
             fixture['timing_seconds'] = verify_fixture_timing(media)
             fixture['one_fps_quantization'] = verify_low_frame_rate_range(media, subtitle, options)
+            fixture['preview_lifecycle'] = verify_range_preview_lifecycle(tasks[0], options)
             print(json.dumps(fixture), flush=True)
             return
         from app.main import app
+        from app import range_learning
         import uvicorn
+        range_gate = threading.Event(); range_gate.set()
+        process_range = range_learning.process_range_task
+        def gated_range(*args, **kwargs):
+            if not range_gate.wait(30): raise RuntimeError('Synthetic range gate was not released')
+            return process_range(*args, **kwargs)
+        range_learning.process_range_task = gated_range
+        @app.post('/_fixture/range-gate/{action}')
+        def range_gate_control(action: str):
+            if action == 'hold': range_gate.clear()
+            elif action == 'release': range_gate.set()
+            else: raise ValueError('Unknown synthetic gate action')
+            return {'released':range_gate.is_set()}
         @app.get('/_fixture/originals')
         def read_originals(): return originals()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:

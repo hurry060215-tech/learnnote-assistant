@@ -82,7 +82,8 @@ from .task_queue import queue_status, schedule_processing, recover_processing, q
 from .routers.support import router as support_router
 from .routers.queue import router as queue_router
 from .screen_subtitle_routes import router as screen_subtitle_router
-from .task_inputs import merge_task_options, require_ready_note_model, task_media_path, media_source_admission
+from .task_inputs import merge_task_options, require_ready_note_model, task_media_path, media_source_admission, task_preview_file as _task_media_file, task_reuse_media_path
+from .range_media import range_media_preview_state
 from .activation import record as record_activation
 
 ensure_dirs()
@@ -1697,6 +1698,7 @@ def task_payload(task: TaskRecord) -> dict:
     payload["handoff_integrity"] = task.handoff_integrity.model_dump(mode="json")
     payload["evidence_coverage"] = task.evidence_coverage.model_dump(mode="json")
     payload["source_identity"] = task.source_identity.model_dump(mode="json")
+    payload.update(range_media_preview_state(task))
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
     payload.update(task_duration_estimates(task))
@@ -3161,7 +3163,7 @@ def create_from_existing_media(
             settings=next_options.screen_subtitles or source.options.screen_subtitles,
             generate_note=next_options.content_mode != "subtitles", options=next_options), background_tasks)
 
-    media_path = task_media_path(source)
+    media_path = task_reuse_media_path(source)
     if not media_path:
         raw_media_path = source.media_path or source.source_media_path
         if raw_media_path:
@@ -3320,7 +3322,7 @@ def resume_task_from_checkpoint(
             status_code=409,
             detail={"code": "task_still_running", "message": "任务已经在处理中。"},
         )
-    media_path = task_media_path(source)
+    media_path = task_reuse_media_path(source)
     if not media_path or not media_path.is_file() or media_path.stat().st_size <= 0:
         raise HTTPException(
             status_code=409,
@@ -3624,7 +3626,7 @@ def api_retry_task(
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
     if source.status in {"queued", "running", "cancelling"}:
         raise HTTPException(status_code=409, detail={"code": "task_still_running", "message": "请先停止当前任务"})
-    if not task_media_path(source):
+    if not task_reuse_media_path(source):
         raise HTTPException(
             status_code=409,
             detail={
@@ -4176,17 +4178,6 @@ def _task_subtitle_file(task_id: str) -> tuple[TaskRecord, Path]:
     return task, path
 
 
-def _task_media_file(task_id: str) -> tuple[TaskRecord, Path]:
-    try:
-        task = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Task not found") from exc
-    path = task_media_path(task)
-    if not path:
-        raise HTTPException(status_code=404, detail="Media not found")
-    return task, path
-
-
 def _task_visual_clip_range(task: TaskRecord, window_id: str) -> tuple[str, float, float]:
     target = (window_id or "").strip().lower()
     windows = list(task.visual_windows or [])
@@ -4235,7 +4226,7 @@ def api_preview_media(task_id: str) -> FileResponse:
             f'inline; filename="{quote(filename)}"; '
             f"filename*=UTF-8''{quote(filename)}"
         ),
-        "Cache-Control": "private, max-age=60",
+        "Cache-Control": "no-store" if task.learning_range else "private, max-age=60",
     }
     return FileResponse(path, media_type=media_content_type(path), headers=headers)
 

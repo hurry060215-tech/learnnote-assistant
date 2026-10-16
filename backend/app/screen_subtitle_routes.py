@@ -1,6 +1,5 @@
 """User-started OCR routes reuse task-owned media, without arbitrary file inputs."""
 import json
-import math
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -31,39 +30,8 @@ class ScreenSubtitlePreviewRequest(BaseModel):
 
 
 def _completed_range_media(task):
-    # Browser tasks record the full download before clipping. These final,
-    # task-owned names are installed atomically by the existing slicers.
-    owner, seen = task, set()
-    while owner.id not in seen and len(seen) < 16:
-        seen.add(owner.id)
-        if owner.learning_range != task.learning_range:
-            break
-        root = task_dir(owner.id)
-        names = ("selected-range-source.mp4", "selected-range.mp4")
-        if owner.mode == "screen_subtitles":
-            from .screen_subtitle_media import retained_media_name
-            names = (retained_media_name(Path(owner.media_path or "")), "screen-subtitles-source.media", *names)
-        for name in names:
-            path = root / name
-            if root.is_symlink() or path.is_symlink() or not path.is_file():
-                continue
-            if task.screen_subtitles_media_sha256 and path.resolve() != Path(task.media_path).resolve():
-                continue
-            try:
-                expected = float(task.learning_range["end"]) - float(task.learning_range["start"])
-                actual = media_info(path)["duration"]
-                if not math.isfinite(expected) or expected <= 0 or abs(actual - expected) > 1:
-                    break
-            except (ValueError, OSError, KeyError, TypeError, ImportError):
-                break
-            return path
-        if owner.mode != "screen_subtitles" or not owner.source_task_id:
-            break
-        try:
-            owner = get_task(owner.source_task_id)
-        except FileNotFoundError:
-            break
-    raise HTTPException(409, {"code": "range_media_unconfirmed", "message": "无法确认已完成的片段文件；请先恢复来源任务。不会把完整原视频当作片段识别。"})
+    from .range_media import completed_range_media
+    return completed_range_media(task, duration_probe=lambda path: media_info(path)["duration"])
 
 
 def _source(task_id, *, allow_pending_range=False):
@@ -76,7 +44,7 @@ def _source(task_id, *, allow_pending_range=False):
     if task.checkpoint == "screen_subtitles_range_pending" and not allow_pending_range:
         raise HTTPException(409, "此片段尚未生成，请先恢复原任务；不能将完整原视频当作所选片段处理。")
     pending = task.checkpoint == "screen_subtitles_range_pending"
-    path = _completed_range_media(task) if task.learning_range and not pending else task_media_path(task)
+    path = _completed_range_media(task) if task.learning_range and not pending else task_media_path(task, allow_range_source=pending)
     if not path or not path.is_file() or path.stat().st_size <= 0:
         raise HTTPException(409, {"code": "media_not_found", "message": "没有可复用的已保存视频。"})
     return task, path

@@ -14,14 +14,14 @@ import { installNoteEditor } from "/web/desk-note-controls.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
-import { createLocalPlayer } from "/web/local-player.js";
+import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { createTranscriptWindow } from "/web/transcript-window.js";
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
-import { installTools } from "/web/desk-tools.js?v=local-player-range-20261016b";
+import { installTools } from "/web/desk-tools.js?v=local-player-media-20261016c";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
@@ -336,12 +336,17 @@ async function refreshLibrary() {
       );
     if (selected) {
       const changed = claimMapVersion(selected) !== claimMapVersion(state.selected);
+      const mediaChanged = JSON.stringify(localMediaSource(selected)) !== JSON.stringify(localMediaSource(state.selected));
+      const selectionEpoch = state.epoch;
       state.selected = selected;
       renderStatus();
       if (changed && !state.editing) {
         claimTimeline.reset();
         await loadEdition(state.epoch);
       } else if (!state.editing) state.personalReview?.load();
+      if (mediaChanged && selectionEpoch === state.epoch && state.selected?.id === selected.id &&
+          !$("sourcePanel").hidden && $("sourcePanel").dataset.sourceTaskId === selected.id)
+        await openSource();
     } else if (state.selected && !state.editing) state.personalReview?.load();
     const completed = state.items.filter(
       (item) =>
@@ -790,6 +795,7 @@ function closeSource({ cancelEvidence = true } = {}) {
   sourceWindowRender = null;
   if ($("sourceWindow")) { $("sourceWindow").replaceChildren(); $("sourceWindow").hidden = true; }
   delete $("sourcePanel").dataset.sourceKey;
+  delete $("sourcePanel").dataset.sourceTaskId;
 }
 
 let inlineSourceRequest = 0;
@@ -875,9 +881,11 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   const panel = $("sourcePanel"),
     player = $("player"),
     transcript = $("sourceTranscript"),
-    sourceKey = `${s.kind}:${s.id}:${s.updated_at || ""}`;
+    media = localMediaSource(s),
+    sourceKey = `${s.kind}:${s.id}:${s.updated_at || ""}:${JSON.stringify(media)}`;
   localPlayer.cancelSeek();
   panel.hidden = false;
+  panel.dataset.sourceTaskId = s.kind === "task" ? s.id : "";
   document.body.classList.add("source-open");
   const seek = () => {
     if (s.kind === "task" && s.id === state.selected?.id) claimTimeline.sync(seconds ?? Number(player.currentTime || 0), { scroll: false });
@@ -931,8 +939,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   const epoch = state.epoch;
   $("sourceContent").textContent = "正在打开原始来源…";
   if (transcript) transcript.open = true;
-  const hasMedia =
-    s.kind === "task" && Boolean(s.media_path || s.source_media_path);
+  const hasMedia = Boolean(media);
   let online = $("onlinePlayer");
   if (!online) {
     online = document.createElement("iframe"); online.id = "onlinePlayer";
@@ -941,12 +948,12 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     online.referrerPolicy = "strict-origin-when-cross-origin";
     player.after(online);
   }
-  const embedUrl = !hasMedia && s.kind === "task" ? sourceVideoEmbed(s.page_url, Number(seconds || 0), Number(s.learning_range?.start || 0)) : "";
+  const embedUrl = !hasMedia && s.kind === "task" && !Object.keys(s.learning_range || {}).length ? sourceVideoEmbed(s.page_url, Number(seconds || 0), 0) : "";
   online.hidden = !embedUrl;
   if (embedUrl) online.src = embedUrl;
   else online.removeAttribute("src");
   player.hidden = !hasMedia;
-  localPlayer.setSource(hasMedia ? s.id : null);
+  localPlayer.setSource(media?.id || null, media?.revision || "");
   if (hasMedia && seconds !== undefined) localPlayer.seek(seconds);
   try {
     if (s.kind === "material") {

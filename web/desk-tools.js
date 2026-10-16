@@ -5,7 +5,7 @@ import { mountScreenSubtitles } from "/web/screen-subtitles.js";
 import { mountMaterialCatalogRecovery } from "/web/material-catalog-recovery.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource, requestedRangeDuration } from "/web/range-source.js?v=logical-range-20261016";
-import { localPlaybackPosition } from "/web/local-player.js";
+import { localPlaybackPosition, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { installCourseSynthesis } from "/web/course-synthesis.js";
@@ -412,7 +412,8 @@ export function installTools(ctx) {
       if (!Number.isFinite(logicalDuration) || logicalDuration <= 0) throw new Error("原片段范围无效，请重新打开原视频。");
       duration = Math.min(duration, logicalDuration);
     }
-    const currentPosition = localPlaybackPosition($("player"), s.id) ?? 0;
+    const media = localMediaSource(s);
+    const currentPosition = (media ? localPlaybackPosition($("player"), s.id, media.revision) : null) ?? 0;
     const position = currentPosition <= duration ? currentPosition : "";
     const token = show(
       "只整理一段视频",
@@ -966,7 +967,8 @@ export function installTools(ctx) {
     },
     "range-position": () => {
       if (!rangeIsCurrent(rangeSelection)) return;
-      const position = localPlaybackPosition($("player"), rangeSelection.source.id);
+      const media = localMediaSource(rangeSelection.source);
+      const position = media ? localPlaybackPosition($("player"), rangeSelection.source.id, media.revision) : null;
       if (position === null) throw new Error("请先打开当前视频并等待播放器就绪，未使用其他来源的播放位置。");
       if (position > rangeSelection.duration) throw new Error("当前播放位置超过原片段的学习范围，请选择范围内的位置。");
       $("rangeStart").value = String(position);

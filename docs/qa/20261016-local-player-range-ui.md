@@ -48,7 +48,7 @@ in rendered fields. The original media/transcript/note hashes remain unchanged.
 Delayed real media responses exercise a new 20-second source replacing an already
 loaded 5.25-second clip: latest citation seek, Close and source switch. Additional
 flows reject an old source's clock during delayed edition navigation, preserve a
-new native seek through delayed transcript rendering, and close/switch during an
+new real media seeking-event simulation through delayed transcript rendering, and close/switch during an
 accepted range POST whose response has not returned. Duplicate submits are counted.
 
 The report asserts the rendered task ID, current media URL, readyState, exact
@@ -113,3 +113,34 @@ Logical bounds use serialized decimal arithmetic rather than a numeric tolerance
 The 0.1–0.3 parent accepts a nested end of 0.2, preserves original end 0.3, and
 rejects 0.200000001. The UI calculates the same exact decimal max, including
 exponent notation, without displaying binary-subtraction noise.
+
+
+The second hosted run, `38950620700` on `7b5402a`, found a separate lifecycle
+defect: the range API correctly encoded 10.56 seconds, but the queued child
+preview had already loaded the 20.032-second parent under the child URL. Its
+failure screenshot and report retain that mismatch; it was not a timing-tolerance
+failure. A range preview now resolves only an atomically completed range artifact
+(or a same-range rerun ancestor), returns 409 while unavailable, and uses no-store.
+The cheap `range_media_ready` projection allows playback during summarization
+once the clip exists, without probing every task on each poll. Full-source reuse
+keeps its existing fallback. API regressions compare the actual served bytes with
+the selected clip, probe their duration, reject queued/partial media, and verify
+both same-range and full-source reruns.
+
+The default player binds metadata to the exact digest/control-generation query,
+refreshes an already-open source panel when that task's clip becomes ready, and
+does not reopen a closed panel or reset playback for unrelated timestamp updates.
+The Edge helper holds real range processing briefly, checks the queued UI and API,
+then stays on the same selected task through completion rather than reloading the
+page. It still requires a new hosted pass. Programmatic `currentTime` assignments
+simulate a manual-position media seeking event; they do not prove physical native
+scrub-control interaction. Transcript buttons and range controls are clicked in
+the actual UI.
+
+Range-aware metadata lookup is non-probing and never advertises a pending parent
+as the child media. Preview, export, rerun, resume, retry and nested-range source
+admission verify the completed artifact before consumption. The actual pending
+rerun and nested API calls return 409 without creating tasks. Original-source
+fallback remains explicit only for internal pending OCR clipping recovery (the
+range worker also retains its original input to perform the cut). Legacy finite
+offset-only records retain their existing ordinary-media behavior.

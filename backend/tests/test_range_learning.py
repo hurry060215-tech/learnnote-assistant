@@ -57,7 +57,7 @@ class RangeSourceIdentityTests(unittest.TestCase):
                 media_path=str(media), media_integrity=MediaIntegrity(duration=11.064026),
                 learning_range={"start":5.25,"end":15.75,"original_start":5.25,"original_end":15.75})
             created = source.model_copy(update={"id":"new"})
-            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.completed_range_media", return_value=media), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
                 for start, end in ((10.5, 11), (0, 10.500000001), (0, 10.505)):
                     with self.subTest(start=start, end=end), self.assertRaisesRegex(ValueError, "invalid_learning_range"):
                         create_range_task("source", start, end, TaskOptions(), None)
@@ -74,7 +74,7 @@ class RangeSourceIdentityTests(unittest.TestCase):
                 with self.subTest(selected=selected):
                     source = TaskRecord(id="source", source_type="local", title="Source", created_at="", updated_at="",
                         media_path=str(media), media_integrity=MediaIntegrity(duration=20), learning_range=selected)
-                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
+                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.completed_range_media", return_value=media), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
                         result = create_range_task("source", 0, 20.005, TaskOptions(), None)
                     self.assertEqual(result.learning_range["end"], 20.005)
 
@@ -86,7 +86,7 @@ class RangeSourceIdentityTests(unittest.TestCase):
             source = TaskRecord(id="source", source_type="local", title="Decimal clip", created_at="", updated_at="",
                 media_path=str(media), media_integrity=MediaIntegrity(duration=1),
                 learning_range={"start":0.1,"end":0.3,"original_start":0.1,"original_end":0.3})
-            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.completed_range_media", return_value=media), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
                 result = create_range_task("source", 0, 0.2, TaskOptions(), None)
                 self.assertEqual(result.learning_range, {"start":0,"end":0.2,"original_start":0.1,"original_end":0.3})
                 with self.assertRaisesRegex(ValueError, "invalid_learning_range"):
@@ -104,7 +104,7 @@ class RangeSourceIdentityTests(unittest.TestCase):
                 with self.subTest(selected=selected):
                     source = TaskRecord(id="source", source_type="local", title="Invalid bounds", created_at="", updated_at="",
                         media_path=str(media), media_integrity=MediaIntegrity(duration=1e308), learning_range=selected)
-                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task") as create, patch("app.range_learning.schedule_processing") as schedule:
+                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.completed_range_media", return_value=media), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task") as create, patch("app.range_learning.schedule_processing") as schedule:
                         with self.assertRaisesRegex(ValueError, "invalid_learning_range"):
                             create_range_task("source", 0, end, TaskOptions(), None)
                         create.assert_not_called(); schedule.assert_not_called()
@@ -116,7 +116,7 @@ class RangeSourceIdentityTests(unittest.TestCase):
             media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
             source = TaskRecord(id="source", source_type="local", title="Part 2", page_url="https://www.bilibili.com/video/BV1xx?p=2", created_at="", updated_at="", media_path=str(media), media_integrity=MediaIntegrity(duration=100), learning_range={"original_start":60}, source_identity=SourceIdentity(media_sha256="original-hash"))
             created = source.model_copy(update={"id":"new"})
-            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.completed_range_media", return_value=media), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
                 result = create_range_task("source", 10, 20, TaskOptions(), None)
             self.assertEqual(create.call_args.kwargs["page_url"], source.page_url)
             self.assertEqual(result.learning_range["original_start"], 70)

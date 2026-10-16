@@ -18,9 +18,13 @@ async function bounded(promise, label, timeout = 20000) {
     })]);
   } finally { clearTimeout(timer); }
 }
-function assertPlayer(snapshot, id, seconds) {
+function assertPlayer(snapshot, id, seconds, revision) {
   assert.equal(snapshot.taskId, id, "Rendered player must belong to the expected task");
   assert.equal(new URL(snapshot.currentSrc).pathname, `/api/tasks/${id}/media`);
+  if (revision !== undefined) {
+    assert.equal(snapshot.revision, revision);
+    assert.equal(new URL(snapshot.currentSrc).search, revision ? `?v=${encodeURIComponent(revision)}` : "");
+  }
   assert.equal(snapshot.hidden, false); assert(snapshot.readyState >= 1);
   assert.equal(snapshot.paused, true, "Navigation and seeks must not autoplay");
   if (seconds !== undefined) assert(Math.abs(snapshot.currentTime - seconds) < .08, JSON.stringify(snapshot));
@@ -33,7 +37,7 @@ async function main() {
   const report = { ok: false, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     browser: "Microsoft Edge", synthetic_only: true, actual_http: true, actual_media: true,
     summary_provider: "deterministic fixture", media_checks: [], checks: [], screenshots: [], writes: [], errors: [], blocked_requests: [],
-    not_tested: ["desktop native webview", "real sites/accounts", "extension permissions", "ASR", "external model quality"] };
+    not_tested: ["physical native seekbar interaction", "desktop native webview", "real sites/accounts", "extension permissions", "ASR", "external model quality"] };
   const releases = [];
   let backend, browser, page, fixture, failure, buffer = "";
   try {
@@ -78,12 +82,14 @@ async function main() {
     const read = async route => {
       const response = await page.request.get(base + route); assert(response.ok(), await response.text()); return response.json();
     };
-    const player = () => page.locator("#player").evaluate(el => ({ taskId: el.dataset.sourceTaskId, currentSrc: el.currentSrc,
+    const player = () => page.locator("#player").evaluate(el => ({ taskId: el.dataset.sourceTaskId, revision:el.dataset.sourceRevision || "", currentSrc: el.currentSrc,
       currentTime: el.currentTime, duration: el.duration, readyState: el.readyState, paused: el.paused, hidden: el.hidden }));
     const selected = async id => {
+      const task = (await read(`/api/tasks/${id}`)).task;
+      const revision = [task.media_integrity?.sha256 || task.source_identity?.media_sha256 || "", task.control_generation || ""].filter(Boolean).join(":");
       await page.waitForFunction(id => document.querySelector("#document")?.dataset.readerSource === `task:${id}`, id);
-      await until(async () => { const value = await player(); return value.taskId === id && value.readyState >= 1 && !value.hidden; }, "rendered local source");
-      assertPlayer(await player(), id);
+      await until(async () => { const value = await player(); return value.taskId === id && value.revision === revision && value.readyState >= 1 && !value.hidden; }, "rendered local source");
+      assertPlayer(await player(), id, undefined, revision);
     };
     const go = async id => { await page.evaluate(id => { location.hash = `task/${id}`; }, id); await selected(id); };
     const seek = async seconds => {
@@ -115,7 +121,8 @@ async function main() {
       await until(async () => { task = (await read(`/api/tasks/${id}`)).task; return ["success", "failed", "cancelled"].includes(task.status); }, "actual range processing", 90000);
       assert.equal(task.status, "success", JSON.stringify(task)); return task;
     };
-    const createRange = async (start, end, sourceId) => {
+    const createRange = async (start, end, sourceId, checkPending = false) => {
+      if (checkPending) assert((await page.request.post(base + '/_fixture/range-gate/hold')).ok());
       await page.locator("#rangeStart").fill(String(start)); await page.locator("#rangeEnd").fill(String(end));
       const response = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/api/tasks/${sourceId}/learn-range`));
       await page.locator("#rangeForm button.primary").click();
@@ -123,8 +130,21 @@ async function main() {
       const sent = reply.request().postDataJSON();
       assert.equal(sent.start, start); assert.equal(sent.end, end);
       assert.equal(new URL(reply.url()).pathname, `/api/tasks/${sourceId}/learn-range`);
-      const value = await reply.json(); await complete(value.task_id);
-      await page.goto(`${base}/#task/${value.task_id}`); await selected(value.task_id); return value.task_id;
+      const value = await reply.json();
+      if (checkPending) {
+        try {
+          await page.waitForFunction(id => document.querySelector('#sourcePanel')?.dataset.sourceTaskId === id &&
+            !document.querySelector('#sourcePanel').hidden && document.querySelector('#player').hidden, value.task_id);
+          assert.equal(await page.locator('#player').getAttribute('src'), null, 'Queued child must not load parent bytes');
+          const pending = await page.request.get(`${base}/api/tasks/${value.task_id}/media`);
+          assert.equal(pending.status(), 409, await pending.text());
+          await snapshot('queued-range-no-parent-media');
+          report.checks.push('Queued child media returns 409 and the actual UI does not load parent bytes under its ID');
+        } finally { await page.request.post(base + '/_fixture/range-gate/release'); }
+      }
+      await complete(value.task_id);
+      // Stay on the same selected task: a page reload could hide a stale source.
+      await selected(value.task_id); return value.task_id;
     };
 
     await page.goto(`${base}/#task/${a}`); await selected(a);
@@ -150,7 +170,7 @@ async function main() {
     const beforeInvalid = report.writes.length; await page.locator("#rangeForm button.primary").click();
     await page.locator("#toolStatus").getByText(/结束位置必须晚于/).waitFor(); assert.equal(report.writes.length, beforeInvalid);
     report.checks.push("Actual cue seek, decimal current-position default/button and invalid custom bounds");
-    const clip = await createRange(5.25, 15.75, a);
+    const clip = await createRange(5.25, 15.75, a, true);
     const clipped = (await read(`/api/tasks/${clip}`)).task;
     assert.equal(clipped.source_task_id, a);
     assert.deepEqual(clipped.learning_range, { start: 5.25, end: 15.75, original_start: 5.25, original_end: 15.75 });
@@ -186,7 +206,7 @@ async function main() {
     // Delay real media HTTP, not a fake player property. Metadata remains unavailable.
     for (const action of ["latest", "close", "switch"]) {
       const reached = deferred(), release = deferred(); releases.push(release.resolve);
-      const pattern = `**/api/tasks/${a}/media`;
+      const pattern = `**/api/tasks/${a}/media*`;
       await page.route(pattern, async route => { reached.resolve(); await release.promise; await route.continue().catch(() => {}); });
       // Start with the 5.25-second nested clip already loaded, then replace it
       // with the 20-second source. New seeks must not use old duration metadata.
@@ -223,7 +243,7 @@ async function main() {
     await page.locator("[data-close-tool]").click(); editionRelease.resolve(); await page.unroute(editionRoute); await selected(b);
 
     // Citation seek begins while transcript HTTP is pending. A subsequent
-    // native player control seek must survive the old transcript completion.
+    // real seeking-event/manual-position simulation must survive the old transcript completion.
     const transcriptSeen = deferred(), transcriptRelease = deferred(); releases.push(transcriptRelease.resolve);
     const transcriptRoute = `**/api/tasks/${a}/transcript`;
     await page.route(transcriptRoute, async route => { transcriptSeen.resolve(); await transcriptRelease.promise; await route.continue(); });
@@ -232,8 +252,8 @@ async function main() {
     await until(async () => Math.abs((await player()).currentTime - 5) < .08, "citation seek while transcript is loading");
     await seek(12.5); transcriptRelease.resolve(); await page.unroute(transcriptRoute);
     await page.waitForFunction(() => document.querySelector("#sourcePanel").dataset.contentMode === "transcript");
-    assertPlayer(await player(), a, 12.5); await snapshot("native-seek-survives-transcript-loading");
-    report.checks.push("B refuses stale A clock; newer native seek survives delayed source transcript rendering");
+    assertPlayer(await player(), a, 12.5); await snapshot("media-position-survives-transcript-loading");
+    report.checks.push("B refuses stale A clock; a newer real media seeking-event simulation survives delayed source transcript rendering");
 
     // A pending old request must not replace the newer source or create twice.
     await go(a); await openRange();
@@ -289,5 +309,9 @@ if (process.argv.includes("--self-test")) {
   assertPlayer(sample, "source", 5.25);
   for (const change of [{ taskId: "other" }, { currentSrc: "http://127.0.0.1:1/api/tasks/other/media" }, { currentTime: 0 }, { paused: false }, { readyState: 0 }, { hidden: true }])
     assert.throws(() => assertPlayer({ ...sample, ...change }, "source", 5.25));
+  const revised = {...sample, revision:"digest", currentSrc:sample.currentSrc + "?v=digest"};
+  assertPlayer(revised,"source",5.25,"digest");
+  for (const change of [{revision:"old"},{currentSrc:sample.currentSrc + "?v=old"},{currentSrc:revised.currentSrc + "&extra=1"}])
+    assert.throws(()=>assertPlayer({...revised,...change},"source",5.25,"digest"));
   console.log("Player acceptance assertions reject wrong source, media URL, time, autoplay and unloaded/hidden player; browser not launched");
 } else main().catch(error => { console.error(error); process.exitCode = 1; });

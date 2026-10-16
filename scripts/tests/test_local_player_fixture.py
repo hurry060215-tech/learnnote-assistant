@@ -36,6 +36,12 @@ class LocalPlayerFixtureTests(unittest.TestCase):
             self.assertEqual(quantized['nested_padding_rejections'], [
                 {'start':10.5,'end':11,'status':422}, {'start':0,'end':10.500000001,'status':422},
                 {'start':0,'end':10.505,'status':422}])
+            preview = report['preview_lifecycle']
+            self.assertEqual((preview['pending_status'],preview['partial_status']), (409,409))
+            for key in ('ready_during_summary','equals_selected_clip','differs_from_parent','same_range_rerun_reused_clip','full_source_rerun_unchanged'):
+                self.assertTrue(preview[key], preview)
+            self.assertLess(abs(preview['served_duration'] - 10.5), .15)
+            self.assertEqual(preview['cache_control'], 'no-store')
             self.assertNotEqual(report['source_id'], report['other_id'])
             self.assertEqual(len(report['source_artifacts']), 2)
 

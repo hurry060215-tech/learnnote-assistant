@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 const source = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
 const load = async file => import("data:text/javascript;base64," + Buffer.from(readFileSync(new URL(file, import.meta.url), "utf8")).toString("base64"));
-const {localPlaybackPosition} = await load("../local-player.js");
+const {localPlaybackPosition, localMediaSource} = await load("../local-player.js");
 const {fullVideoSource, requestedRangeDuration} = await load("../range-source.js");
 const deferred = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 function extractAction(name, next) {
@@ -13,11 +13,11 @@ function extractAction(name, next) {
 }
 function harness() {
   const original = {id: "original", title: "Local source", kind: "task", media_path: "synthetic.mp4", media_integrity: {duration: 20}};
-  const selected = { ...original, id: "clip", source_task_id: "original", learning_range: {start: 5, end: 15, original_start: 5, original_end: 15}, media_integrity: {duration: 10} };
+  const selected = { ...original, id: "clip", source_task_id: "original", range_media_ready: true, learning_range: {start: 5, end: 15, original_start: 5, original_end: 15}, media_integrity: {duration: 10} };
   const h = { state: {selected, epoch: 1}, calls: [], opened: [], refreshed: 0, response: deferred(), confirms: [], html: "" };
   const nodes = { player: {dataset: {sourceTaskId: "clip"}, currentSrc: "http://127.0.0.1/api/tasks/clip/media", currentTime: 2.125, readyState: 1, getAttribute: () => "/api/tasks/clip/media"}, rangeStart: {value: "2.125"}, rangeEnd: {value: "4.5"} };
   const dialog = {open: true, dataset: {}, close() {this.open = false;}};
-  const context = vm.createContext({ state: h.state, dialog, $: id => nodes[id], localPlaybackPosition, fullVideoSource, requestedRangeDuration,
+  const context = vm.createContext({ state: h.state, dialog, $: id => nodes[id], localPlaybackPosition, localMediaSource, fullVideoSource, requestedRangeDuration,
     current: () => ({...h.state.selected}), esc: value => String(value).replaceAll("<", "&lt;"), options: () => ({content_mode: "auto"}),
     openItem: async item => h.opened.push(item), refresh: async () => h.refreshed++,
     confirm: message => {h.confirms.push(message); return true;},

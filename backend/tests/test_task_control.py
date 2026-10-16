@@ -274,7 +274,7 @@ class TaskControlTests(unittest.TestCase):
                 return main.api_retry_task(task.id, BackgroundTasks(), None)
             except HTTPException as exc:
                 return exc.status_code, exc.detail["code"]
-        with patch.object(main, "task_media_path", side_effect=delayed_media_path), \
+        with patch.object(main, "task_reuse_media_path", side_effect=delayed_media_path), \
              patch.object(main, "create_from_existing_media") as create_clone, ThreadPoolExecutor(1) as pool:
             pending = pool.submit(clone)
             try:
@@ -297,7 +297,7 @@ class TaskControlTests(unittest.TestCase):
         from fastapi import BackgroundTasks
         from app import main
         task = self.task(status="failed", phase="failed")
-        with patch.object(main, "task_media_path", return_value=self.root / "synthetic.mp4"), \
+        with patch.object(main, "task_reuse_media_path", return_value=self.root / "synthetic.mp4"), \
              patch.object(main, "create_from_existing_media", return_value={"task_id": "new-clone"}) as clone:
             result = main.api_retry_task(task.id, BackgroundTasks(), None)
         self.assertEqual(result["task_id"], "new-clone")

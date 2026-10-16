@@ -6,6 +6,8 @@ from fastapi import HTTPException
 
 from .config import LLM_BASE_URL, LLM_MODEL
 from .models import TaskOptions, TaskRecord
+from .storage import get_task
+from .range_media import completed_range_media, has_selected_range
 from .model_connections import resolve_model_options
 from .summarizer import llm_model_supports_vision
 
@@ -33,7 +35,12 @@ def require_ready_note_model(options: TaskOptions) -> None:
         raise HTTPException(409, {"code": "visual_model_required", "message": "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。"})
 
 
-def task_media_path(task: TaskRecord) -> Path | None:
+def task_media_path(task: TaskRecord, *, allow_range_source=False) -> Path | None:
+    if has_selected_range(task) and not allow_range_source:
+        try:
+            return completed_range_media(task, verify_duration=False)
+        except HTTPException:
+            return None
     for raw_path in (task.media_path, task.source_media_path):
         if not raw_path:
             continue
@@ -44,6 +51,21 @@ def task_media_path(task: TaskRecord) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def task_preview_file(task_id: str) -> tuple[TaskRecord, Path]:
+    try:
+        task = get_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    path = task_reuse_media_path(task)
+    if not path:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return task, path
+
+
+def task_reuse_media_path(task: TaskRecord) -> Path | None:
+    return completed_range_media(task) if has_selected_range(task) else task_media_path(task)
 
 
 @contextmanager
