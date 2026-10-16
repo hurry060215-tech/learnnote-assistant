@@ -3,7 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = readFileSync(new URL("../material-catalog-recovery.js", import.meta.url), "utf8");
-const { mountMaterialCatalogRecovery } = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+const moduleUrl = text => "data:text/javascript;base64," + Buffer.from(text).toString("base64");
+const viewUrl = moduleUrl(readFileSync(new URL("../catalog-recovery-view.js", import.meta.url), "utf8"));
+const taskSource = readFileSync(new URL("../task-catalog-recovery.js", import.meta.url), "utf8");
+const taskUrl = moduleUrl(taskSource.replace('"/web/catalog-recovery-view.js"', JSON.stringify(viewUrl)));
+const { mountMaterialCatalogRecovery } = await import(moduleUrl(source
+  .replace('"/web/catalog-recovery-view.js"', JSON.stringify(viewUrl))
+  .replace('"/web/task-catalog-recovery.js"', JSON.stringify(taskUrl))));
 class Element {
   constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.style = {}; this.listeners = {}; this.attributes = {}; this._text = ""; this.disabled = false; }
   get isConnected() { return this.tagName === "body" || Boolean(this.parent?.isConnected); }
@@ -25,13 +31,13 @@ const deferred = () => { let resolve, reject; const promise = new Promise((done,
 const snapshot = (name = "chosen.sqlite3") => ({ name, size: 80 });
 const goodPreview = () => ({ snapshot_sha256: "a".repeat(64), preview_token: "chosen-preview-token", recovery_scope: "material_catalog_only", can_apply: true, recoverable_count: 1, materials: [{ material_id: "retained-id", title: "<img onerror=bad> 编码选择", status: "recoverable", reason: "按所选快照恢复 gb18030 与历史编号" }], unresolved: [], message: "快照核对完成" });
 const applied = () => ({ status: "pass", restored_material_count: 1, restored_evidence_count: 2, rollback_snapshot_created: true, rollback_directory: "catalog-recovery-0123456789abcdef", unresolved: [] });
-function setup(handler = async path => path.endsWith("/status") ? { state: "missing", recovery_required: true, orphaned_material_ids: ["retained-id"], message: "本机目录缺失。" } : path.endsWith("/preview") ? goodPreview() : applied()) {
+function setup(handler = async path => path.endsWith("/status") ? { state: "missing", recovery_required: true, orphaned_material_ids: ["retained-id"], message: "本机目录缺失。" } : path.endsWith("/preview") ? goodPreview() : applied(), options = {}) {
   const body = new Element("body"), container = new Element("main"); body.append(container);
   globalThis.document = { createElement: tag => new Element(tag) };
   globalThis.FormData = Multipart;
   let current = true;
   const calls = [], updates = [];
-  const panel = mountMaterialCatalogRecovery(container, { api: async (...args) => { calls.push(args); return handler(...args); }, isCurrent: () => current, onRecovered: async value => updates.push(value) });
+  const panel = mountMaterialCatalogRecovery(container, { api: async (...args) => { calls.push(args); return handler(...args); }, isCurrent: () => current, onRecovered: async value => { updates.push(value); await options.onRecovered?.(value); } });
   const get = id => all(panel.root).find(item => item.id === `materialCatalog${id}`);
   const choose = file => { get("Snapshot").files = file ? [file] : []; get("Snapshot").listeners.change(); };
   return { ...panel, calls, updates, container, get, choose, leave: () => { current = false; } };
@@ -224,3 +230,203 @@ test("task rebuild failure clears old eligibility and checks current catalog sta
 
 const tools = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
 assert.match(tools, /mountMaterialCatalogRecovery\(\$\("toolBody"\), \{ api, isCurrent: \(\) => token === generation && dialog.open, onRecovered: refresh \}\)/);
+
+const taskPreview = () => ({ can_apply: true, recovery_scope: "task_catalog_only", preview_token: "f".repeat(64), task_count: 2, evidence_count: 4, unknown_documents_unrestored: true, document_count: null, message: "未知文档未恢复，缺失数量无法确定。", restore_instructions: "完全退出应用，先保留新目录，再还原原始字节。" });
+const taskApplied = () => ({ ...taskPreview(), status: "partial", restored_task_count: 2, restored_evidence_count: 4, rollback_directory: "catalog-recovery-original", rollback_snapshot_created: true });
+
+test("corrupt task rescue requires its own fresh explicit preview and scope confirmation", async () => {
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : path.endsWith("/preview") ? taskPreview() : taskApplied());
+  await h.ready;
+  assert.equal(h.calls.length, 1); assert.equal(h.get("TaskApply").disabled, true);
+  assert.match(h.root.textContent, /未知文档.*缺失数量无法确定/);
+  await h.get("TaskPreview").click();
+  assert.equal(h.calls[1][0], "/api/library/catalog/tasks/preview");
+  assert.equal(h.get("TaskApply").disabled, false);
+  assert.match(h.get("TaskStatus").textContent, /2 个任务、4 条出处/);
+  await h.get("TaskApply").click();
+  assert.equal(h.calls[2][0], "/api/library/catalog/tasks/apply");
+  assert.deepEqual(JSON.parse(h.calls[2][1].body), { preview_token: "f".repeat(64), confirm_scope: "task_catalog_only" });
+  assert.match(h.get("TaskStatus").textContent, /未知文档未恢复.*catalog-recovery-original.*完全退出/);
+  assert.equal(h.get("TaskApply").disabled, true);
+});
+
+test("task recovery disabled diagnostics cannot be bypassed by clicking apply", async () => {
+  for (const change of [{ can_apply: false, diagnostic: "未处理事务日志" }, { recovery_scope: "material_catalog_only" }, { preview_token: "bad" }]) {
+    const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : { ...taskPreview(), ...change });
+    await h.ready; await h.get("TaskPreview").click(); await h.get("TaskApply").click();
+    assert.equal(h.calls.length, 2); assert.equal(h.get("TaskApply").disabled, true);
+    if (change.diagnostic) assert.match(h.get("TaskStatus").textContent, /未处理事务日志/);
+  }
+});
+
+test("cancel discards pending task preview and prevents a late result from authorizing apply", async () => {
+  const pending = deferred();
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : pending.promise);
+  await h.ready;
+  const request = h.get("TaskPreview").click();
+  assert.equal(h.get("RebuildTasks").disabled, true);
+  await h.get("TaskCancel").click();
+  pending.resolve(taskPreview()); await request;
+  assert.match(h.get("TaskStatus").textContent, /已取消/);
+  assert.equal(h.get("TaskApply").disabled, true); assert.equal(h.get("TaskPreview").disabled, false);
+});
+
+test("changed document selection and stale navigation invalidate task recovery results", async () => {
+  for (const phase of ["preview", "apply"]) {
+    const pending = deferred();
+    const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : path.endsWith("/" + phase) ? pending.promise : taskPreview());
+    await h.ready;
+    if (phase === "apply") await h.get("TaskPreview").click();
+    const request = h.get(phase === "preview" ? "TaskPreview" : "TaskApply").click();
+    const before = h.root.textContent;
+    h.leave(); pending.resolve(phase === "preview" ? taskPreview() : taskApplied()); await request;
+    assert.equal(h.root.textContent, before); assert.equal(h.updates.length, 0);
+  }
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : taskPreview());
+  await h.ready; await h.get("TaskPreview").click(); h.choose(snapshot());
+  assert.equal(h.get("TaskApply").disabled, true);
+});
+
+test("task rescue deduplicates apply and retains confirmed success when list refresh fails", async () => {
+  const pending = deferred();
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : path.endsWith("/preview") ? taskPreview() : pending.promise,
+    { onRecovered: async () => { throw new Error("synthetic refresh failed"); } });
+  await h.ready; await h.get("TaskPreview").click();
+  const request = h.get("TaskApply").click();
+  await h.get("TaskApply").click(); await h.get("TaskPreview").click(); await h.get("TaskCancel").click();
+  assert.equal(h.calls.length, 3); assert.equal(h.get("Snapshot").disabled, true);
+  pending.resolve(taskApplied()); await request;
+  assert.match(h.get("TaskStatus").textContent, /已恢复 2 个任务.*catalog-recovery-original.*列表刷新失败/);
+  assert.doesNotMatch(h.get("TaskStatus").textContent, /未确认完成/);
+});
+
+test("reopening retains task-only warning, backup identity and offline rollback instructions", async () => {
+  const h = setup(() => ({ state: "incomplete", message: "未知文档未恢复", task_only_recovery: { backup_directory: "catalog-recovery-retained", restore_instructions: "完全退出；先保留新目录；恢复原先损坏状态。" } }));
+  await h.ready;
+  assert.match(h.get("TaskStatus").textContent, /未知文档未恢复.*catalog-recovery-retained.*原先损坏状态/);
+  assert.equal(h.calls.length, 1);
+});
+
+test("document preview and completion retain their exact literal output after extraction", async () => {
+  const h = setup(); await h.ready; h.choose(snapshot());
+  await h.get("Preview").click();
+  assert.equal(h.get("Results").textContent, `快照：chosen.sqlite3 · SHA-256：${"a".repeat(64)}<img onerror=bad> 编码选择 · 可恢复资料编号：retained-id按所选快照恢复 gb18030 与历史编号`);
+  assert.equal(h.get("Progress").textContent, "快照核对完成 可恢复 1 份资料。请核对后确认；执行前会创建回滚快照。");
+  await h.get("Apply").click();
+  assert.equal(h.get("Results").textContent, "恢复请求已完成。回滚备份位置：数据文件夹/exports/catalog-recovery-0123456789abcdef");
+  assert.equal(h.get("Progress").textContent, "恢复完成：1 份资料，2 条出处。已创建回滚快照。");
+});
+
+test("cancelled task response cannot release an active document preview or lend its token", async () => {
+  for (const fail of [false, true]) {
+    const task = deferred(), document = deferred();
+    const h = setup(path => path.endsWith("/status") ? { state: "corrupt" }
+      : path.includes("/tasks/") ? task.promise : document.promise);
+    await h.ready; h.choose(snapshot());
+    const oldTask = h.get("TaskPreview").click();
+    await h.get("TaskPreview").click();
+    assert.equal(h.calls.length, 2, "Duplicate task previews are suppressed");
+    await h.get("TaskCancel").click();
+    const currentDocument = h.get("Preview").click();
+    if (fail) task.reject(new Error("LATE CANCELLED TASK")); else task.resolve(taskPreview());
+    await oldTask;
+    assert.equal(h.get("Preview").disabled, true);
+    assert.equal(h.get("TaskPreview").disabled, true);
+    assert.equal(h.get("Apply").disabled, true);
+    assert.equal(h.get("TaskApply").disabled, true);
+    assert.match(h.get("TaskStatus").textContent, /已取消/);
+    await h.get("Apply").click(); await h.get("TaskApply").click();
+    assert.equal(h.calls.length, 3);
+    document.resolve(goodPreview()); await currentDocument;
+    assert.equal(h.get("Apply").disabled, false);
+    assert.equal(h.get("TaskApply").disabled, true);
+  }
+});
+
+test("changed selection invalidates an older document preview while task preview owns the lifecycle", async () => {
+  for (const fail of [false, true]) {
+    const document = deferred(), task = deferred();
+    const h = setup(path => path.endsWith("/status") ? { state: "corrupt" }
+      : path.includes("/tasks/") ? task.promise : document.promise);
+    await h.ready; h.choose(snapshot("old.sqlite3"));
+    const oldDocument = h.get("Preview").click();
+    await h.get("TaskPreview").click();
+    assert.equal(h.calls.length, 2, "Pending document preview excludes task preview");
+    h.choose(snapshot("new.sqlite3"));
+    const currentTask = h.get("TaskPreview").click();
+    if (fail) document.reject(new Error("LATE DOCUMENT")); else document.resolve(goodPreview());
+    await oldDocument;
+    assert.equal(h.get("TaskPreview").disabled, true);
+    assert.equal(h.get("Preview").disabled, true);
+    assert.equal(h.get("Apply").disabled, true);
+    assert.equal(h.get("Results").textContent, "");
+    task.resolve(taskPreview()); await currentTask;
+    assert.equal(h.get("Apply").disabled, true);
+    assert.equal(h.get("TaskApply").disabled, false);
+  }
+});
+
+test("alternating document and task recoveries always require their own fresh scoped token", async () => {
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" }
+    : path.includes("/tasks/") ? path.endsWith("/preview") ? taskPreview() : taskApplied()
+    : path.endsWith("/preview") ? goodPreview() : applied());
+  await h.ready; const file = snapshot(); h.choose(file);
+  await h.get("Preview").click(); await h.get("TaskPreview").click();
+  assert.equal(h.get("Apply").disabled, true);
+  await h.get("Apply").click(); await h.get("TaskApply").click();
+  assert.equal(h.get("Apply").disabled, true);
+  await h.get("Preview").click(); await h.get("Apply").click();
+  await h.get("TaskPreview").click(); await h.get("Preview").click();
+  assert.equal(h.get("TaskApply").disabled, true);
+  await h.get("TaskApply").click(); await h.get("Apply").click();
+  const applies = h.calls.filter(([path]) => path.endsWith("/apply"));
+  assert.equal(applies.length, 3);
+  assert.equal(applies[0][0], "/api/library/catalog/tasks/apply");
+  assert.deepEqual(JSON.parse(applies[0][1].body), { preview_token: "f".repeat(64), confirm_scope: "task_catalog_only" });
+  for (const [path, options] of applies.slice(1)) {
+    assert.equal(path, "/api/library/catalog/recovery/apply");
+    assert.equal(options.body.get("preview_token"), "chosen-preview-token");
+    assert.equal(options.body.get("file"), file);
+  }
+});
+
+test("closing and remounting isolates late task preview and apply responses from the new panel", async () => {
+  for (const phase of ["preview", "apply"]) for (const fail of [false, true]) {
+    const pending = deferred();
+    const old = setup(path => path.endsWith("/status") ? { state: "corrupt" }
+      : path.endsWith("/" + phase) ? pending.promise : taskPreview());
+    await old.ready;
+    if (phase === "apply") await old.get("TaskPreview").click();
+    const request = old.get(phase === "preview" ? "TaskPreview" : "TaskApply").click();
+    const oldText = old.root.textContent;
+    old.container.replaceChildren();
+    const calls = [];
+    const fresh = mountMaterialCatalogRecovery(old.container, {
+      api: async path => { calls.push(path); return path.endsWith("/status") ? { state: "corrupt" } : taskPreview(); },
+    });
+    await fresh.ready;
+    const freshApply = all(fresh.root).find(item => item.id === "materialCatalogTaskApply");
+    const before = fresh.root.textContent;
+    if (fail) pending.reject(new Error("LATE CLOSED TASK")); else pending.resolve(phase === "preview" ? taskPreview() : taskApplied());
+    await request;
+    assert.equal(fresh.root.textContent, before);
+    assert.equal(old.root.textContent, oldText);
+    assert.equal(freshApply.disabled, true);
+    assert.equal(old.updates.length, 0);
+    assert.deepEqual(calls, ["/api/library/catalog/status"]);
+  }
+});
+
+test("a new task preview retains its lock when an earlier cancelled preview finishes", async () => {
+  const first = deferred(), second = deferred(); let requests = 0;
+  const h = setup(path => path.endsWith("/status") ? { state: "corrupt" } : ++requests === 1 ? first.promise : second.promise);
+  await h.ready;
+  const old = h.get("TaskPreview").click(); await h.get("TaskCancel").click();
+  const current = h.get("TaskPreview").click();
+  first.resolve(taskPreview()); await old;
+  assert.equal(h.get("TaskPreview").disabled, true);
+  assert.equal(h.get("TaskApply").disabled, true);
+  assert.equal(h.get("TaskCancel").disabled, false);
+  second.resolve({ ...taskPreview(), preview_token: "e".repeat(64) }); await current;
+  assert.equal(h.get("TaskApply").disabled, false);
+});

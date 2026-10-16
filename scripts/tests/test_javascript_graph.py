@@ -35,6 +35,25 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         self.assertEqual(injections, [])
         self.assertEqual([item[0] for item in specs], ["/web/real.js?v=1", "./other.js", "./lazy.js"])
 
+    def test_catalog_recovery_components_keep_one_way_dependencies(self):
+        root = self.repository({
+            "web/material-catalog-recovery.js": 'import "./catalog-recovery-view.js"; import "./task-catalog-recovery.js";',
+            "web/task-catalog-recovery.js": 'import "./catalog-recovery-view.js";',
+            "web/catalog-recovery-view.js": "export const make = () => {};",
+        })
+        self.assertEqual(javascript_violations(root), [])
+        for source, dependency in (
+            ("catalog-recovery-view.js", "task-catalog-recovery.js"),
+            ("task-catalog-recovery.js", "material-catalog-recovery.js"),
+        ):
+            path = root / "web" / source
+            original = path.read_text(encoding="utf-8")
+            path.write_text(original + f'\nimport "./{dependency}";', encoding="utf-8")
+            errors = javascript_violations(root)
+            self.assertTrue(any("pure-module boundary" in error for error in errors), errors)
+            self.assertTrue(any("dependency cycle" in error for error in errors), errors)
+            path.write_text(original, encoding="utf-8")
+
     def test_new_es_module_cycle_and_missing_file_fail(self):
         root = self.repository({
             "web/alpha.js": 'import { x } from "/web/beta.js?v=1";',

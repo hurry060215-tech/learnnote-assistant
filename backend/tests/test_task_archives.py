@@ -65,6 +65,11 @@ def public_contract():
     # the frozen contract for all pre-existing routes and archive/schema bytes.
     for path in ("/api/concept-relations", "/api/concept-relations/preview"):
         schema["paths"].pop(path)
+    # Explicit task-only catalog rescue adds two separately tested operations;
+    # every pre-existing route and task/archive schema remains frozen.
+    for path in ("/api/library/catalog/tasks/preview", "/api/library/catalog/tasks/apply"):
+        schema["paths"].pop(path)
+    schema["components"]["schemas"].pop("TaskRecoveryApply")
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),

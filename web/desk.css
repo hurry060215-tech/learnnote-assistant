@@ -710,6 +710,7 @@ details[open] > summary::after {
   font-size: 13px;
   display: inline-block;
 }
+.material-catalog-recovery .tool-actions button { min-height: 44px; }
 .tool-list {
   margin: 24px 0;
 }

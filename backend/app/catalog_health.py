@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+import json
 from pathlib import Path
 import sqlite3
 
@@ -12,6 +13,7 @@ def catalog_status(root: Path) -> dict:
     path = root / "library.sqlite3"
     directories = sorted(p.name for p in (root / "materials").glob("*") if p.is_dir())
     state, ids, task_count, material_count = "missing", set(), None, None
+    task_recovery = None
     sidecars = orphaned_sidecars(path)
     if path.is_symlink():
         state = "corrupt"
@@ -25,6 +27,10 @@ def catalog_status(root: Path) -> dict:
                 if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise sqlite3.DatabaseError("integrity")
                 tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "library_meta" in tables:
+                    marker = db.execute("SELECT value FROM library_meta WHERE key='task_catalog_recovery'").fetchone()
+                    if marker:
+                        task_recovery = json.loads(marker[0])
                 if "library_materials" in tables:
                     ids = {r[0] for r in db.execute("SELECT material_id FROM library_materials")}
                     material_count = len(ids)
@@ -32,17 +38,18 @@ def catalog_status(root: Path) -> dict:
                 state = "healthy" if "library_materials" in tables else "incomplete"
         except CatalogUnavailable:
             state = "incompatible"
-        except (sqlite3.Error, OSError):
+        except (sqlite3.Error, OSError, ValueError):
             state = "corrupt"
     orphaned = [key for key in directories if key not in ids]
-    if state == "healthy" and orphaned:
+    if state == "healthy" and (orphaned or task_recovery):
         state = "incomplete"
-    required = state in {"corrupt", "incompatible"} or bool(orphaned) or bool(sidecars)
+    required = state in {"corrupt", "incompatible"} or bool(orphaned) or bool(sidecars) or bool(task_recovery)
     return {
         "state": state, "orphaned_material_ids": orphaned, "unresolved_sidecars": sidecars,
         "recovery_required": required, "indexed_task_count": task_count,
         "material_count": material_count,
-        "message": "资料目录版本不兼容；已保留原数据库，请使用创建该版本的软件或完整备份恢复。" if state == "incompatible" else "请选择包含资料身份与出处元数据的 SQLite 备份预览恢复；仅有原文件无法确定丢失的身份和解码选择。" if required else "资料目录未发现孤立原文件。",
+        "task_only_recovery": task_recovery,
+        "message": "仅恢复了本机任务；未知文档记录与其他目录记录仍未恢复，无法确定缺失数量。原始字节备份及手动撤回说明请查看恢复记录。" if task_recovery else "资料目录版本不兼容；已保留原数据库，请使用创建该版本的软件或完整备份恢复。" if state == "incompatible" else "请选择包含资料身份与出处元数据的 SQLite 备份预览恢复；仅有原文件无法确定丢失的身份和解码选择。" if required else "资料目录未发现孤立原文件。",
     }
 
 

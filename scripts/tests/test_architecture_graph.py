@@ -63,6 +63,18 @@ class ArchitectureGraphTests(unittest.TestCase):
         self.assertTrue(any("forbidden app.processor" in error for error in errors))
         self.assertTrue(any("pure-module boundary" in error for error in errors))
 
+    def test_task_catalog_recovery_cannot_import_server_or_processor(self):
+        root = self.package({
+            "main.py": "value = 1\n",
+            "processor.py": "value = 1\n",
+            "task_catalog_recovery.py": "from . import main\n",
+            "routers/__init__.py": "",
+            "routers/task_catalog_recovery.py": "from .. import processor\n",
+        })
+        errors = architecture.import_violations(root)
+        self.assertTrue(any("forbidden app.main" in error for error in errors), errors)
+        self.assertTrue(any("forbidden app.processor" in error for error in errors), errors)
+
     def test_pure_parser_cannot_import_storage_even_without_cycle(self):
         root = self.package({"media_manifests.py": "from .storage import read\n", "storage.py": "def read(): pass\n"})
         self.assertTrue(any("pure-module boundary" in error for error in architecture.import_violations(root)))

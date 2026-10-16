@@ -1,5 +1,29 @@
 # Local player range and source identity acceptance
 
+## Verified hosted result
+
+Run [38958791453](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38958791453)
+passed on exact `3f35da2dc71dffb7690f95903b584b6d6ca46f15` in Microsoft Edge
+154.0.4258.62. The [retained artifact](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38958791453/artifacts/12072436707)
+contains `local-player-ui/report.json` with `ok:true`, all seven check groups,
+zero errors or blocked requests, unchanged source artifact hashes, and successful
+temporary-data cleanup. All 14 local-player screenshots were visually inspected.
+
+The real queued child returns 409 and loads no parent source. Without a page
+reload, the same selected task then loads its own digest/generation URL. Requested
+5.25–15.75 seconds stays exact in the outgoing API body and learning range; actual
+encoded/player duration is 10.56/10.564 seconds. The nested 0–5.25 selection maps
+to original 5.25–10.5 and measures 5.33/5.330664 seconds. Full-source upgrade returns
+to root A and measures 20.03/20.032 seconds. All retain the original 0.15-second
+container tolerance and strict requested-evidence bounds.
+
+Delayed-metadata cases preserve the latest 10.5-second citation seek, cancel it
+on Close/replacement, and never autoplay. Source B rejects A's old clock. The
+newer 12.5-second real seeking-event/manual-position simulation survives delayed
+transcript rendering. Duplicate submission creates once; a late response cannot
+replace B or reopen the closed dialog. These tests do not claim physical native
+seekbar interaction or native optional-host permission acceptance.
+
 ## Scope
 
 The default `web/index.html` reader's actual `desk.js` / `desk-tools.js` player

@@ -31,10 +31,15 @@ async function main() {
   assert(["127.0.0.1", "localhost", "[::1]"].includes(base.hostname), "Only synthetic loopback origins are allowed");
   const out = path.resolve(process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-catalog-recovery-")));
   fs.mkdirSync(out, { recursive: true });
-  const report = { passed: false, browser: "Microsoft Edge", fixture_mode: "real_app_synthetic_api", checks: [], screenshots: [], errors: [], unexpected_requests: [], previews: [], applies: [], task_rebuilds: [] };
+  const report = { passed: false, browser: "Microsoft Edge", fixture_mode: "real_app_synthetic_api", checks: [], screenshots: [], errors: [], unexpected_requests: [], previews: [], applies: [], task_rebuilds: [], task_previews: [], task_applies: [] };
   const files = new Map(["chosen.sqlite3", "other.sqlite3", "unresolved.sqlite3", "empty.sqlite3", "invalid.sqlite3", "stale.sqlite3", "held.sqlite3", "partial.sqlite3"].map(name => [name, fixture(name)]));
   const holds = new Map();
   let catalogState = "missing", statusFails = false, restored = false, rebuildOutcome = "partial";
+  let taskRescued = false, taskBlocked = false;
+  const taskRecovery = { recovery_scope: "task_catalog_only", preview_token: "f".repeat(64), can_apply: true,
+    task_count: 2, evidence_count: 4, unknown_documents_unrestored: true, document_count: null,
+    message: "仅恢复本机任务与出处；未知文档及其他目录记录未恢复，缺失数量无法确定。",
+    restore_instructions: "手动撤回：完全退出 LearnNote 及后端；先将当前数据库及全部侧文件移到新的文件夹保留，再复制备份中的原始文件组。原来缺失的文件保持缺失。撤回回到原先损坏状态，不保证目录可用。" };
   const material = {
     material_id: "original-material-id", title: "所选快照里的资料 · gb18030", filename: "原始笔记.txt", source_type: "text", status: "ready", linked_task_id: "", anchor_count: 2,
     created_at: "2026-09-27T10:00:00Z", updated_at: "2026-09-28T10:00:00Z", stored_locally: true,
@@ -121,7 +126,22 @@ async function main() {
           catalogState = outcome === "partial" ? "incomplete" : outcome === "blocked" ? "corrupt" : "healthy";
           return await json({ status: outcome, indexed: outcome === "blocked" ? 0 : 2, skipped: 0, catalog: { state: catalogState, recovery_required: catalogState !== "healthy" }, code: outcome === "blocked" ? "catalog_recovery_required" : undefined });
         }
-        if (p === "/api/library/catalog/status" && method === "GET") return await json(statusFails ? { detail: { code: "catalog_status_failed", message: "模拟目录读取失败" } } : { state: catalogState, recovery_required: catalogState !== "healthy", orphaned_material_ids: catalogState === "healthy" ? [] : [material.material_id], message: "请从明确选择的快照恢复目录。" }, statusFails ? 503 : 200);
+        if (p === "/api/library/catalog/status" && method === "GET") return await json(statusFails ? { detail: { code: "catalog_status_failed", message: "模拟目录读取失败" } } : { state: catalogState, recovery_required: catalogState !== "healthy", orphaned_material_ids: catalogState === "healthy" ? [] : [material.material_id], message: taskRescued ? taskRecovery.message : "请从明确选择的快照恢复目录。", task_only_recovery: taskRescued ? { backup_directory: "catalog-recovery-original", restore_instructions: taskRecovery.restore_instructions } : null }, statusFails ? 503 : 200);
+        if (p === "/api/library/catalog/tasks/preview" && method === "POST") {
+          report.task_previews.push(taskBlocked ? "blocked" : "eligible");
+          held = holds.get("task-preview:tasks");
+          if (held) { held.started.resolve(); await held.released.promise; }
+          return await json({ ...taskRecovery, can_apply: !taskBlocked, diagnostic: taskBlocked ? "仍有可读记录或未处理事务日志，禁止替换。" : "" });
+        }
+        if (p === "/api/library/catalog/tasks/apply" && method === "POST") {
+          assert.deepEqual(JSON.parse(request.postData()), { preview_token: taskRecovery.preview_token, confirm_scope: "task_catalog_only" });
+          report.task_applies.push("explicit");
+          held = holds.get("task-apply:tasks");
+          if (held) { held.started.resolve(); await held.released.promise; }
+          taskRescued = true; catalogState = "incomplete";
+          return await json({ ...taskRecovery, can_apply: false, status: "partial", restored_task_count: 2, restored_evidence_count: 4,
+            rollback_snapshot_created: true, rollback_directory: "catalog-recovery-original" });
+        }
         if (["/api/library/catalog/recovery/preview", "/api/library/catalog/recovery/apply"].includes(p)) {
           assert.equal(method, "POST");
           const parsed = await new Request("http://fixture.invalid/", { method: "POST", headers: { "Content-Type": request.headers()["content-type"] }, body: request.postDataBuffer() }).formData();
@@ -287,6 +307,47 @@ async function main() {
     await screenshot("catalog-partial-mobile.png");
     assert(await page.locator("#toolsDialog").evaluate(element => element.scrollWidth <= element.clientWidth + 2), "Recovery panel must fit mobile dialog width");
     report.checks.push("Partial result retains reasons; narrow viewport remains usable");
+
+    assert.equal(report.task_previews.length, 0); assert.equal(report.task_applies.length, 0);
+    taskBlocked = true;
+    await page.locator("#materialCatalogTaskPreview").click();
+    await page.waitForFunction(() => document.querySelector("#materialCatalogTaskStatus").textContent.includes("禁止替换"));
+    assert(await page.locator("#materialCatalogTaskApply").isDisabled());
+    await page.screenshot({ path: path.join(out, "task-recovery-blocked-mobile.png"), animations: "disabled" });
+    report.screenshots.push("task-recovery-blocked-mobile.png");
+    taskBlocked = false;
+    const cancelled = hold("tasks", "task-preview");
+    await page.locator("#materialCatalogTaskPreview").click(); await waitForFixture(cancelled.started.promise);
+    await page.locator("#materialCatalogTaskCancel").click();
+    cancelled.released.resolve(); await waitForFixture(cancelled.finished.promise); holds.delete("task-preview:tasks");
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    assert.match(await page.locator("#materialCatalogTaskStatus").innerText(), /已取消/);
+    assert(await page.locator("#materialCatalogTaskApply").isDisabled());
+    for (const [width, theme] of [[390, "light"], [1440, "dark"]]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await page.evaluate(theme => { document.body.classList.toggle("dark", theme === "dark"); document.body.style.setProperty("--chosen-accent-dark", "#d5d9d6"); }, theme);
+      await page.locator("#materialCatalogTaskPreview").click();
+      await page.waitForFunction(() => !document.querySelector("#materialCatalogTaskApply").disabled);
+      await page.locator("#materialCatalogTaskStatus").scrollIntoViewIfNeeded();
+      const image = `task-recovery-preview-${width}-${theme}.png`;
+      await page.screenshot({ path: path.join(out, image), animations: "disabled" }); report.screenshots.push(image);
+      assert(await page.locator("#toolsDialog").evaluate(element => element.scrollWidth <= element.clientWidth + 2));
+      assert.match(await page.locator("#materialCatalogTaskStatus").innerText(), /未知文档.*缺失数量无法确定.*完全退出/);
+    }
+    const rescue = hold("tasks", "task-apply");
+    await page.locator("#materialCatalogTaskApply").evaluate(button => { button.click(); button.click(); });
+    await waitForFixture(rescue.started.promise);
+    assert(await page.locator("#materialCatalogTaskCancel").isDisabled());
+    assert(await page.locator("#materialCatalogSnapshot").isDisabled());
+    rescue.released.resolve(); await waitForFixture(rescue.finished.promise); holds.delete("task-apply:tasks");
+    await page.waitForFunction(() => document.querySelector("#materialCatalogTaskStatus").textContent.includes("catalog-recovery-original"));
+    assert.equal(report.task_applies.length, 1);
+    await page.locator("#toolsDialog [data-close-tool]").click(); await openStorage();
+    assert.match(await page.locator("#materialCatalogTaskStatus").innerText(), /未知文档.*catalog-recovery-original.*原先损坏状态/);
+    await page.locator("#materialCatalogTaskStatus").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(out, "task-recovery-retained-warning-desktop.png"), animations: "disabled" });
+    report.screenshots.push("task-recovery-retained-warning-desktop.png");
+    report.checks.push("Task-only recovery: explicit preview/scope apply, fail-closed log/readability diagnostic, cancel ignores late preview, double-click protection, persistent partial warning and original-family manual rollback");
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpected_requests, []);
     report.passed = true;
   } finally {

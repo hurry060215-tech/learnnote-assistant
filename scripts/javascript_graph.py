@@ -181,6 +181,9 @@ CLASSIC_PROVIDERS = {
     "LearnNoteTaskList": "web/task-list.js",
 }
 PURE_ALLOWED = {
+    "web/catalog-recovery-view.js": set(),
+    "web/task-catalog-recovery.js": {"web/catalog-recovery-view.js"},
+    "web/material-catalog-recovery.js": {"web/catalog-recovery-view.js", "web/task-catalog-recovery.js"},
     "extension/capture-classification.js": set(),
     "extension/capture-ranking.js": {"extension/capture-classification.js"},
     "extension/source-identity.js": set(),

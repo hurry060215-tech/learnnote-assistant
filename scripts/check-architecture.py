@@ -10,7 +10,7 @@ from javascript_graph import javascript_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -78,7 +78,12 @@ MODULE_SIZE_LIMITS = {
     "backend/app/catalog_snapshot.py": 180,
     "backend/app/catalog_recovery.py": 300,
     "backend/app/routers/catalog_recovery.py": 100,
+    "backend/app/task_catalog_recovery.py": 330,
+    "backend/app/routers/task_catalog_recovery.py": 50,
+    "backend/app/routers/catalog_recovery_errors.py": 40,
     "web/material-catalog-recovery.js": 160,
+    "web/task-catalog-recovery.js": 110,
+    "web/catalog-recovery-view.js": 70,
 }
 
 
