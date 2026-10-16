@@ -20,6 +20,15 @@ class UiVisualContractTests(unittest.TestCase):
                          "backend/requirements.windows-py312.lock.txt", "backend/constraints.linux-py312.txt"):
                 self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
 
+    def test_timeline_acceptance_dependency_updates_trigger_existing_visual_gate(self) -> None:
+        workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        for event in ("pull_request", "push"):
+            patterns = workflow["on"][event]["paths"]
+            for path in ("scripts/evidence-source-acceptance.cjs", "scripts/seed-evidence-navigation.py",
+                         "scripts/transcript-keyboard-acceptance.cjs", "scripts/timeline-playback-acceptance.cjs",
+                         "scripts/timeline-native-zoom-acceptance.cjs", "scripts/timeline-native-zoom.ps1"):
+                self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
+
     def test_visual_runtime_uses_production_constraints_and_refreshes_cache(self) -> None:
         workflow = yaml.safe_load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"))
         job = workflow["jobs"]["accessibility-visual"]

@@ -3,6 +3,7 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), path = re
 const { execFileSync } = require("node:child_process");
 const { assertTranscriptKeyboardAcceptance } = require("./transcript-keyboard-acceptance.cjs");
 const { assertNativeTimelineZoom } = require("./timeline-native-zoom-acceptance.cjs");
+const { openVisibleTranscript, playbackTracksReady } = require("./timeline-playback-acceptance.cjs");
 async function main() {
   const { chromium } = require("playwright"), base = process.argv[2] || "http://127.0.0.1:8765";
   const out = path.resolve(process.argv[3] || "build/evidence-source-ui"); fs.mkdirSync(out, { recursive: true });
@@ -18,7 +19,7 @@ async function main() {
   });
   const errors = []; page.on("pageerror", error => errors.push(error.message)); page.setDefaultTimeout(15000);
   const api = async (route, options) => { const response = await page.request.fetch(new URL(route, base).href, options); assert(response.ok(), `${route}: ${response.status()} ${await response.text()}`); return response.json(); };
-  let course;
+  let course, failure;
   const marker = id => page.locator(`#document .note-claim-marker[data-claim-id="${id}"]`);
   const seek = async time => {
     await page.locator("#player").evaluate((player, time) => { player.currentTime = time; }, time);
@@ -31,11 +32,12 @@ async function main() {
     await page.waitForFunction(() => document.querySelector("#player").readyState >= 1);
     await marker(fixture.claim_ids[0]).waitFor();
     assert.equal(await page.locator("#followNote").isChecked(), false);
+    await openVisibleTranscript(page);
     const playbackWrites = [];
     const recordWrite = request => { if (["POST", "PUT", "PATCH"].includes(request.method())) playbackWrites.push(request.url()); };
     page.on("request", recordWrite);
     await page.locator("#player").evaluate(async player => { player.currentTime = 9.8; player.muted = true; player.playbackRate = 2; await player.play(); });
-    await page.waitForFunction(id => document.querySelector(`.note-claim-marker[data-claim-id="${id}"]`)?.getAttribute("aria-current") === "true", fixture.claim_ids[1]);
+    await page.waitForFunction(playbackTracksReady, fixture.claim_ids[1]);
     assert.match(await page.locator("#sourceContent .cue.active").innerText(), /Second synthetic window/);
     assert.equal(await page.locator("#sourceWindow figure").getAttribute("data-window-id"), "window-2");
     assert.equal(await page.locator("#player").evaluate(player => player.paused), false, "All three evidence tracks follow actual playback");
@@ -171,11 +173,28 @@ async function main() {
     report.external_platform_requests_sent = 0;
     report.unexpected_requests = unexpectedRequests;
     fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));
+  } catch (error) {
+    failure = error;
+    const state = await page.evaluate(() => {
+      const player = document.querySelector("#player"), cue = document.querySelector("#sourceContent .cue.active");
+      return { transcript_open: document.querySelector("#sourceTranscript")?.open,
+        source_mode: document.querySelector("#sourcePanel")?.dataset.contentMode,
+        playback: player && { time: player.currentTime, paused: player.paused, ready_state: player.readyState },
+        cue: cue && { text: cue.textContent, rendered_text: cue.innerText, visible: cue.getClientRects().length > 0,
+          index: cue.dataset.cueIndex, aria_current: cue.getAttribute("aria-current") },
+        frame: document.querySelector("#sourceWindow figure")?.dataset.windowId,
+        active_claims: [...document.querySelectorAll('.note-claim-marker[aria-current="true"]')].map(node => node.dataset.claimId) };
+    }).catch(() => null);
+    await page.screenshot({ path: path.join(out, "failure.png"), fullPage: true }).catch(() => {});
+    try { fs.writeFileSync(path.join(out, "failure.json"), JSON.stringify({ error: String(error), state, page_errors: errors }, null, 2)); }
+    catch (writeError) { console.error("Evidence-source failure report could not be written:", writeError); }
+    throw error;
   } finally {
     await page.request.delete(new URL(`/api/study/cards/${fixture.card_id}?confirm=delete_card`, base).href).catch(() => {});
     if (course) await page.request.delete(new URL(`/api/courses/${course.id}`, base).href).catch(() => {});
     for (const id of [fixture.task_id, fixture.subtitle_task_id, ...(fixture.fallback_tasks || []).map(item => item.id)]) await page.request.delete(new URL(`/api/tasks/${id}?confirm=delete_task`, base).href).catch(() => {});
-    await browser.close();
+    try { await browser.close(); }
+    catch (closeError) { if (!failure) throw closeError; console.error("Evidence-source browser cleanup also failed:", closeError); }
   }
 }
 if (process.argv.includes("--self-test")) { console.log("Evidence source acceptance script loaded; browser flow runs in isolated Windows CI"); }
