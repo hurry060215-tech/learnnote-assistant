@@ -48,6 +48,67 @@ class RangeLearningTests(unittest.TestCase):
 
 
 class RangeSourceIdentityTests(unittest.TestCase):
+    def test_nested_range_cannot_select_encoded_padding_or_epsilon_past_parent(self):
+        from app.models import TaskOptions, TaskRecord, MediaIntegrity
+        from app.range_learning import create_range_task
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
+            source = TaskRecord(id="source", source_type="local", title="Quantized clip", created_at="", updated_at="",
+                media_path=str(media), media_integrity=MediaIntegrity(duration=11.064026),
+                learning_range={"start":5.25,"end":15.75,"original_start":5.25,"original_end":15.75})
+            created = source.model_copy(update={"id":"new"})
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=created) as create, patch("app.range_learning.update_task", side_effect=lambda key, **kw:created.model_copy(update=kw)), patch("app.range_learning.schedule_processing") as schedule:
+                for start, end in ((10.5, 11), (0, 10.500000001), (0, 10.505)):
+                    with self.subTest(start=start, end=end), self.assertRaisesRegex(ValueError, "invalid_learning_range"):
+                        create_range_task("source", start, end, TaskOptions(), None)
+                create.assert_not_called(); schedule.assert_not_called()
+                result = create_range_task("source", 5.25, 10.5, TaskOptions(), None)
+                self.assertEqual(result.learning_range, {"start":5.25,"end":10.5,"original_start":10.5,"original_end":15.75})
+
+    def test_full_media_and_legacy_offset_only_keep_container_tolerance(self):
+        from app.models import TaskOptions, TaskRecord, MediaIntegrity
+        from app.range_learning import create_range_task
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
+            for selected in ({}, {"original_start":60}):
+                with self.subTest(selected=selected):
+                    source = TaskRecord(id="source", source_type="local", title="Source", created_at="", updated_at="",
+                        media_path=str(media), media_integrity=MediaIntegrity(duration=20), learning_range=selected)
+                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
+                        result = create_range_task("source", 0, 20.005, TaskOptions(), None)
+                    self.assertEqual(result.learning_range["end"], 20.005)
+
+    def test_decimal_endpoint_is_accepted_without_expanding_original_parent(self):
+        from app.models import TaskOptions, TaskRecord, MediaIntegrity
+        from app.range_learning import create_range_task
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
+            source = TaskRecord(id="source", source_type="local", title="Decimal clip", created_at="", updated_at="",
+                media_path=str(media), media_integrity=MediaIntegrity(duration=1),
+                learning_range={"start":0.1,"end":0.3,"original_start":0.1,"original_end":0.3})
+            with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task", return_value=source), patch("app.range_learning.update_task", side_effect=lambda key, **kw:source.model_copy(update=kw)), patch("app.range_learning.schedule_processing"):
+                result = create_range_task("source", 0, 0.2, TaskOptions(), None)
+                self.assertEqual(result.learning_range, {"start":0,"end":0.2,"original_start":0.1,"original_end":0.3})
+                with self.assertRaisesRegex(ValueError, "invalid_learning_range"):
+                    create_range_task("source", 0, 0.200000001, TaskOptions(), None)
+
+    def test_nonfinite_stored_bounds_and_overflowed_offsets_reject_before_creation(self):
+        from app.models import TaskOptions, TaskRecord, MediaIntegrity
+        from app.range_learning import create_range_task
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "source.mp4"; media.write_bytes(b"fixture")
+            valid = {"start":0.1,"end":0.3,"original_start":0.1,"original_end":0.3}
+            cases = [({**valid, key:value}, .1) for key in valid for value in (float('inf'), float('-inf'), float('nan'))]
+            cases += [({"start":float('inf'),"end":float('inf')}, .1), ({"original_start":1e308}, 1e308)]
+            for selected, end in cases:
+                with self.subTest(selected=selected):
+                    source = TaskRecord(id="source", source_type="local", title="Invalid bounds", created_at="", updated_at="",
+                        media_path=str(media), media_integrity=MediaIntegrity(duration=1e308), learning_range=selected)
+                    with patch("app.range_learning.DATA_DIR", Path(tmp)), patch("app.range_learning.get_task", return_value=source), patch("app.range_learning.create_task") as create, patch("app.range_learning.schedule_processing") as schedule:
+                        with self.assertRaisesRegex(ValueError, "invalid_learning_range"):
+                            create_range_task("source", 0, end, TaskOptions(), None)
+                        create.assert_not_called(); schedule.assert_not_called()
+
     def test_reused_range_preserves_page_identity_and_original_offsets(self):
         from app.models import TaskOptions, TaskRecord, SourceIdentity, MediaIntegrity
         from app.range_learning import create_range_task

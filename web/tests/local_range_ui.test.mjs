@@ -5,7 +5,7 @@ import test from "node:test";
 const source = readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
 const load = async file => import("data:text/javascript;base64," + Buffer.from(readFileSync(new URL(file, import.meta.url), "utf8")).toString("base64"));
 const {localPlaybackPosition} = await load("../local-player.js");
-const {fullVideoSource} = await load("../range-source.js");
+const {fullVideoSource, requestedRangeDuration} = await load("../range-source.js");
 const deferred = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 function extractAction(name, next) {
   const begin = source.indexOf(`    "${name}": `), end = source.indexOf(`    "${next}": `, begin);
@@ -17,7 +17,7 @@ function harness() {
   const h = { state: {selected, epoch: 1}, calls: [], opened: [], refreshed: 0, response: deferred(), confirms: [], html: "" };
   const nodes = { player: {dataset: {sourceTaskId: "clip"}, currentSrc: "http://127.0.0.1/api/tasks/clip/media", currentTime: 2.125, readyState: 1, getAttribute: () => "/api/tasks/clip/media"}, rangeStart: {value: "2.125"}, rangeEnd: {value: "4.5"} };
   const dialog = {open: true, dataset: {}, close() {this.open = false;}};
-  const context = vm.createContext({ state: h.state, dialog, $: id => nodes[id], localPlaybackPosition, fullVideoSource,
+  const context = vm.createContext({ state: h.state, dialog, $: id => nodes[id], localPlaybackPosition, fullVideoSource, requestedRangeDuration,
     current: () => ({...h.state.selected}), esc: value => String(value).replaceAll("<", "&lt;"), options: () => ({content_mode: "auto"}),
     openItem: async item => h.opened.push(item), refresh: async () => h.refreshed++,
     confirm: message => {h.confirms.push(message); return true;},
@@ -45,7 +45,7 @@ test("range fields are task-local decimal seconds with source title and original
 });
 
 test("invalid bounds never post and two submits use exact decimal API seconds once", async () => {
-  for (const [start,end] of [[-1,2],[4,3],[0,11],["NaN",2],[0,"Infinity"]]) {
+  for (const [start,end] of [[-1,2],[4,3],[0,11],["NaN",2],[0,"Infinity"],["",2],[0,""]]) {
     const h = harness(); h.nodes.rangeStart.value = String(start); h.nodes.rangeEnd.value = String(end);
     await assert.rejects(h.context.submitFields(), /有效起止秒数/); assert.equal(h.calls.length, 0);
   }
@@ -54,6 +54,39 @@ test("invalid bounds never post and two submits use exact decimal API seconds on
   assert.deepEqual(JSON.parse(h.calls[0].options.body), {start: 2.125, end: 4.5, options: {content_mode: "auto"}});
   h.response.resolve({task_id: "child", task: {id: "child"}}); await Promise.all([first, second]);
   assert.equal(h.opened.length, 1); assert.equal(h.opened[0].id, "child"); assert.equal(h.refreshed, 1);
+});
+
+test("encoded padding is disclosed but cannot expand a nested learning range", async () => {
+  const h = harness();
+  Object.assign(h.state.selected, {learning_range: {start:5.25,end:15.75,original_start:5.25,original_end:15.75}, media_integrity: {duration:11.064026}});
+  h.nodes.player.currentTime = 10.75;
+  h.context.range();
+  assert.match(h.context.html, /max="10.5" step="any" required value=""/);
+  assert.match(h.context.html, /编码媒体时长 11.064026 秒/);
+  assert.match(h.context.html, /原视频 5.25–15.75 秒/);
+  assert.throws(() => h.context.position(), /超过原片段的学习范围/);
+  for (const end of [11, 10.500000001, 10.505]) {
+    h.nodes.rangeStart.value = "0"; h.nodes.rangeEnd.value = String(end);
+    await assert.rejects(h.context.submitFields(), /有效起止秒数/);
+  }
+  assert.equal(h.calls.length, 0);
+  h.nodes.rangeStart.value = "5.25"; h.nodes.rangeEnd.value = "10.5";
+  const pending = h.context.submitFields();
+  assert.equal(JSON.parse(h.calls[0].options.body).end, 10.5);
+  h.response.resolve({task_id:"nested",task:{id:"nested"}}); await pending;
+});
+
+test("decimal parent endpoints yield an exact decimal max without binary rounding noise", async () => {
+  for (const [start,end,expected] of [[0.1,0.3,0.2],[0.2,0.3,0.1],[1e-7,3e-7,2e-7],[1e20,1.1e20,1e19]])
+    assert.equal(requestedRangeDuration({start,end}), expected);
+  assert.equal(requestedRangeDuration({original_start:60}), null);
+  const h = harness(); h.state.selected.learning_range = {start:0.1,end:0.3,original_start:0.1,original_end:0.3};
+  h.context.range(); assert.match(h.context.html, /max="0.2"/);
+  h.nodes.rangeStart.value = "0"; h.nodes.rangeEnd.value = "0.200000001";
+  await assert.rejects(h.context.submitFields(), /有效起止秒数/); assert.equal(h.calls.length, 0);
+  h.nodes.rangeEnd.value = "0.2"; const pending = h.context.submitFields();
+  assert.equal(JSON.parse(h.calls[0].options.body).end, 0.2);
+  h.response.resolve({task_id:"decimal",task:{id:"decimal"}}); await pending;
 });
 
 test("Close, same-source revisit and source replacement invalidate late range responses", async () => {

@@ -35,7 +35,7 @@ node scripts/local-player-visual-acceptance.cjs build/local-player-ui
 
 The helper starts `local-player-fixture.py` in a new application-owned temporary
 data directory, applies the existing loopback-only network guard, and generates
-20-second synthetic H.264/AAC media with exact timed synthetic subtitles. Media,
+20-second, 30fps synthetic H.264/AAC media with exact timed synthetic subtitles. Media,
 clipping, task APIs, persistence and playback are real. Only summary generation is
 a deterministic fixture. No external model, ASR, real website/account, extension
 or native permission prompt is involved. The directory is removed after the run.
@@ -70,9 +70,46 @@ The existing `ui-visual.yml` Windows job runs this helper and uploads its direct
 - `python scripts/local-player-fixture.py --data-dir EMPTY_DIR --seed-only`:
   validates actual synthetic fixture creation without opening a socket.
 
-At implementation handoff the hosted Edge gate and screenshot inspection are
-pending. Local Chromium socket binding is unavailable in the editing environment;
+The first hosted run, `38947421130`, used exact head `ba5f96e` and Edge
+154.0.4258.62. Cue seeks, decimal current-position controls, invalid bounds,
+Escape/Close without submission and four 1440/390 light/dark range screenshots
+passed. All four screenshots were inspected: source title, decimal field and
+controls are readable and unclipped. The run then correctly failed its 10.5-second
+clip duration assertion. The reused long-video fixture had only 1fps; local real
+FFmpeg reproduction measured an 11.064026-second container after the requested
+5.25–15.75 cut. This was unsuitable for fractional-cut acceptance.
+
+The player-specific fixture now generates 30fps media without changing the shared
+long-video fixture or production clipping. Real local probes measure source 20.0,
+selected 10.564 and nested 5.330664 seconds, within the unchanged 0.15-second media
+container tolerance (requested API bounds remain exact). A real fixture regression
+checks these durations before browser acceptance. It also retains a separate 1fps
+API baseline: `learning_range` reports requested 5.25–15.75 seconds while
+`media_integrity.duration` reports the actual quantized encoded container length
+(measured locally as 11.064026 seconds). The saved relative cues remain exactly
+0–5.25 / 5.25–10.5 and contain only the requested second and third source segments.
+The API therefore exposes requested bounds and measured media length separately;
+this is not a promise of exact frame cuts on media that cannot represent those
+boundaries. The 30fps tolerance is not widened to accommodate the 1fps limit. Browser reports now retain both
+backend and rendered media duration/identity before asserting, plus a failure
+viewport/state if later steps fail. The revised hosted gate remains pending. Local Chromium socket binding is unavailable in the editing environment;
 no local browser success or visual sign-off is claimed. Native desktop webview,
 real course/website behavior, native optional-host permission acceptance, and
 provider quality remain outside this gate. The native permission security-warning
 boundary is unchanged and must not be bypassed.
+
+The 1fps follow-on also exposed a nested-range defect: encoded padding could be
+selected as if it extended the parent’s requested evidence interval. Range
+creation now rejects any end beyond the parent’s logical length, without applying
+the container’s 0.01-second tolerance to that logical boundary. Real API tests
+reject 10.5–11, 0–10.500000001 and 0–10.505 with 422 and no created task. Unit
+regressions retain the ordinary full-media container tolerance and legacy
+original-offset-only records. The range form caps nested input at 10.5 seconds,
+shows the encoded duration separately, and does not copy a playback position from
+padding into a valid selection. Hosted acceptance additionally checks that the
+nested input rejects padding and retains wide/narrow screenshots of that form.
+
+Logical bounds use serialized decimal arithmetic rather than a numeric tolerance.
+The 0.1–0.3 parent accepts a nested end of 0.2, preserves original end 0.3, and
+rejects 0.200000001. The UI calculates the same exact decimal max, including
+exponent notation, without displaying binary-subtraction noise.

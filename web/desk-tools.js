@@ -4,7 +4,7 @@ import { mountSupportSummary } from "/web/support-summary.js";
 import { mountScreenSubtitles } from "/web/screen-subtitles.js";
 import { mountMaterialCatalogRecovery } from "/web/material-catalog-recovery.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
-import { fullVideoSource } from "/web/range-source.js";
+import { fullVideoSource, requestedRangeDuration } from "/web/range-source.js?v=logical-range-20261016";
 import { localPlaybackPosition } from "/web/local-player.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
@@ -403,12 +403,20 @@ export function installTools(ctx) {
   function range() {
     const s = current();
     if (s.kind !== "task" || !(s.media_path || s.source_media_path)) throw new Error("片段学习需要已保存的本地视频。");
-    const duration = Number(s.media_integrity?.duration);
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error("本地视频时长尚未确认，请等待处理完成后重试。");
-    const position = localPlaybackPosition($("player"), s.id) ?? 0;
+    const encodedDuration = Number(s.media_integrity?.duration);
+    if (!Number.isFinite(encodedDuration) || encodedDuration <= 0) throw new Error("本地视频时长尚未确认，请等待处理完成后重试。");
+    const selected = s.learning_range || {};
+    let duration = encodedDuration;
+    if ("start" in selected && "end" in selected) {
+      const logicalDuration = requestedRangeDuration(selected);
+      if (!Number.isFinite(logicalDuration) || logicalDuration <= 0) throw new Error("原片段范围无效，请重新打开原视频。");
+      duration = Math.min(duration, logicalDuration);
+    }
+    const currentPosition = localPlaybackPosition($("player"), s.id) ?? 0;
+    const position = currentPosition <= duration ? currentPosition : "";
     const token = show(
       "只整理一段视频",
-      `<p><strong>${esc(s.title || "本地视频")}</strong></p><p class="muted">起止位置以当前视频的秒数计算（0–${duration} 秒），支持小数。新片段会创建独立笔记。${Object.keys(s.learning_range || {}).length ? ` 当前片段对应原视频 ${Number(s.learning_range.original_start ?? s.learning_range.start)}–${Number(s.learning_range.original_end ?? s.learning_range.end)} 秒；下方从当前片段起点计时。` : ""}</p>${Object.keys(s.learning_range || {}).length ? '<button data-action="learn-full-source">整理完整原视频（复用已保存媒体）</button>' : ""}<form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" max="${duration}" step="any" required value="${position}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0" max="${duration}" step="any" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
+      `<p><strong>${esc(s.title || "本地视频")}</strong></p><p class="muted">起止位置以当前视频的秒数计算（0–${duration} 秒），支持小数。新片段会创建独立笔记。${Object.keys(selected).length ? ` 当前片段对应原视频 ${Number(selected.original_start ?? selected.start)}–${Number(selected.original_end ?? selected.end)} 秒；下方从当前片段起点计时。` : ""}${duration < encodedDuration ? ` 编码媒体时长 ${encodedDuration} 秒；补帧部分不能扩展原片段范围。` : ""}</p>${Object.keys(selected).length ? '<button data-action="learn-full-source">整理完整原视频（复用已保存媒体）</button>' : ""}<form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" max="${duration}" step="any" required value="${position}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0" max="${duration}" step="any" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
     );
     rangeSelection = { source: s, duration, token, epoch: state.epoch, submitting: false };
     dialog.dataset.sourceId = s.id;
@@ -960,6 +968,7 @@ export function installTools(ctx) {
       if (!rangeIsCurrent(rangeSelection)) return;
       const position = localPlaybackPosition($("player"), rangeSelection.source.id);
       if (position === null) throw new Error("请先打开当前视频并等待播放器就绪，未使用其他来源的播放位置。");
+      if (position > rangeSelection.duration) throw new Error("当前播放位置超过原片段的学习范围，请选择范围内的位置。");
       $("rangeStart").value = String(position);
     },
     "screen-subtitles": async () => {
@@ -1272,7 +1281,7 @@ export function installTools(ctx) {
         const selection = rangeSelection;
         if (!rangeIsCurrent(selection)) return;
         const start = Number($("rangeStart").value), end = Number($("rangeEnd").value);
-        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > selection.duration)
+        if (!$("rangeStart").value.trim() || !$("rangeEnd").value.trim() || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > selection.duration)
           throw new Error("请选择当前视频时长内的有效起止秒数，结束位置必须晚于开始位置。");
         await submitRange(selection, () => api(
           `/api/tasks/${encodeURIComponent(selection.source.id)}/learn-range`,

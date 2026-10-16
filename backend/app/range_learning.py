@@ -1,5 +1,6 @@
 """Create an independent learning task for an explicitly selected media range."""
 from pathlib import Path
+from decimal import Decimal
 import math
 
 from .config import DATA_DIR
@@ -81,11 +82,24 @@ def _create_range_task(source_id: str, start: float, end: float, options: TaskOp
     duration = source.media_integrity.duration
     if not all(math.isfinite(value) for value in (start, end)) or start < 0 or end <= start or duration <= 0 or end > duration + .01:
         raise ValueError("invalid_learning_range")
+    selected = source.learning_range
+    if any(not math.isfinite(selected[key]) for key in ("start", "end", "original_start", "original_end") if key in selected):
+        raise ValueError("invalid_learning_range")
+    if "start" in selected and "end" in selected:
+        # Encoders can pad a clip beyond its requested evidence interval. The
+        # container tolerance above must never expand that logical parent range.
+        logical_duration = Decimal(str(selected["end"])) - Decimal(str(selected["start"]))
+        if not logical_duration.is_finite() or logical_duration <= 0 or Decimal(str(end)) > logical_duration:
+            raise ValueError("invalid_learning_range")
     path = Path(source.media_path or source.source_media_path or "").resolve()
     if not path.is_file() or not path.is_relative_to(DATA_DIR.resolve()):
         raise ValueError("range_source_media_missing")
-    base = source.learning_range.get("original_start", source.learning_range.get("start", 0.0))
-    original_start, original_end = base + start, base + end
+    base = Decimal(str(selected.get("original_start", selected.get("start", 0.0))))
+    original_start, original_end = float(base + Decimal(str(start))), float(base + Decimal(str(end)))
+    if not all(math.isfinite(value) for value in (original_start, original_end)):
+        raise ValueError("invalid_learning_range")
+    if "original_end" in selected and original_end > selected["original_end"]:
+        raise ValueError("invalid_learning_range")
     title = f"{source.title} · 片段 {original_start:g}–{original_end:g}秒"
     if options.screen_subtitles is not None:
         from .screen_subtitle_media import create_retained_ocr_task

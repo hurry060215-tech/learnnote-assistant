@@ -32,10 +32,10 @@ async function main() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-local-player-"));
   const report = { ok: false, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     browser: "Microsoft Edge", synthetic_only: true, actual_http: true, actual_media: true,
-    summary_provider: "deterministic fixture", checks: [], screenshots: [], writes: [], errors: [], blocked_requests: [],
+    summary_provider: "deterministic fixture", media_checks: [], checks: [], screenshots: [], writes: [], errors: [], blocked_requests: [],
     not_tested: ["desktop native webview", "real sites/accounts", "extension permissions", "ASR", "external model quality"] };
   const releases = [];
-  let backend, browser, fixture, failure, buffer = "";
+  let backend, browser, page, fixture, failure, buffer = "";
   try {
     const env = {};
     for (const [key, value] of Object.entries(process.env)) if (/^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|TEMP|TMP|LANG|LC_ALL)$/i.test(key)) env[key] = value;
@@ -55,6 +55,8 @@ async function main() {
       try { return (await fetch(fixture.fixture_origin + "/health")).ok; } catch { return false; }
     }, "synthetic backend health", 90000);
     assert.equal(fixture.offline_network, true);
+    assert.equal(fixture.media_frame_rate, 30);
+    report.media_frame_rate = fixture.media_frame_rate;
     const base = fixture.fixture_origin, a = fixture.source_id, b = fixture.other_id;
     browser = await chromium.launch({ channel: "msedge", headless: true });
     report.browser_version = browser.version();
@@ -65,7 +67,7 @@ async function main() {
       if (url.origin !== base) { report.blocked_requests.push(url.origin); return route.abort(); }
       return route.continue();
     });
-    const page = await context.newPage();
+    page = await context.newPage();
     page.setDefaultTimeout(20000);
     page.on("pageerror", error => report.errors.push(error.message));
     page.on("request", request => {
@@ -99,6 +101,14 @@ async function main() {
       assert(!geometry.overflow, JSON.stringify(geometry));
       for (const d of geometry.dialogs) assert(d.left >= 0 && d.right <= d.width + 1);
       const file = `${name}.png`; await page.screenshot({ path: path.join(out, file), animations: "disabled" }); report.screenshots.push(file);
+    };
+    const duration = async (label, id, expected) => {
+      const task = (await read(`/api/tasks/${id}`)).task;
+      const actual = { label, expected_seconds: expected, backend_seconds: task.media_integrity?.duration,
+        learning_range: task.learning_range, player: await player() };
+      report.media_checks.push(actual);
+      assert(Math.abs(actual.backend_seconds - expected) < .15, JSON.stringify(actual));
+      assert(Math.abs(actual.player.duration - expected) < .15, JSON.stringify(actual));
     };
     const complete = async id => {
       let task;
@@ -144,10 +154,23 @@ async function main() {
     const clipped = (await read(`/api/tasks/${clip}`)).task;
     assert.equal(clipped.source_task_id, a);
     assert.deepEqual(clipped.learning_range, { start: 5.25, end: 15.75, original_start: 5.25, original_end: 15.75 });
-    assert(Math.abs((await player()).duration - 10.5) < .15);
+    await duration("selected-range", clip, 10.5);
     const cues = (await read(`/api/tasks/${clip}/transcript`)).segments;
     assert.deepEqual(cues.map(c => [c.start, c.end, c.text]), [[0, 5.25, "SYNTHETIC_SECOND"], [5.25, 10.5, "SYNTHETIC_THIRD"]]);
     await openRange(); assert.match(await page.locator("#toolBody").innerText(), /原视频 5.25–15.75 秒/);
+    assert.equal(await page.locator("#rangeEnd").getAttribute("max"), "10.5");
+    assert.match(await page.locator("#toolBody").innerText(), /编码媒体时长/);
+    await page.locator("#rangeStart").fill("0"); await page.locator("#rangeEnd").fill("10.505");
+    const beforePadding = report.writes.length;
+    await page.locator("#rangeForm button.primary").click();
+    assert.equal(await page.locator("#rangeEnd").evaluate(el => el.validity.rangeOverflow), true);
+    assert.equal(report.writes.length, beforePadding, "Encoded padding cannot extend the logical parent range");
+    await page.locator("#rangeEnd").fill("5.25");
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height:900 }); await snapshot(`nested-range-${width}`);
+    }
+    await page.setViewportSize({ width:1440, height:1000 });
+    report.checks.push("Nested range max is the requested 10.5 seconds; measured encoded padding is disclosed and rejected");
     const nested = await createRange(0, 5.25, clip);
     await openRange();
     page.once("dialog", dialog => { assert.match(dialog.message(), /Synthetic local player A/); dialog.accept(); });
@@ -157,7 +180,7 @@ async function main() {
     const whole = await wholeResponse.json(), wholeTask = await complete(whole.task_id);
     assert.deepEqual(wholeTask.learning_range, {}); assert.equal(wholeTask.source_task_id, a);
     await page.goto(`${base}/#task/${whole.task_id}`); await selected(whole.task_id);
-    assert(Math.abs((await player()).duration - 20) < .15); await snapshot("whole-source-upgrade");
+    await duration("whole-source", whole.task_id, 20); await snapshot("whole-source-upgrade");
     report.checks.push("Rendered custom range and nested range use clip-local seconds; full upgrade resolves root A and real 20-second media");
 
     // Delay real media HTTP, not a fake player property. Metadata remains unavailable.
@@ -168,7 +191,7 @@ async function main() {
       // Start with the 5.25-second nested clip already loaded, then replace it
       // with the 20-second source. New seeks must not use old duration metadata.
       await page.goto(`${base}/#task/${nested}`); await selected(nested);
-      assert(Math.abs((await player()).duration - 5.25) < .15);
+      await duration(`nested-before-${action}`, nested, 5.25);
       await page.evaluate(id => { location.hash = `task/${id}`; }, a); await bounded(reached.promise, "delayed media request");
       await page.locator('#sourceContent [data-time="5.25"]').waitFor({ state: "attached" });
       if (!await page.locator("#sourceTranscript").evaluate(el => el.open)) await page.locator("#sourceTranscript > summary").click();
@@ -235,7 +258,20 @@ async function main() {
     assert.deepEqual(report.blocked_requests, []); assert.deepEqual(report.errors, []);
     report.source_artifacts_unchanged = true; report.source_ids = { original: a, other: b, clip, nested, whole: whole.task_id };
     report.ok = true;
-  } catch (error) { report.errors.push(error.stack || error.message); process.exitCode = 1; }
+  } catch (error) {
+    report.errors.push(error.stack || error.message); process.exitCode = 1;
+    if (page && !page.isClosed()) {
+      report.failure_state = await page.evaluate(() => {
+        const player = document.querySelector("#player");
+        return { hash: location.hash, title: document.querySelector("#breadcrumb")?.textContent,
+          sourceKey: document.querySelector("#sourcePanel")?.dataset.sourceKey,
+          player: player && { taskId: player.dataset.sourceTaskId, currentSrc: player.currentSrc,
+            currentTime: player.currentTime, duration: player.duration, readyState: player.readyState, paused: player.paused } };
+      }).catch(() => null);
+      await page.screenshot({ path: path.join(out, "failure.png"), animations: "disabled" })
+        .then(() => { report.failure_screenshot = "failure.png"; }).catch(() => {});
+    }
+  }
   finally {
     releases.forEach(release => release());
     if (browser) await browser.close();
