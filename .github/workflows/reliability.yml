@@ -7,6 +7,8 @@ on:
       - "scripts/*reliability*.py"
       - "scripts/test-backend-offline.py"
       - "scripts/progressive-slo.py"
+      - "scripts/local-range-acceptance.py"
+      - "scripts/tests/test_local_range_acceptance.py"
       - ".github/workflows/reliability.yml"
   push:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - "scripts/*reliability*.py"
       - "scripts/test-backend-offline.py"
       - "scripts/progressive-slo.py"
+      - "scripts/local-range-acceptance.py"
+      - "scripts/tests/test_local_range_acceptance.py"
       - ".github/workflows/reliability.yml"
   schedule:
     - cron: "23 18 * * 1"
@@ -98,6 +102,10 @@ jobs:
           python scripts/interrupted-task-reliability.py
           --duration-seconds 3600
           --output-dir build/reliability/interrupted-local-task
+      - name: Real local range recovery and full-source upgrade
+        run: >
+          python scripts/local-range-acceptance.py
+          --output-dir build/reliability/local-range
       - name: Caption-to-outline reference p95 gate
         shell: pwsh
         run: |
@@ -118,6 +126,8 @@ jobs:
             build/reliability/full-local-task/report.json
             build/reliability/interrupted-local-task/*.json
             build/reliability/interrupted-local-task/*.log
+            build/reliability/local-range/*.json
+            build/reliability/local-range/*.log
             build/reliability/progressive-outline/report.json
           if-no-files-found: warn
           retention-days: 14

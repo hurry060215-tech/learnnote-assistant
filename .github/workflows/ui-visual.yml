@@ -19,6 +19,8 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
       - "scripts/e2e-extension-smoke.py"
+      - "scripts/extension-permission-acceptance.py"
+      - "scripts/extension-native-ui.ps1"
       - "scripts/serve-samples.py"
       - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
@@ -46,6 +48,8 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
       - "scripts/e2e-extension-smoke.py"
+      - "scripts/extension-permission-acceptance.py"
+      - "scripts/extension-native-ui.ps1"
       - "scripts/serve-samples.py"
       - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
@@ -296,12 +300,18 @@ jobs:
             excluded = "real accounts, native optional-permission prompt, store install or upgrade, long-task recovery"
           } | ConvertTo-Json | Set-Content -Encoding UTF8 build/extension-smoke/report.json
           if ($smokeExit -ne 0) { throw "Real Edge extension smoke failed" }
+      - name: Native optional host permission lifecycle in disposable Edge profiles
+        shell: pwsh
+        run: |
+          python scripts/extension-permission-acceptance.py --output build/extension-permissions
+          if ($LASTEXITCODE -ne 0) { throw "Native Edge optional-permission acceptance failed; inspect its report and native-window evidence" }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: extension-runtime-${{ github.run_id }}
           path: |
             build/extension-smoke
+            build/extension-permissions
             build/extension-smoke-data/test-runs/e2e-logs
           if-no-files-found: warn
           retention-days: 14
