@@ -43,6 +43,22 @@ function childEventStream(method, url, headers, fixtureTasks) {
   // advance the cursor; the production hub closes this finite idle stream.
   return { contentType: "text/event-stream", headers: { "Cache-Control": "no-cache, no-transform" }, body: ": heartbeat\n\n" };
 }
+function queuedVisualChild(source) {
+  return { id: "visual-child", source_type: "current_page", title: source.title, page_url: source.page_url || "",
+    status: "queued", phase: "queued", progress: 0, mode: "video", awaiting_confirmation: false, error_code: "", checkpoint: "",
+    summary_source: "", summary_warning: "", transcript_path: "", note_path: "", media_path: "", source_media_path: "",
+    audio_path: "", subtitle_path: "", visual_index_path: "", frame_grids: [], visual_windows: [], source_task_id: source.id,
+    options: { content_mode: "visual", visual_understanding: true }, created_at: date, updated_at: date };
+}
+function admitVisualChild(source, episode, fixtureTasks) {
+  const task = queuedVisualChild(source);
+  if (!fixtureTasks.some(item => item.id === task.id)) fixtureTasks.push(task);
+  episode.upgrades = [{ task_id: task.id, status: "queued" }]; episode.caption_upgrade_available = false;
+  return task;
+}
+function fixtureEdition(selected) {
+  return { text: selected.status === "queued" && !selected.note_path ? "" : `# ${selected.title}\n\nSynthetic reader text with local source evidence.`, revision: "fixture", edited: false };
+}
 async function main() {
   const { chromium } = require("playwright");
   const base = new URL(process.argv[2] || "http://127.0.0.1:18940");
@@ -96,7 +112,7 @@ async function main() {
               can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
           }
           const edition = pathname.match(/^\/api\/tasks\/editions\/(material|task)\/([^/]+)$/);
-          if (edition) { const selected = edition[1] === "task" ? tasks.find(item => item.id === edition[2]) : materials.find(item => item.material_id === edition[2]); assert(selected); return json({ text: `# ${selected.title}\n\nSynthetic reader text with local source evidence.`, revision: "fixture", edited: false }); }
+          if (edition) { const selected = edition[1] === "task" ? tasks.find(item => item.id === edition[2]) : materials.find(item => item.material_id === edition[2]); assert(selected); return json(fixtureEdition(selected)); }
           const materialRead = pathname.match(/^\/api\/library\/materials\/([^/]+)(?:\/(content|anchors))?$/);
           if (materialRead) {
             const selected = materials.find(item => item.material_id === materialRead[1]); assert(selected);
@@ -138,9 +154,7 @@ async function main() {
           assert.deepEqual(Object.keys(payload).sort(), ["confirm_download", "fingerprint", "preview_id", "share_images"]);
           assert.equal(payload.confirm_download, true); assert.equal(payload.share_images, true); assert(reviews.has(payload.preview_id));
           if (holdUpgrade) { const held = holdUpgrade; holdUpgrade = null; held.started.resolve(); await held.release.promise; }
-          const task = { ...tasks[0], id: "visual-child", title: "关联画面任务", status: "queued", phase: "queued", mode: "video", transcript_path: "", source_task_id: "video-a", options: { content_mode: "visual", visual_understanding: true } };
-          if (!tasks.some(item => item.id === task.id)) tasks.push(task);
-          episode.upgrades = [{ task_id: task.id, status: "queued" }];
+          const task = admitVisualChild(tasks[0], episode, tasks);
           return json({ task_id: task.id, task, source_task_id: "video-a", episode_id: episode.episode_id, deduplicated: false });
         }
         report.unexpectedRequests.push(`${request.method()} ${pathname}`); return json({ detail: "Unexpected fixture request" }, 501);
@@ -205,8 +219,10 @@ async function main() {
     await page.locator("#courseUpgradeConfirm").evaluate(button => { button.click(); button.click(); }); await bounded(held.started.promise); assert.equal(count("upgrade"), 1);
     held.release.resolve(); await page.locator("#courseUpgradeOpen").waitFor();
     await page.locator("#courseUpgradeReturn").click(); await page.locator('[data-open-upgrade="visual-child"]').waitFor();
+    assert.equal(await page.locator("[data-upgrade-episode]").count(), 0);
     assert.equal(JSON.stringify(tasks[0]), original); assert.equal(JSON.stringify(courses[0].sources), courseSources);
-    await openChildReady(page, { base: base.origin, id: "visual-child", title: "关联画面任务" });
+    await openChildReady(page, { base: base.origin, id: "visual-child", title: tasks[0].title });
+    await page.locator('#document[data-reader-source="task:visual-child"]').getByText("笔记准备好后会显示在这里，你可以先查看处理进度。", { exact: true }).waitFor();
     await until(() => report.requests.includes("GET /api/tasks/visual-child/events/stream"), "linked child event stream");
     report.checks.push("Repeated confirmation creates one linked child; original task and course source remain unchanged; linked child opens");
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpectedRequests, []); report.passed = true;
@@ -214,5 +230,5 @@ async function main() {
   finally { await cleanupFixture({ report: () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)), browser: () => browser?.close() }, primaryError); }
   console.log(JSON.stringify(report, null, 2));
 }
-module.exports = { childEventStream };
+module.exports = { childEventStream, queuedVisualChild, admitVisualChild, fixtureEdition };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

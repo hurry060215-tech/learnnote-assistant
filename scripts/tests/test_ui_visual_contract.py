@@ -109,6 +109,25 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertEqual(workflow.count("node scripts/course-upgrade-api-acceptance.cjs"), 1)
         self.assertIn('throw "Course episode upgrade real API/Edge gate failed"', workflow[course:shared])
 
+    def test_independent_course_api_gate_runs_after_synthetic_failure_only_with_prerequisites(self) -> None:
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"))
+        steps = workflow["jobs"]["accessibility-visual"]["steps"]
+        install = next(step for step in steps if step.get("name") == "Install visual test dependencies")
+        self.assertEqual(install["id"], "visual_dependencies")
+        synthetic = next(step for step in steps if "node scripts/course-upgrade-acceptance.cjs" in step.get("run", ""))
+        actual = next(step for step in steps if "node scripts/course-upgrade-api-acceptance.cjs" in step.get("run", ""))
+        self.assertIsNot(synthetic, actual)
+        self.assertLess(steps.index(install), steps.index(synthetic))
+        self.assertLess(steps.index(synthetic), steps.index(actual))
+        self.assertEqual(actual["if"], "${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}")
+        for step in (synthetic, actual):
+            self.assertNotIn("continue-on-error", step)
+            self.assertIn('if ($LASTEXITCODE -ne 0) { throw', step["run"])
+        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertEqual(upload["if"], "always()")
+        for path in ("build/course-upgrade-synthetic-ui", "build/course-upgrade-ui"):
+            self.assertIn(path, upload["with"]["path"])
+
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
