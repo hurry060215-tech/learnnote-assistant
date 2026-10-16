@@ -78,6 +78,18 @@ async function main() {
         if (await candidate.evaluate(() => Boolean(window.app?.vault?.getName && window.app.vault.getName() === 'Synthetic vault')).catch(() => false)) return candidate;
       }
     }, 'synthetic vault window');
+    // Obsidian deliberately asks before loading a vault's first plugin. Accept
+    // the native prompt only for this run's disposable vault and our sole plugin.
+    const openedVault = await page.evaluate(() => app.vault.adapter.getBasePath());
+    assert.equal(await fs.realpath(openedVault), await fs.realpath(vault));
+    assert.deepEqual(await fs.readdir(path.join(vault, '.obsidian/plugins')), ['learnnote-assistant']);
+    const trustButton = page.getByRole('button', {name: 'Trust author and enable plugins', exact: true});
+    await waitFor(async () => await trustButton.isVisible() || await page.evaluate(() => Boolean(app.plugins.plugins['learnnote-assistant'])), 'native plugin trust prompt');
+    if (await trustButton.isVisible()) {
+      await page.screenshot({path: path.join(output, 'native-vault-trust-prompt.png'), fullPage: true});
+      await trustButton.click();
+      report.checks.push('native_trust_prompt_for_own_plugin_in_disposable_vault');
+    }
     await page.waitForFunction(() => Boolean(window.app.plugins.plugins['learnnote-assistant']), undefined, {timeout: 60000});
     report.obsidian_version = await page.evaluate(() => require('obsidian').apiVersion);
     report.checks.push('official_native_app_and_real_plugin_loaded');

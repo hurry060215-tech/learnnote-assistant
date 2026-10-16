@@ -27,6 +27,9 @@ class ObsidianNativeAcceptanceTests(unittest.TestCase):
     def test_harness_uses_disposable_profile_real_plugin_and_real_backend(self):
         text = (ROOT / 'scripts/obsidian-native-acceptance.cjs').read_text(encoding="utf-8")
         self.assertIn('fs.mkdtemp', text)
+        self.assertIn('assert.equal(await fs.realpath(openedVault), await fs.realpath(vault))', text)
+        self.assertIn("name: 'Trust author and enable plugins', exact: true", text)
+        self.assertIn('await trustButton.click()', text)
         self.assertIn('--user-data-dir=${profile}', text)
         self.assertIn("'integrations/obsidian-learnnote', name", text)
         self.assertIn("'-m', 'uvicorn', 'app.main:app'", text)

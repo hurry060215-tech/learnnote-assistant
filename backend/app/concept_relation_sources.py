@@ -104,40 +104,40 @@ def capture_relations(*, course_id="", revision=None, query="", **filters):
         for offset in range(0, len(ids), 100):
             batch = ids[offset:offset + 100]
             fields = f"evidence_id,schema_version,source_type,substr(title,1,501) AS title,substr(source_uri,1,4097) AS source_uri,substr(locator,1,301) AS locator,task_id,length(text) AS characters,substr(text,1,{MAX_TEXT + 1}) AS text,substr(metadata_json,1,{MAX_METADATA + 1}) AS metadata_json"
-            rows = db.execute(f"SELECT {fields} FROM source_evidence WHERE evidence_id IN ({','.join('?' for _ in batch)})", batch)
             found = set()
-            for raw in rows:
-                item = dict(raw)
-                found.add(item["evidence_id"])
-                if item.pop("characters") > MAX_TEXT or len(item["metadata_json"]) > MAX_METADATA:
-                    raise ValueError("concept_relations_too_large")
-                if any(len(item[field]) > limit for field, limit in (("title", 500), ("source_uri", 4096), ("locator", 300), ("evidence_id", 128), ("task_id", 128))):
-                    raise ValueError("concept_relation_index_unavailable")
-                item["metadata"] = json.loads(item.pop("metadata_json"))
-                if not isinstance(item["metadata"], dict):
-                    raise ValueError("concept_relation_index_unavailable")
-                accepted = []
-                for member in candidates[item["evidence_id"]]:
+            with closing(db.execute(f"SELECT {fields} FROM source_evidence WHERE evidence_id IN ({','.join('?' for _ in batch)})", batch)) as rows:
+                for raw in rows:
+                    item = dict(raw)
+                    found.add(item["evidence_id"])
+                    if item.pop("characters") > MAX_TEXT or len(item["metadata_json"]) > MAX_METADATA:
+                        raise ValueError("concept_relations_too_large")
+                    if any(len(item[field]) > limit for field, limit in (("title", 500), ("source_uri", 4096), ("locator", 300), ("evidence_id", 128), ("task_id", 128))):
+                        raise ValueError("concept_relation_index_unavailable")
+                    item["metadata"] = json.loads(item.pop("metadata_json"))
+                    if not isinstance(item["metadata"], dict):
+                        raise ValueError("concept_relation_index_unavailable")
+                    accepted = []
+                    for member in candidates[item["evidence_id"]]:
+                        owner = member["canonical_owner"]
+                        valid = (_belongs(item, owner) and is_canonical_evidence(item)
+                                 and item["metadata"].get("kind", "") in {"", "transcript", "subtitle", "frame", "visual", "ocr", "material"}
+                                 and (owner["kind"] != "task" or time_bounds(item) is not None))
+                        member["eligible" if valid else "excluded"] += 1
+                        if valid:
+                            accepted.append(member)
+                    if not accepted:
+                        continue
+                    member = accepted[0]
                     owner = member["canonical_owner"]
-                    valid = (_belongs(item, owner) and is_canonical_evidence(item)
-                             and item["metadata"].get("kind", "") in {"", "transcript", "subtitle", "frame", "visual", "ocr", "material"}
-                             and (owner["kind"] != "task" or time_bounds(item) is not None))
-                    member["eligible" if valid else "excluded"] += 1
-                    if valid:
-                        accepted.append(member)
-                if not accepted:
-                    continue
-                member = accepted[0]
-                owner = member["canonical_owner"]
-                item["course_source"] = {"kind": owner["kind"], "id": owner["id"], "title": item["title"]}
-                row = portable_evidence(item, owner)
-                row["source_identity"] = identities[(owner["kind"], owner["id"])]
-                # Cover the additional identity field in the portable digest.
-                row["snapshot_fingerprint"] = digest({key: value for key, value in row.items() if key != "snapshot_fingerprint"})
-                evidence.append(row)
-                total += len(item["text"])
-                if total > MAX_CHARACTERS:
-                    raise ValueError("concept_relations_too_large")
+                    item["course_source"] = {"kind": owner["kind"], "id": owner["id"], "title": item["title"]}
+                    row = portable_evidence(item, owner)
+                    row["source_identity"] = identities[(owner["kind"], owner["id"])]
+                    # Cover the additional identity field in the portable digest.
+                    row["snapshot_fingerprint"] = digest({key: value for key, value in row.items() if key != "snapshot_fingerprint"})
+                    evidence.append(row)
+                    total += len(item["text"])
+                    if total > MAX_CHARACTERS:
+                        raise ValueError("concept_relations_too_large")
             for key in set(batch) - found:
                 for member in candidates[key]:
                     member["missing"] += 1

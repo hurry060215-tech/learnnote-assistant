@@ -190,6 +190,34 @@ class ConceptRelationSourceTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/concept-relations").status_code, 409)
         self.assertEqual(self.hashes(), before)
 
+    def test_limit_error_closes_active_cursor_before_traceback_release(self):
+        from app.concept_relation_sources import capture_relations
+        opened = []
+        class TrackedCursor(sqlite3.Cursor):
+            closed = False
+            def close(self):
+                self.closed = True
+                return super().close()
+        class TrackedConnection(sqlite3.Connection):
+            def execute(self, sql, parameters=()):
+                if sql.startswith("SELECT evidence_id,schema_version"):
+                    cursor = self.cursor(factory=TrackedCursor)
+                    opened.append(cursor)
+                    return cursor.execute(sql, parameters)
+                return super().execute(sql, parameters)
+        original_connect = sqlite3.connect
+        def connect(*args, **kwargs):
+            return original_connect(*args, factory=TrackedConnection, **kwargs)
+        with patch("app.concept_relation_sources.sqlite3.connect", side_effect=connect), patch("app.concept_relation_sources.MAX_TEXT", 0):
+            try:
+                capture_relations()
+            except ValueError as error:
+                self.assertEqual(str(error), "concept_relations_too_large")
+                self.assertTrue(opened)
+                self.assertTrue(all(cursor.closed for cursor in opened))
+            else:
+                self.fail("Expected bounded-source rejection")
+
     def test_live_change_requires_explicit_refresh(self):
         with patch("app.concept_relation_sources._task_revision", return_value="changed"):
             response = self.client.get("/api/concept-relations")
