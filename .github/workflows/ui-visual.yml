@@ -88,6 +88,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Visual dependency consistency check failed" }
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "Visual JavaScript dependency installation failed" }
+      - name: Course episode retry and upgrade with actual Edge and isolated API
+        shell: pwsh
+        run: |
+          node scripts/course-upgrade-acceptance.cjs http://127.0.0.1:18940 build/course-upgrade-synthetic-ui
+          if ($LASTEXITCODE -ne 0) { throw "Course upgrade stale-response frontend gate failed" }
+          node scripts/course-upgrade-api-acceptance.cjs build/course-upgrade-ui
+          if ($LASTEXITCODE -ne 0) { throw "Course episode upgrade real API/Edge gate failed" }
       - name: Start isolated local backend
         shell: pwsh
         run: |
@@ -207,13 +214,6 @@ jobs:
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
-      - name: Course episode retry and upgrade with actual Edge and isolated API
-        shell: pwsh
-        run: |
-          node scripts/course-upgrade-acceptance.cjs http://127.0.0.1:18940 build/course-upgrade-synthetic-ui
-          if ($LASTEXITCODE -ne 0) { throw "Course upgrade stale-response frontend gate failed" }
-          node scripts/course-upgrade-api-acceptance.cjs build/course-upgrade-ui
-          if ($LASTEXITCODE -ne 0) { throw "Course episode upgrade real API/Edge gate failed" }
       - name: Material catalog recovery with actual Edge and synthetic responses
         shell: pwsh
         run: |

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { completedAction, retryCourseReady, openChildReady, cleanupFixture } = require("./course-upgrade-fixture-helpers.cjs");
 
 const root = path.resolve(__dirname, "..");
 const date = "2026-10-09T10:00:00Z";
@@ -53,10 +54,11 @@ async function main() {
     status: "failed", retryable: true, retry_kind: "summary", content_mode: "text", caption_upgrade_available: true, upgrades: [] };
   let selectedModel = { base_url: "http://127.0.0.1:19877/v1", model: "synthetic-vision" }, holdPreview = null, holdUpgrade = null;
   const health = { ok: true, service: "learnnote", app_version: "0.2.14", backend_version: "0.2.14", protocol_version: 1, llm_model_configured: false, local_asr_available: false, default_llm_model: "", model_provider_presets: [], assistant_capabilities: {}, upload_policy: {} };
-  const browser = await chromium.launch({ ...(process.platform === "win32" ? { channel: "msedge" } : { executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium" }), headless: true });
-  report.browser = browser.version(); report.platform = process.platform;
-  const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, reducedMotion: "reduce", serviceWorkers: "block" });
+  let browser, primaryError;
   try {
+    browser = await chromium.launch({ ...(process.platform === "win32" ? { channel: "msedge" } : { executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium" }), headless: true });
+    report.browser = browser.version(); report.platform = process.platform;
+    const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, reducedMotion: "reduce", serviceWorkers: "block" });
     await context.routeWebSocket("**/*", socket => { report.unexpectedRequests.push(`WebSocket ${socket.url()}`); socket.close(); });
     await context.route("**/*", async route => {
       const request = route.request(), url = new URL(request.url()), pathname = url.pathname;
@@ -115,7 +117,7 @@ async function main() {
         if (action) {
           assert.equal(action[1], "course-a"); assert.equal(action[2], episode.episode_id);
           const payload = request.method() === "DELETE" ? null : request.postDataJSON(); calls.push({ action: action[3], method: request.method(), payload });
-          if (request.method() === "DELETE") { reviews.delete(action[4]); return json({ deleted: true }); }
+          if (request.method() === "DELETE") { reviews.delete(action[4]); return json({ cancelled: true }); }
           if (action[3] === "retry") {
             assert.equal(payload.revision, courses[0].revision); assert.equal(payload.task_id, "video-a"); assert.equal(payload.generation, episode.generation);
             assert.equal(payload.options.content_mode, "text"); assert.equal(payload.options.visual_understanding, false); assert.equal(payload.options.local_ocr, false);
@@ -130,7 +132,7 @@ async function main() {
               page_url: "https://example.test/course?p=2&source=synthetic", title: "Synthetic caption source", model_source: { title: "Synthetic caption source", url: "https://example.test/course?p=2&source=synthetic" }, connection: { ...selectedModel }, resource_budget_mb: 512,
               options: { max_frame_count: 900, frame_interval: 20, vision_batch_size: 4, ...payload.options }, warning: "无法访问、DRM 或预算不足时会停止，不绕过访问控制。" };
             reviews.set(preview_id, value);
-            if (holdPreview) { const held = holdPreview; holdPreview = null; held.started.resolve(); await held.release.promise; }
+            if (holdPreview) { const held = holdPreview; holdPreview = null; held.preview_id = preview_id; held.started.resolve(); await held.release.promise; }
             return json(value);
           }
           assert.deepEqual(Object.keys(payload).sort(), ["confirm_download", "fingerprint", "preview_id", "share_images"]);
@@ -147,14 +149,17 @@ async function main() {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on("pageerror", error => report.errors.push(error.message)); page.on("dialog", dialog => dialog.accept());
     const count = action => calls.filter(call => call.action === action && call.method === "POST").length;
-    const settle = () => page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    const prefix = `${base.origin}/api/courses/course-a/episodes/${episode.episode_id}`;
     async function open() {
       if (await page.locator("#toolsDialog").evaluate(el => el.open)) await page.locator("[data-close-tool]").click();
       if (!(await page.locator("#readerOptions").evaluate(el => el.open))) await page.locator("#readerOptions > summary").click();
       await page.locator("#moreTools").click(); await page.locator('[data-action="courses"]').click();
       await page.locator('[data-course="course-a"]').click(); await page.locator("[data-upgrade-episode]").waitFor();
     }
-    async function review() { await page.locator("[data-upgrade-episode]").click(); await page.locator("#courseUpgradeConfirm").waitFor(); }
+    async function review() {
+      const response = await completedAction(page, "POST", prefix + "/upgrade-preview", () => page.locator("[data-upgrade-episode]").click());
+      await page.locator("#courseUpgradeConfirm").waitFor(); return response.json();
+    }
     async function consent() { await page.locator("#courseUpgradeDownload").check(); await page.locator("#courseUpgradeShare").check(); }
     async function screenshot(name) {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -164,17 +169,19 @@ async function main() {
     }
     await page.goto(base.href); await page.locator('#welcome[data-ready="true"]').waitFor();
     await page.locator('#notes [data-id="document-a"]').click(); await open();
-    await page.locator("[data-retry-episode]").click(); await page.locator("[data-upgrade-episode]").waitFor();
+    await retryCourseReady(page, { url: prefix + "/retry", retrySelector: "[data-retry-episode]", readySelector: "[data-upgrade-episode]", title: courses[0].title });
     assert.equal(count("retry"), 1); report.checks.push("Course-bound summary retry uses original task/generation and text-only options");
-    await review(); assert.equal(count("upgrade"), 0); assert(await page.locator("#courseUpgradeConfirm").isDisabled());
+    const cancelledReview = await review(); assert.equal(count("upgrade"), 0); assert(await page.locator("#courseUpgradeConfirm").isDisabled());
     assert(!(await page.locator("#courseUpgradeDownload").isChecked())); assert(!(await page.locator("#courseUpgradeShare").isChecked()));
     assert.match(await page.locator("#toolBody").innerText(), /512 MB/); assert.match(await page.locator("#toolBody").innerText(), /字幕文本、上方模型来源标题与网址/);
     await page.locator("#courseUpgradeDownload").check(); assert(await page.locator("#courseUpgradeConfirm").isDisabled());
     await screenshot("01-upgrade-review-desktop.png");
     await page.setViewportSize({ width: 390, height: 844 }); await screenshot("02-upgrade-review-mobile.png");
     await page.evaluate(() => document.body.classList.add("dark")); await screenshot("03-upgrade-review-dark.png");
-    await page.locator("#courseUpgradeCancel").click(); await page.locator("[data-upgrade-episode]").waitFor(); assert.equal(count("upgrade"), 0);
-    assert(calls.some(call => call.method === "DELETE"));
+    const cancelled = await completedAction(page, "DELETE", `${prefix}/upgrade-preview/${cancelledReview.preview_id}`, () => page.locator("#courseUpgradeCancel").click());
+    assert.equal((await cancelled.json()).cancelled, true); assert(!reviews.has(cancelledReview.preview_id));
+    await page.locator("#courseUpgradeConfirm").waitFor({ state: "detached" });
+    await page.locator("[data-upgrade-episode]").waitFor(); assert.equal(count("upgrade"), 0);
     await review(); assert(!(await page.locator("#courseUpgradeDownload").isChecked())); await consent();
     const initialModel = selectedModel; selectedModel = { ...selectedModel, model: "changed-model" };
     await page.locator("#courseUpgradeConfirm").click(); await page.locator("#toolStatus").getByText(/设置已变化/).waitFor(); assert.equal(count("upgrade"), 0); selectedModel = initialModel;
@@ -187,9 +194,9 @@ async function main() {
       if (dismiss === "escape") await page.keyboard.press("Escape");
       if (dismiss === "back") await page.locator("[data-tool-back]").click();
       if (dismiss === "navigation") await page.evaluate(() => window.dispatchEvent(new Event("learnnote:navigation")));
-      const countBefore = calls.filter(call => call.method === "DELETE").length;
-      held.release.resolve(); await page.waitForFunction(() => !document.querySelector("#courseUpgradeConfirm")); await settle();
-      await until(() => calls.filter(call => call.method === "DELETE").length > countBefore, "late preview invalidation");
+      const discarded = await completedAction(page, "DELETE", `${prefix}/upgrade-preview/${held.preview_id}`, () => held.release.resolve());
+      assert.equal((await discarded.json()).cancelled, true); assert(!reviews.has(held.preview_id));
+      await page.locator("#courseUpgradeConfirm").waitFor({ state: "detached" });
       assert.equal(count("upgrade"), 0);
     }
     report.checks.push("Delayed previews are discarded after Close, Escape, Back and source navigation");
@@ -199,11 +206,12 @@ async function main() {
     held.release.resolve(); await page.locator("#courseUpgradeOpen").waitFor();
     await page.locator("#courseUpgradeReturn").click(); await page.locator('[data-open-upgrade="visual-child"]').waitFor();
     assert.equal(JSON.stringify(tasks[0]), original); assert.equal(JSON.stringify(courses[0].sources), courseSources);
-    await page.locator('[data-open-upgrade="visual-child"]').click(); await page.waitForURL(/#task\/visual-child/);
+    await openChildReady(page, { base: base.origin, id: "visual-child", title: "关联画面任务" });
     await until(() => report.requests.includes("GET /api/tasks/visual-child/events/stream"), "linked child event stream");
     report.checks.push("Repeated confirmation creates one linked child; original task and course source remain unchanged; linked child opens");
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpectedRequests, []); report.passed = true;
-  } finally { fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); await browser.close(); }
+  } catch (error) { primaryError = error; throw error; }
+  finally { await cleanupFixture({ report: () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)), browser: () => browser?.close() }, primaryError); }
   console.log(JSON.stringify(report, null, 2));
 }
 module.exports = { childEventStream };

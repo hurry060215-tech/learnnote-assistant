@@ -98,6 +98,17 @@ class UiVisualContractTests(unittest.TestCase):
             '$("contentModeChoices").hidden = hideVideoOptions;', script
         )
 
+    def test_self_contained_course_gate_runs_after_dependencies_before_shared_backend(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ui-visual.yml").read_text(encoding="utf-8")
+        install = workflow.index("name: Install visual test dependencies")
+        course = workflow.index("name: Course episode retry and upgrade with actual Edge and isolated API")
+        shared = workflow.index("name: Start isolated local backend")
+        self.assertLess(install, course)
+        self.assertLess(course, shared)
+        self.assertEqual(workflow.count("node scripts/course-upgrade-acceptance.cjs"), 1)
+        self.assertEqual(workflow.count("node scripts/course-upgrade-api-acceptance.cjs"), 1)
+        self.assertIn('throw "Course episode upgrade real API/Edge gate failed"', workflow[course:shared])
+
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")

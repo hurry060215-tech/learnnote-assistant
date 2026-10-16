@@ -6,6 +6,7 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { spawn } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { chromium } = require("playwright");
+const { completedAction, retryCourseReady, openChildReady, cleanupFixture } = require("./course-upgrade-fixture-helpers.cjs");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check, label, timeout = 20000) {
   const end = Date.now() + timeout;
@@ -17,7 +18,7 @@ async function until(check, label, timeout = 20000) {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-course-upgrade-"));
   const report = { ok: false, synthetic_only: true, actual_http: true, actual_disk: true,
     browser: process.env.LEARNNOTE_ACCEPTANCE_BROWSER || "Microsoft Edge", checks: [], screenshots: [], errors: [], external_requests: [] };
-  let backend, browser, fixture, failure, buffer = "";
+  let backend, browser, fixture, failure, primaryError, buffer = "";
   try {
     const env = {};
     for (const [key, value] of Object.entries(process.env))
@@ -76,9 +77,7 @@ async function until(check, label, timeout = 20000) {
       await page.locator(`[data-open-source="0"]`).waitFor();
     }
     async function preview() {
-      const response = page.waitForResponse(item => item.url().endsWith("/upgrade-preview") && item.request().method() === "POST");
-      await page.locator(`[data-upgrade-episode="${fixture.episode_id}"]`).click();
-      const result = await response; assert(result.ok(), `Preview failed: ${result.status()}`);
+      const result = await completedAction(page, "POST", base + prefix + "/upgrade-preview", () => page.locator(`[data-upgrade-episode="${fixture.episode_id}"]`).click());
       const review = await result.json(); await page.locator("#courseUpgradeConfirm").waitFor();
       for (const [label, value] of [["下载来源网址：", review.page_url], ["发送给模型的来源标题：", review.model_source.title], ["发送给模型的来源网址：", review.model_source.url]])
         assert.equal(await page.locator(".course-upgrade p").filter({ hasText: label }).locator(".answer").innerText(), value || "（空）");
@@ -104,21 +103,26 @@ async function until(check, label, timeout = 20000) {
       await page.setViewportSize({ width: 1440, height: 1000 }); await page.evaluate(() => document.body.classList.remove("dark"));
     }
     await page.goto(`${base}/#task/${fixture.task_id}`); await page.locator("#document h1").waitFor();
-    await open(); await preview(); assert.equal((await readState()).admissions.length, 0);
+    await open(); const cancelledReview = await preview(); assert.equal((await readState()).admissions.length, 0);
     assert(!(await page.locator("#courseUpgradeDownload").isChecked())); assert(!(await page.locator("#courseUpgradeShare").isChecked()));
     assert(await page.locator("#courseUpgradeConfirm").isDisabled());
     const disclosure = await page.locator("#toolBody").innerText();
     assert.match(disclosure, /www.bilibili.com.*p=1/); assert.match(disclosure, /媒体\/处理预算/); assert.match(disclosure, /下载流量可能超过/);
     assert.match(disclosure, /字幕文本、上方模型来源标题与网址/); assert.match(disclosure, /synthetic-vision/); assert.match(disclosure, /发送给模型的来源标题/); assert.match(disclosure, /发送给模型的来源网址/);
     await capture("review"); await page.locator("#courseUpgradeDownload").check(); assert(await page.locator("#courseUpgradeConfirm").isDisabled()); await capture("consent", true);
-    await page.locator("#courseUpgradeCancel").click(); await page.locator(`[data-upgrade-episode="${fixture.episode_id}"]`).waitFor();
-    await until(async () => seen.deletes > 0, "cancel invalidates preview"); assert.equal((await readState()).admissions.length, 0);
+    const cancelled = await completedAction(page, "DELETE", `${base}${prefix}/upgrade-preview/${cancelledReview.preview_id}`, () => page.locator("#courseUpgradeCancel").click());
+    assert.equal((await cancelled.json()).cancelled, true);
+    await page.locator("#courseUpgradeConfirm").waitFor({ state: "detached" });
+    await page.locator(`[data-upgrade-episode="${fixture.episode_id}"]`).waitFor(); assert.equal((await readState()).admissions.length, 0);
     for (const close of ["escape", "back", "close"]) {
-      await preview(); await consent();
-      if (close === "escape") await page.keyboard.press("Escape");
-      if (close === "back") await page.locator("[data-tool-back]").click();
-      if (close === "close") await page.locator("[data-close-tool]").click();
-      await open(); assert.equal((await readState()).admissions.length, 0);
+      const dismissed = await preview(); await consent();
+      const response = await completedAction(page, "DELETE", `${base}${prefix}/upgrade-preview/${dismissed.preview_id}`, async () => {
+        if (close === "escape") await page.keyboard.press("Escape");
+        if (close === "back") await page.locator("[data-tool-back]").click();
+        if (close === "close") await page.locator("[data-close-tool]").click();
+      });
+      assert.equal((await response.json()).cancelled, true);
+      await open(); await page.locator("#courseUpgradeConfirm").waitFor({ state: "detached" }); assert.equal((await readState()).admissions.length, 0);
     }
     await preview(); await consent(); await api("/_fixture/selection/changed", { method: "POST" });
     await page.locator("#courseUpgradeConfirm").click(); await page.locator("#toolStatus").getByText(/设置已变化/).waitFor();
@@ -150,17 +154,18 @@ async function until(check, label, timeout = 20000) {
     const replay = await api(`${prefix}/upgrade`, { method: "POST", data: seen.confirmations.at(-1) });
     assert.equal(replay.task_id, child.task.id); assert.equal(replay.deduplicated, true); assert.equal((await readState()).admissions.length, 1);
     await page.locator("#courseUpgradeReturn").click(); await page.locator(`[data-open-upgrade="${child.task.id}"]`).waitFor();
-    await page.locator(`[data-open-upgrade="${child.task.id}"]`).click(); await page.waitForURL(new RegExp(`#task/${child.task.id}`));
+    await openChildReady(page, { base, id: child.task.id, title: child.task.title });
     report.checks.push("Paused/stale review rejected; repeated click and same-token replay admit one linked child with reviewed caption hash; source title/caption/note/task manifest and course membership stay unchanged");
     await page.goto(`${base}/#task/${fixture.task_id}`); await page.locator("#document h1").waitFor(); await open();
-    await page.locator(`[data-retry-episode="${fixture.retry_episode_id}"]`).click();
+    await retryCourseReady(page, { url: `${base}/api/courses/${fixture.course_id}/episodes/${fixture.retry_episode_id}/retry`,
+      retrySelector: `[data-retry-episode="${fixture.retry_episode_id}"]`, readySelector: '[data-open-source="0"]', title: courseBefore.title });
     await until(async () => (await readState()).admissions.length === 2, "caption summary retry admitted");
     assert.equal(seen.retry.length, 1); assert.equal(seen.retry[0].task_id, fixture.retry_task_id); assert.equal(seen.retry[0].options.content_mode, "text"); assert.equal(seen.retry[0].options.visual_understanding, false);
     snapshot = await readState(); assert.equal(snapshot.admissions[1].processor, "process_saved_transcript_task"); assert.equal(snapshot.admissions[1].queue_kind, "summary");
     assert.deepEqual(hashes(fixture.retry_task_id), retryOriginals); assert.equal(snapshot.processing_executed, false);
     report.checks.push("Actual caption summary retry dispatches saved transcript processing while preserving source artifacts; all processing boundaries stay deferred");
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external_requests, []); report.ok = true;
-  } finally {
-    fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); await browser?.close(); backend?.kill();
-  }
+  } catch (error) { primaryError = error; throw error; }
+  finally { await cleanupFixture({ report: () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)),
+    browser: () => browser?.close(), backend: () => backend?.kill() }, primaryError); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
