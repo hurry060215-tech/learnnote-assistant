@@ -1,0 +1,20 @@
+{
+  "status": "pass",
+  "task_id": "9e2cf22e6087",
+  "duration_seconds": 180,
+  "final_status": "cancelled",
+  "final_phase": "cancelled",
+  "observed_phases": [
+    "queued",
+    "processing_video",
+    "cancelling",
+    "cancelled"
+  ],
+  "cancel_latency_seconds": 0.163,
+  "task_elapsed_seconds": 0.214,
+  "cancel_budget_seconds": 2,
+  "late_processing_phases": [],
+  "worker_stopped": true,
+  "resource_usage_path": "isolated test task resource_usage.json",
+  "remote_calls": 0
+}

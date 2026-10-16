@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "fixtures": [
+    {
+      "fixture": "english",
+      "expected": "LEARNING RATE",
+      "recognized": "LEARNING RATE",
+      "character_similarity": 1.0,
+      "status": "text_detected",
+      "requires_review": true
+    },
+    {
+      "fixture": "chinese",
+      "expected": "学习笔记",
+      "recognized": "学习笔记",
+      "character_similarity": 1.0,
+      "status": "text_detected",
+      "requires_review": true
+    },
+    {
+      "fixture": "code",
+      "expected": "for i in range(3):",
+      "recognized": "for i in range(3):",
+      "character_similarity": 1.0,
+      "status": "text_detected",
+      "requires_review": true
+    },
+    {
+      "fixture": "formula",
+      "expected": "E = mc²",
+      "recognized": "E 二 mc2",
+      "character_similarity": 0.714,
+      "status": "text_detected",
+      "requires_review": true
+    },
+    {
+      "fixture": "slide",
+      "expected": "课程目标 2026",
+      "recognized": "课程目标2026",
+      "character_similarity": 0.941,
+      "status": "text_detected",
+      "requires_review": true
+    },
+    {
+      "fixture": "low-resolution",
+      "expected": "LEARNING RATE",
+      "recognized": "LEA",
+      "character_similarity": 0.375,
+      "status": "text_detected",
+      "requires_review": true
+    }
+  ],
+  "missing_font_fixtures": [],
+  "first_engine_calls": 6,
+  "repeat_engine_calls": 0,
+  "first_seconds": 5.235,
+  "repeat_seconds": 0.001,
+  "all_output_unreviewed": true,
+  "remote_calls": 0,
+  "visual_model_call_reduction": "not measured; OCR cache reuse is not a remote-vision benchmark",
+  "privacy": "self-generated images only; no URLs, credentials, real course media or network",
+  "scope": "Cache/privacy contract pass only; formula and low-resolution recognized text differ from ground truth."
+}

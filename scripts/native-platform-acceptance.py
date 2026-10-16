@@ -105,6 +105,13 @@ def running(executable, data, output, phase):
                     process.wait(timeout=10)
 
 
+def assert_backup_annotation(backup, material_id):
+    groups = backup["personal"]["annotations"]
+    group = next(item for item in groups if item["key"] == f"material-{material_id}")
+    assert len(group["items"]) == 1
+    assert group["items"][0]["text"] == PERSONAL
+
+
 def exercise(executable, output):
     checks = []
     with tempfile.TemporaryDirectory(prefix="learnnote-native-") as tmp:
@@ -127,7 +134,7 @@ def exercise(executable, output):
             checks.append("missing_material_and_malformed_import_fail_closed")
             api.call("POST", f"/api/personal/material/{material_id}", json={"text": PERSONAL, "quote": "Learning rate"})
             backup = api.call("GET", "/api/study/backup").json()
-            assert backup["personal"]["annotations"][0]["text"] == PERSONAL
+            assert_backup_annotation(backup, material_id)
             (output / "synthetic-backup.json").write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
             checks.append("personal_note_backup_export")
         with running(executable, data, output, "restart") as (api, _):

@@ -56,6 +56,13 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
         self.assertIn("exe, a.binaries, a.datas", spec)
         self.assertIn("BUNDLE(\n    collection,", spec)
 
+    def test_backup_annotation_uses_grouped_export_schema(self):
+        backup = {"personal": {"annotations": [{"key": "material-fixture", "items": [{"text": MODULE.PERSONAL}]}]}}
+        MODULE.assert_backup_annotation(backup, "fixture")
+        backup["personal"]["annotations"][0]["items"][0]["text"] = "wrong"
+        with self.assertRaises(AssertionError):
+            MODULE.assert_backup_annotation(backup, "fixture")
+
     def test_failure_writes_failed_report(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("sys.argv", ["native", "--output", directory]), patch.object(MODULE, "exercise", side_effect=RuntimeError("fixture failure")):

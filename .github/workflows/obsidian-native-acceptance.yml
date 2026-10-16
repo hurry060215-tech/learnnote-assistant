@@ -1,0 +1,64 @@
+name: Native Obsidian acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - integrations/obsidian-learnnote/**
+      - scripts/obsidian-native-acceptance.cjs
+      - .github/workflows/obsidian-native-acceptance.yml
+
+permissions:
+  contents: read
+
+jobs:
+  native-obsidian:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - run: |
+          python -m pip install -r backend/requirements.test.txt
+          npm ci
+          npm ci --prefix integrations/obsidian-learnnote
+          npm run verify --prefix integrations/obsidian-learnnote
+      - name: Download pinned official Obsidian without changing system security
+        shell: bash
+        run: |
+          mkdir -p build/obsidian-native "$RUNNER_TEMP/obsidian-mount" "$RUNNER_TEMP/obsidian-app"
+          python - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          version = '1.14.4'
+          with urllib.request.urlopen(f'https://api.github.com/repos/obsidianmd/obsidian-releases/releases/tags/v{version}') as response:
+              release = json.load(response)
+          assets = [a for a in release['assets'] if a['name'].endswith('.dmg')]
+          assert len(assets) == 1, 'Expected one official macOS DMG'
+          asset = assets[0]
+          url = asset['browser_download_url']
+          assert url.startswith(f'https://github.com/obsidianmd/obsidian-releases/releases/download/v{version}/')
+          destination = pathlib.Path(os.environ['RUNNER_TEMP']) / 'Obsidian.dmg'
+          urllib.request.urlretrieve(url, destination)
+          digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+          if asset.get('digest'):
+              assert asset['digest'] == 'sha256:' + digest, 'Official asset digest mismatch'
+          pathlib.Path('build/obsidian-native/official-app.json').write_text(json.dumps({'version': version, 'url': url, 'sha256': digest, 'published_digest_verified': bool(asset.get('digest'))}, indent=2))
+          PY
+          hdiutil attach "$RUNNER_TEMP/Obsidian.dmg" -nobrowse -readonly -mountpoint "$RUNNER_TEMP/obsidian-mount"
+          ditto "$RUNNER_TEMP/obsidian-mount/Obsidian.app" "$RUNNER_TEMP/obsidian-app/Obsidian.app"
+          hdiutil detach "$RUNNER_TEMP/obsidian-mount"
+          codesign --verify --deep --strict "$RUNNER_TEMP/obsidian-app/Obsidian.app"
+      - name: Import update and open source in actual native Obsidian
+        run: node scripts/obsidian-native-acceptance.cjs --executable "$RUNNER_TEMP/obsidian-app/Obsidian.app/Contents/MacOS/Obsidian" --python python --output build/obsidian-native
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: native-obsidian-${{ github.run_id }}
+          path: build/obsidian-native/
+          if-no-files-found: warn
+          retention-days: 14

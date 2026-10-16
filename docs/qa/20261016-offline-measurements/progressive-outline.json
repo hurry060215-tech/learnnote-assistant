@@ -1,0 +1,45 @@
+{
+  "status": "pass",
+  "reference": "synthetic complete platform captions, real local queue/storage/draft path, deterministic final-summary adapter",
+  "outline": "time-based source excerpts, not AI-inferred topic chapters",
+  "network_calls": 0,
+  "asr_attempted": false,
+  "queue_contention": false,
+  "model_quality_claim": false,
+  "minimum_release_samples_per_duration": 20,
+  "release_gate_eligible": true,
+  "results": [
+    {
+      "minutes": 5,
+      "samples": 20,
+      "outline_visible_p95_seconds": 0.0565,
+      "after_transcript_p95_seconds": 0.0169,
+      "max_seconds": 0.0657,
+      "section_count": 1
+    },
+    {
+      "minutes": 30,
+      "samples": 20,
+      "outline_visible_p95_seconds": 0.0879,
+      "after_transcript_p95_seconds": 0.0167,
+      "max_seconds": 0.0935,
+      "section_count": 6
+    },
+    {
+      "minutes": 60,
+      "samples": 20,
+      "outline_visible_p95_seconds": 0.1149,
+      "after_transcript_p95_seconds": 0.0171,
+      "max_seconds": 0.124,
+      "section_count": 12
+    },
+    {
+      "minutes": 180,
+      "samples": 20,
+      "outline_visible_p95_seconds": 0.2612,
+      "after_transcript_p95_seconds": 0.0255,
+      "max_seconds": 0.2627,
+      "section_count": 36
+    }
+  ]
+}

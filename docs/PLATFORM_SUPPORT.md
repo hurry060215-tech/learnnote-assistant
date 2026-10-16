@@ -43,3 +43,13 @@ application-version upgrade or rollback. Signed/notarized distribution,
 credential migration, extension pairing, real platform media, and native
 updater rollback remain separate requirements. No user vault, provider key,
 real browser profile or media-site account is used by this workflow.
+
+The separate `obsidian-native-acceptance.yml` uses a pinned official macOS
+Obsidian release, checks its code signature, and runs only the repository's
+compiled plugin in a disposable synthetic vault and isolated app profile. It
+checks actual bundle import, rendered transcript-link navigation, regeneration,
+personal edits, and immutable annotation-snapshot conflicts using real Obsidian
+vault APIs and the local backend. It does not disable an OS/browser sandbox or
+change an existing user's plugin settings. A passing native report and reviewed
+screenshots are required; a built harness alone is not #140 acceptance, and
+transcript navigation is not real-site video seek or reverse synchronization.

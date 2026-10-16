@@ -1,0 +1,132 @@
+{
+  "baseline_commit": "b590e55169cebd4ca34a7312b16fef1aa3ecec01",
+  "platform": "Linux x86_64 cloud; Python 3.12",
+  "results": [
+    {
+      "status": "pass",
+      "mode": "media-and-frames-only",
+      "api_calls": 0,
+      "transcription_attempted": false,
+      "media": "synthetic-1800s.mp4",
+      "generated": true,
+      "duration_seconds": 1800.0,
+      "file_size": 14642606,
+      "sha256": "4c08a6130e1dacd96f1783286dde9745264271c6bb54ad7784fdf42006c45fbc",
+      "probe_backend": "ffprobe",
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "frame_interval": 45,
+      "frame_count": 40,
+      "first_frame_seconds": 0.0,
+      "last_frame_seconds": 1799.0,
+      "grid_count": 5,
+      "resource_budget": {
+        "memory_budget_mb": 512,
+        "min_free_disk_mb": 512,
+        "observed": {
+          "sample_count": 10,
+          "monitoring_supported": true,
+          "process_cpu_percent_mean": 5.283,
+          "process_cpu_percent_peak": 50.466,
+          "rss_peak_bytes": 41918464,
+          "disk_free_before_bytes": 20587687936,
+          "disk_free_min_bytes": 20571987968,
+          "disk_free_after_bytes": 20571987968
+        }
+      },
+      "elapsed_seconds": 8.521,
+      "process_family_reused_media": {
+        "exit_code": 0,
+        "wall_seconds": 1.996,
+        "user_cpu_seconds": 1.838064,
+        "system_cpu_seconds": 1.260913,
+        "maximum_child_rss_bytes": 282718208,
+        "scope": "Linux waited process family rusage; maximum RSS of a process, not simultaneous sum across processes; excludes generation when input is reused"
+      }
+    },
+    {
+      "status": "pass",
+      "mode": "media-and-frames-only",
+      "api_calls": 0,
+      "transcription_attempted": false,
+      "media": "synthetic-3600s.mp4",
+      "generated": true,
+      "duration_seconds": 3600.0,
+      "file_size": 29290039,
+      "sha256": "389d339172e50ee5ba14ea3163766593ba390b15ab4e056f882088111af66e25",
+      "probe_backend": "ffprobe",
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "frame_interval": 90,
+      "frame_count": 40,
+      "first_frame_seconds": 0.0,
+      "last_frame_seconds": 3599.0,
+      "grid_count": 5,
+      "resource_budget": {
+        "memory_budget_mb": 512,
+        "min_free_disk_mb": 512,
+        "observed": {
+          "sample_count": 16,
+          "monitoring_supported": true,
+          "process_cpu_percent_mean": 3.373,
+          "process_cpu_percent_peak": 51.958,
+          "rss_peak_bytes": 42065920,
+          "disk_free_before_bytes": 20569485312,
+          "disk_free_min_bytes": 20539027456,
+          "disk_free_after_bytes": 20539027456
+        }
+      },
+      "elapsed_seconds": 14.367,
+      "process_family_reused_media": {
+        "exit_code": 0,
+        "wall_seconds": 1.861,
+        "user_cpu_seconds": 1.87122,
+        "system_cpu_seconds": 1.180833,
+        "maximum_child_rss_bytes": 292368384,
+        "scope": "Linux waited process family rusage; maximum RSS of a process, not simultaneous sum across processes; excludes generation when input is reused"
+      }
+    },
+    {
+      "status": "pass",
+      "mode": "media-and-frames-only",
+      "api_calls": 0,
+      "transcription_attempted": false,
+      "media": "synthetic-10800s.mp4",
+      "generated": true,
+      "duration_seconds": 10800.0,
+      "file_size": 87887123,
+      "sha256": "1376c56b9a953752c5aa34495ce2d9b397098bfc2c1cdc59ec335a705dd6cd4e",
+      "probe_backend": "ffprobe",
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "frame_interval": 270,
+      "frame_count": 40,
+      "first_frame_seconds": 0.0,
+      "last_frame_seconds": 10799.0,
+      "grid_count": 5,
+      "resource_budget": {
+        "memory_budget_mb": 512,
+        "min_free_disk_mb": 512,
+        "observed": {
+          "sample_count": 43,
+          "monitoring_supported": true,
+          "process_cpu_percent_mean": 1.308,
+          "process_cpu_percent_peak": 54.005,
+          "rss_peak_bytes": 41791488,
+          "disk_free_before_bytes": 20539015168,
+          "disk_free_min_bytes": 20446433280,
+          "disk_free_after_bytes": 20446433280
+        }
+      },
+      "elapsed_seconds": 41.326,
+      "process_family_reused_media": {
+        "exit_code": 0,
+        "wall_seconds": 2.788,
+        "user_cpu_seconds": 3.568506,
+        "system_cpu_seconds": 1.7564099999999998,
+        "maximum_child_rss_bytes": 327553024,
+        "scope": "Linux waited process family rusage; maximum RSS of a process, not simultaneous sum across processes; excludes generation when input is reused"
+      }
+    }
+  ]
+}
