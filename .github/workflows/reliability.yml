@@ -116,6 +116,8 @@ jobs:
             build/reliability/cancel/report.json
             build/reliability/scheduler/report.json
             build/reliability/full-local-task/report.json
+            build/reliability/interrupted-local-task/*.json
+            build/reliability/interrupted-local-task/*.log
             build/reliability/progressive-outline/report.json
           if-no-files-found: warn
           retention-days: 14

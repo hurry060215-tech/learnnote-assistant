@@ -205,3 +205,24 @@ The original full-group SHA-256/byte/line snapshot is unchanged. The base shrink
 exclude these classic-only assets, including the newly extracted platform script.
 This isolates the late workbench presentation layer; it does not remove legacy
 overrides or claim that the active reader design changed.
+
+### Classic transcript/window review projection (2026-10-16)
+
+`visual-window-evidence.js` owns the pure subtitle/window overlap, cue selection,
+summary fallback/deduplication, and review/checklist/question HTML functions.
+Its explicit inputs remain window, transcript/segments, and optional cue limit;
+its outputs are the original arrays, booleans and escaped HTML strings. It only
+imports `fmt`, `escapeHtml`, `seekTimeButton`, and `seekTimeValue` from the pure
+classic task-format namespace. The original nine function bodies are unchanged.
+URL/media policy and visual-model evidence-state decisions remain in app.js,
+as do every DOM update, event listener, selection and request lifecycle.
+
+Fourteen frozen bb47c6f cases cover overlap endpoints, absent/negative timestamps,
+summary priority and deduplication, transcript/excerpt/frame fallback, Unicode
+truncation, hostile HTML and dense/empty cues. Tests reject browser access and
+input mutation. Classic load order and dependency guards include the module;
+both native specs exclude it with the rest of the classic-only UI. app.js drops
+9,265→9,116 lines; the new module has 164 lines. The complete classic script
+group remains under its unchanged 10,100-line limit. This extraction is
+independently reversible and requires the existing hosted classic UI gate on
+the integrated commit before claiming visual acceptance.

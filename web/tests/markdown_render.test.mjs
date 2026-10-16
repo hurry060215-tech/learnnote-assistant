@@ -199,6 +199,7 @@ assert.match(matureCss, /body\[data-app-view="notes"\]\s+\.task-controls\s*\{[^}
 assert.match(webCode, /task\.awaiting_confirmation\s*\?\s*"放弃并删除"\s*:\s*"删除"/);
 vm.runInContext(markdownCode, context);
 vm.runInContext(await readFile(new URL("../task-format.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../visual-window-evidence.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../platform-signals.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-list.js", import.meta.url), "utf8"), context);

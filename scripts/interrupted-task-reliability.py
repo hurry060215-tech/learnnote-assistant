@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,25 +143,30 @@ def worker(output: Path, mode: str, duration: int):
         (output / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-dir', type=Path, required=True)
-    parser.add_argument('--duration-seconds', type=int, default=3600)
-    parser.add_argument('--worker', choices=['start', 'recover'])
-    args = parser.parse_args()
-    if args.duration_seconds < 5:
-        parser.error('duration must be at least 5 seconds')
-    output = args.output_dir.resolve()
-    if args.worker:
-        worker(output, args.worker, args.duration_seconds)
-        return
-    # A fresh directory avoids stale readiness markers from an earlier run.
-    output.mkdir(parents=True, exist_ok=False)
+
+def record_failure(output: Path, phase: str, error: Exception) -> None:
+    """Preserve bounded synthetic-only diagnostics even when a worker exits."""
+    report = {"status": "fail", "phase": phase, "error_type": type(error).__name__,
+              "error": str(error)[-16000:], "traceback": traceback.format_exc()[-32000:]}
+    name = f"worker-{phase}-failure.json" if phase in {"start", "recover"} else "report.json"
+    (output / name).write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(json.dumps(report), file=sys.stderr, flush=True)
+    if phase == "parent":
+        for name in ("start.log", "recover.log"):
+            path = output / name
+            if path.is_file():
+                with path.open("rb") as handle:
+                    handle.seek(max(0, path.stat().st_size - 64000))
+                    tail = handle.read().decode("utf-8", errors="replace")
+                print(f"--- {name} (last 64000 bytes) ---\n{tail}", file=sys.stderr, flush=True)
+
+
+def run_parent(args, output: Path):
     data = output / 'data'
     data.mkdir()
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('LEARNNOTE_', 'OPENAI_', 'ANTHROPIC_', 'DEEPSEEK_', 'GEMINI_'))}
-    env.update(LEARNNOTE_DATA_DIR=str(data), LEARNNOTE_DEPLOYMENT_MODE='desktop', LEARNNOTE_LLM_API_KEY='')
+    env.update(PYTHONIOENCODING='utf-8', PYTHONUNBUFFERED='1', LEARNNOTE_DATA_DIR=str(data), LEARNNOTE_DEPLOYMENT_MODE='desktop', LEARNNOTE_LLM_API_KEY='')
     os.environ.update(env)
     sys.path.insert(0, str(ROOT / 'backend'))
     spec = importlib.util.spec_from_file_location('long_video', ROOT / 'scripts/long-video-reliability.py')
@@ -194,6 +200,30 @@ def main():
         subprocess.run(command + ['recover'], env=env, stdout=log, stderr=subprocess.STDOUT,
                        timeout=660, check=True)
     print((output / 'report.json').read_text(encoding='utf-8'))
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--duration-seconds', type=int, default=3600)
+    parser.add_argument('--worker', choices=['start', 'recover'])
+    args = parser.parse_args()
+    if args.duration_seconds < 5:
+        parser.error('duration must be at least 5 seconds')
+    output = args.output_dir.resolve()
+    if args.worker:
+        try:
+            worker(output, args.worker, args.duration_seconds)
+        except Exception as error:
+            record_failure(output, args.worker, error)
+            raise
+        return
+    # A fresh directory avoids stale readiness markers from an earlier run.
+    output.mkdir(parents=True, exist_ok=False)
+    try:
+        run_parent(args, output)
+    except Exception as error:
+        record_failure(output, "parent", error)
+        raise
 
 
 if __name__ == '__main__':

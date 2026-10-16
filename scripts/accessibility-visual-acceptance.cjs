@@ -51,7 +51,7 @@ async function main() {
   const stylesheets = await page.evaluate(() => [...document.styleSheets]
     .filter(sheet => sheet.href)
     .map(sheet => ({ path: new URL(sheet.href).pathname, ruleCount: sheet.cssRules.length })));
-  const expectedStyles = ["styles.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css", "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css"];
+  const expectedStyles = ["styles.css", "classic-workbench-overrides.css", "classic-workbench.css", "classic-interactions.css", "classic-study.css", "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css"];
   if (JSON.stringify(stylesheets.map(sheet => sheet.path)) !== JSON.stringify(expectedStyles.map(name => `/web/${name}`)) || stylesheets.some(sheet => !sheet.ruleCount)) {
     throw new Error(`Classic stylesheets failed to load in cascade order: ${JSON.stringify(stylesheets)}`);
   }

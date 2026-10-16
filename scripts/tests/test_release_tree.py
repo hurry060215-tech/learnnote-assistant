@@ -157,7 +157,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertEqual(["_internal/web/material-ocr.js"], result["missing_bundled"])
 
     def test_classic_modules_remain_excluded_from_release(self):
-        for name in ("classic-workbench.css", "classic-interactions.css", "classic-study.css", "task-list.js"):
+        for name in ("classic-workbench.css", "classic-workbench-overrides.css", "classic-interactions.css", "classic-study.css", "task-list.js", "platform-signals.js", "visual-window-evidence.js"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
                 self.populate_extension(root)

@@ -27,6 +27,30 @@ class ModelCapabilityTests(unittest.TestCase):
         self.assertFalse(llm_model_supports_vision("https://api.deepseek.com", "deepseek-chat"))
         self.assertIsNone(caps.model_description("deepseek","https://api.deepseek.com","deepseek-v4-pro")["vision"])
 
+    def test_deepseek_declared_image_limit_preserves_application_budget(self):
+        for model in ("deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"):
+            item = caps.declared_image_limit("https://api.deepseek.com/", model)
+            self.assertEqual(item["value"], 600)
+            self.assertEqual(item["status"], "declared")
+            self.assertEqual(item["checked_on"], "2026-10-16")
+            self.assertEqual(item["served_model_version"], "DeepSeek-V4.1-Flash")
+            self.assertEqual(item["model"], model)
+            self.assertIn("未实测", item["detail"])
+            self.assertIn("尚未检查", item["detail"])
+            self.assertEqual(caps.vision_batch_plan("https://api.deepseek.com", model, 4)["effective_size"], 4)
+        for endpoint in ("https://proxy.example/v1", "https://api.deepseek.com/v1",
+                         "https://api.deepseek.com?key=fixture", "http://api.deepseek.com",
+                         "https://user@api.deepseek.com", "https://api.deepseek.com.evil.invalid"):
+            self.assertIsNone(caps.declared_image_limit(endpoint, "deepseek-flash")["value"])
+        for model in ("deepseek-chat", "deepseek-v4-pro", "DEEPSEEK-FLASH", "deepseek-flash-custom"):
+            self.assertIsNone(caps.declared_image_limit("https://api.deepseek.com", model)["value"])
+        self.assertIsNone(caps.declared_image_limit("https://api.deepseek.com", "deepseek-flash", "responses")["value"])
+        payload = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "synthetic"}}] * 601}]
+        with self.assertRaisesRegex(ValueError, "declared_image_limit_exceeded"):
+            caps.check_image_count("https://api.deepseek.com", "deepseek-flash", payload)
+        payload[0]["content"].pop()
+        caps.check_image_count("https://api.deepseek.com", "deepseek-flash", payload)
+
     def test_successful_probe_is_scoped_and_expires(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(caps,"DATA_DIR",Path(directory)), patch.object(caps.time,"time",return_value=1000000):
             caps.save_image_probe("https://api.deepseek.com","custom")

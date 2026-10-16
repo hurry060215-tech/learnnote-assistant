@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,11 @@ class ClassicStylesTests(unittest.TestCase):
         self.assertEqual(len(source.splitlines()), snapshot["lines"])
         self.assertEqual(len(source.encode("utf-8")), snapshot["utf8_bytes"])
         self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), snapshot["sha256"])
+
+    def test_hosted_browser_asserts_the_same_complete_cascade_order(self):
+        source = (ROOT / "scripts/accessibility-visual-acceptance.cjs").read_text(encoding="utf-8")
+        expected = json.loads(re.search(r"const expectedStyles = (\[.*?\]);", source).group(1))
+        self.assertEqual(expected, list(styles.CLASSIC_STYLE_ORDER))
 
     def test_order_duplicate_missing_and_conditional_links_fail(self):
         mutations = (

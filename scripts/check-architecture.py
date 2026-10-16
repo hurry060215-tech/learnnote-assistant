@@ -29,7 +29,8 @@ MODULE_SIZE_LIMITS = {
     "backend/app/task_recovery_guidance.py": 451,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
-    "web/app.js": 9265,
+    "web/app.js": 9116,
+    "web/visual-window-evidence.js": 164,
     "web/styles.css": 12262,
     "backend/app/media_source_context.py": 300,
     "backend/app/media_url_parsing.py": 290,
@@ -144,7 +145,7 @@ EXTRACTED_BACKEND_MODULES = (
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")
 CLASSIC_TASK_SCRIPT_BUDGET = 10100
-CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js")
+CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js")
 
 
 def aggregate_size_violations() -> list[str]:

@@ -1,0 +1,539 @@
+[
+  {
+    "name": "empty",
+    "window": {},
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "overlap-boundaries",
+    "window": {
+      "start": 10,
+      "end": 20
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 10,
+          "text": "ends at start"
+        },
+        {
+          "start": 10,
+          "end": 15,
+          "text": "inside"
+        },
+        {
+          "start": 20,
+          "end": 25,
+          "text": "starts at end"
+        },
+        {
+          "start": 8,
+          "end": 22,
+          "text": "covers window"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>ends at start</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"10.000\" title=\"跳到 00:00:10\"><time>00:00:10</time></button><span>inside</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"8.000\" title=\"跳到 00:00:08\"><time>00:00:08</time></button><span>covers window</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "ends at start",
+        "inside"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>ends at start</li><li>inside</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": 0,
+          "text": "ends at start"
+        },
+        {
+          "start": 10,
+          "text": "inside"
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>ends at start；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"10.000\" title=\"跳到 00:00:10\"><time>00:00:10</time></button><span>inside；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"8.000\" title=\"跳到 00:00:08\"><time>00:00:08</time></button><span>covers window；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“ends at start”在画面中对应的标题、公式、代码或操作状态是什么？</span></li><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"10.000\" title=\"跳到 00:00:10\"><time>00:00:10</time></button><span>这句“inside”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>ends at start</span></div><div class=\"line\" data-line-time=\"10.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"10.000\" title=\"跳到 00:00:10\"><time>00:00:10</time></button><span>inside</span></div><div class=\"line\" data-line-time=\"20.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"20.000\" title=\"跳到 00:00:20\"><time>00:00:20</time></button><span>starts at end</span></div><div class=\"line\" data-line-time=\"8.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"8.000\" title=\"跳到 00:00:08\"><time>00:00:08</time></button><span>covers window</span></div>",
+      "overlaps": [
+        true,
+        true,
+        false,
+        true
+      ]
+    }
+  },
+  {
+    "name": "negative-and-missing-times",
+    "window": {
+      "start": 0,
+      "end": 10
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": -5,
+          "end": 2,
+          "text": "negative"
+        },
+        {
+          "text": "missing"
+        },
+        {
+          "start": 4,
+          "text": "point"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>negative</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>missing</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"4.000\" title=\"跳到 00:00:04\"><time>00:00:04</time></button><span>point</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "negative",
+        "missing"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>negative</li><li>missing</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": -5,
+          "text": "negative"
+        },
+        {
+          "start": 0,
+          "text": "missing"
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>negative；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>missing；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"4.000\" title=\"跳到 00:00:04\"><time>00:00:04</time></button><span>point；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“negative”在画面中对应的标题、公式、代码或操作状态是什么？</span></li><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“missing”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>negative</span></div><div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>missing</span></div><div class=\"line\" data-line-time=\"4.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"4.000\" title=\"跳到 00:00:04\"><time>00:00:04</time></button><span>point</span></div>",
+      "overlaps": [
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  {
+    "name": "summary-priority",
+    "window": {
+      "start": 0,
+      "end": 10,
+      "local_summary": "First\nSecond",
+      "window_summary": "Third",
+      "visual_summary": "Fourth",
+      "summary": "Fifth"
+    },
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "First",
+        "Second",
+        "Third"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>First</li><li>Second</li><li>Third</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "summary-dedup",
+    "window": {
+      "local_summary": "  Same  words\nSame words",
+      "key_points": [
+        "Same words",
+        "Other",
+        "Last"
+      ],
+      "summary_points": [
+        "Other"
+      ]
+    },
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "Same words",
+        "Other",
+        "Last"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>Same words</li><li>Other</li><li>Last</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "array-summary",
+    "window": {
+      "concepts": [
+        "  concept A  ",
+        "concept B"
+      ],
+      "key_points": [
+        "key A"
+      ]
+    },
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "key A",
+        "concept A",
+        "concept B"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>key A</li><li>concept A</li><li>concept B</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "transcript-fallback",
+    "window": {
+      "start": 0,
+      "end": 10
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 5,
+          "text": "  A   repeated\nspace "
+        },
+        {
+          "start": 5,
+          "end": 10,
+          "text": "B"
+        },
+        {
+          "start": 6,
+          "end": 8,
+          "text": "C"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>  A   repeated\nspace </span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"5.000\" title=\"跳到 00:00:05\"><time>00:00:05</time></button><span>B</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"6.000\" title=\"跳到 00:00:06\"><time>00:00:06</time></button><span>C</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "A repeated space",
+        "B"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>A repeated space</li><li>B</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": 0,
+          "text": "A repeated space"
+        },
+        {
+          "start": 5,
+          "text": "B"
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>A repeated space；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"5.000\" title=\"跳到 00:00:05\"><time>00:00:05</time></button><span>B；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"6.000\" title=\"跳到 00:00:06\"><time>00:00:06</time></button><span>C；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“A repeated space”在画面中对应的标题、公式、代码或操作状态是什么？</span></li><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"5.000\" title=\"跳到 00:00:05\"><time>00:00:05</time></button><span>这句“B”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>  A   repeated\nspace </span></div><div class=\"line\" data-line-time=\"5.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"5.000\" title=\"跳到 00:00:05\"><time>00:00:05</time></button><span>B</span></div><div class=\"line\" data-line-time=\"6.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"6.000\" title=\"跳到 00:00:06\"><time>00:00:06</time></button><span>C</span></div>",
+      "overlaps": [
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  {
+    "name": "long-transcript",
+    "window": {
+      "start": 0,
+      "end": 10
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 1,
+          "end": 9,
+          "text": "中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀..."
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀...</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": 1,
+          "text": "中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀"
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀...；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>这句“中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀...”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"1.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀中文😀</span></div>",
+      "overlaps": [
+        true
+      ]
+    }
+  },
+  {
+    "name": "excerpt-fallback",
+    "window": {
+      "start": 0,
+      "end": 10,
+      "transcript_excerpt": "A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt "
+    },
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt </p>",
+      "visualWindowSummaryItems": [
+        "A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long exc..."
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long exc...</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long excerpt A long...；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“A long excerpt A long excerpt A long excerpt A long excerpt A long excer...”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "frames-only",
+    "window": {
+      "frame_timestamps": [
+        0,
+        61,
+        3661,
+        4000
+      ]
+    },
+    "transcript": null,
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "按 00:00:00 / 00:01:01 / 01:01:01 这几帧核对本段画面变化。"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>按 00:00:00 / 00:01:01 / 01:01:01 这几帧核对本段画面变化。</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这些帧（00:00:00 / 00:01:01 / 01:01:01）里最能说明本段主题的画面证据是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "",
+      "overlaps": []
+    }
+  },
+  {
+    "name": "hostile-html",
+    "window": {
+      "start": 0,
+      "end": 12,
+      "local_summary": "<img src=x onerror=bad()>",
+      "transcript_excerpt": "<script>bad()</script>"
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 1,
+          "end": 9,
+          "text": "<svg onload=bad()> & \"quoted\""
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>&lt;svg onload=bad()&gt; &amp; &quot;quoted&quot;</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "<img src=x onerror=bad()>"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>&lt;img src=x onerror=bad()&gt;</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": 1,
+          "text": "<svg onload=bad()> & \"quoted\""
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>&lt;svg onload=bad()&gt; &amp; &quot;quoted&quot;；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>这句“&lt;svg onload=bad()&gt; &amp; &quot;quoted&quot;”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"1.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>&lt;svg onload=bad()&gt; &amp; &quot;quoted&quot;</span></div>",
+      "overlaps": [
+        true
+      ]
+    }
+  },
+  {
+    "name": "empty-cues",
+    "window": {
+      "start": 0,
+      "end": 10
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 1,
+          "end": 2,
+          "text": "   "
+        },
+        {
+          "start": 3,
+          "end": 4,
+          "text": ""
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>   </span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"3.000\" title=\"跳到 00:00:03\"><time>00:00:03</time></button><span></span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"1.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>   </span></div><div class=\"line\" data-line-time=\"3.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"3.000\" title=\"跳到 00:00:03\"><time>00:00:03</time></button><span></span></div>",
+      "overlaps": [
+        true,
+        true
+      ]
+    }
+  },
+  {
+    "name": "nonoverlapping",
+    "window": {
+      "start": 50,
+      "end": 60
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 5,
+          "text": "Other scene"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<p>这个窗口暂无字幕摘录，可切到“字幕”查看完整时间轴。</p>",
+      "visualWindowSummaryItems": [
+        "暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>暂无局部总结；先从截图标题、公式、代码或演示状态提炼本段主题。</li></ul>\n  </div>",
+      "visualWindowCueSegments": [],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>先从截图判断这一段的主题，重点看标题、公式、代码和演示状态。</li>\n      <li>补一句本段主题，再和前后窗口串成完整时间线。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><span>无同步字幕；先描述画面网格中的标题、公式、代码或界面状态，再回看原视频确认上下文。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><span>这个窗口里最值得回看的标题、公式、代码、界面状态或演示步骤是什么？</span></li><li><span>如果没有字幕，能否用一句话描述这组截图的操作顺序或 PPT 结构？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>Other scene</span></div>",
+      "overlaps": [
+        false
+      ]
+    }
+  },
+  {
+    "name": "dense-cues",
+    "window": {
+      "start": 0,
+      "end": 20
+    },
+    "transcript": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1,
+          "text": "Cue 0"
+        },
+        {
+          "start": 1,
+          "end": 2,
+          "text": "Cue 1"
+        },
+        {
+          "start": 2,
+          "end": 3,
+          "text": "Cue 2"
+        },
+        {
+          "start": 3,
+          "end": 4,
+          "text": "Cue 3"
+        },
+        {
+          "start": 4,
+          "end": 5,
+          "text": "Cue 4"
+        },
+        {
+          "start": 5,
+          "end": 6,
+          "text": "Cue 5"
+        },
+        {
+          "start": 6,
+          "end": 7,
+          "text": "Cue 6"
+        },
+        {
+          "start": 7,
+          "end": 8,
+          "text": "Cue 7"
+        }
+      ]
+    },
+    "expected": {
+      "visualStudyCueHtml": "<div class=\"visual-study-cues\">\n      <div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>Cue 0</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>Cue 1</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"2.000\" title=\"跳到 00:00:02\"><time>00:00:02</time></button><span>Cue 2</span></div><div><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"3.000\" title=\"跳到 00:00:03\"><time>00:00:03</time></button><span>Cue 3</span></div>\n    </div>",
+      "visualWindowSummaryItems": [
+        "Cue 0",
+        "Cue 1"
+      ],
+      "visualWindowSummaryHtml": "<div class=\"visual-window-summary\">\n    <span>本段要点</span>\n    <ul><li>Cue 0</li><li>Cue 1</li></ul>\n  </div>",
+      "visualWindowCueSegments": [
+        {
+          "start": 0,
+          "text": "Cue 0"
+        },
+        {
+          "start": 1,
+          "text": "Cue 1"
+        }
+      ],
+      "visualStudyChecklistHtml": "<div class=\"visual-study-checklist\">\n    <span>学习动作</span>\n    <ul>\n      <li>核对截图里的板书、PPT 切换、代码/界面状态是否已被字幕覆盖。</li>\n      <li>复述这一窗口的结论，再按画面顺序补齐遗漏步骤。</li>\n    </ul>\n  </div>",
+      "visualStudyCheckpointHtml": "<div class=\"visual-study-checkpoints\">\n    <span>回看检查点</span>\n    <ol><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>Cue 0；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>Cue 1；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li><li><button type=\"button\" class=\"checkpoint-seek\" data-media-seek-time=\"2.000\" title=\"跳到 00:00:02\"><time>00:00:02</time></button><span>Cue 2；对照画面确认对应的板书、PPT、代码或操作步骤。</span></li></ol>\n  </div>",
+      "visualStudyQuestionHtml": "<div class=\"visual-study-questions\">\n    <span>自测问题</span>\n    <ol><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>这句“Cue 0”在画面中对应的标题、公式、代码或操作状态是什么？</span></li><li><button type=\"button\" class=\"question-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>这句“Cue 1”在画面中对应的标题、公式、代码或操作状态是什么？</span></li></ol>\n  </div>",
+      "transcriptLines": "<div class=\"line\" data-line-time=\"0.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"0.000\" title=\"跳到 00:00:00\"><time>00:00:00</time></button><span>Cue 0</span></div><div class=\"line\" data-line-time=\"1.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"1.000\" title=\"跳到 00:00:01\"><time>00:00:01</time></button><span>Cue 1</span></div><div class=\"line\" data-line-time=\"2.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"2.000\" title=\"跳到 00:00:02\"><time>00:00:02</time></button><span>Cue 2</span></div><div class=\"line\" data-line-time=\"3.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"3.000\" title=\"跳到 00:00:03\"><time>00:00:03</time></button><span>Cue 3</span></div><div class=\"line\" data-line-time=\"4.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"4.000\" title=\"跳到 00:00:04\"><time>00:00:04</time></button><span>Cue 4</span></div><div class=\"line\" data-line-time=\"5.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"5.000\" title=\"跳到 00:00:05\"><time>00:00:05</time></button><span>Cue 5</span></div><div class=\"line\" data-line-time=\"6.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"6.000\" title=\"跳到 00:00:06\"><time>00:00:06</time></button><span>Cue 6</span></div><div class=\"line\" data-line-time=\"7.000\"><button type=\"button\" class=\"time-seek\" data-media-seek-time=\"7.000\" title=\"跳到 00:00:07\"><time>00:00:07</time></button><span>Cue 7</span></div>",
+      "overlaps": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  }
+]
