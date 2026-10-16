@@ -2325,6 +2325,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                     ResourceCandidate(url="https://cdn.example.com/lesson.vtt", source="subtitleTrack", kind="subtitle", mime="text/vtt"),
                 ],
                 page_text="Chapter context from current page",
+                allow_model_page_context=True,
                 browser_subtitles=[
                     {"start": 38, "end": 42, "text": "only current visible cue"},
                 ],
@@ -2565,6 +2566,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 page_url="https://course.example.com/lesson",
                 title="Fallback lesson",
                 page_text="页面章节：条件判断",
+                allow_page_text_fallback=True,
                 resources=[ResourceCandidate(url="https://cdn.example.com/expired.mp4", source="webRequest", kind="video")],
                 browser_subtitles=[
                     {"start": 3, "end": 7, "text": "老师解释 if else 分支"},
@@ -2632,6 +2634,7 @@ class ProcessorBoundaryTests(unittest.TestCase):
                 page_url="https://course.example.com/stream",
                 title="Stream lesson",
                 page_text="MediaStream 课程说明",
+                allow_page_text_fallback=True,
                 active_video=ActiveVideoInfo(
                     src="",
                     src_object=True,

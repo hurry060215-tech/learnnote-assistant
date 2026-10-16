@@ -24,7 +24,7 @@ assert.match(background, /if \(!captureActive\(tabId\)\)/);
 assert.match(background, /activeCaptureUntilByTab\.delete/);
 assert.match(background, /clearCaptureLog\(tab\.id\)/);
 assert.match(zh.site_permission_data_flow.message, /仅字幕模式不读取 Cookie/);
-assert.match(zh.site_permission_data_flow.message, /Cookie 不会发送给模型/);
+assert.match(zh.site_permission_data_flow.message, /Cookie 请求字段不会发送给模型/);
 assert.match(en.site_permission_data_flow.message, /subtitle-only mode does not read cookies/i);
 assert.match(en.site_permission_data_flow.message, /never to a model/i);
 assert.match(zh.incompatible_client_detail.message, /扩展协议 \{extension\}/);

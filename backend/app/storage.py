@@ -104,12 +104,14 @@ def create_task(
     learning_range: dict[str, float] | None = None,
     subtitle_probe: SubtitleProbe | None = None,
     extension_version: str = "",
+    source_task_id: str = "",
 ) -> TaskRecord:
     ensure_dirs()
     record = TaskRecord(
         id=new_task_id(),
         handoff_id=handoff_id,
         source_type=source_type,  # type: ignore[arg-type]
+        source_task_id=source_task_id,
         mode=mode or default_task_mode(source_type),
         title=clean_task_title(title, page_url),
         page_url=page_url,

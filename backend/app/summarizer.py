@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .model_data_consent import model_source_text, page_context_excerpt, PAGE_TEXT_LIMIT, PAGE_SUBTITLE_LIMIT
 from .token_usage import tracked_completion
 from .pipeline_timing import emit_timing, measured_stage
 
@@ -686,10 +687,7 @@ def _context_topic_lines(title: str, transcript: TranscriptResult, limit: int = 
 
 
 def _page_context_excerpt(page_context: str = "", limit: int = 1800) -> str:
-    text = re.sub(r"\s+", " ", page_context or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
+    return page_context_excerpt(page_context, limit)
 
 
 def _page_context_markdown_lines(page_context: str = "") -> list[str]:
@@ -1326,6 +1324,7 @@ def summarize_with_llm(
     section_callback: Callable[[dict], None] | None = None,
     timing_callback: Callable | None = None,
 ) -> tuple[str, str] | None:
+    title, page_url = model_source_text(title), model_source_text(page_url)
     options = resolve_model_options(options)
     api_key = _model_key(options)
     if not api_key:
@@ -1880,6 +1879,7 @@ def _summarize_page_text_with_llm(
     subtitle_body: str,
     options: TaskOptions,
 ) -> str | None:
+    title, page_url, page_body, subtitle_body = map(model_source_text, (title, page_url, page_body, subtitle_body))
     options = resolve_model_options(options)
     api_key = _model_key(options)
     if not api_key:
@@ -1910,8 +1910,8 @@ def _summarize_page_text_with_llm(
                     "请输出 Markdown，并在开头保留来源限制说明。\n"
                     f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                     f"标题：{title}\n页面 URL：{page_url}\n\n"
-                    f"页面 DOM 文本（低可信上下文）：\n{page_body[:50000] or '(empty)'}\n\n"
-                    f"浏览器字幕线索（未经媒体校验）：\n{subtitle_body[:10000] or '(empty)'}"
+                    f"页面 DOM 文本（低可信上下文）：\n{page_body[:PAGE_TEXT_LIMIT] or '(empty)'}\n\n"
+                    f"浏览器字幕线索（未经媒体校验）：\n{subtitle_body[:PAGE_SUBTITLE_LIMIT] or '(empty)'}"
                 ),
             }],
             **chat_completion_provider_kwargs(base_url),

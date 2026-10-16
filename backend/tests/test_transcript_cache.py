@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, Mock
 
@@ -56,7 +57,7 @@ class TranscriptCacheTests(unittest.TestCase):
         helpers["correct_transcript_terms"] = correct_transcript_terms
         helpers["asr_failure_detail"] = lambda _: ""
         helpers["transcript_from_browser_subtitles"] = lambda _: TranscriptResult()
-        with patch("app.transcript_pipeline.update_task"), patch("app.transcript_pipeline.check_cancel"):
+        with patch("app.transcript_pipeline.update_task"), patch("app.transcript_pipeline.check_cancel"), patch("app.course_upgrade_captions.storage.get_task", return_value=SimpleNamespace(handoff_id="")):
             result = prepare_transcript("task", self.root / "media.mp4", self.root / "media.mp4", integrity, self.options, None, [], "", **helpers)
         self.assertEqual(result.transcript.full_text, self.transcript.full_text)
         helpers["extract_audio"].assert_not_called()

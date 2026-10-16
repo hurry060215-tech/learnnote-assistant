@@ -16,6 +16,7 @@ def _task_references(course):
     if any(item["status"] in {"identity_conflict", "source_unreadable"} for item in episodes):
         raise ValueError("course_episode_identity_conflict")
     ids.update(item["task_id"] for item in episodes if item.get("task_id"))
+    ids.update(child["task_id"] for item in episodes for child in item.get("upgrades", []))
     material_ids = {source["id"] for source in course["sources"] if source["kind"] == "material"}
     if material_ids:
         # The regular material getter initializes/migrates its index. A review

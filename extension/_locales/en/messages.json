@@ -54,7 +54,7 @@
     "message": "Client features"
   },
   "site_permission_data_flow": {
-    "message": "For an authorized site, a source preflight may send page candidates to the local workbench. Video processing may read relevant cookies for the page and media-candidate hosts; those cookies go only to the local workbench, never to a model. Subtitle-only mode does not read cookies. If you choose a remote model, it may receive subtitles or frames for the selected task mode."
+    "message": "An authorized source preflight sends page candidates to the local workbench. Video processing may read cookies for the page and media hosts; those cookie fields go only to the local workbench, never to a model. Subtitle-only mode does not read cookies. Summaries send the source title, page URL, necessary subtitles and instructions to the configured model; visual mode also sends selected frames. A captured-page excerpt of up to 4,000 characters requires a fresh choice for this task. Full-page fallback needs a separate review and choice (up to 50,000 page characters and 10,000 subtitle characters). A local gateway may forward requests. Existing rules mask common credentials in titles, URLs and page text, but masking is not a complete privacy check."
   },
   "incompatible_client_title": {
     "message": "Extension and workbench are incompatible"
@@ -868,5 +868,8 @@
   },
   "progress_excerpt": {
     "message": "Source excerpts · Not an AI summary · Unverified"
+  },
+  "model_data_summary": {
+    "message": "Summary recipient: {host} · {model}. Sends the source title, page URL, necessary subtitles and instructions; visual mode also includes selected frames. Review the optional page context (up to 4,000 characters) and full-page fallback separately in the workbench for this task. Source retrieval may replace the captured title with the discovered title. Existing rules mask common credentials; still review private content. Local gateways may forward requests and the service may charge fees."
   }
 }

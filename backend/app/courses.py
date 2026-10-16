@@ -126,13 +126,16 @@ def set_course_paused(course_id: str, revision: int, paused: bool, operation_id:
 
 
 def _evidence_sources(course: dict, *, read_only=False) -> list[dict]:
-    if not any(source["kind"] == "url" for source in course["sources"]):
-        return course["sources"]
     from .course_episodes import course_episodes
     episodes = {item["position"]: item for item in course_episodes(course, read_only=read_only)}
-    return [{"kind":"task", "id":episodes[index]["task_id"], "title":source["title"]}
-            if source["kind"] == "url" and episodes.get(index, {}).get("task_id") else source
-            for index, source in enumerate(course["sources"])]
+    resolved = []
+    for index, source in enumerate(course["sources"]):
+        episode = episodes.get(index, {})
+        resolved.append({"kind":"task", "id":episode["task_id"], "title":source["title"]}
+                        if source["kind"] == "url" and episode.get("task_id") else source)
+        resolved.extend({"kind":"task", "id":child["task_id"], "title":child["title"]}
+                        for child in episode.get("upgrades", []))
+    return resolved
 
 
 def course_evidence(course_id: str) -> list[dict]:

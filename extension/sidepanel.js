@@ -630,6 +630,7 @@ function renderContext(message = "") {
     : selectedProcessingMode === "study"
       ? (subtitleReady ? t("ui_subtitles_are_ready_for_the_workspace_text_model_no_video_down") : t("ui_uses_existing_subtitles_first_if_unavailable_confirm_local_spe"))
       : t("ui_downloads_the_video_and_combines_subtitles_with_selected_frame");
+  if (els.modeDescription && selectedProcessingMode !== "quick") els.modeDescription.textContent += " " + t("model_data_summary", { host: modelReadiness.host || t("ui_configured"), model: modelReadiness.model || t("ui_configured") });
   if (els.extensionOptions) els.extensionOptions.hidden = selectedProcessingMode === "quick";
   if (message) {
     els.preflightMessage.textContent = message;
@@ -730,7 +731,9 @@ async function checkClient({ quiet = false } = {}) {
     }
     if (match) {
       backendUrl = match.candidate;
-      modelReadiness = { configured: typeof match.health.llm_model_configured === "boolean" ? match.health.llm_model_configured : null, model: match.health.default_llm_model || "", supportsVision: match.health.default_llm_supports_vision === false ? false : null };
+      let modelHost = "";
+      try { modelHost = new URL(match.health.default_llm_base_url).host; } catch {}
+      modelReadiness = { host: modelHost, configured: typeof match.health.llm_model_configured === "boolean" ? match.health.llm_model_configured : null, model: match.health.default_llm_model || "", supportsVision: match.health.default_llm_supports_vision === false ? false : null };
       if (HAS_EXTENSION_API) await chrome.storage.local.set({ backendUrl }).catch(() => {});
       if (els.clientInstallHelp) els.clientInstallHelp.hidden = true;
       setConnection("connected", t("ui_local_workspace_connected"), `LearnNote ${match.health.app_version} · ${backendUrl}`);

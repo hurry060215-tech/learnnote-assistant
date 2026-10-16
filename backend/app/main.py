@@ -1,5 +1,7 @@
 from __future__ import annotations
 from .claims import safe_claim_projection
+from .model_data_consent import page_data_preview
+from .deferred_task_consent import start_reviewed_handoff, task_or_404
 from .task_artifacts import public_summary_task
 from .whole_duration_estimates import task_duration_estimates
 from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
@@ -1699,6 +1701,8 @@ def task_payload(task: TaskRecord) -> dict:
     payload["evidence_coverage"] = task.evidence_coverage.model_dump(mode="json")
     payload["source_identity"] = task.source_identity.model_dump(mode="json")
     payload.update(range_media_preview_state(task))
+    with _deferred_handoffs_lock:
+        payload["model_data_preview"] = page_data_preview(_deferred_handoffs.get(task.id)) if task.awaiting_confirmation else None
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
     payload.update(task_duration_estimates(task))
@@ -2965,49 +2969,16 @@ def start_deferred_current_page_task(
     task_id: str,
     background_tasks: BackgroundTasks,
     options: TaskOptions | None = Body(default=None),
+    allow_model_page_context: bool = False,
+    allow_page_text_fallback: bool = False,
+    review_fingerprint: str = "",
 ) -> dict:
-    try:
-        task = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "Task not found"}) from exc
-    if not task.awaiting_confirmation and task.status in {"queued", "running", "success"}:
-        return {
-            "accepted": True,
-            "already_started": True,
-            "task_id": task.id,
-            "task": task_payload(task),
-        }
-    if task.status != "queued" or not task.awaiting_confirmation:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "not_awaiting_confirmation", "message": "Task is not waiting for confirmation."},
-        )
-    with _deferred_handoffs_lock:
-        deferred_request = _deferred_handoffs.get(task_id)
-    if deferred_request is None:
-        expire_deferred_handoff(task_id)
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "code": "handoff_expired",
-                "message": "The browser handoff expired after the backend restarted. Send the current page again.",
-            },
-        )
-    merged_options = merge_task_options(deferred_request.options, options)
-    if deferred_request.mode != "download_only":
-        require_ready_note_model(merged_options)
-    deferred_request = deferred_request.model_copy(update={"options": merged_options}, deep=True)
-    public_options = merged_options.model_copy(update={"llm_api_key": None})
-    task = update_task(
-        task_id,
-        awaiting_confirmation=False,
-        options=public_options,
-        message="已确认，等待开始处理",
-    )
-    schedule_processing(background_tasks, process_current_page_task, task.id, deferred_request)
-    with _deferred_handoffs_lock:
-        _deferred_handoffs.pop(task_id, None)
-    return {"task_id": task.id, "task": task_payload(task)}
+    return start_reviewed_handoff(task_id, background_tasks, options,
+        allow_model_page_context=allow_model_page_context, allow_page_text_fallback=allow_page_text_fallback,
+        review_fingerprint=review_fingerprint, handoffs=_deferred_handoffs, lock=_deferred_handoffs_lock,
+        merge_options=merge_task_options, require_ready=require_ready_note_model, expire_handoff=expire_deferred_handoff,
+        schedule=schedule_processing, process=process_current_page_task, payload=task_payload)
+
 
 
 def expire_deferred_handoff(task_id: str):
@@ -3151,10 +3122,7 @@ def create_from_existing_media(
     background_tasks: BackgroundTasks,
     request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
-    try:
-        source = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Task not found") from exc
+    source = task_or_404(task_id, get_task)
 
     if source.mode == "screen_subtitles" and source.options.screen_subtitles is not None:
         from .screen_subtitle_routes import create_screen_subtitles, ScreenSubtitleRequest
@@ -3484,10 +3452,7 @@ def api_study_proposals(payload: dict | None = Body(default=None)) -> dict:
 
 
 def api_task_study_proposals(task_id: str, limit: int = 20) -> dict:
-    try:
-        task = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Task not found") from exc
+    task = task_or_404(task_id, get_task)
     evidence = [SourceEvidence.model_validate(item) for item in evidence_for_task(task.id)]
     return {"task_id": task.id, "proposals": [card.model_dump(mode="json") for card in propose_cards(evidence, limit)]}
 
@@ -3587,10 +3552,7 @@ def api_delete_all_tasks(confirm: str = "") -> dict:
 
 @app.post("/api/tasks/{task_id}/cancel")
 def api_cancel_task(task_id: str) -> dict:
-    try:
-        task = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    task = task_or_404(task_id, get_task, {"code": "task_not_found", "message": "任务不存在"})
     if task.status in {"success", "failed", "cancelled"}:
         raise HTTPException(status_code=409, detail={"code": "task_not_running", "message": "任务已经结束"})
     if task.awaiting_confirmation:
@@ -3620,10 +3582,7 @@ def api_retry_task(
     background_tasks: BackgroundTasks,
     request: RerunFromMediaRequest | TaskOptions | None = Body(default=None),
 ) -> dict:
-    try:
-        source = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在"}) from exc
+    source = task_or_404(task_id, get_task, {"code": "task_not_found", "message": "任务不存在"})
     if source.status in {"queued", "running", "cancelling"}:
         raise HTTPException(status_code=409, detail={"code": "task_still_running", "message": "请先停止当前任务"})
     if not task_reuse_media_path(source):
@@ -3690,10 +3649,7 @@ def api_task_claims(task_id: str, rebuild: bool = False) -> dict:
 
 @app.get("/api/tasks/{task_id}/pipeline-status")
 def api_task_pipeline_status(task_id: str) -> dict:
-    try:
-        task = get_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
+    task = task_or_404(task_id, get_task, {"code": "task_not_found", "message": "任务不存在。"})
     from .summary_diagnostics import pipeline_privacy_status
     return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": pipeline_privacy_status(task.summary_diagnostics)}
 
@@ -4259,3 +4215,7 @@ def api_original_frame(task_id: str, filename: str) -> FileResponse:
     if (TASK_DIR.resolve() not in path.parents or not path.is_file()):
         raise HTTPException(status_code=404, detail="Frame not found")
     return FileResponse(path, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"})
+
+# Router callbacks keep admission dependencies directed away from app.main.
+app.state.course_retry_summary = lambda *args: retry_summary(*args)
+app.state.course_resume = lambda *args: resume_task_from_checkpoint(*args)

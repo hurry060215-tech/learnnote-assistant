@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from . import TASK_SCHEMA_VERSION
 from .subtitle_probe import SubtitleProbe
@@ -191,6 +191,8 @@ class CurrentPageTaskRequest(BaseModel):
     page_url: str
     title: str = ""
     page_text: str = ""
+    allow_model_page_context: StrictBool = False
+    allow_page_text_fallback: StrictBool = False
     page_preflight_report: dict[str, Any] = Field(default_factory=dict)
     active_video: ActiveVideoInfo | None = None
     browser_subtitles: list[BrowserSubtitleCue] = Field(default_factory=list)

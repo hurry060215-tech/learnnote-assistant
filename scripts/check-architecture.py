@@ -10,7 +10,7 @@ from javascript_graph import javascript_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery", "model_data_consent", "deferred_task_consent"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -19,8 +19,13 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "backend/app/model_data_consent.py": 80,
+    "backend/app/deferred_task_consent.py": 80,
+    "web/model-data-consent.js": 110,
     "web/platform-signals.js": 220,
     "web/cited-relations.js": 180,
+    "web/course-episodes.js": 180,
+    "web/course-episode-retry.js": 65,
     "backend/app/concept_relations.py": 240,
     "backend/app/concept_relation_sources.py": 220,
     "backend/app/concept_relation_snapshot.py": 130,
@@ -95,6 +100,7 @@ LEGACY_DEFERRED_EDGES = {
     ("app.task_queue", "app.range_learning"): "Dispatch a recovered range intent",
 }
 PURE_MODULE_DEPENDENCIES = {
+    "model_data_consent": {"models", "document_exports", "summary_outcome"},
     "concept_relations": {"concept_identity", "course_comparison", "graph_snapshot"},
     "course_comparison": {"concept_identity", "text_indices"},
     "text_indices": set(),
@@ -146,6 +152,7 @@ EXTRACTED_BACKEND_BUDGET = 9300
 EXTRACTED_BACKEND_MODULES = (
     "main", "downloader", "media_source_context", "media_url_parsing", "media_json_discovery",
     "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance",
+    "deferred_task_consent",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")

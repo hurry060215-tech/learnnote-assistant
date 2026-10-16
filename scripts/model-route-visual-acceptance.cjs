@@ -13,7 +13,7 @@ const report = { passed: false, browser: "Microsoft Edge", requests: [], unexpec
 const fixture = { provider: "custom", base_url: "https://fixture.invalid/v1", model: "fixture-model", use_saved_connection: true };
 const routeReport = {
   routes: [{ id: "remote_text_model", label: "配置的文字模型", kind: "remote", ready: false, network: "required", detail: "文字连接未配置可用 Key。" }],
-  blocking_reasons: [], data_leaving_device: ["audio", "transcript", "instructions", "selected_frames"],
+  blocking_reasons: [], data_leaving_device: ["source_title", "source_url", "audio", "transcript", "instructions", "selected_frames"],
   offline_source_confirmed: false, local_fallback: { detail: "无 Key 时可选择仅提取字幕。" },
   capability_catalog: {
     text: { detail: "文字：未配置可用连接。" }, vision: { detail: "视觉：尚未验证。" },
@@ -65,7 +65,7 @@ const routeReport = {
     await page.locator('[data-settings-section="model"]').click();
     await page.locator("#modelRouteHeading").click();
     await page.locator("#modelRouteCapabilities").filter({ hasText: "图片上限：未知" }).waitFor();
-    assert.match(await page.locator("#modelRouteSummary").innerText(), /音频.*字幕文字.*整理要求.*选定画面/);
+    assert.match(await page.locator("#modelRouteSummary").innerText(), /来源标题.*页面链接.*音频.*字幕文字.*整理要求.*选定画面/);
     assert.match(await page.locator("#modelRouteEstimates").innerText(), /未知.*测量依据/);
     fs.mkdirSync(output, { recursive: true });
     await page.screenshot({ path: path.join(output, "settings.png"), fullPage: true }); report.screenshots.push("settings.png");
@@ -119,6 +119,7 @@ const routeReport = {
         await page.screenshot({ path: path.join(output, file), fullPage: true }); report.screenshots.push(file);
       }
     }
+    await require("./model-data-consent-visual.cjs")(page, output, report);
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.unexpected, []);
     assert(!report.requests.some(value => /setup\/check|\/prepare|tasks\/from/.test(value)));

@@ -8,7 +8,7 @@ from .models import TaskOptions
 from .model_capabilities import vision_batch_plan
 
 
-ROUTE_SCHEMA_VERSION = 2
+ROUTE_SCHEMA_VERSION = 3
 REMOTE_ASR_NAMES = {"openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"}
 
 
@@ -59,8 +59,9 @@ def plan_route(
             "kind": "local" if local_model else "remote",
             "ready": bool(model_configured),
             "network": "none" if local_model else "required",
-            "data_types": ["transcript", "instructions"],
-            "detail": "仅发送当前任务所需的文字材料和明确要求。",
+            "data_types": ["source_title", "source_url", "transcript", "instructions"],
+            "optional_data_types": ["approved_page_context", "approved_page_text_fallback"],
+            "detail": "发送来源标题、页面链接（若有）、字幕和整理要求；本任务另行同意后才发送最多 4,000 字符页面上下文。失败后的页面全文兜底需单独审阅同意（页面最多 50,000 字符、字幕线索最多 10,000 字符）。",
         },
     ]
     visual_route = {
@@ -69,8 +70,9 @@ def plan_route(
         "kind": "local" if local_model else "remote",
         "ready": bool(vision_configured),
         "network": "none" if local_model else "required",
-        "data_types": ["selected_frames", "transcript", "instructions"],
-        "detail": "只在图文模式下发送选定画面和对应字幕窗口。",
+        "data_types": ["source_title", "source_url", "selected_frames", "transcript", "instructions"],
+        "optional_data_types": ["approved_page_context"],
+        "detail": "图文模式发送选定画面、对应字幕、来源标题、页面链接（若有）和整理要求；本任务另行同意后才发送最多 4,000 字符页面上下文。",
     }
     if selected.content_mode == "subtitles":
         requested = ["platform_or_embedded_subtitles"]

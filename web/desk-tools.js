@@ -9,6 +9,8 @@ import { localPlaybackPosition, localMediaSource } from "/web/local-player.js?v=
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { installCourseSynthesis } from "/web/course-synthesis.js";
+import { installCourseRetry } from "/web/course-episode-retry.js";
+import { episodeActionsHtml, installCourseEpisodes } from "/web/course-episodes.js";
 import { installSectionReview } from "/web/section-review.js";
 import { mountConceptControls, relationPresentation, literalText } from "/web/course-concepts.js";
 import { relationshipGraph as snapshotRelationshipGraph, mountGraphCompleteness, mountGraphSnapshotExport, mountGraphSnapshotImport } from "/web/course-graph-snapshot.js";
@@ -26,7 +28,7 @@ export function installTools(ctx) {
   dialog.id = "toolsDialog";
   dialog.className = "tools-dialog";
   document.body.append(dialog);
-  let generation = 0,
+  let courseEpisodeActions, generation = 0,
     comparisonSequence = 0,
     course = null,
     courses = [],
@@ -45,6 +47,7 @@ export function installTools(ctx) {
     return result;
   }
   function show(title, body) {
+    courseEpisodeActions?.invalidate();
     generation++;
     backAction = state.selected ? more : null;
     dialog.innerHTML = `<header><button data-tool-back type="button" aria-label="返回">← 返回</button><h2>${esc(title)}</h2><button data-close-tool aria-label="关闭">×</button></header><div id="toolBody">${body}</div><p id="toolStatus" role="status"></p>`;
@@ -55,6 +58,8 @@ export function installTools(ctx) {
     const el = $("toolStatus");
     if (el) el.textContent = text;
   }
+  const retryCourseEpisode = installCourseRetry({ state, dialog, status, generation: () => generation, options, guard, refresh, openCourse });
+  courseEpisodeActions = installCourseEpisodes({ state, dialog, show, status, generation: () => generation, options, guard, refresh, openCourse: id => run(null, () => openCourse(id)), openItem, setCourseBack: id => { backAction = () => openCourse(id); } });
   const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
   const synthesizeCourse = installCourseSynthesis({ state, dialog, show, status, generation: () => generation, openEvidence: ctx.openEvidence, notice });
   const reviewSection = installSectionReview({ state, dialog, show, status, generation: () => generation });
@@ -156,7 +161,7 @@ export function installTools(ctx) {
   function courseView() {
     show(
       course.title,
-      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="course-relations">课程引用关系</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button>${courseEpisodes.find(item => item.position === i)?.retryable ? `<button data-retry-episode="${esc(courseEpisodes.find(item => item.position === i).episode_id)}" ${course.paused ? "disabled" : ""}>恢复此集</button>` : ""}<button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
+      `<div class="tool-actions"><button data-action="courses">所有课程</button><button data-action="course-relations">课程引用关系</button><button data-action="refresh-course">刷新分集状态</button><button data-action="edit-course">编辑来源</button><button data-action="pause-course">${course.paused ? "继续课程" : "暂停课程"}</button><button data-action="batch" ${course.paused ? "disabled" : ""}>整理待处理链接</button></div><div class="tool-list">${course.sources.map((s, i) => `<section><div class="tool-row"><button class="grow" data-open-source="${i}"><strong>${esc(s.title || s.url || s.id)}</strong><small>${esc(episodeLabel(s, i))}</small></button><button data-move="${i}" data-direction="-1" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button data-move="${i}" data-direction="1" aria-label="下移" ${i === course.sources.length - 1 ? "disabled" : ""}>↓</button></div>${episodeActionsHtml(courseEpisodes.find(item => item.position === i), course.paused)}</section>`).join("")}</div><details><summary>对照不同来源</summary><form id="compareForm"><label for="compareQuery">查找共同讨论的内容</label><input id="compareQuery" required placeholder="输入关键词"><label for="compareSourceKind">来源类型</label><select id="compareSourceKind"><option value="">全部来源</option><option value="task">视频</option><option value="material">文档</option></select><label for="compareSourceId">具体来源</label><select id="compareSourceId"><option value="">全部来源</option>${course.sources.filter(item => item.kind !== "url").map(item => `<option value="${esc(item.id)}">${esc(item.title || item.id)}</option>`).join("")}</select><label for="compareStart">起点（秒，可留空）</label><input id="compareStart" type="number" min="0" step="0.1"><label for="compareEnd">终点（秒，可留空）</label><input id="compareEnd" type="number" min="0" step="0.1"><button>查找出处</button></form><div id="compareResults"></div></details><footer><button data-action="course-review">复习这门课程</button><button class="danger" data-action="delete-course">删除课程分组</button></footer>`,
     );
     const askCourse = document.createElement("button");
     askCourse.type = "button";
@@ -1131,14 +1136,11 @@ export function installTools(ctx) {
         courseView();
       });
     else if (b.dataset.retryEpisode)
-      run(b, async () => {
-        if (!confirm("从此分集已有媒体和检查点恢复？使用当前模型设置，不创建重复分集。")) return;
-        const { episode } = await api(`/api/courses/${course.id}/episodes/${b.dataset.retryEpisode}/prepare`, { method:"POST" });
-        if (!episode.retryable || !episode.task_id) { await openCourse(course.id); return; }
-        await api(episode.resume_endpoint, { method:"POST", body:JSON.stringify(options()) });
-        await openCourse(course.id);
-        await refresh();
-      });
+      run(b, () => retryCourseEpisode(course, courseEpisodes.find(item => item.episode_id === b.dataset.retryEpisode)));
+    else if (b.dataset.upgradeEpisode)
+      run(b, () => courseEpisodeActions.review(course, courseEpisodes.find(item => item.episode_id === b.dataset.upgradeEpisode)));
+    else if (b.dataset.openUpgrade)
+      run(b, () => courseEpisodeActions.openLinked(b.dataset.openUpgrade));
     else if (b.dataset.openSource !== undefined)
       run(b, async () => {
         const source = course.sources[Number(b.dataset.openSource)];

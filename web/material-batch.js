@@ -180,5 +180,5 @@ export function batchVideoRoute(options, health = {}, { localFile = true } = {})
   const remoteAsr = ["openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"].includes(transcriber);
   // All compatible ASR choices, including Groq, use the same llm_base_url
   // as text generation. Display only its parsed host, never URL credentials.
-  return `视频：优先${localFile ? "内嵌" : "可用"}字幕；没有字幕时${remoteAsr ? `将音频发送到 ${host} 的音频转写接口（与文字模型共用地址）` : "在本机转写（模型需准备完成）"}。必要的字幕${options.visual_understanding ? "与选定画面" : ""}、整理要求将交给 ${host} 的 ${model} 模型；本机网关也可能转发。无 Key 时可选择仅提取字幕；不会自动改用远程服务。模型上下文和图片上限未知；费用与耗时区间未知，缺少当前输入、设备与服务商的测量依据。额外缓存空间也尚不能确定。`;
+  return `视频：优先${localFile ? "内嵌" : "可用"}字幕；没有字幕时${remoteAsr ? `将音频发送到 ${host} 的音频转写接口（与文字模型共用地址）` : "在本机转写（模型需准备完成）"}。必要的字幕${options.visual_understanding ? "与选定画面" : ""}、来源标题${localFile ? "、页面链接（若有）" : "、来源页面链接"}、整理要求将交给 ${host} 的 ${model} 模型；本机网关也可能转发；获取来源时可能以发现的标题替换当前标题。浏览器采集的额外页面上下文最多 4,000 字符，需在该任务开始前单独同意；页面全文兜底需另行审阅同意，未同意时不会自动发送。标题、链接和页面文本会按已有规则遮盖常见凭据，但不能保证识别所有私人内容。无 Key 时可选择仅提取字幕；不会自动改用远程服务。模型上下文和图片上限未知；费用与耗时区间未知，缺少当前输入、设备与服务商的测量依据。额外缓存空间也尚不能确定。`;
 }

@@ -155,7 +155,7 @@ def capture(course_id, revision, question, mode):
                     # A registered material alone is not a course episode. Only
                     # use real episode identities already returned for this owner.
                     episode_ids = sorted({episode["episode_id"] for episode in episodes.values()
-                                          if episode.get("task_id") == owner["id"]})
+                                          if episode.get("task_id") == owner["id"] or any(child["task_id"] == owner["id"] for child in episode.get("upgrades", []))})
                 member_found = set()
                 for row in _rows(db, owner, ids, MAX_SCAN_ROWS - scan["rows"], terms if mode == "question" else []):
                     if scan["rows"] >= MAX_SCAN_ROWS:

@@ -60,14 +60,14 @@ def _shareable(task):
     # Course batches currently submit whole videos in text mode. Do not merge
     # browser handoffs, local files, ranged work, or a different learning mode.
     return (bool(re.fullmatch(r"course-[a-f0-9]{40}", task.handoff_id))
-            and task.source_type == "current_page" and task.mode == "video"
+            and task.source_type == "current_page" and task.mode in {"video", "subtitle_only"}
             and not task.learning_range and task.options.content_mode == "text"
             and not task.options.visual_understanding)
 
 
 def _can_link(task, episode, *, bound=False):
     return (_same_source(task, episode["url"])
-            and task.source_type == "current_page" and task.mode == "video" and not task.learning_range
+            and task.source_type == "current_page" and task.mode in {"video", "subtitle_only"} and not task.learning_range
             and (task.handoff_id == episode["handoff_id"] or _shareable(task)
                  or (bound and bool(re.fullmatch(r"course-[a-f0-9]{40}", task.handoff_id)))))
 
@@ -121,7 +121,11 @@ def _resolve_task(episode, linked, tasks, shared_links):
 
 
 def _projection(episode, task):
+    from .course_caption_state import retry_kind, eligible_source
+    from .task_control_state import task_generation
     return {**episode, "task_id": task.id, "status": task.status, "checkpoint": task.checkpoint,
+            "generation": task_generation(task), "retry_kind": retry_kind(task),
+            "caption_upgrade_available": eligible_source(task),
             "progress": task.progress, "error_code": task.error_code, "retry_count": task.retry_count,
             "retryable": task.status in {"failed", "cancelled", "interrupted"},
             "resume_endpoint": f"/api/tasks/{task.id}/resume",
@@ -146,7 +150,7 @@ def course_episodes(course, *, read_only=False):
     try:
         # Without readable manifests, absence is unproven: an unreadable,
         # not-yet-bound handoff must not silently create a duplicate task.
-        tasks = list_tasks_snapshot(strict=True) if any(item["url"] for item in episodes) else []
+        tasks = list_tasks_snapshot(strict=True) if episodes else []
     except (ValueError, TypeError, OSError) as exc:
         snapshot_error = exc
     result = []
@@ -162,6 +166,13 @@ def course_episodes(course, *, read_only=False):
         except (ValueError, TypeError, OSError) as exc:
             status = "identity_conflict" if str(exc) == "course_episode_identity_conflict" else "source_unreadable"
             result.append({**episode, "status": status, "task_id": "", "retryable": False})
+            continue
+        if task and snapshot_error is None:
+            from .course_upgrade_links import episode_upgrades, blocks_reacquisition
+            projected = _projection(episode, task)
+            projected["upgrades"] = episode_upgrades(course["id"], episode, task, tasks)
+            projected["caption_upgrade_available"] = projected["caption_upgrade_available"] and not any(blocks_reacquisition(child) for child in projected["upgrades"])
+            result.append(projected)
             continue
         result.append(_projection(episode, task) if task else {**episode, "status": "source_missing" if linked else "pending", "task_id": "", "retryable": False})
     return result

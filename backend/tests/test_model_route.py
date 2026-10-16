@@ -142,7 +142,7 @@ class ModelRouteTests(unittest.TestCase):
     def test_auto_visual_route_discloses_frames_and_remote_audio(self):
         result = plan_route(TaskOptions(content_mode="auto", transcriber="openai-compatible", llm_base_url="https://fixture.invalid/v1"), model_configured=True, vision_configured=True)
         self.assertIn("remote_asr", [item["id"] for item in result["routes"]])
-        self.assertEqual(result["data_leaving_device"], ["audio", "instructions", "selected_frames", "transcript"])
+        self.assertEqual(result["data_leaving_device"], ["audio", "instructions", "selected_frames", "source_title", "source_url", "transcript"])
         self.assertFalse(result["offline_ready"])
 
     def test_local_vision_endpoint_is_not_mislabeled_as_remote(self):

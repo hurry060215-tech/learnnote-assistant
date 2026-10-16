@@ -21,9 +21,10 @@ import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSour
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
-import { installTools } from "/web/desk-tools.js?v=local-player-media-20261016c";
+import { installTools } from "/web/desk-tools.js?v=course-upgrade-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
+import { reviewTaskModelData } from "/web/model-data-consent.js?v=20261016";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
 import { installPersonalReview } from "/web/personal-review.js";
 import {
@@ -1278,7 +1279,16 @@ $("taskStatus").onclick = async (e) => {
   state.taskAction = { id: selected.id, action };
   renderStatus();
   try {
-    await api(`/api/tasks/${selected.id}/${action}`, {
+    let startOptions, startQuery = "";
+    if (action === "start") {
+      const selectedOptions = options(), snapshot = JSON.stringify(selectedOptions);
+      startOptions = { ...selectedOptions, llm_base_url: selectedOptions.llm_base_url || state.health.default_llm_base_url, llm_model: selectedOptions.llm_model || state.health.default_llm_model };
+      const scopes = await reviewTaskModelData({ task: selected, options: startOptions, health: state.health,
+        isCurrent: () => state.selected?.id === selected.id && JSON.stringify(options()) === snapshot });
+      if (!scopes) return;
+      startQuery = "?" + new URLSearchParams(scopes);
+    }
+    await api(`/api/tasks/${selected.id}/${action}${startQuery}`, {
       method: "POST",
       body: JSON.stringify(
         action === "cancel"
@@ -1295,7 +1305,7 @@ $("taskStatus").onclick = async (e) => {
                   : {}),
                 ...(state.key ? { llm_api_key: state.key } : {}),
               }
-            : options(),
+            : startOptions || options(),
       ),
     });
     await refresh();

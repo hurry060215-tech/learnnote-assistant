@@ -70,6 +70,21 @@ def public_contract():
     for path in ("/api/library/catalog/tasks/preview", "/api/library/catalog/tasks/apply"):
         schema["paths"].pop(path)
     schema["components"]["schemas"].pop("TaskRecoveryApply")
+    # #138 adds explicit course retry/review/admission only. Keep all existing
+    # operations, TaskRecord schema and archive bytes frozen independently.
+    for suffix in ("retry", "upgrade-preview", "upgrade-preview/{preview_id}", "upgrade"):
+        schema["paths"].pop("/api/courses/{course_id}/episodes/{episode_id}/" + suffix)
+    for name in ("EpisodeRetry", "EpisodeUpgradePreview", "EpisodeUpgrade"):
+        schema["components"]["schemas"].pop(name)
+    # #135/#146 add only per-request captured-page scopes and reviewed-start
+    # parameters. Their strict defaults and stale-source enforcement have their
+    # own contracts; every pre-existing field and /start operation stays frozen.
+    for field in ("allow_model_page_context", "allow_page_text_fallback"):
+        schema["components"]["schemas"]["CurrentPageTaskRequest"]["properties"].pop(field)
+    operation = schema["paths"]["/api/tasks/{task_id}/start"]["post"]
+    additions = {"allow_model_page_context", "allow_page_text_fallback", "review_fingerprint"}
+    operation["parameters"] = [parameter for parameter in operation["parameters"]
+        if not (parameter["in"] == "query" and parameter["name"] in additions)]
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),

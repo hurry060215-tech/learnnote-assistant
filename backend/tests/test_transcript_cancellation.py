@@ -13,7 +13,7 @@ class CancellationRegressionTests(unittest.TestCase):
    root=Path(d)
    helpers={name:Mock(return_value=None) for name in ['parse_subtitle_or_none','browser_subtitles_are_reliable','extract_embedded_subtitle','extract_audio','transcribe_with_task_progress','write_browser_subtitles_srt','correct_transcript_terms','use_remote_asr','asr_failure_detail','calculate_evidence_coverage']}
    helpers['transcript_from_browser_subtitles']=Mock(return_value=TranscriptResult())
-   with patch('app.transcript_pipeline.task_dir',return_value=root),patch('app.transcript_pipeline.update_task') as update,patch('app.transcript_pipeline.check_cancel',side_effect=TaskCancelled('task')),patch('app.transcript_pipeline.write_json') as write:
+   with patch('app.course_upgrade_captions.storage.get_task',return_value=SimpleNamespace(handoff_id='')),patch('app.transcript_pipeline.task_dir',return_value=root),patch('app.transcript_pipeline.update_task') as update,patch('app.transcript_pipeline.check_cancel',side_effect=TaskCancelled('task')),patch('app.transcript_pipeline.write_json') as write:
     with self.assertRaises(TaskCancelled):prepare_transcript('task',root/'media.mp4',root/'media.mp4',SimpleNamespace(status='ready',duration=10),TaskOptions(),None,[],'',**helpers)
     helpers['transcribe_with_task_progress'].assert_not_called();write.assert_not_called()
     self.assertFalse(any(c.kwargs.get('phase')=='transcribing' for c in update.call_args_list))

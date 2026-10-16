@@ -220,6 +220,22 @@
     return /^(blob:|data:image\/|https?:\/\/)/i.test(url) ? url : "";
   }
 
+  function renderModelDisclosure() {
+    const notice = q("#editorialModelDisclosure");
+    if (!notice) return;
+    const options = typeof readOptions === "function" ? readOptions() : {};
+    const health = typeof lastHealthData === "object" ? lastHealthData : {};
+    let host = "当前配置的服务";
+    try { host = new URL(options.llm_base_url || health.default_llm_base_url).host; } catch {}
+    const model = options.llm_model || health.default_llm_model || "当前模型";
+    const purpose = selectedPurpose();
+    const visual = typeof purpose?.visual === "boolean" ? purpose.visual : options.visual_understanding;
+    const remoteAsr = ["openai", "openai-compatible", "openai-compatible-asr", "groq", "groq-asr"].includes(options.transcriber);
+    notice.textContent = options.content_mode === "subtitles"
+      ? "仅提取字幕不调用转写或总结模型。"
+      : `总结会将来源标题、页面链接（若有）、必要字幕${visual ? "、选定画面" : ""}和整理要求交给 ${host} · ${model}。${remoteAsr ? `没有可验证字幕时，音频也会发送到 ${host} 的转写接口。` : "没有可验证字幕时按设置在本机转写。"}本机网关可能转发，服务可能收费。获取来源时可能以发现的标题替换当前标题。标题、链接和页面文本按已有规则遮盖常见凭据，但并非完整的隐私检查。本兼容页面不授权额外页面上下文或页面全文兜底；需要时请到主工作台逐项审阅。`;
+  }
+
   function renderDraft(nextDraft, { confirm = true } = {}) {
     draft = nextDraft;
     ui.source.textContent = `${sourceLabel(draft.source)} · 视频已识别`;
@@ -239,6 +255,7 @@
       : "";
     applyPurpose();
     renderPurposePreview();
+    renderModelDisclosure();
     if (confirm) showOnly(ui.confirm);
   }
 
@@ -597,6 +614,7 @@
       statusTarget.textContent = "请先导入或选择一个可用的笔记模板。";
       return;
     }
+    renderModelDisclosure();
     ui.start.disabled = true;
     statusTarget.textContent = "正在创建任务...";
     try {
@@ -819,6 +837,8 @@
   ui.purposeChoices.addEventListener("change", () => { applyPurpose(); renderPurposePreview(); });
   ui.importTemplate.addEventListener("click", () => ui.templateFile.click());
   ui.templateFile.addEventListener("change", () => importTemplate(ui.templateFile.files?.[0]));
+  document.addEventListener?.("input", renderModelDisclosure);
+  document.addEventListener?.("change", renderModelDisclosure);
   ui.start.addEventListener("click", startTask);
   ui.openLibrary.addEventListener("click", () => { if (typeof showAppView === "function") showAppView("notes"); });
 
@@ -860,5 +880,6 @@
     needsUrlConfirmation
   });
   renderPurposePreview();
+  renderModelDisclosure();
   showOnly(ui.choices);
 })();

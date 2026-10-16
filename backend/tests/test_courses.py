@@ -74,7 +74,7 @@ class CourseComparisonAcceptanceTests(unittest.TestCase):
 
     def test_same_evidence_registered_twice_is_not_a_cross_source_relation(self):
         evidence = {"evidence_id":"shared", "locator":"0-10s", "text":"gradient descent"}
-        with patch("app.courses.get_course", return_value={"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses._source_evidence_ids", return_value={"shared"}), patch("app.courses.evidence_by_ids", return_value=[evidence]):
+        with patch("app.courses.get_course", return_value={"id":"f"*32,"sources":[{"kind":"task","id":"one","title":"Video"},{"kind":"material","id":"registered-video","title":"Video"}]}), patch("app.courses._source_evidence_ids", return_value={"shared"}), patch("app.courses.evidence_by_ids", return_value=[evidence]):
             result = compare_course("f" * 32, "gradient")
         self.assertEqual(result["edges"], [])
         self.assertEqual(len(result["matches"]), 1)
@@ -82,7 +82,7 @@ class CourseComparisonAcceptanceTests(unittest.TestCase):
     def test_comparison_filters_keep_correct_source_and_temporal_anchors(self):
         sources = [{"kind":"task","id":"one","title":"First"},{"kind":"task","id":"two","title":"Second"}]
         evidence = {"one":[{"evidence_id":"a","locator":"0-5s","text":"gradient early"},{"evidence_id":"b","locator":"15-20s","text":"gradient late"}], "two":[{"evidence_id":"c","locator":"15-20s","text":"gradient second"}]}
-        with patch("app.courses.get_course", return_value={"sources":sources}), patch("app.courses._source_evidence_ids", side_effect=lambda source: {item["evidence_id"] for item in evidence[source["id"]]}), patch("app.courses.evidence_by_ids", side_effect=lambda ids, **kw: [item for rows in evidence.values() for item in rows if item["evidence_id"] in ids]):
+        with patch("app.courses.get_course", return_value={"id":"f"*32,"sources":sources}), patch("app.courses._source_evidence_ids", side_effect=lambda source: {item["evidence_id"] for item in evidence[source["id"]]}), patch("app.courses.evidence_by_ids", side_effect=lambda ids, **kw: [item for rows in evidence.values() for item in rows if item["evidence_id"] in ids]):
             result = compare_course("f" * 32, "gradient", start=10, end=30)
             self.assertEqual([item["evidence_id"] for item in result["matches"]], ["b", "c"])
             self.assertEqual(result["edges"][0]["evidence_ids"], ["b", "c"])

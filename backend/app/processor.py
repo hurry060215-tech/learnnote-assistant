@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .model_data_consent import approved_page_context
 
 import json
 import inspect
@@ -755,6 +756,8 @@ def process_page_text_task(task_id: str, request: CurrentPageTaskRequest) -> Non
 
 
 def write_download_failure_fallback(task_id: str, request: CurrentPageTaskRequest) -> bool:
+    if not request.allow_page_text_fallback or request.mode == "download_only":
+        return False
     try:
         artifacts = write_page_text_artifacts(task_id, request, allow_empty=False)
         if artifacts.created:
@@ -775,8 +778,11 @@ def write_download_failure_fallback(task_id: str, request: CurrentPageTaskReques
 
 
 def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTaskRequest, code: str, detail: str) -> bool:
-    if request.options.content_mode == "subtitles":
+    if request.options.content_mode == "subtitles" or request.mode == "download_only":
         return False
+    if not request.allow_page_text_fallback and (request.page_text.strip() or request.browser_subtitles):
+        _fail(task_id, code, detail + "；未授权将页面全文/浏览器字幕作为兜底来源发送给模型。原始页面资料和已取得的文件仍保留在本机；请重新发送当前页面，在开始前单独审阅并选择页面文本兜底，或改选明确的页面文本任务。")
+        return True
     if not write_download_failure_fallback(task_id, request):
         return False
     record = get_task(task_id)
@@ -797,9 +803,16 @@ def complete_with_download_failure_fallback(task_id: str, request: CurrentPageTa
 
 
 def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> None:
+    from .course_upgrade_captions import reviewed_captions
     try:
         _check_cancel(task_id)
+        pinned_captions = reviewed_captions(task_id)
+        if pinned_captions is not None:
+            request = request.model_copy(update={"browser_subtitles": pinned_captions})
     except TaskCancelled:
+        return
+    except ContentMismatchError as exc:
+        _fail(task_id, "media_mismatch", str(exc))
         return
     if request.options.content_mode == "visual" and (request.mode == "subtitle_only" or not llm_model_supports_vision(request.options.llm_base_url or LLM_BASE_URL, request.options.llm_model or LLM_MODEL)):
         _fail(task_id, "visual_model_required", "图文笔记需要可理解画面的模型和视频来源；请选择支持图像的模型，或切换为文字笔记。")
@@ -864,7 +877,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             status_callback=download_status_updater(task_id),
         )
         subtitle_path = None
-        if request.mode != "download_only":
+        if request.mode != "download_only" and pinned_captions is None:
             probe_started = time.monotonic()
             subtitle_path = maybe_download_page_subtitle(downloader, request)
             _check_cancel(task_id)
@@ -916,7 +929,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         except OSError:
             pass
         resolved_title = clean_task_title(getattr(downloader, "resolved_title", ""), request.page_url, request.title)
-        if resolved_title != request.title:
+        if pinned_captions is None and resolved_title != request.title:
             request.title = resolved_title
             update_task(task_id, title=resolved_title)
         original_media_path = media_path
@@ -1000,7 +1013,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
             options=request.options,
             subtitle_path=subtitle_path,
             browser_subtitles=request.browser_subtitles,
-            page_context=request.page_text,
+            page_context=approved_page_context(request),
             frame_anchor_timestamps=[
                 max(0.0, request.active_video.current_time - selected_range[0]) if selected_range else request.active_video.current_time
             ] if request.active_video else [],
@@ -1021,7 +1034,7 @@ def process_current_page_task(task_id: str, request: CurrentPageTaskRequest) -> 
         detail = exc.message
         if exc.code == "no_media_found" and request.active_video and request.active_video.src_object:
             detail = src_object_failure_message(request)
-        if complete_with_download_failure_fallback(task_id, request, exc.code, detail):
+        if pinned_captions is None and complete_with_download_failure_fallback(task_id, request, exc.code, detail):
             return
         _fail(task_id, exc.code, detail)
     except ContentMismatchError as exc:
@@ -1105,6 +1118,11 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         if task_dir(task_id).resolve() not in target.parents or not target.is_file():
             raise ContentMismatchError("找不到此任务已保存的字幕，请重新获取内容。")
         transcript = TranscriptResult.model_validate_json(target.read_text(encoding="utf-8"))
+        from .course_upgrade_captions import reviewed_captions, require_reviewed_coverage
+        pinned_captions = reviewed_captions(task_id)
+        if pinned_captions is not None:
+            require_reviewed_coverage(pinned_captions, task.media_integrity.duration, browser_subtitles_are_reliable)
+            transcript = transcript_from_browser_subtitles(pinned_captions)
         if transcript.source == "screen-ocr" and (transcript.provenance.get("status") != "ready" or transcript.provenance.get("coverage", {}).get("complete") is not True):
             raise ContentMismatchError("画面字幕尚未完整提取，请先恢复画面字幕任务。")
         if transcript.source == "screen-ocr":
@@ -1149,6 +1167,15 @@ def process_local_video_task(
     subtitle_path: Path | None = None,
     subtitle_source: str = "page-subtitle",
 ) -> None:
+    from .course_upgrade_captions import reviewed_captions, require_reviewed_coverage
+    try:
+        pinned_captions = reviewed_captions(task_id)
+        if pinned_captions is not None:
+            require_reviewed_coverage(pinned_captions, probe_media_integrity(input_path).duration, browser_subtitles_are_reliable)
+            browser_subtitles, subtitle_path = pinned_captions, None
+    except ContentMismatchError as exc:
+        _fail(task_id, "media_mismatch", str(exc))
+        return
     if options.content_mode == "visual" and not llm_model_supports_vision(options.llm_base_url or LLM_BASE_URL, options.llm_model or LLM_MODEL):
         _fail(task_id, "visual_model_required", "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。")
         return

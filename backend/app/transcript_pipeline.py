@@ -47,6 +47,12 @@ def prepare_transcript(
     work_dir = task_dir(task_id)
     audio_warning = ""
     transcript: TranscriptResult | None = None
+    from .course_upgrade_captions import reviewed_captions, require_reviewed_coverage
+    pinned_captions = reviewed_captions(task_id)
+    if pinned_captions is not None:
+        require_reviewed_coverage(pinned_captions, integrity.duration, browser_subtitles_are_reliable)
+        browser_subtitles = pinned_captions
+        subtitle_path = None
     browser_fallback_transcript = transcript_from_browser_subtitles(browser_subtitles or [])
 
     if subtitle_path:

@@ -342,12 +342,12 @@ export function installSettings(ctx) {
       if (request !== routeRequest) return;
       summary.textContent = route.routes?.some(item => item.network === "required")
         ? "总结会调用你配置的模型；优先读取字幕，缺少字幕时再转写。"
-        : "此路线不调用远程模型；平台字幕仍需连接视频站点获取。";
+        : "此路线使用本机处理或本机网关；网关可能转发给外部模型。平台字幕仍需连接视频站点。";
       list.innerHTML = (route.routes || []).map((item) => `<article class="model-route-item ${item.ready ? "ready" : "waiting"}"><div><strong>${esc(item.label)}</strong><span>${item.id === "platform_or_embedded_subtitles" ? "按需检测" : item.ready ? "设置已就绪" : "待准备"}</span></div><p>${esc(item.detail)}</p><small>${item.network === "required" ? "需要网络" : item.network === "offline_after_model_ready" ? "模型准备后可离线" : item.network === "source_only" ? "仍需连接来源站点" : "本机路线；网关可能转发"}</small></article>`).join("");
       if (route.blocking_reasons?.length) {
         summary.textContent += " " + route.blocking_reasons.join(" ");
       }
-      const dataLabels = { audio: "音频", selected_frames: "选定画面", transcript: "字幕文字", instructions: "整理要求" };
+      const dataLabels = { source_title: "来源标题", source_url: "页面链接（若有）", audio: "音频", selected_frames: "选定画面", transcript: "字幕文字", instructions: "整理要求" };
       if (route.data_leaving_device?.length) summary.textContent += " 所选路线可能发送到模型服务：" + route.data_leaving_device.map(value => dataLabels[value] || value).join("、") + "。";
       if (route.local_fallback?.detail) summary.textContent += " " + route.local_fallback.detail;
       if (!route.offline_source_confirmed) summary.textContent += " 尚未确认资料已在本机；平台字幕仍可能需要联网。";
