@@ -10,6 +10,7 @@ export function literalText(value) {
 
 export function relationPresentation(edge) {
   if (edge.kind === "keyword_cooccurrence") return { label: "关键词共现 · 不代表同义、因果或共识", dash: "6 4" };
+  if (edge.kind === "source_assertion") return { label: "原文陈述相同 · 仅证明文字出现，不证明事实或共识", dash: "" };
   if (edge.kind === "inferred") return { label: "推断关系 · 尚未核实", dash: "2 4" };
   // An unknown backend kind must never inherit the keyword/factual label.
   return { label: "未识别的关系类型 · 请核对出处", dash: "1 5" };

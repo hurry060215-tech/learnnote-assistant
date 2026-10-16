@@ -19,6 +19,7 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "web/cited-relations.js": 180,
     "backend/app/concept_relations.py": 240,
     "backend/app/concept_relation_sources.py": 220,
     "backend/app/concept_relation_snapshot.py": 130,

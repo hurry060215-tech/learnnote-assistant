@@ -30,10 +30,15 @@ response provides an offline export. `POST /api/concept-relations/preview` accep
 embedded evidence without consulting or changing the local catalog. Imported
 source identities and content remain unverified even when all digests match.
 
-There is no new UI surface in this delivery. Consumers must distinguish the edge
-kinds below; the existing keyword-only graph must not relabel these as verified
-facts. Interactive display, accessible visual distinctions, and browser screenshot
-acceptance for this new relation view remain to be delivered.
+The Courses catalog now offers a whole-library cited-relation view; each course
+also offers a scoped view. Generation is explicit. Filters include literal query,
+canonical source ID/type and video time. Solid source-occurrence and dashed
+inference edges have matching text labels and a paginated list fallback. Node
+buttons filter by literal spelling; citation buttons open canonical live evidence.
+Snapshot imports only expand embedded original text, never resolve imported IDs
+against live records. Import is available before a catalog response, and both
+failed validation and changed filters remove stale previews. A hosted actual-Edge
+gate covers the new UI; a workflow definition alone is not a screenshot pass.
 
 ## What is normalized and generated
 
@@ -107,8 +112,8 @@ Review before sharing outside the machine.
   an independent human-labeled benchmark and an authorized real-model run if a
   model-based implementation is selected. Current tests prove deterministic
   attribution/abstention/deduplication contracts, not semantic accuracy.
-- The new read-only candidate API/export needs integration into the interactive
-  graph/list UI and real browser screenshot/accessibility acceptance.
+- The new graph/list integration requires successful hosted real-browser
+  screenshots and accessibility acceptance on the final integrated commit.
 - Existing grouping history remains reversible through its established workflow;
   the new derived graph itself has no mutation/undo operation. Offline snapshot
   preview never restores or overwrites a course or its history.

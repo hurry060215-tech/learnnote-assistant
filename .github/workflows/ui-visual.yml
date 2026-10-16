@@ -25,6 +25,7 @@ on:
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-concepts-acceptance.cjs"
+      - "scripts/cited-relations-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
   workflow_dispatch:
   push:
@@ -51,6 +52,7 @@ on:
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-concepts-acceptance.cjs"
+      - "scripts/cited-relations-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
 
 permissions:

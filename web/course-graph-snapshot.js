@@ -10,7 +10,7 @@ export function relationshipGraph(result) {
   const details = document.createElement("details");
   details.className = "relationship-graph";
   const summary = document.createElement("summary");
-  summary.textContent = "关系图（关键词线索，不代表因果或观点一致）";
+  summary.textContent = result.mode === "local_cited_relations" ? "引用关系图（实线：原文相同；虚线：待核对推断）" : "关系图（关键词线索，不代表因果或观点一致）";
   details.append(summary);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
