@@ -179,6 +179,40 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         })
         self.assertEqual(javascript_violations(root), [])
 
+    def test_product_domains_cannot_import_orchestrators(self):
+        providers = {
+            "source-identity.js": "LearnNoteSourceIdentity",
+            "request-context.js": "LearnNoteRequestContext",
+            "cookie-context.js": "LearnNoteCookieContext",
+            "backend-transport.js": "LearnNoteBackendTransport",
+            "content-media-hints.js": "LearnNoteContentMediaHints",
+        }
+        for filename, namespace in providers.items():
+            with self.subTest(filename=filename):
+                root = self.repository({
+                    "extension/background.js": f'importScripts("{filename}");',
+                    "extension/" + filename: f'importScripts("background.js"); globalThis.{namespace} = {{}};',
+                })
+                errors = javascript_violations(root)
+                self.assertTrue(any("pure-module boundary" in error for error in errors), errors)
+                self.assertTrue(any("dependency cycle" in error for error in errors), errors)
+                errors = javascript_violations(root, ("background.js",))
+                self.assertTrue(any(f"budget omits dependency extension/{filename}" in error for error in errors), errors)
+
+    def test_content_media_parser_requires_classification_in_its_own_realm(self):
+        root = self.repository({
+            "extension/background.js": 'chrome.scripting.executeScript({files: ["capture-classification.js", "content-media-hints.js", "content.js"]});',
+            "extension/capture-classification.js": "globalThis.LearnNoteCaptureClassification = {};",
+            "extension/content-media-hints.js": "globalThis.LearnNoteCaptureClassification; globalThis.LearnNoteContentMediaHints = {};",
+            "extension/content.js": "globalThis.LearnNoteContentMediaHints;",
+        })
+        self.assertEqual(javascript_violations(root), [])
+        (root / "extension/background.js").write_text(
+            'importScripts("capture-classification.js"); chrome.scripting.executeScript({files: ["content-media-hints.js", "content.js"]});',
+            encoding="utf-8",
+        )
+        self.assertTrue(any("before its classic script is loaded" in error for error in javascript_violations(root)))
+
     def test_repo_graph_and_real_extension_load_order_pass(self):
         edges, errors, _imports, injections, _namespaces = javascript_analysis(SCRIPTS.parent)
         self.assertEqual(errors, [])

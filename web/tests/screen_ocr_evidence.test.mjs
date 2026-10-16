@@ -20,7 +20,7 @@ for (const mode of ['screen_subtitles','local']) {
   const evidence=[{evidence_id:'match',kind:'transcript',start:1,end:2,locator:'1.0-2.0s',...(mode==='screen_subtitles'?{source:'screen-ocr',verification:'unreviewed'}:{})}];
   const mapped={claims:[{text:'<literal OCR>',claim_type:'transcript',verification:'direct',evidence_ids:['match']},{text:'possibly',claim_type:'unsupported',verification:'located_only',candidate_evidence_ids:['match']}],evidence};
   const note = '<literal OCR>\n\npossibly', revision = createHash('sha256').update(note).digest('hex');
-  Object.assign(mapped, { schema_version:6, task_id:t.id, source_revision_kind:'normalized_note_utf8_sha256', source_revision:revision });
+  Object.assign(mapped, { schema_version:7, task_id:t.id, source_revision_kind:'normalized_note_utf8_sha256', source_revision:revision });
   let offset = 0;
   for (const [index, claim] of mapped.claims.entries()) {
     claim.claim_id = `claim-${index}`; claim.evidence_ids ||= []; claim.candidate_evidence_ids ||= [];

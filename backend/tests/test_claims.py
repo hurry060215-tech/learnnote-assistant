@@ -57,7 +57,7 @@ class ClaimEvidenceTests(unittest.TestCase):
         )
 
         claim = result["claims"][0]
-        self.assertEqual(result["schema_version"], 6)
+        self.assertEqual(result["schema_version"], 7)
         self.assertEqual(claim["claim_type"], "document")
         self.assertEqual(claim["verification"], "direct")
         self.assertEqual(claim["evidence_ids"], ["material-doc-001"])
@@ -101,9 +101,9 @@ class ClaimEvidenceTests(unittest.TestCase):
             "quality": {"supported_count": 1},
         }
         migrated = safe_claim_projection(previous)
-        self.assertEqual(migrated["schema_version"], 6)
-        self.assertEqual(migrated["claims"][0]["verification"], "direct")
-        self.assertEqual(migrated["claims"][0]["evidence_ids"], ["cue-1"])
+        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["claims"][0]["verification"], "pending_review")
+        self.assertEqual(migrated["claims"][0]["evidence_ids"], [])
 
     def test_timestamp_does_not_verify_contradictory_quantities_or_new_claims(self):
         from app.summarizer import note_grounding_issues

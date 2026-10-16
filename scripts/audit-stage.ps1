@@ -102,9 +102,10 @@ if (Test-Any @("backend/app/main.py", "backend/app/processor.py", "backend/tests
   Invoke-Step "API pipeline tests" { & $python -m unittest backend.tests.test_api_pipeline }
 }
 
-if (Test-Any @("extension/background.js", "extension/tests/background_*.test.mjs")) {
+if (Test-Any @("extension/background.js", "extension/source-identity.js", "extension/request-context.js", "extension/cookie-context.js", "extension/backend-transport.js", "extension/capture-classification.js", "extension/tests/background_*.test.mjs", "extension/tests/product_domain_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Background syntax" { node --check extension\background.js }
+  Invoke-Step "Product domain snapshot and adapter boundaries" { node extension\tests\product_domain_boundaries.test.mjs }
   foreach ($test in @(Get-ChildItem extension\tests\background_*.test.mjs | Sort-Object Name)) {
     Invoke-Step $test.FullName { node $test.FullName }
   }
@@ -124,9 +125,10 @@ if (Test-Any @("extension/sidepanel.js", "extension/sidepanel-progress.js", "ext
   }
 }
 
-if (Test-Any @("extension/content.js", "extension/content-study-evidence.js", "extension/page_hook.js", "extension/tests/content_*.test.mjs", "extension/tests/page_hook_*.test.mjs")) {
+if (Test-Any @("extension/content.js", "extension/content-media-hints.js", "extension/capture-classification.js", "extension/content-study-evidence.js", "extension/page_hook.js", "extension/tests/content_*.test.mjs", "extension/tests/page_hook_*.test.mjs")) {
   $ran = $true
   Invoke-Step "Content script syntax" { node --check extension\content.js }
+  Invoke-Step "Media hint parser syntax" { node --check extension\content-media-hints.js }
   Invoke-Step "Study evidence helper syntax" { node --check extension\content-study-evidence.js }
   Invoke-Step "Page hook syntax" { node --check extension\page_hook.js }
   foreach ($test in @(

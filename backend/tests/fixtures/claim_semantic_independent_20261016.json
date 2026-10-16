@@ -1,0 +1,1879 @@
+{
+  "schema_version": 1,
+  "corpus_id": "learnnote_issue129_independent_bilingual_semantic_v1",
+  "provenance": {
+    "purpose": "Independent semantic-claim evaluation examples for LearnNote issue #129.",
+    "authorship": "Assistant-authored synthetic regression cases, independently authored for this task without reading the implementation or old fixtures. These are not human-adjudicated, public-source, or real-course gold examples.",
+    "independence": "No existing repository claim fixtures or claim-scoring algorithm were inspected. No network research or external model calls were used.",
+    "privacy": "All people, groups, institutions, logs, rules, experiments, and visual descriptions in the cases are invented; no private user data is included.",
+    "grounding": "Gold labels judge only entailment from the supplied evidence, using ordinary arithmetic and explicit textual rules. They do not assert real-world truth of these fictional examples.",
+    "label_policy": {
+      "supported": "All material parts of the claim follow from the cited supplied evidence.",
+      "contradicted": "Supplied evidence establishes an incompatible fact or explicitly denies the claimed relation.",
+      "insufficient": "The evidence neither establishes the full claim nor establishes its negation; missing facts and untested reverse causality are not contradictions."
+    },
+    "attribution_policy": "required_support_aliases identifies the anchors necessary for the gold judgment. For contradicted cases these are anchors establishing the contradiction, not anchors supporting the false claim. Empty aliases on insufficient cases mean no decisive supporting or contradicting evidence is available.",
+    "visual_scope": "Every visual_description_text case uses an explicitly marked text description derived from a fictional visual. These cases test text-evidence entailment, not pixel reading, OCR, visual grounding, or image-model accuracy.",
+    "paraphrase_policy": "legitimate_paraphrase marks a supported claim expressed nonliterally through changed wording, abstraction, role binding, scope, or arithmetic rather than a verbatim evidence sentence. At least half of all cases meet this stricter positive-paraphrase definition. nonliteral_paraphrase additionally marks nonliteral formulations of negative or unresolved claims; those additional cases are not needed to meet the half-corpus requirement.",
+    "limitations": [
+      "Assistant-authored synthetic gold labels have not received an independent human adjudication.",
+      "English and Simplified Chinese only; not a translation-paired dataset or a claim of representative real-world language distribution.",
+      "The corpus intentionally contains both easy and challenging examples but has no empirically calibrated difficulty or production error-frequency weighting.",
+      "No real documents, recordings, images, OCR errors, citation-offset validation, or pixel-level evidence are evaluated.",
+      "A single small static set cannot establish broad model quality; do not train on it and then describe evaluation on it as held-out."
+    ],
+    "evaluation_scope": "A future real-model run on these cases measures performance on this synthetic fixture set only. Real-course quality and pixel-level visual quality require separate evaluation."
+  },
+  "cases": [
+    {
+      "case_id": "en_001",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "In still air, readings were steadier with the shade panel, while the averages for shaded and uncovered runs matched.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "In our fictional sensor exercise, both uncovered and shaded runs averaged 18 units. In still air, uncovered readings varied by up to 4 units around that average, while shaded readings varied by up to 1 unit. We have no measurements from windy runs.",
+          "locator": "fictional_lab_handout:shade_panel/results"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The same mean and smaller variation support the paraphrase. The claim preserves the still-air restriction.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_002",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "Each tray was given a dose of four-tenths of a millilitre.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The practice log records exactly 0.4 litres of solution added to each tray, with no later additions or removals.",
+          "locator": "fictional_practice_log:tray_filling/entry_4"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The log specifies 0.4 litres, which is 400 millilitres, rather than 0.4 millilitres.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_003",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction"
+      ],
+      "claim": "The falling pressure was what made the valve open farther.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "For the valve demonstration, the instructor deliberately increased the valve opening. That intervention caused the measured pressure to fall. The demonstration did not test what changes the valve opening.",
+          "locator": "fictional_instructor_notes:valve_demo/conclusion"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "An opening intervention caused lower pressure; this does not establish or rule out a reverse causal effect of pressure on opening.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_004",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "entity_binding"
+      ],
+      "claim": "Nora has met both requirements for admission to the demonstration.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Admission to the demonstration requires exactly two things: completion of induction and a supervisor signature. No other admission conditions apply.",
+          "locator": "fictional_demo_rules:admission/requirements"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Nora: induction completed; supervisor signature received. Ivo: induction completed; supervisor signature missing.",
+          "locator": "fictional_attendance_sheet:admission/checks"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The rule identifies the two requirements and Nora's record confirms both. Ivo's missing signature is irrelevant to Nora.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_005",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification"
+      ],
+      "claim": "A strip can go back into the reuse box while it is still damp.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Only fully dry strips may be placed in the reuse box. Any strip that is still damp must be put in the discard bin instead.",
+          "locator": "fictional_materials_card:strips/reuse"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The rule expressly excludes still-damp strips from reuse.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_006",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "entity_binding",
+        "missing_evidence"
+      ],
+      "claim": "Teo was the person who came up with the rotor design.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Mira assembled the rotor from a supplied plan. Teo measured its speed. The worksheet does not name the author of the plan.",
+          "locator": "fictional_group_worksheet:rotor/roles"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Measuring speed does not identify the designer; the plan's authorship is unreported rather than assigned to somebody else.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_007",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "step_order"
+      ],
+      "claim": "The counter must stay unreset until both the exposed and covered measurements have been written down.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Follow this sequence: first record the exposed-sensor reading; next cover the sensor and record the covered reading; only after both entries are written, reset the counter.",
+          "locator": "fictional_procedure_card:sensor/sequence"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Resetting is explicitly deferred until both records are complete.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_008",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction",
+        "negation_qualification"
+      ],
+      "claim": "Moving the detector is a way to change the lamp's brightness in this apparatus.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "In this fictional apparatus, turning the lamp dial changes detector output. Moving the detector changes its own output but has no effect on lamp brightness.",
+          "locator": "fictional_apparatus_notes:lamp_detector/causal_tests"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The source explicitly rules out an effect of detector movement on lamp brightness; it does more than merely describe the opposite causal direction.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_009",
+      "language": "en",
+      "risk_tags": [
+        "quantities_units",
+        "missing_evidence"
+      ],
+      "claim": "The clear jar changed colour eight minutes after the activity began.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Both jars changed colour during the activity. The clear jar changed before the frosted jar. No clock times or elapsed times were recorded.",
+          "locator": "fictional_observation_sheet:jars/colour_change"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Relative order gives no elapsed time for the clear jar. Eight minutes is neither established nor ruled out.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_010",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "quantities_units"
+      ],
+      "claim": "The chart gives Pine half as many tokens again as Oak.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Text derived from a fictional bar chart, not pixel validation: the bar labelled Pine has a printed value of 12 tokens; the bar labelled Oak has a printed value of 8 tokens. Both values count allocated tokens.",
+          "locator": "fictional_visual_description:token_chart/printed_values"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Twelve is one and a half times eight. This evaluates the supplied textual chart description only.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_011",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "step_order"
+      ],
+      "claim": "The procedure calls for mixing in the dye before the sample has cooled to the threshold.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "For this practice task, cool the sample to 20 degrees or below before adding any dye. Adding dye above 20 degrees violates the required procedure.",
+          "locator": "fictional_procedure_card:dye_sample/cooling"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The prescribed addition takes place only after cooling to the threshold or below, not while above it.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_012",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "scope_generalization"
+      ],
+      "claim": "This method is guaranteed to work on every future trial.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "All four trials in today's classroom exercise succeeded with the new method. These were the only trials carried out, and the report makes no guarantee about future trials.",
+          "locator": "fictional_class_report:new_method/results"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Success in four observed trials does not establish an unrestricted future guarantee. The source also does not report a future failure.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_013",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "entity_binding"
+      ],
+      "claim": "Preparing labels and closing the packages were assigned to different teams.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The Sable team was assigned all label preparation. The Amber team was assigned all package sealing. The two teams have no members in common.",
+          "locator": "fictional_workshop_roster:packaging/assignments"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Label work belongs to Sable and sealing to the distinct Amber team.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_014",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "entity_binding"
+      ],
+      "claim": "Following the selected route for the required number of laps gives a twelve-kilometre walk.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Route Alder is 6 kilometres per lap. Route Birch is 4 kilometres per lap. These lengths include the entire circuit from the start marker back to the same marker.",
+          "locator": "fictional_map_key:walking_routes/lengths"
+        },
+        {
+          "source_alias": "E2",
+          "text": "For the exercise, the class selected Route Birch and must complete exactly two full laps, with no extra walking segments counted.",
+          "locator": "fictional_activity_board:walk/selection"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The selected route is Birch: two laps of four kilometres give eight kilometres, not twelve.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_015",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "visual_description_text",
+        "missing_evidence"
+      ],
+      "claim": "The upper container is coloured blue in the drawing.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Text derived from a fictional drawing, not pixel validation: two rectangular containers are stacked, with the smaller one above the larger one. The transcription records position and shape but does not record colours.",
+          "locator": "fictional_visual_description:stacked_containers/geometry"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "The text provides no colour evidence. A colour omitted by the transcription must not be treated as absent from the fictional drawing.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_016",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification"
+      ],
+      "claim": "One weak pulse is not enough to award a pass.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "A single weak pulse is an inconclusive result. Mark the device as passing only if the repeat test produces two strong pulses. Do not award a pass from a lone weak pulse.",
+          "locator": "fictional_assessment_rubric:pulse_test/pass_rule"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The rubric explicitly says that the lone weak pulse is inconclusive and cannot earn a pass.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_017",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "entity_binding"
+      ],
+      "claim": "Bela was the original lender of the model, and Arin returned it.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The group used a cardboard model during the lesson; its label reads Model H.",
+          "locator": "fictional_lesson_inventory:model_h/item"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Arin owned Model H and lent it to Bela on Monday. Bela returned it to Arin on Friday. No reverse loan occurred.",
+          "locator": "fictional_loan_record:model_h/transaction"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The transaction record assigns lending to Arin and returning to Bela, explicitly excluding a reverse loan. The inventory anchor does not establish these roles.",
+      "required_support_aliases": [
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_018",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "missing_evidence",
+        "entity_binding"
+      ],
+      "claim": "Jae qualifies for the bonus because of the tokens they earned.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The bonus is awarded to anyone who earned at least one gold token. Earning silver tokens alone does not qualify a learner.",
+          "locator": "fictional_game_rules:tokens/bonus"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Jae earned three tokens. The recorder did not note any of their colours.",
+          "locator": "fictional_score_sheet:tokens/jae"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "The token count is known but the qualifying colour is not. Neither eligibility nor ineligibility follows.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_019",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "causal_direction",
+        "negation_qualification"
+      ],
+      "claim": "In the controlled test, adding the brace reduced wobble without lowering the tower.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The tower's height was fixed throughout the test. The only intervention was attaching the brace. The controlled comparison established that this intervention reduced wobble from 5 marks to 2 marks.",
+          "locator": "fictional_experiment_summary:tower/brace"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The evidence expressly attributes the reduction to the brace while holding height fixed. The claim is limited to that test.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_020",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "Switching to the revised assembly plan brought the unit cost down.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The original assembly plan cost 9 credits per unit. The revised plan also cost 9 credits per unit. The revision reduced assembly time but did not reduce unit cost.",
+          "locator": "fictional_workshop_report:assembly/revision"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "Both the equal amounts and the explicit statement deny a reduction in unit cost. Faster assembly must not be substituted for cheaper assembly.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_021",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "scope_generalization"
+      ],
+      "claim": "Box B contains a larger number of red pieces than Box A.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Red pieces account for 60 percent of the contents of Box A. The total number of pieces in Box A is not recorded.",
+          "locator": "fictional_sorting_sheet:box_a/proportions"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Red pieces account for 80 percent of the contents of Box B. The total number of pieces in Box B is not recorded.",
+          "locator": "fictional_sorting_sheet:box_b/proportions"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "A higher proportion does not determine a larger count when the two box totals are unknown.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_022",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "entity_binding"
+      ],
+      "claim": "Students attending Friday's demonstration should use the north entrance.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Friday's demonstration, originally listed in Room 4, has been moved to Room 9. The demonstration day remains Friday.",
+          "locator": "fictional_room_change_notice:friday_demo/update"
+        },
+        {
+          "source_alias": "E2",
+          "text": "All events in Room 9 use the north entrance. Events in Room 4 use the courtyard entrance.",
+          "locator": "fictional_building_guide:rooms/entrances"
+        },
+        {
+          "source_alias": "E3",
+          "text": "The east entrance is reserved for deliveries and is not assigned to student events.",
+          "locator": "fictional_building_guide:deliveries/entrance"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The changed room is Room 9, whose event entrance is north. The delivery note is not needed to establish the answer.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_023",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "visual_description_text",
+        "negation_qualification"
+      ],
+      "claim": "Project Q is shown as already finished.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Text derived from a fictional progress diagram, not pixel validation: its legend defines a triangle as planned and not yet completed, and a circle as completed. Project Q is marked with a triangle.",
+          "locator": "fictional_visual_description:project_progress/legend_and_q"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The explicitly stated legend makes Q not yet completed, contradicting finished. This is a text-evidence judgment only.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_024",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "step_order",
+        "missing_evidence"
+      ],
+      "claim": "The stamp must be applied before the card is folded.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Stamp the card before putting it in the envelope. Fold the card before putting it in the envelope.",
+          "locator": "fictional_procedure_card:cards/preparation"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Both tasks precede insertion, but no required stamp-before-fold order is supplied. A required order cannot be inferred from two common successors.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_025",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "After the single cut, ninety centimetres of ribbon remain.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The ribbon starts at exactly 1.5 metres. Exactly 60 centimetres are removed in one cut, and no length is lost to waste or any other cut.",
+          "locator": "fictional_measurement_task:ribbon/data"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Converting 1.5 metres to 150 centimetres and subtracting 60 leaves 90 centimetres.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_026",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "negation_qualification"
+      ],
+      "claim": "The outdoor trial went ahead on Tuesday despite the fog.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The schedule rule was applied without exceptions: the outdoor trial was paused on every foggy day and ran on every clear day.",
+          "locator": "fictional_activity_report:outdoor_trial/rule"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Tuesday was foggy for the entire trial period. Wednesday was clear for the entire trial period.",
+          "locator": "fictional_weather_log:trial_week/days"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The no-exceptions rule and Tuesday's fog establish that the trial was paused that day.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_027",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction",
+        "missing_evidence"
+      ],
+      "claim": "The new worksheet itself caused the improvement in scores.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "In the second session, the class used a new worksheet and also received twice as much practice time. Scores were higher than in the first session. The report did not separate the effects of the two changes.",
+          "locator": "fictional_class_comparison:worksheet_and_practice/results"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Two conditions changed together, and the report does not attribute the improvement specifically to the worksheet. It also does not establish that the worksheet had no effect.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_028",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "step_order"
+      ],
+      "claim": "The diagram permits travel from A to C through B, but offers no one-step link from A to C.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Text derived from a fictional directed-network drawing, not pixel validation: its complete edge list is A to B and B to C. Arrows are one-way allowed moves. There are no other edges.",
+          "locator": "fictional_visual_description:network/complete_edges"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The two listed arrows form a two-step A-B-C path, and the explicitly complete list excludes a direct A-C edge.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_029",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "The station's average output was fifteen cards per minute.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The station produced exactly 15 cards during a complete three-minute interval. The average output for an interval is defined here as total cards divided by the number of minutes in that interval.",
+          "locator": "fictional_rate_exercise:card_station/data_and_definition"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "The supplied definition gives 15 divided by 3, or 5 cards per minute, not 15.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_030",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "missing_evidence"
+      ],
+      "claim": "Soft handles do not improve grip.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "We did not test whether soft handles improve grip. The study compared handle colours only, and collected no grip measurements.",
+          "locator": "fictional_study_limitations:handles/scope"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "Not testing an effect is not evidence of no effect. The source contains no grip outcome that supports or contradicts this substantive claim.",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_001",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "step_order",
+        "negation_qualification"
+      ],
+      "claim": "每周汇总要等三次活动的记录都齐了再写。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "这项虚构课堂练习每周有三次活动。每次活动结束后单独写一张记录卡；只有本周三张记录卡全部完成后，才开始写本周汇总。",
+          "locator": "fictional_teaching_plan:weekly_notes/sequence"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "“三次活动的记录都齐了”准确改述了三张记录卡全部完成这一前置条件。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_002",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "选择甲方案的学生只占全班的百分之十八。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "全班共有24名学生，每人只选一个方案。18人选甲方案，6人选乙方案，所有人都已提交选择。",
+          "locator": "fictional_class_poll:plans/complete_results"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "甲方案的比例是18除以24，即75%；18是人数，不是百分比。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_003",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction"
+      ],
+      "claim": "纸带向外张开，导致风扇切换到了高速。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "演示时，老师先把风扇设为高速。这项调节使纸带向外张得更开。演示没有研究哪些因素会改变风扇的档位。",
+          "locator": "fictional_demo_notes:fan_ribbons/observed_effect"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "证据确认了风扇调速对纸带的影响，但没有确认或排除纸带对档位的反向影响，不能把因果方向倒转当成已证实。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_004",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "entity_binding"
+      ],
+      "claim": "周宁现在应向丁老师交作品。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "交作品的对象只由当前组别决定：甲组交给丁老师，乙组交给罗老师。",
+          "locator": "fictional_submission_rules:group_routing/current_rule"
+        },
+        {
+          "source_alias": "E2",
+          "text": "周宁原属乙组；今天的调整已经生效，周宁现属甲组。",
+          "locator": "fictional_group_notice:zhou_ning/effective_transfer"
+        },
+        {
+          "source_alias": "E3",
+          "text": "周宁的作品标题是《折页城》，标题不影响交件对象。",
+          "locator": "fictional_work_register:zhou_ning/title"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "生效后的组别是甲组，因此按规则交给丁老师；旧组别和作品标题都不改变结论。",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "zh_005",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification"
+      ],
+      "claim": "第二次漏写日期也可以免扣分。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "本练习只对第一次漏写日期免扣分。第二次漏写日期必须扣2分，之后每次也扣2分，没有其他豁免。",
+          "locator": "fictional_marking_guide:date_omissions/penalty"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "免扣分仅适用于第一次，第二次被明确规定必须扣分。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_006",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "entity_binding",
+        "missing_evidence"
+      ],
+      "claim": "海报的文案是由签名的组织者亲自写的。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "海报下方署名为活动组织者林遥。登记表仅说明署名表示组织责任，没有登记文案作者；组织者可能自己写，也可能请别人写。",
+          "locator": "fictional_poster_register:authorship/recorded_roles"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "组织者署名不能确定文案作者，证据明确保留了亲自写和由别人写两种可能。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_007",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "step_order"
+      ],
+      "claim": "封口之前，样袋需要先干燥并完成称量。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "样袋处理顺序规定为：先彻底干燥，再称量；称量记录写好后，才可封口。",
+          "locator": "fictional_procedure_card:sample_bags/required_order"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "干燥和称量都被明确放在封口之前，改述没有增加新步骤或颠倒顺序。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_008",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction",
+        "negation_qualification"
+      ],
+      "claim": "启动报警器会使电机温度上升。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "在这套虚构教学装置中，电机过热会触发报警器。单独启动报警器不会改变电机温度；这一点已通过隔离测试确认。",
+          "locator": "fictional_device_manual:motor_alarm/causal_checks"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "证据直接否定报警器启动对电机温度的影响，因此是明确矛盾，不只是缺少反向因果证据。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_009",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "quantities_units",
+        "negation_qualification",
+        "missing_evidence"
+      ],
+      "claim": "通过宽度检查的这块板，宽度正好是10厘米。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "宽度在8厘米到12厘米之间（含两端）的板都通过检查。记录只写了“这块板通过宽度检查”，没有记录实际宽度。",
+          "locator": "fictional_inspection_sheet:board_width/acceptance"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "合格只把宽度限定在一个区间，不能确定它恰好等于区间中点。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_010",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "quantities_units"
+      ],
+      "claim": "折线的终点读数比起点增加了一半。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "以下是虚构折线图的文字转述，不是对像素的验证：起点旁标有读数6，终点旁标有读数9；两处使用相同的读数单位。中间点的标注不影响这两个端点值。",
+          "locator": "fictional_visual_description:line_plot/endpoints"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "从6到9增加3，增量是起点6的一半。判断仅依赖给出的图中文字描述。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_011",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "step_order"
+      ],
+      "claim": "装配时应先把外壳扣上，再接好内部电线。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "装配说明要求先接好全部内部电线，检查接头无误后再扣上外壳。外壳扣上前必须完成接线和检查。",
+          "locator": "fictional_assembly_guide:training_box/order"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "主张把扣外壳放在接线之前，与接线及检查都必须先完成的规定相反。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_012",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "scope_generalization"
+      ],
+      "claim": "这个转写规则适用于所有方言的全部句子。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "课堂上用五个来自同一种方言的示例检验转写规则，五个都转写成功。其他方言和其他句子尚未检验，材料没有提出普遍适用的保证。",
+          "locator": "fictional_language_exercise:transcription/test_scope"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "有限示例的成功不能推出所有方言全部句子的适用性；未检验也不能当作已发现失败。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_013",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "entity_binding"
+      ],
+      "claim": "负责把采访录音剪成成片的是竹队。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "本次校园声音项目由松队完成现场采访并交出原始录音，竹队负责剪辑全部原始录音并输出最终成片。杉队只检查文件命名。",
+          "locator": "fictional_project_roster:school_audio/production_roles"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "将原始录音剪辑并输出成片的职责明确分配给竹队，不能与采访或文件命名检查混同。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_014",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units"
+      ],
+      "claim": "领取补助后，这套材料仍需学生自付100个代币。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "课堂商店中，基础材料包价格为80个代币，必选补充包价格为20个代币。购买这一套必须包含两个包，除此之外没有费用。",
+          "locator": "fictional_class_shop:materials/prices"
+        },
+        {
+          "source_alias": "E2",
+          "text": "学生购买这一套材料时，课堂补助承担30个代币；剩余金额由学生自付。补助本次已领取并用于这套材料。",
+          "locator": "fictional_subsidy_record:materials/applied_amount"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "总价100减去已使用的30补助，自付金额是70而非100，需要联合两条证据。",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "zh_015",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "visual_description_text",
+        "missing_evidence"
+      ],
+      "claim": "图中橙色圆片的表面是粗糙的。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "以下是虚构示意图的文字转述，不是对像素的验证：一个橙色圆片位于灰色方块左侧。转述只记录了形状、颜色和相对位置，没有记录表面纹理。",
+          "locator": "fictional_visual_description:shapes/recorded_attributes"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "文字没有提供粗糙或光滑的信息；未转述纹理不等于图中不存在这种纹理。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_016",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification"
+      ],
+      "claim": "看到两次短闪时，不应把它解释为故障提示。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "指示灯闪烁不一定表示故障。连续两次短闪只表示启动完成，不表示故障；连续三次长闪才是本装置的故障提示。",
+          "locator": "fictional_indicator_guide:training_device/signal_meanings"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "材料明确区分两次短闪和三次长闪，并直接否定两次短闪的故障含义。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_017",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "entity_binding",
+        "step_order"
+      ],
+      "claim": "A册是在B册基础上修订出来的新版。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "书架上放着同一教材的两册。A册是最早出版的初版；B册后来以A册为基础修订，是二者中唯一的新版。",
+          "locator": "fictional_library_note:teaching_book/edition_history"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "修订方向是A册到B册，A册是初版而不是基于B册的新版本。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_018",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "entity_binding"
+      ],
+      "claim": "两场活动合起来，一共有12名不同的学生参加。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "周二的拼图活动有7名学生参加，名单没有保留。",
+          "locator": "fictional_activity_log:puzzles/tuesday_count"
+        },
+        {
+          "source_alias": "E2",
+          "text": "周四的纸桥活动有5名学生参加，名单没有保留；记录没有说明两场活动是否有重复参加的人。",
+          "locator": "fictional_activity_log:paper_bridges/thursday_count"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "7加5得到参加人次，不一定是不同人数；缺少两场名单的重叠信息。12名不同学生可能成立，但不能确定。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_019",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "这张配方卡只保证室温为22度时，按卡操作能在四分钟内成形。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "这是一张虚构手工材料配方卡：完全按卡操作且室温为22度时，保证四分钟内成形。配方卡不对其他室温下的成形时间作保证。",
+          "locator": "fictional_recipe_card:craft_material/guarantee_scope"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "主张保留了操作要求、温度条件和四分钟的上限，也准确限制了保证范围。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_020",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "关掉背景音让这次配对任务完成得更快了。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "同一组先开着背景音完成一次配对任务，用时90秒；随后关掉背景音又完成一次，用时仍为90秒。报告写明，本次关闭背景音没有缩短完成时间。",
+          "locator": "fictional_task_report:matching/background_audio"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "两次时间相同，且报告明确说明本次没有缩短时间；不能把关掉背景音本身当成提速证据。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_021",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "scope_generalization"
+      ],
+      "claim": "甲箱里的每一根木条都比乙箱里的每一根长。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "甲箱木条长度的中位数为12厘米；逐根长度和最大最小值没有记录。",
+          "locator": "fictional_measurement_summary:box_jia/median"
+        },
+        {
+          "source_alias": "E2",
+          "text": "乙箱木条长度的中位数为10厘米；逐根长度和最大最小值没有记录。",
+          "locator": "fictional_measurement_summary:box_yi/median"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "中位数的大小关系不能确定两箱所有个体之间的大小关系；有无重叠都未被证实。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_022",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "negation_qualification",
+        "entity_binding"
+      ],
+      "claim": "韩青这份作品的截止日是周五。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "工作坊作品通常在周四截止，但立体模型类统一改为周五截止。这是截止日的唯一例外。",
+          "locator": "fictional_workshop_rules:submission/deadlines"
+        },
+        {
+          "source_alias": "E2",
+          "text": "韩青的作品登记类别为立体模型，没有其他类别；登记尚未变更。",
+          "locator": "fictional_work_register:han_qing/category"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "韩青的作品落入明确规定的立体模型例外，应该适用周五而非通常的周四。",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "zh_023",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "visual_description_text",
+        "entity_binding"
+      ],
+      "claim": "地图上的塔位于桥的东侧。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "以下是虚构地图的文字转述，不是对像素的验证：图上的方向标注为上北下南、左西右东。塔在桥的正左侧，同一条水平线上，两者位置不同。",
+          "locator": "fictional_visual_description:map/tower_and_bridge"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "根据已明确给出的方向标注，桥的左侧是西侧，不能说成东侧。判断不涉及查看实际图像。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_024",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "step_order",
+        "missing_evidence"
+      ],
+      "claim": "当天一定是先清点库存，再进行消毒。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "当天的工作记录只写着：“上午完成库存清点；上午完成设备消毒。”记录按任务名称排列，没有开始时间、结束时间或两项任务的先后说明。",
+          "locator": "fictional_work_log:morning/tasks"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "同在上午完成且按名称排列的记录不提供执行先后；文字中的排列顺序不能自动当作时间顺序。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_025",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "这份混合物中，白沙占60克。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "本题的混合物只含白沙和黑沙，总质量为80克。白沙质量恰好是黑沙质量的3倍，混合时没有损耗。",
+          "locator": "fictional_ratio_exercise:sand/complete_data"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "白沙与黑沙为3比1，总共4份，白沙占80克的四分之三，即60克。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_026",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "scope_generalization"
+      ],
+      "claim": "这张许可也允许把整场演示录像上传到班级网站。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "本次素材许可只允许在课堂现场展示。许可明确禁止上传整场演示录像，包括上传到仅本班可访问的网站；没有授予其他传播权限。",
+          "locator": "fictional_permission_card:classroom_material/allowed_use"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "该许可明确禁止所声称的上传用途，班级网站访问范围小也不是例外。此题仅考查给定的虚构许可文字。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_027",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "causal_direction",
+        "missing_evidence"
+      ],
+      "claim": "较高的测验成绩可以单独归因于新版练习册。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "甲班使用新版练习册并接受一对一辅导，乙班使用旧版练习册且没有辅导。甲班平均测验分数较高。记录没有分别评估练习册和辅导的影响。",
+          "locator": "fictional_teaching_comparison:workbook_and_tutoring/results"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "练习册版本和辅导条件同时不同，不能把分数差单独归因于新版练习册，也不能据此否定它可能有作用。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "zh_028",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "step_order",
+        "negation_qualification"
+      ],
+      "claim": "按图中“未通过”的分支走，检查后会回到修改步骤，而不会直接进入展示。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "以下是虚构流程图的文字转述，不是对像素的验证：修改指向检查；检查有且只有两个出口，其中“通过”指向展示，“未通过”指回修改。图中没有其他出口或箭头。",
+          "locator": "fictional_visual_description:review_flow/complete_transcription"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "完整转述明确指定未通过的出口回到修改，直接到展示的出口只属于通过分支。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_029",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "从第一轮到第二轮，命中率相对第一轮仅增长了百分之十。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "第一轮命中率为20%，第二轮为30%。这里的“相对增长百分比”定义为：两轮命中率之差除以第一轮命中率，再乘100%。",
+          "locator": "fictional_percentage_exercise:hit_rates/values_and_definition"
+        }
+      ],
+      "gold": "contradicted",
+      "rationale": "按给出的定义，相对增长为(30%-20%)/20%=50%；10是百分点差，不是相对增长百分比。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_030",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "negation_qualification",
+        "missing_evidence"
+      ],
+      "claim": "瓶身有方形标记，所以这只瓶子已经通过认证。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "所有通过认证的瓶子都贴方形标记；规则没有说明方形标记只用于认证瓶。观察记录只写了“这只瓶子贴有方形标记”，没有认证记录。",
+          "locator": "fictional_labeling_exercise:bottles/rule_and_observation"
+        }
+      ],
+      "gold": "insufficient",
+      "rationale": "“通过认证就有方形标记”不能反过来推出“有方形标记就通过认证”；缺少认证记录也不能证明未认证。",
+      "required_support_aliases": []
+    },
+    {
+      "case_id": "en_031",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification",
+        "scope_generalization"
+      ],
+      "claim": "Learners may choose to omit the reflection, but they still have to hand in the diagram.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "This exercise has one compulsory submission: the diagram. A reflection may be submitted for feedback, but leaving it out carries no penalty and does not make the submission incomplete.",
+          "locator": "fictional_assignment_sheet:diagram_and_reflection/submission_rule"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The diagram is mandatory and the reflection is optional; the claim preserves the different obligations.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_032",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "source_revision"
+      ],
+      "claim": "The current instructions give the class three quarters of an hour for the task.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Version 1 of the task sheet allows 30 minutes. Any later numbered version replaces the earlier time allowance completely.",
+          "locator": "fictional_task_sheet:time/version_1"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Version 2 was published after Version 1. Its time allowance is 45 minutes. There are no versions later than Version 2.",
+          "locator": "fictional_task_sheet:time/version_2"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Version 2 replaces the older allowance; 45 minutes is three quarters of an hour. Both the replacement rule and the new allowance matter.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_033",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "causal_direction",
+        "negation_qualification"
+      ],
+      "claim": "The test attributed the quieter rattling to the cushion rather than to slowing the wheel.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Wheel speed was held constant in the controlled test. Installing the cushion was the only changed condition, and the test established that installing it caused the measured rattling level to fall.",
+          "locator": "fictional_controlled_test:wheel_cushion/finding"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The source explicitly attributes the effect to the cushion while ruling out a speed change during the comparison.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_034",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "entity_binding"
+      ],
+      "claim": "Rafi checked the same notebook that Lina had brought, while the spare notebook was not checked.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Lina brought the striped notebook and Owen brought the plain spare. Rafi checked only the notebook brought by Lina. The striped notebook and plain spare are two different objects.",
+          "locator": "fictional_group_record:notebooks/references"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Resolving the object references identifies Lina's striped notebook as the checked one and excludes the different plain spare.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_035",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "A reading exactly on either stated boundary is rejected.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The exercise accepts a reading only when it is strictly greater than 4 and strictly less than 8. Readings of exactly 4 or exactly 8 are not accepted.",
+          "locator": "fictional_acceptance_rule:readings/open_interval"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The strict interval excludes both endpoints; the claim paraphrases the boundary condition without widening it.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_036",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "quantities_units"
+      ],
+      "claim": "Reducing the model to half its original length leaves a twelve-centimetre model.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The original model is exactly 24 centimetres long. The revised model's length is specified as one half of the original length, with no additional border or attachment counted.",
+          "locator": "fictional_scale_exercise:model/lengths"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "One half of 24 centimetres is 12 centimetres. The explicit length relation avoids assumptions about area or volume.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_037",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "step_order",
+        "negation_qualification"
+      ],
+      "claim": "Finishing the test alone does not release the parcel for dispatch if packing is unfinished.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Testing and packing may be performed in parallel. Dispatch must wait until both testing and packing are complete. A parcel with either task unfinished cannot be dispatched.",
+          "locator": "fictional_workflow_card:parcels/dispatch_gate"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Dispatch requires completion of both tasks, so completing only testing is insufficient while packing remains unfinished.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_038",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "entity_binding",
+        "negation_qualification"
+      ],
+      "claim": "Of the three named learners, only Uma can join the advanced station.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "The advanced station admits exactly the learners who have both a green badge and a completed practice sheet.",
+          "locator": "fictional_station_rules:advanced/admission"
+        },
+        {
+          "source_alias": "E2",
+          "text": "Uma has a green badge and a completed practice sheet. Vik has a green badge but no completed practice sheet. Wen has a completed practice sheet but no green badge. These are the three learners being compared.",
+          "locator": "fictional_station_register:advanced/three_learners"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "Uma alone satisfies the conjunction of both requirements. Vik and Wen each lack one explicitly necessary condition.",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "en_039",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "quantities_units",
+        "negation_qualification"
+      ],
+      "claim": "The described grid has an equal number of checked and unchecked cells, with none left undecided.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "Text derived from a fictional four-cell status grid, not pixel validation: the complete grid contains two cells marked checked and two cells marked unchecked. No cell is blank or carries another mark.",
+          "locator": "fictional_visual_description:status_grid/complete_cells"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The complete textual inventory establishes two of each status and explicitly excludes an undecided cell.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "en_040",
+      "language": "en",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "entity_binding",
+        "quantities_units"
+      ],
+      "claim": "Despite its name, the runner called Slow finished ahead of the runner called Fast.",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "In this fictional timing exercise, Slow and Fast are fixed runner names, not descriptions of ability. Slow finished the same course in 10 seconds and Fast in 12 seconds. Both started together, and lower completion time means finishing ahead.",
+          "locator": "fictional_timing_sheet:named_runners/results"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "The stated times and comparison rule determine the order; the potentially misleading names do not override the measurements.",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_031",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "causal_direction",
+        "negation_qualification"
+      ],
+      "claim": "在这次对照试验中，搅动让颗粒分散得更均匀，温度变化不是这次差异的来源。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "两杯材料在整个对照试验中保持同一固定温度，唯一改变是其中一杯被搅动15秒。试验确认，这次搅动使该杯的颗粒分布更均匀。",
+          "locator": "fictional_controlled_test:particle_mixture/finding"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "证据明确确认搅动的效果，且全程固定温度，因此主张没有把观察结果误归因于温度变化。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_032",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "negation_qualification",
+        "entity_binding"
+      ],
+      "claim": "陆川这次可以比原定时间晚一天交程序。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "补充通知只把程序类作业的截止时间延后一天，其他类别不变；所有程序类作业都适用这次延期。",
+          "locator": "fictional_deadline_notice:code_tasks/extension"
+        },
+        {
+          "source_alias": "E2",
+          "text": "陆川本次登记的作业类别是程序类，尚未提交，原定截止时间还未到。",
+          "locator": "fictional_assignment_register:lu_chuan/current_task"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "陆川的作业属于通知覆盖的类别，因此可以使用统一的一天延期。",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "case_id": "zh_033",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification",
+        "quantities_units"
+      ],
+      "claim": "这一轮没有任何一组拿到三个或更多提示。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "本轮活动每组最多可领取两个提示，而且这条上限已对所有组严格执行，没有额外赠送提示。",
+          "locator": "fictional_activity_report:hints/enforced_limit"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "对所有组实际执行的最多两个提示，等价地排除了任何组达到三个或更多。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_034",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "source_revision",
+        "quantities_units"
+      ],
+      "claim": "登记修正后，应把这次重量差记为7克。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "称量表最初把“实验前”写成50克，随后有签字更正：实验前应为47克，原50克作废。实验后为40克且无需更正。本题重量差定义为实验前减实验后。",
+          "locator": "fictional_measurement_sheet:mass_change/signed_correction"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "应使用有效的47克而非作废的50克；47减40等于7克。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_035",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "entity_binding"
+      ],
+      "claim": "送来作品的是顾鸣，但作品的作者仍是沈禾。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "沈禾独立创作了这件作品，并请顾鸣代为送到展台。交件登记注明顾鸣只是代送人，没有参与创作，也没有变更作者署名。",
+          "locator": "fictional_exhibition_register:work_delivery/roles"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "作品作者与代送人的角色不同，主张准确保留了沈禾的作者身份和顾鸣的送件行为。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_036",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "visual_description_text",
+        "quantities_units"
+      ],
+      "claim": "饼图中“阅读”和“讨论”合起来占总时间的四成。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "以下是虚构饼图的文字转述，不是对像素的验证：图表示互不重叠的课堂时间分配，“阅读”标为30%，“讨论”标为10%，“操作”标为60%，三项合计100%。",
+          "locator": "fictional_visual_description:class_time_pie/labels"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "阅读30%加讨论10%等于40%，也就是四成；互不重叠的说明保证可以直接相加。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_037",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "step_order",
+        "negation_qualification"
+      ],
+      "claim": "即使颜料已经干了，只要照片还没拍好，就不能收进档案袋。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "作品可以在等待颜料干燥时准备拍照。装入档案袋前，必须同时满足颜料已干和作品照片已拍好两个条件；任何一个没完成都不能装袋。",
+          "locator": "fictional_archive_procedure:artwork/readiness"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "装袋需要两个条件都满足，单有颜料干燥不能替代拍照完成。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_038",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "quantities_units",
+        "negation_qualification"
+      ],
+      "claim": "丢掉损坏的零件后，可用零件还够完整装出两件作品。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "起初共有17个零件，其中5个已经损坏且必须丢弃。剩余零件全部可用，每件作品恰好需要6个零件，所有可用零件都能互换使用。",
+          "locator": "fictional_assembly_exercise:usable_parts/inventory"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "17减5剩12个可用零件，每件需要6个，因此恰好能装两件；可互换条件排除了零件种类不足的问题。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_039",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "negation_qualification"
+      ],
+      "claim": "仅凭通过加试，还不能认定已满足领取徽章的全部要求。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "领取徽章必须同时满足常规考核通过和加试通过。加试可以先参加，即使尚未通过常规考核，也可能通过加试。",
+          "locator": "fictional_badge_rules:assessment/two_requirements"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "两项通过都是必要条件，且材料明确允许只通过加试的情况，因此加试通过不单独构成全部资格。",
+      "required_support_aliases": [
+        "E1"
+      ]
+    },
+    {
+      "case_id": "zh_040",
+      "language": "zh",
+      "risk_tags": [
+        "nonliteral_paraphrase",
+        "legitimate_paraphrase",
+        "multi_source_synthesis",
+        "quantities_units",
+        "entity_binding"
+      ],
+      "claim": "这两个小组共有12名不同的学生。",
+      "evidence": [
+        {
+          "source_alias": "E1",
+          "text": "晨光组有7名学生，晚星组有5名学生。",
+          "locator": "fictional_group_roster:two_groups/counts"
+        },
+        {
+          "source_alias": "E2",
+          "text": "本次分组中，每名学生只属于一个组；晨光组和晚星组没有任何共同成员。",
+          "locator": "fictional_group_rules:two_groups/nonoverlap"
+        }
+      ],
+      "gold": "supported",
+      "rationale": "人数为7加5，且明确没有重叠成员，所以12是不同学生人数而不仅是人次。",
+      "required_support_aliases": [
+        "E1",
+        "E2"
+      ]
+    }
+  ]
+}

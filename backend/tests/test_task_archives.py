@@ -22,6 +22,7 @@ from app.models import FrameGrid, TaskRecord
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "task_archives_v1.json"
+CLAIM_V7_EXPORT = Path(__file__).parent / "fixtures" / "task_archives_claim_v7_projection.json"
 EXPORTS = ("bundle", "sanitized-bundle", "support-package")
 CASES = (("bundle", True, False), ("bundle", True, True), ("bundle", False, False),
          ("sanitized-bundle", True, False), ("sanitized-bundle", False, False),
@@ -60,6 +61,10 @@ def public_contract():
         schema["paths"].pop("/api/tasks/{task_id}/section-review" + suffix)
     for name in ("SectionReviewPreview", "SectionReviewConfirm"):
         schema["components"]["schemas"].pop(name)
+    # #142 adds two independently tested read-only relation endpoints. Keep
+    # the frozen contract for all pre-existing routes and archive/schema bytes.
+    for path in ("/api/concept-relations", "/api/concept-relations/preview"):
+        schema["paths"].pop(path)
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),
@@ -73,12 +78,14 @@ def public_contract():
     }
 
 
-def archive_case(kind, rich, annotations=False):
+def archive_case(kind, rich, annotations=False, *, claim_map=None):
     """Exercise the legacy handlers and real ZIP file copying with fixed inputs."""
     with tempfile.TemporaryDirectory() as tmp, chdir(tmp), ExitStack() as stack:
         assets = {"artifacts/captions.vtt": b"WEBVTT\r\n\r\n00:00.000 --> 00:03.000\r\nSynthetic\r\n",
                   "artifacts/grid.png": b"synthetic-grid\x00\xff", "artifacts/note.md": NOTE.encode(),
-                  "artifacts/task.json.bak": b"untouched-backup", "artifacts/events.jsonl": b"untouched-events"}
+                  "artifacts/task.json.bak": b"untouched-backup", "artifacts/events.jsonl": b"untouched-events",
+                  "artifacts/claim_evidence_map.json": json.dumps(claim_map, ensure_ascii=False).encode(),
+                  "artifacts/personal_annotations.json": json.dumps(ANNOTATION, ensure_ascii=False).encode()}
         for name, content in assets.items():
             path = Path(name)
             path.parent.mkdir(exist_ok=True)
@@ -95,6 +102,8 @@ def archive_case(kind, rich, annotations=False):
         history = [{"id": "qa-fixture", "answer": "Synthetic answer", "citations": []}] if rich else []
         claims = {"schema_version": 6, "claims": [{"id": "claim-fixture", "text": "保留待核对文字", "status": "pending_review"}],
                   "counts": {"pending_review": 1}, "quality": {"review_required": True}} if rich else {}
+        if claim_map is not None:
+            claims = claim_map
         patches = {"get_task": task, "read_note": NOTE if rich else "", "read_transcript": transcript,
                    "read_visual_index": visual_index, "read_task_qa_history": history, "read_json": claims,
                    "read_resource_inventory": {"candidate_count": 2} if rich else {},
@@ -126,10 +135,37 @@ class TaskArchiveContracts(unittest.TestCase):
 
     def test_actual_member_bytes_order_headers_and_unchanged_source_backups(self):
         expected = json.loads(FIXTURE.read_text(encoding="utf-8"))["archives"]
+        migration = json.loads(CLAIM_V7_EXPORT.read_text(encoding="utf-8"))["archives"]
         for case in CASES:
             with self.subTest(case=case):
                 snapshot, _ = archive_case(*case)
-                self.assertEqual(snapshot, expected[str(case)])
+                frozen = copy.deepcopy(expected[str(case)])
+                if str(case) in migration:
+                    # Only the exported legacy claim projection and resulting
+                    # ZIP length intentionally change. Every other member and
+                    # header retains the original frozen byte-level contract.
+                    change = migration[str(case)]
+                    frozen["headers"]["content-length"] = change["content_length"]
+                    member = next(item for item in frozen["members"] if item["name"] == "claim_evidence_map.json")
+                    member["text"] = change["claim_map_text"]
+                self.assertEqual(snapshot, frozen)
+
+    def test_old_direct_export_is_downgraded_without_mutating_raw_maps_or_personal_bytes(self):
+        raw = {"schema_version": 6, "claims": [{"claim_id": "legacy-direct", "text": "It is safe.",
+            "claim_type": "transcript", "verification": "direct", "review_required": False,
+            "evidence_ids": ["old-source"], "candidate_evidence_ids": ["other-candidate"]}],
+            "counts": {"transcript": 1}, "quality": {"direct_count": 1, "supported_count": 1, "coverage_ratio": 1}}
+        before = copy.deepcopy(raw)
+        for kind in ("bundle", "sanitized-bundle"):
+            snapshot, _ = archive_case(kind, True, True, claim_map=raw)
+            exported = json.loads(next(item["text"] for item in snapshot["members"] if item["name"] == "claim_evidence_map.json"))
+            self.assertEqual(raw, before)
+            self.assertEqual(exported["claims"][0]["verification"], "pending_review")
+            self.assertEqual(exported["claims"][0]["evidence_ids"], [])
+            self.assertEqual(exported["claims"][0]["candidate_evidence_ids"], ["other-candidate", "old-source"])
+            self.assertEqual(exported["quality"]["direct_count"], 0)
+            self.assertEqual(exported["quality"]["supported_count"], 0)
+            self.assertEqual(exported["counts"]["transcript"], 0)
 
     def test_missing_task_errors_and_query_validation_keep_http_contract(self):
         client = TestClient(main.app)

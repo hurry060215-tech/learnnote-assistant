@@ -30,12 +30,15 @@ jobs:
           npm run verify --prefix integrations/obsidian-learnnote
       - name: Download pinned official Obsidian without changing system security
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p build/obsidian-native "$RUNNER_TEMP/obsidian-mount" "$RUNNER_TEMP/obsidian-app"
           python - <<'PY'
           import hashlib, json, os, pathlib, urllib.request
           version = '1.14.4'
-          with urllib.request.urlopen(f'https://api.github.com/repos/obsidianmd/obsidian-releases/releases/tags/v{version}') as response:
+          request = urllib.request.Request(f'https://api.github.com/repos/obsidianmd/obsidian-releases/releases/tags/v{version}', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request) as response:
               release = json.load(response)
           assets = [a for a in release['assets'] if a['name'].endswith('.dmg')]
           assert len(assets) == 1, 'Expected one official macOS DMG'

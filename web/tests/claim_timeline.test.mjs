@@ -22,7 +22,7 @@ const evidence = [
 const claim = (id, start, refs, candidates = [], verification = "direct") => ({ claim_id: id, text: phrase,
   source_span: { start, end: start + Array.from(phrase).length, unit: "unicode_codepoints" },
   evidence_ids: refs, candidate_evidence_ids: candidates, verification });
-const map = { schema_version: 6, task_id: "one", source_revision: revision, source_revision_kind: "normalized_note_utf8_sha256", evidence,
+const map = { schema_version: 7, task_id: "one", source_revision: revision, source_revision_kind: "normalized_note_utf8_sha256", evidence,
   claims: [claim("first", first, ["e-first", "e-repeat"]), claim("second", second, [], ["e-candidate"], "located_only")] };
 const copy = value => JSON.parse(JSON.stringify(value));
 

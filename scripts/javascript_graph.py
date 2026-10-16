@@ -167,6 +167,11 @@ def local_specifiers(tokens):
 CLASSIC_PROVIDERS = {
     "LearnNoteCaptureClassification": "extension/capture-classification.js",
     "LearnNoteCaptureRanking": "extension/capture-ranking.js",
+    "LearnNoteSourceIdentity": "extension/source-identity.js",
+    "LearnNoteRequestContext": "extension/request-context.js",
+    "LearnNoteCookieContext": "extension/cookie-context.js",
+    "LearnNoteBackendTransport": "extension/backend-transport.js",
+    "LearnNoteContentMediaHints": "extension/content-media-hints.js",
     # Chapter-only API in PR #241 retains this filename and namespace.
     "LearnNoteStudyEvidence": "extension/content-study-evidence.js",
     "LearnNoteTaskFormat": "web/task-format.js",
@@ -176,6 +181,11 @@ CLASSIC_PROVIDERS = {
 PURE_ALLOWED = {
     "extension/capture-classification.js": set(),
     "extension/capture-ranking.js": {"extension/capture-classification.js"},
+    "extension/source-identity.js": set(),
+    "extension/request-context.js": {"extension/capture-classification.js"},
+    "extension/cookie-context.js": set(),
+    "extension/backend-transport.js": set(),
+    "extension/content-media-hints.js": {"extension/capture-classification.js"},
     "extension/content-study-evidence.js": set(),
     "web/task-format.js": set(),
     "web/task-display.js": {"web/task-format.js"},

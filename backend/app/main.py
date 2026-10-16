@@ -72,6 +72,7 @@ from .routers.notes import notes_router
 from .routers.events import events_router
 from .routers.personal import personal_router
 from .routers.courses import course_router
+from .routers.concept_relations import concept_relation_router
 from .routers.learning_spaces import learning_space_router
 from .routers.ranges import range_router
 from .summarizer import chat_completion_provider_kwargs, llm_base_host, llm_model_supports_vision, llm_provider_name, visual_window_review_question_lines
@@ -107,6 +108,7 @@ app.include_router(notes_router)
 app.include_router(events_router)
 app.include_router(personal_router)
 app.include_router(course_router)
+app.include_router(concept_relation_router)
 app.include_router(learning_space_router)
 app.include_router(range_router)
 app.include_router(support_router)

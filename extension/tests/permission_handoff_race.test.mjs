@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile(new URL("../background.js", import.meta.url), "utf8");
+const transportSource = await readFile(new URL("../backend-transport.js", import.meta.url), "utf8");
 const tab = { id: 7, url: "https://course.example.com/lesson" };
 const page = { page_url: tab.url, resources: [], browser_subtitles: [] };
 
@@ -60,7 +61,7 @@ function harness({ revokeDuringPairing = false, revokeBeforeRetry = false, grant
     }
   };
   vm.createContext(context);
-  vm.runInContext(source.slice(source.indexOf("function backendErrorMessage("), source.indexOf("function mergeAndRankResources(")), context);
+  vm.runInContext(transportSource.slice(transportSource.indexOf("function backendErrorMessage("), transportSource.indexOf("return Object.freeze({ storedBackendUrl")), context);
   vm.runInContext(source.slice(source.indexOf("function normalizePermissionOrigin("), source.indexOf("chrome.permissions?.onRemoved")), context);
   vm.runInContext(source.slice(source.indexOf("chrome.runtime.onMessage.addListener((message, sender, sendResponse)")), context);
   return {

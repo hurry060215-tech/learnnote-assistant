@@ -1,0 +1,13 @@
+{
+  "baseline": "b590e55169cebd4ca34a7312b16fef1aa3ecec01",
+  "fixture": "OpenAI Whisper JFK public fixture",
+  "model": "Systran/faster-whisper-tiny d90ca5fe260221311c53c58e660288d3deb8d356",
+  "device": "cpu/int8",
+  "elapsed_seconds": 1.322762940020766,
+  "source": "faster-whisper",
+  "language": "en",
+  "segments": 1,
+  "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+  "remote_calls": 0,
+  "scope": "Actual short English CPU ASR smoke with cached pinned model and public audio; not long-course, Chinese, remote-provider or semantic summary quality."
+}

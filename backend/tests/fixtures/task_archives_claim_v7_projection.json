@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "change": "Only newly exported v6 claim verdicts are downgraded by the v7 read contract; raw v1 fixtures and files remain unchanged.",
+  "archives": {
+    "('bundle', True, False)": {
+      "content_length": "4097",
+      "claim_map_text": "{\n  \"schema_version\": 6,\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\",\n      \"candidate_evidence_ids\": [],\n      \"evidence_ids\": [],\n      \"claim_type\": \"unsupported\",\n      \"verification\": \"pending_review\",\n      \"review_required\": true\n    }\n  ],\n  \"counts\": {\n    \"transcript\": 0,\n    \"visual\": 0,\n    \"document\": 0,\n    \"inference\": 0,\n    \"unsupported\": 1\n  },\n  \"quality\": {\n    \"review_required\": true,\n    \"claim_count\": 1,\n    \"supported_count\": 0,\n    \"unsupported_count\": 1,\n    \"inference_count\": 0,\n    \"direct_count\": 0,\n    \"located_only_count\": 0,\n    \"pending_review_count\": 1,\n    \"coverage_ratio\": 0.0\n  },\n  \"requires_rebuild\": true\n}"
+    },
+    "('bundle', True, True)": {
+      "content_length": "4418",
+      "claim_map_text": "{\n  \"schema_version\": 6,\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\",\n      \"candidate_evidence_ids\": [],\n      \"evidence_ids\": [],\n      \"claim_type\": \"unsupported\",\n      \"verification\": \"pending_review\",\n      \"review_required\": true\n    }\n  ],\n  \"counts\": {\n    \"transcript\": 0,\n    \"visual\": 0,\n    \"document\": 0,\n    \"inference\": 0,\n    \"unsupported\": 1\n  },\n  \"quality\": {\n    \"review_required\": true,\n    \"claim_count\": 1,\n    \"supported_count\": 0,\n    \"unsupported_count\": 1,\n    \"inference_count\": 0,\n    \"direct_count\": 0,\n    \"located_only_count\": 0,\n    \"pending_review_count\": 1,\n    \"coverage_ratio\": 0.0\n  },\n  \"requires_rebuild\": true\n}"
+    },
+    "('sanitized-bundle', True, False)": {
+      "content_length": "1640",
+      "claim_map_text": "{\n  \"schema_version\": 6,\n  \"task_id\": \"archive-fixture\",\n  \"title\": \"Synthetic 中文 café 🧭\",\n  \"claims\": [\n    {\n      \"id\": \"claim-fixture\",\n      \"text\": \"保留待核对文字\",\n      \"status\": \"pending_review\",\n      \"candidate_evidence_ids\": [],\n      \"evidence_ids\": [],\n      \"claim_type\": \"unsupported\",\n      \"verification\": \"pending_review\",\n      \"review_required\": true\n    }\n  ],\n  \"counts\": {\n    \"transcript\": 0,\n    \"visual\": 0,\n    \"document\": 0,\n    \"inference\": 0,\n    \"unsupported\": 1\n  },\n  \"quality\": {\n    \"review_required\": true,\n    \"claim_count\": 1,\n    \"supported_count\": 0,\n    \"unsupported_count\": 1,\n    \"inference_count\": 0,\n    \"direct_count\": 0,\n    \"located_only_count\": 0,\n    \"pending_review_count\": 1,\n    \"coverage_ratio\": 0.0\n  }\n}"
+    }
+  }
+}

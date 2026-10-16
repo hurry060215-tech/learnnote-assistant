@@ -1,0 +1,194 @@
+{
+  "baseline": "b590e55169cebd4ca34a7312b16fef1aa3ecec01",
+  "sha256": {
+    "background": "4505cfb206d56b865ab4534e51c15e205f9dc5db3d5111761373fd373a6ad7a0",
+    "content": "b069ce6a2f5f189ff19dafd61a68253f828e7ed10d8d1df97d2dcdeaf278db44"
+  },
+  "snapshot": {
+    "source": {
+      "tab_id": 7,
+      "canonical_page_url": "https://course.example.test/lesson?chapterId=2",
+      "platform": "course.example.test",
+      "platform_video_id": "",
+      "BVID": "",
+      "page_title": "Readable lesson",
+      "active_video": {
+        "current_src": "https://media.example.test/main.mp4?token=synthetic&quality=hd"
+      },
+      "resource_fingerprint": "af9fce1a",
+      "captured_at": "2023-11-14T22:13:20.000Z"
+    },
+    "sourceMatch": true,
+    "sourceTabMismatch": false,
+    "titleFallback": "Lesson",
+    "headers": {
+      "Referer": "https://course.example.test/lesson?chapterId=2&utm_source=fixture#seek",
+      "Authorization": "synthetic credential",
+      "Sec-CH-UA": "fixture"
+    },
+    "persistedHeaders": {
+      "Referer": "https://course.example.test/lesson?chapterId=2&utm_source=fixture#seek",
+      "Custom": "clean value"
+    },
+    "redirectedHeaders": [
+      {
+        "Authorization": "synthetic",
+        "Range": "bytes=0-"
+      },
+      {
+        "Range": "bytes=0-"
+      },
+      {
+        "Range": "bytes=0-"
+      },
+      {
+        "Range": "bytes=0-"
+      }
+    ],
+    "bodies": [
+      {
+        "type": "form",
+        "content": "field=first&field=second&empty="
+      },
+      {
+        "type": "text",
+        "content": "fixture text"
+      },
+      null
+    ],
+    "persistedBodies": [
+      {
+        "type": "text",
+        "content": "synthetic=1"
+      },
+      {},
+      {
+        "type": "dropped",
+        "reason": "too_large_or_binary"
+      }
+    ],
+    "responseHeaders": {
+      "location": "/final.mp4",
+      "content-length": "42"
+    },
+    "resolvedUrl": "https://media.example.test/final.mp4",
+    "partitionKeys": [
+      {
+        "topLevelSite": "https://course.example.test"
+      },
+      {
+        "topLevelSite": "https://course.example.test",
+        "hasCrossSiteAncestor": true
+      }
+    ],
+    "cookieUrls": [
+      "https://course.example.test/lesson?chapterId=2&utm_source=fixture#seek",
+      "https://media.example.test/main.mp4?token=synthetic&quality=hd",
+      "https://frame.example.test/player"
+    ],
+    "selectedCookies": [
+      {
+        "name": "session",
+        "value": "synthetic-partition",
+        "domain": ".example.test",
+        "path": "/",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test"
+        }
+      }
+    ],
+    "cookieSummary": {
+      "count": 1,
+      "domain_count": 1,
+      "partitioned_count": 1,
+      "partition_key_count": 2,
+      "target_count": 3,
+      "domains": [
+        {
+          "domain": "example.test",
+          "count": 1
+        }
+      ]
+    },
+    "lookupDetails": [
+      {
+        "url": "https://media.example.test",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test",
+          "hasCrossSiteAncestor": true
+        }
+      },
+      {
+        "url": "https://media.example.test"
+      },
+      {
+        "domain": "media.example.test",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test",
+          "hasCrossSiteAncestor": true
+        }
+      },
+      {
+        "domain": "media.example.test"
+      },
+      {
+        "domain": "example.test",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test",
+          "hasCrossSiteAncestor": true
+        }
+      },
+      {
+        "domain": "example.test"
+      },
+      {
+        "url": "https://127.0.0.1/video",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test",
+          "hasCrossSiteAncestor": true
+        }
+      },
+      {
+        "url": "https://127.0.0.1/video"
+      },
+      {
+        "domain": "127.0.0.1",
+        "partitionKey": {
+          "topLevelSite": "https://course.example.test",
+          "hasCrossSiteAncestor": true
+        }
+      },
+      {
+        "domain": "127.0.0.1"
+      }
+    ],
+    "media": [
+      "blob",
+      "unknown",
+      "subtitle",
+      "fragment"
+    ],
+    "decoded": [
+      "https://media.example.test/main.mp4?id=2",
+      "https%3A%2F%2Fmedia.example.test%2Fmain.mp4%3Fid%3D2",
+      "https%253A%252F%252Fmedia.example.test%252Fmain.mp4%253Fid%253D2"
+    ],
+    "escaped": "https://media.example.test/main.mp4?id=2",
+    "baseUrls": [
+      "https://cdn.example.test/course/",
+      "https://course.example.test/course/",
+      "https://cdn.example.test/"
+    ],
+    "split": [
+      "main.mp4",
+      "main%2Emp4",
+      "main%252Emp4"
+    ],
+    "relative": "https://course.example.test/media/main.mp4",
+    "hints": [
+      "audio/mp4",
+      true,
+      false
+    ]
+  }
+}

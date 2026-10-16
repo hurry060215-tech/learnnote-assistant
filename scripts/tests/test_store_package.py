@@ -40,6 +40,21 @@ class StorePackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, helper):
                 MODULE.validate(path)
 
+    def test_product_domain_helpers_are_required_by_every_distribution(self):
+        helpers = {"source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js"}
+        for helper in helpers:
+            with self.subTest(helper=helper):
+                self.assertIn(helper, MODULE.REQUIRED)
+                for relative in ("scripts/package-extension.ps1", "scripts/audit-release-tree.py", "desktop/main.py", ".github/workflows/macos-release.yml"):
+                    self.assertIn(helper, (ROOT / relative).read_text(encoding="utf-8"), relative)
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "extension.zip"
+                    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+                        for name in MODULE.REQUIRED - {helper}:
+                            archive.writestr(name, "fixture")
+                    with self.assertRaisesRegex(ValueError, helper):
+                        MODULE.validate(path)
+
     def test_secret_like_package_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "extension.zip"

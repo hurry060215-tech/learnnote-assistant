@@ -126,7 +126,7 @@ const makeElement = (tag, text = '') => {
   return node;
 };
 const delayedNote = 'Synthetic exact claim.', delayedRevision = createHash('sha256').update(delayedNote).digest('hex');
-const delayedMap = { schema_version: 6, task_id: 'same-task', source_revision_kind: 'normalized_note_utf8_sha256', source_revision: delayedRevision,
+const delayedMap = { schema_version: 7, task_id: 'same-task', source_revision_kind: 'normalized_note_utf8_sha256', source_revision: delayedRevision,
   evidence: [{ evidence_id: 'old-source', kind: 'transcript', start: 1, end: 2 }],
   claims: [{ claim_id: 'same-claim', text: delayedNote, source_span: { unit: 'unicode_codepoints', start: 0, end: delayedNote.length },
     evidence_ids: ['old-source'], candidate_evidence_ids: [], verification: 'direct' }],

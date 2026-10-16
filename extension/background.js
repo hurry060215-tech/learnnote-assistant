@@ -1,5 +1,5 @@
 // Load pure helpers before registering browser event handlers.
-importScripts("capture-classification.js", "capture-ranking.js");
+importScripts("capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js");
 // var preserves historical global helper names for integrations and tests.
 var {
   VIDEO_RE,
@@ -51,6 +51,11 @@ var {
   mergeResource,
 } = globalThis.LearnNoteCaptureRanking;
 
+var { bestPageTitle, buildSourceIdentity, sourceIdentityMatches } = globalThis.LearnNoteSourceIdentity;
+var { hasByteRangeRequest, requestHeadersForUrl, addActiveVideoRequestContext, safePersistedRequestHeaders, requestBodyHasContent, safePersistedRequestBody, looksLikeMediaRequest, normalizeRequestHeaders, requestBodyFromFormData, requestBodyFromRaw, responseHeadersObject, responseResolvedUrl, requestContextUrl, responseResource } = globalThis.LearnNoteRequestContext;
+var { cookieLookupDetailsForUrls, cookieContextSummary, cookieUrlsForContext } = globalThis.LearnNoteCookieContext;
+var { cookiePartitionKeysForContext, cookiesForUrls } = globalThis.LearnNoteCookieContext.createCookieContext({ getCookies: () => chrome.cookies });
+
 const MEDIA_RE = /\.(mp4|m4v|webm|mov|mkv|flv|avi|m4a|mp3|aac|opus|ogg|oga|wav|m3u8|mpd)(\?|#|$)/i;
 const LOCAL_EXPORT_KIND_RE = /(?:(?:markdown|visual-windows|bundle|diagnostics|media|manifest|audit|subtitles|qa|resource-inventory|page-preflight-report)|clips\/[^/?#]+)/;
 const LOCAL_TASK_FILE_RE = new RegExp(`^https?:\\/\\/(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?\\/api\\/tasks\\/[^/]+(?:\\/media|\\/exports\\/${LOCAL_EXPORT_KIND_RE.source})(?:[?#].*)?$`, "i");
@@ -59,6 +64,18 @@ const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
 const EXTENSION_PROTOCOL_VERSION = 1;
 const BACKEND_HEARTBEAT_ALARM = "learnnote-backend-heartbeat";
 const BACKEND_HEARTBEAT_PERIOD_MINUTES = 2;
+var { storedBackendUrl, pairingHeaders, sendBackendHeartbeat, backendErrorMessage, backendJsonResponse, postJsonWithRetry } = globalThis.LearnNoteBackendTransport.createBackendTransport({
+  getStorage: () => chrome.storage,
+  fetch: (...args) => fetch(...args),
+  hasFetch: () => typeof fetch === "function",
+  getExtensionVersion: () => chrome.runtime?.getManifest?.().version,
+  now: () => Date.now(),
+  setTimeout: (...args) => setTimeout(...args),
+  clearTimeout: timer => clearTimeout(timer),
+  createAbortController: () => typeof AbortController === "function" ? new AbortController() : null,
+  defaultBackendUrl: DEFAULT_BACKEND_URL,
+  protocolVersion: EXTENSION_PROTOCOL_VERSION
+});
 const resourceByTab = new Map();
 const pageStateByTab = new Map();
 const requestHeadersByRequestId = new Map();
@@ -68,46 +85,9 @@ const contextUpdateTimers = new Map();
 const captureEpochByTab = new Map();
 const activeCaptureUntilByTab = new Map();
 const ACTIVE_CAPTURE_TTL_MS = 5 * 60 * 1000;
-const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const MAX_CAPTURE_LOG_RESOURCES = 120;
 const CAPTURE_LOG_TTL_MS = 30 * 60 * 1000;
 const CAPTURE_LOG_KEY_PREFIX = "captureLog:";
-const REQUEST_HEADER_ALLOWLIST = new Set([
-  "accept",
-  "accept-language",
-  "authorization",
-  "content-type",
-  "origin",
-  "range",
-  "referer",
-  "sec-ch-ua",
-  "sec-ch-ua-mobile",
-  "sec-ch-ua-platform",
-  "sec-fetch-dest",
-  "sec-fetch-mode",
-  "sec-fetch-site",
-  "user-agent",
-  "x-requested-with"
-]);
-const RESPONSE_HEADER_ALLOWLIST = new Set(["accept-ranges", "content-disposition", "content-length", "content-location", "content-range", "content-type", "location"]);
-const REQUEST_HEADER_CANONICAL = {
-  "accept": "Accept",
-  "accept-language": "Accept-Language",
-  "authorization": "Authorization",
-  "content-type": "Content-Type",
-  "origin": "Origin",
-  "range": "Range",
-  "referer": "Referer",
-  "sec-ch-ua": "Sec-CH-UA",
-  "sec-ch-ua-mobile": "Sec-CH-UA-Mobile",
-  "sec-ch-ua-platform": "Sec-CH-UA-Platform",
-  "sec-fetch-dest": "Sec-Fetch-Dest",
-  "sec-fetch-mode": "Sec-Fetch-Mode",
-  "sec-fetch-site": "Sec-Fetch-Site",
-  "user-agent": "User-Agent",
-  "x-requested-with": "X-Requested-With"
-};
-const PERSISTED_REQUEST_HEADER_DENYLIST = new Set(["authorization", "cookie", "proxy-authorization"]);
 
 function activateCapture(tabId) {
   const normalized = Number(tabId);
@@ -122,69 +102,6 @@ function captureActive(tabId) {
   if (expiresAt > Date.now()) return true;
   activeCaptureUntilByTab.delete(normalized);
   return false;
-}
-
-async function storedBackendUrl() {
-  if (!chrome.storage?.local?.get) return DEFAULT_BACKEND_URL;
-  try {
-    const stored = await chrome.storage.local.get(["backendUrl"]);
-    const value = String(stored?.backendUrl || "").trim();
-    if (/^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/i.test(value)) return value;
-  } catch {
-    // Use the stable desktop default when extension storage is unavailable.
-  }
-  return DEFAULT_BACKEND_URL;
-}
-
-async function pairingHeaders(backendUrl, headers = {}) {
-  const normalized = String(backendUrl || DEFAULT_BACKEND_URL).replace(/\/$/, "");
-  try {
-    const stored = await chrome.storage.local.get({ pairingTokens: {} });
-    const cached = stored?.pairingTokens?.[normalized];
-    if (!cached || Number(cached.expiresAt || 0) <= Date.now() + 15000) {
-      const response = await fetch(`${normalized}/api/pairing/issue`);
-      const payload = await response.json().catch(() => ({}));
-      if (response.ok && payload?.token) {
-        const pairingTokens = { ...(stored?.pairingTokens || {}), [normalized]: {
-          token: String(payload.token),
-          expiresAt: Number(payload.expires_at || 0) * 1000
-        }};
-        await chrome.storage.local.set({ pairingTokens });
-        return { ...headers, "X-LearnNote-Pairing": String(payload.token) };
-      }
-    } else {
-      return { ...headers, "X-LearnNote-Pairing": String(cached.token) };
-    }
-  } catch {
-    // The backend will return a clear 401 if pairing is unavailable.
-  }
-  return { ...headers };
-}
-
-async function sendBackendHeartbeat(backendUrl) {
-  if (typeof fetch !== "function") return false;
-  const extensionVersion = String(chrome.runtime?.getManifest?.().version || "");
-  const controller = typeof AbortController === "function" ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 3000) : 0;
-  try {
-    const response = await fetch(`${backendUrl}/api/extension/heartbeat`, {
-      method: "POST",
-      ...(controller ? { signal: controller.signal } : {}),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        extension_version: extensionVersion,
-        protocol_version: EXTENSION_PROTOCOL_VERSION,
-        source: "background"
-      })
-    });
-    if (!response?.ok) return false;
-    const payload = await response.json();
-    return payload?.ok === true && payload.extension_connected === true && payload.protocol_version === EXTENSION_PROTOCOL_VERSION;
-  } catch {
-    return false;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 async function heartbeatInstalledClient() {
@@ -209,52 +126,6 @@ chrome.alarms?.onAlarm?.addListener?.(alarm => {
 });
 scheduleBackendHeartbeat();
 
-function backendErrorMessage(payload, fallback) {
-  const detail = payload?.detail;
-  if (typeof detail === "string" && detail.trim()) return detail.trim();
-  if (detail?.message) return String(detail.message);
-  if (payload?.message) return String(payload.message);
-  if (payload?.error) return String(payload.error);
-  return fallback;
-}
-
-async function backendJsonResponse(res, fallback) {
-  const payload = await res.json().catch(() => ({}));
-  if (res.ok === false) {
-    return {
-      ...payload,
-      ok: false,
-      error: backendErrorMessage(payload, fallback || `HTTP ${res.status}`),
-      status: res.status
-    };
-  }
-  return payload;
-}
-
-async function postJsonWithRetry(url, body, fallback, attempts = 2, beforeSend = null) {
-  let lastError = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const headers = await pairingHeaders(new URL(url).origin, { "Content-Type": "application/json" });
-      const blocked = beforeSend ? await beforeSend() : null;
-      if (blocked) return blocked;
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body)
-      });
-      if (response.ok !== false || response.status < 500 || attempt === attempts - 1) {
-        return await backendJsonResponse(response, fallback);
-      }
-    } catch (error) {
-      lastError = error;
-      if (attempt === attempts - 1) break;
-    }
-    await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
-  }
-  return { ok: false, error: lastError?.message || fallback };
-}
-
 function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder = false } = {}) {
   const baseResources = Array.isArray(resources) ? resources : resourceByTab.get(tab?.id) || [];
   const hinted = (baseResources || []).filter(item => !isImageResource(item)).map(item => withPlaybackHints(item, page, tab));
@@ -267,87 +138,11 @@ function mergeAndRankResources(resources, page = {}, tab = {}, { preserveOrder =
   return preserveOrder ? merged : merged.sort(compareResourceCandidates);
 }
 
-function requestRangeHeader(resource = {}) {
-  const headers = resource.request_headers || {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (String(name).toLowerCase() === "range") return String(value || "");
-  }
-  return "";
-}
-
-function hasByteRangeRequest(resource = {}) {
-  return /^bytes=\d*-\d*$/i.test(requestRangeHeader(resource).trim());
-}
-
 function sameSite(urlA, urlB) {
   const hostA = urlHost(urlA);
   const hostB = urlHost(urlB);
   if (!hostA || !hostB) return false;
   return hostA === hostB || hostA.endsWith(`.${hostB}`) || hostB.endsWith(`.${hostA}`);
-}
-
-function cookieEligibleUrl(value) {
-  const url = String(value || "").trim();
-  if (/^https?:\/\//i.test(url)) return url;
-  const blob = /^blob:(https?:\/\/[^/]+)/i.exec(url);
-  return blob ? blob[1] : "";
-}
-
-function cookieDomainCandidates(value) {
-  const url = cookieEligibleUrl(value);
-  if (!url) return [];
-  try {
-    const host = new URL(url).hostname;
-    if (!host || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host === "localhost") return host ? [host] : [];
-    const parts = host.split(".").filter(Boolean);
-    const domains = [];
-    for (let index = 0; index <= Math.max(0, parts.length - 2); index += 1) {
-      const domain = parts.slice(index).join(".");
-      if (domain && !domains.includes(domain)) domains.push(domain);
-    }
-    return domains;
-  } catch {
-    return [];
-  }
-}
-
-function originForUrl(value = "") {
-  try {
-    return new URL(value).origin;
-  } catch {
-    return "";
-  }
-}
-
-function requestHeadersForUrl(resource = {}, url = "") {
-  const headers = { ...(resource.request_headers || {}) };
-  const origins = [resource.url, url].map(value => {
-    try {
-      if (!/^https?:\/\/[^/?#\\\s@]+(?:[/?#]|$)/i.test(value || "") || /[\u0000-\u0020\\]/.test(value)) return "";
-      return new URL(value).origin;
-    } catch {
-      return "";
-    }
-  });
-  if (!origins[0] || origins[0] !== origins[1]) {
-    for (const name of Object.keys(headers)) {
-      if (name.toLowerCase() === "authorization") delete headers[name];
-    }
-  }
-  return headers;
-}
-
-function addActiveVideoRequestContext(resource = {}, page = {}, tab = {}) {
-  if (resource.source !== "activeVideo") return resource;
-  if (!/^https?:\/\//i.test(String(resource.url || ""))) return resource;
-  const headers = { ...(resource.request_headers || {}) };
-  const referer = resource.frame_url || page.active_video?.frame_url || page.page_url || tab.url || "";
-  const normalized = normalizeRequestHeaders([
-    { name: "Referer", value: headers.Referer || referer },
-    { name: "Origin", value: headers.Origin || originForUrl(referer) },
-    ...Object.entries(headers).map(([name, value]) => ({ name, value }))
-  ]);
-  return { ...resource, request_headers: normalized };
 }
 
 function withPlaybackHints(resource, page = {}, tab = {}) {
@@ -498,46 +293,6 @@ function advanceCaptureEpoch(tabId) {
   return next;
 }
 
-function safePersistedRequestHeaders(headers = {}) {
-  const safe = {};
-  for (const [name, value] of Object.entries(headers || {})) {
-    const lower = String(name || "").toLowerCase();
-    if (PERSISTED_REQUEST_HEADER_DENYLIST.has(lower)) continue;
-    const cleaned = String(value || "").replace(/[\r\n]+/g, " ").trim();
-    if (cleaned) safe[name] = cleaned.slice(0, 512);
-  }
-  return safe;
-}
-
-function requestBodyHasContent(details = {}) {
-  const requestBody = details.requestBody || {};
-  if (requestBody.formData && Object.keys(requestBody.formData || {}).length) return true;
-  return Array.isArray(requestBody.raw) && requestBody.raw.some(part => part?.bytes);
-}
-
-function safePersistedRequestBody(resource = {}) {
-  const body = resource.request_body || {};
-  const type = String(body.type || "").trim();
-  const content = String(body.content || "");
-  if (type === "dropped") {
-    return {
-      type: "dropped",
-      reason: String(body.reason || "too_large_or_binary").slice(0, 80)
-    };
-  }
-  if (!type || !content) return {};
-  const method = String(resource.method || "").toUpperCase();
-  const kind = resource.kind || classify(resource.url || "", resource.mime || "");
-  const replayable = ["POST", "PUT", "PATCH"].includes(method) && (
-    ["video", "hls", "dash"].includes(kind) || PLAYBACK_ENDPOINT_RE.test(resource.url || "")
-  );
-  if (!replayable) return {};
-  if (!["form", "text"].includes(type) || content.length > MAX_REQUEST_BODY_BYTES) {
-    return { type: "dropped", reason: "too_large_or_binary" };
-  }
-  return { type, content };
-}
-
 function captureLogResource(resource = {}) {
   if (!resource?.url || isLocalLearnNoteTaskFile(resource.url)) return null;
   return {
@@ -666,32 +421,6 @@ function notifyContextUpdated(tabId, reason = "media") {
   contextUpdateTimers.set(tabId, timer);
 }
 
-function looksLikeMediaRequest(details) {
-  const url = details?.url || "";
-  if (details?.type === "media") return true;
-  if (classify(url, "") !== "unknown") return true;
-  if (/^(xmlhttprequest|fetch)$/i.test(String(details?.type || ""))) {
-    const hasRange = (details.requestHeaders || []).some(header =>
-      String(header.name || "").toLowerCase() === "range" && /^bytes=/i.test(String(header.value || "").trim())
-    );
-    if (hasRange) return true;
-    if (requestHeaderArrayHasMediaDestination(details.requestHeaders || [])) return true;
-  }
-  return PLAYBACK_ENDPOINT_RE.test(url);
-}
-
-function normalizeRequestHeaders(requestHeaders = []) {
-  const headers = {};
-  for (const header of requestHeaders || []) {
-    const lower = String(header.name || "").toLowerCase();
-    if (!REQUEST_HEADER_ALLOWLIST.has(lower)) continue;
-    const value = String(header.value || "").replace(/[\r\n]+/g, " ").trim();
-    if (!value) continue;
-    headers[REQUEST_HEADER_CANONICAL[lower] || header.name] = value;
-  }
-  return headers;
-}
-
 function rememberRequestHeaders(details) {
   if (!details?.requestId) return;
   if (!looksLikeMediaRequest(details)) return;
@@ -703,59 +432,19 @@ function rememberRequestHeaders(details) {
     epoch: captureEpoch(details.tabId),
     time: Date.now()
   });
-  if (requestHeadersByRequestId.size <= 300) return;
-  const oldest = [...requestHeadersByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
-  for (const [requestId] of oldest) requestHeadersByRequestId.delete(requestId);
+  trimRequestCache(requestHeadersByRequestId, 300, 60);
+}
+
+function trimRequestCache(cache, maximum, batch) {
+  if (cache.size <= maximum) return;
+  const oldest = [...cache.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, batch);
+  for (const [requestId] of oldest) cache.delete(requestId);
 }
 
 function trimRequestContextCaches() {
-  if (requestHeadersByRequestId.size > 300) {
-    const oldest = [...requestHeadersByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
-    for (const [requestId] of oldest) requestHeadersByRequestId.delete(requestId);
-  }
-  if (requestBodiesByRequestId.size > 300) {
-    const oldest = [...requestBodiesByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 60);
-    for (const [requestId] of oldest) requestBodiesByRequestId.delete(requestId);
-  }
-  if (requestEpochByRequestId.size > 1000) {
-    const oldest = [...requestEpochByRequestId.entries()].sort((a, b) => a[1].time - b[1].time).slice(0, 200);
-    for (const [requestId] of oldest) requestEpochByRequestId.delete(requestId);
-  }
-}
-
-function requestBodyFromFormData(formData = {}) {
-  const params = new URLSearchParams();
-  for (const [name, values] of Object.entries(formData || {})) {
-    for (const value of Array.isArray(values) ? values : [values]) {
-      params.append(name, String(value ?? ""));
-      if (params.toString().length > MAX_REQUEST_BODY_BYTES) return null;
-    }
-  }
-  const content = params.toString();
-  return content ? { type: "form", content } : null;
-}
-
-function requestBodyFromRaw(raw = []) {
-  const chunks = [];
-  let total = 0;
-  for (const part of raw || []) {
-    if (!part?.bytes) continue;
-    const bytes = new Uint8Array(part.bytes);
-    total += bytes.byteLength;
-    if (total > MAX_REQUEST_BODY_BYTES) return null;
-    chunks.push(bytes);
-  }
-  if (!chunks.length) return null;
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  if (merged.some(byte => byte === 0)) return null;
-  const content = new TextDecoder("utf-8", { fatal: false }).decode(merged).trim();
-  if (!content || /[\u0000-\u0008\u000e-\u001f]/.test(content)) return null;
-  return { type: "text", content };
+  trimRequestCache(requestHeadersByRequestId, 300, 60);
+  trimRequestCache(requestBodiesByRequestId, 300, 60);
+  trimRequestCache(requestEpochByRequestId, 1000, 200);
 }
 
 function rememberRequestBody(details = {}) {
@@ -846,162 +535,6 @@ function normalizeBrowserSubtitles(items = []) {
     normalized.push(cue);
   }
   return normalized.sort((a, b) => a.start - b.start || a.end - b.end);
-}
-
-function isUnreadableTitle(value) {
-  const text = String(value || "").trim();
-  if (!text) return true;
-  const compact = text.replace(/\s+/g, "");
-  if (!compact) return true;
-  if (/^[?？\uFFFD]+$/.test(compact)) return true;
-  if (compact.length >= 4) {
-    const suspectCount = (compact.match(/[?？\uFFFD]/g) || []).length;
-    if (suspectCount / compact.length >= 0.65) return true;
-  }
-  return false;
-}
-
-function bestPageTitle(...values) {
-  for (const value of values) {
-    const text = String(value || "").trim();
-    if (text && !isUnreadableTitle(text)) return text;
-  }
-  return "";
-}
-
-function canonicalSourcePageUrl(value = "") {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    url.hostname = url.hostname.toLowerCase();
-    const keep = new Set(["v", "p", "list", "index", "courseId", "clazzid", "knowledgeId", "chapterId", "objectid"]);
-    for (const key of [...url.searchParams.keys()]) {
-      if (!keep.has(key)) url.searchParams.delete(key);
-    }
-    if ((url.protocol === "https:" && url.port === "443") || (url.protocol === "http:" && url.port === "80")) url.port = "";
-    url.pathname = url.pathname.replace(/\/{2,}/g, "/");
-    if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/$/, "");
-    url.searchParams.sort();
-    return url.href;
-  } catch {
-    return String(value || "").split("#")[0].trim();
-  }
-}
-
-function sourceHostnameMatches(hostname = "", domain = "") {
-  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
-  const root = String(domain || "").toLowerCase().replace(/\.$/, "");
-  return host === root || host.endsWith(`.${root}`);
-}
-
-function sourcePlatformIdentity(urlValue = "", page = {}) {
-  const url = String(urlValue || "");
-  const bilibili = /(?:bilibili\.com\/video\/|b23\.tv\/)(BV[0-9A-Za-z]+)/i.exec(url);
-  if (bilibili) return { platform: "bilibili", platformVideoId: bilibili[1] };
-  try {
-    const parsed = new URL(url);
-    if (sourceHostnameMatches(parsed.hostname, "youtube.com") || sourceHostnameMatches(parsed.hostname, "youtu.be")) {
-      const id = sourceHostnameMatches(parsed.hostname, "youtu.be") ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v");
-      return { platform: "youtube", platformVideoId: id || "" };
-    }
-    if (sourceHostnameMatches(parsed.hostname, "chaoxing.com") || /xuexitong/i.test(parsed.hostname)) {
-      const active = page.active_video || {};
-      const id = parsed.searchParams.get("objectid") || parsed.searchParams.get("knowledgeId") || active.objectid || page.objectid || "";
-      return { platform: "chaoxing", platformVideoId: String(id) };
-    }
-    return { platform: parsed.hostname.replace(/^www\./, "") || "web", platformVideoId: "" };
-  } catch {
-    return { platform: "web", platformVideoId: "" };
-  }
-}
-
-function stableSourceMediaUrl(value = "") {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    const volatile = /^(?:token|sign|signature|expires?|deadline|auth|auth_key|wsSecret|wsTime|timestamp|ts|t|rnd|random|callback)$/i;
-    for (const key of [...url.searchParams.keys()]) {
-      if (volatile.test(key)) url.searchParams.delete(key);
-    }
-    url.searchParams.sort();
-    return url.href;
-  } catch {
-    return String(value || "").split("#")[0];
-  }
-}
-
-function sourceFingerprintHash(value = "") {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function sourceResourceFingerprint(page = {}, resources = []) {
-  const stable = [];
-  const active = page.active_video || {};
-  const activeSrc = active.current_src || active.currentSrc || active.src || "";
-  if (activeSrc) stable.push(`active:${stableSourceMediaUrl(activeSrc)}`);
-  const ranked = [...(resources || [])]
-    .filter(item => item?.url && !/subtitle|caption|vtt|srt/i.test(String(item.kind || "")))
-    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
-  for (const item of ranked) {
-    const url = stableSourceMediaUrl(item.resolved_url || item.url);
-    if (!url) continue;
-    const key = `${String(item.kind || "media").toLowerCase()}:${url}`;
-    if (!stable.includes(key)) stable.push(key);
-    if (stable.length >= 12) break;
-  }
-  return sourceFingerprintHash(stable.sort().join("\n") || "no-media");
-}
-
-function buildSourceIdentity(tab = {}, page = {}, resources = [], capturedAt = Date.now()) {
-  const pageUrl = page.page_url || tab.url || "";
-  const platform = sourcePlatformIdentity(pageUrl, page);
-  const active = page.active_video || {};
-  const platformVideoId = platform.platformVideoId || "";
-  return {
-    tab_id: Number.isFinite(Number(tab.id)) ? Number(tab.id) : null,
-    canonical_page_url: canonicalSourcePageUrl(pageUrl),
-    platform: platform.platform,
-    platform_video_id: platformVideoId,
-    BVID: platform.platform === "bilibili" ? platformVideoId : "",
-    page_title: bestPageTitle(page.title, tab.title),
-    active_video: { current_src: String(active.current_src || active.currentSrc || active.src || "").trim() },
-    resource_fingerprint: sourceResourceFingerprint(page, resources),
-    captured_at: new Date(capturedAt).toISOString()
-  };
-}
-
-function sourceIdentityKey(identity = {}) {
-  return [
-    identity.tab_id ?? "",
-    identity.canonical_page_url || "",
-    identity.platform || "",
-    identity.platform_video_id || identity.BVID || "",
-    identity.page_title || "",
-    identity.active_video?.current_src || "",
-    identity.resource_fingerprint || ""
-  ].join("\u001f");
-}
-
-function sourceIdentityMatches(expected, actual) {
-  if (!expected || !actual) return false;
-  const expectedTab = Number(expected.tab_id);
-  const actualTab = Number(actual.tab_id);
-  if (Number.isFinite(expectedTab) && Number.isFinite(actualTab) && expectedTab !== actualTab) return false;
-  const expectedUrl = String(expected.canonical_page_url || "");
-  const actualUrl = String(actual.canonical_page_url || "");
-  if (expectedUrl && actualUrl && expectedUrl !== actualUrl) return false;
-  const expectedVideoId = String(expected.platform_video_id || expected.BVID || "");
-  const actualVideoId = String(actual.platform_video_id || actual.BVID || "");
-  if (expectedVideoId && actualVideoId && expectedVideoId !== actualVideoId) return false;
-  const expectedSrc = stableSourceMediaUrl(expected.active_video?.current_src || "");
-  const actualSrc = stableSourceMediaUrl(actual.active_video?.current_src || "");
-  if (!expectedVideoId && !actualVideoId && expectedSrc && actualSrc && expectedSrc !== actualSrc) return false;
-  return Boolean(expectedUrl || actualUrl || expectedVideoId || actualVideoId || expectedSrc || actualSrc);
 }
 
 function normalizePageForFrame(page = {}, frameId = 0, tab = {}) {
@@ -1358,34 +891,6 @@ try {
   registerBeforeSendHeadersListener(["requestHeaders"]);
 }
 
-function responseHeadersObject(responseHeaders = []) {
-  const headers = {};
-  for (const header of responseHeaders || []) {
-    const lower = String(header.name || "").toLowerCase();
-    if (RESPONSE_HEADER_ALLOWLIST.has(lower)) {
-      const value = String(header.value || "").replace(/[\r\n]+/g, " ").trim();
-      if (value) headers[lower] = value;
-    }
-  }
-  return headers;
-}
-
-function responseResolvedUrl(url = "", headers = {}) {
-  const raw = headers.location || headers["content-location"] || "";
-  if (!raw) return "";
-  try {
-    return new URL(raw, url).href;
-  } catch {
-    return "";
-  }
-}
-
-function requestContextUrl(details = {}, requestHeaders = {}) {
-  const referer = String(requestHeaders.Referer || requestHeaders.referer || "").trim();
-  if (/^https?:\/\//i.test(referer)) return referer;
-  return details.documentUrl || details.initiator || "";
-}
-
 function isLocalLearnNoteTaskFile(url = "") {
   return LOCAL_TASK_FILE_RE.test(String(url || ""));
 }
@@ -1397,29 +902,8 @@ function recordResponseMedia(details = {}, requestHeaders = {}, requestBody = pe
   const mime = headers["content-type"] || "";
   const kind = classifyCompletedRequest(details, mime, requestHeaders, headers);
   if (kind === "unknown") return;
-  const contentLength = Number(headers["content-length"] || 0);
   const resolvedUrl = responseResolvedUrl(details.url || "", headers);
-  const contextUrl = requestContextUrl(details, requestHeaders);
-  const resource = {
-    url: details.url,
-    resolved_url: resolvedUrl,
-    source: "webRequest",
-    kind,
-    mime,
-    headers,
-    request_type: details.type || "",
-    method: details.method || "",
-    status_code: details.statusCode || null,
-    content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
-    initiator: details.initiator || "",
-    frame_id: details.frameId ?? null,
-    frame_url: contextUrl,
-    page_url: contextUrl,
-    time_stamp: details.timeStamp || Date.now(),
-    request_headers: requestHeaders,
-    request_body: requestBody || {},
-    label: kind.toUpperCase()
-  };
+  const resource = responseResource(details, headers, requestHeaders, requestBody, kind, resolvedUrl, kind.toUpperCase(), Date.now);
   addResource(details.tabId, resource, false);
   addResolvedMediaResource(details.tabId, resource);
   notifyContextUpdated(details.tabId, "media");
@@ -1437,28 +921,7 @@ function recordRedirectMedia(details = {}, requestHeaders = {}, requestBody = pe
   const currentKind = classifyCompletedRequest(details, mime, requestHeaders, headers);
   const kind = redirectKind !== "unknown" ? redirectKind : currentKind;
   if (kind === "unknown") return;
-  const contentLength = Number(headers["content-length"] || 0);
-  const contextUrl = requestContextUrl(details, requestHeaders);
-  const resource = {
-    url: details.url,
-    resolved_url: redirectUrl || "",
-    source: "webRequest",
-    kind,
-    mime,
-    headers,
-    request_type: details.type || "",
-    method: details.method || "",
-    status_code: details.statusCode || null,
-    content_length: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
-    initiator: details.initiator || "",
-    frame_id: details.frameId ?? null,
-    frame_url: contextUrl,
-    page_url: contextUrl,
-    time_stamp: details.timeStamp || Date.now(),
-    request_headers: requestHeaders,
-    request_body: requestBody || {},
-    label: `${kind.toUpperCase()} redirect`
-  };
+  const resource = responseResource(details, headers, requestHeaders, requestBody, kind, redirectUrl || "", `${kind.toUpperCase()} redirect`, Date.now);
   addResource(details.tabId, resource, false);
   addResolvedMediaResource(details.tabId, resource);
   notifyContextUpdated(details.tabId, "media");
@@ -1644,7 +1107,7 @@ async function collectFramePageData(tab, frameId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
-        files: ["content-study-evidence.js", "content.js"]
+        files: ["capture-classification.js", "content-study-evidence.js", "content-media-hints.js", "content.js"]
       });
       const response = await chrome.tabs.sendMessage(tab.id, { type: "collect-page-data" }, { frameId });
       const page = rememberFramePage(tab.id, frameId, response, tab);
@@ -1898,189 +1361,6 @@ globalThis.__learnnoteE2E = {
     };
   }
 };
-
-function normalizedCookiePartitionKey(key = null) {
-  if (!key || typeof key !== "object") return null;
-  const normalized = {};
-  if (typeof key.topLevelSite === "string" && key.topLevelSite) normalized.topLevelSite = key.topLevelSite;
-  if (typeof key.hasCrossSiteAncestor === "boolean") normalized.hasCrossSiteAncestor = key.hasCrossSiteAncestor;
-  return Object.keys(normalized).length ? normalized : null;
-}
-
-function cookiePartitionKeyId(key = null) {
-  const normalized = normalizedCookiePartitionKey(key);
-  return normalized ? JSON.stringify(normalized) : "";
-}
-
-function cookiePartitionPreference(partitionKeys = []) {
-  const ranks = new Map();
-  for (const partitionKey of partitionKeys || []) {
-    const id = cookiePartitionKeyId(partitionKey);
-    if (id && !ranks.has(id)) ranks.set(id, ranks.size);
-  }
-  return ranks;
-}
-
-async function cookiePartitionKeysForContext(page = {}, tab = {}, resources = []) {
-  if (!chrome.cookies?.getPartitionKey || !Number.isFinite(tab.id)) return [];
-  const frameIds = [];
-  const addFrameId = value => {
-    const frameId = Number(value);
-    if (!Number.isFinite(frameId) || frameId < 0 || frameIds.includes(frameId)) return;
-    frameIds.push(frameId);
-  };
-  addFrameId(0);
-  addFrameId(page.active_video?.frame_id);
-  for (const frame of page.frames || []) addFrameId(frame.frame_id);
-  for (const resource of resources || []) addFrameId(resource.frame_id);
-
-  const keys = [];
-  const seen = new Set();
-  for (const frameId of frameIds) {
-    try {
-      const key = normalizedCookiePartitionKey(await chrome.cookies.getPartitionKey({ tabId: tab.id, frameId }));
-      if (!key) continue;
-      const id = JSON.stringify(key);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      keys.push(key);
-    } catch {
-      // Older browsers or inaccessible frames can continue with unpartitioned cookies.
-    }
-  }
-  return keys;
-}
-
-function cookieLookupDetailsForUrls(urls, partitionKeys = []) {
-  const details = [];
-  const seen = new Set();
-  const add = detail => {
-    const key = JSON.stringify(detail);
-    if (seen.has(key)) return;
-    seen.add(key);
-    details.push(detail);
-  };
-  const addWithPartitions = detail => {
-    for (const partitionKey of partitionKeys || []) {
-      const normalized = normalizedCookiePartitionKey(partitionKey);
-      if (normalized) add({ ...detail, partitionKey: normalized });
-    }
-    add(detail);
-  };
-
-  for (const raw of urls || []) {
-    const url = cookieEligibleUrl(raw);
-    if (!/^https?:\/\//i.test(url)) continue;
-    addWithPartitions({ url });
-    for (const domain of cookieDomainCandidates(url)) {
-      addWithPartitions({ domain });
-    }
-  }
-  return details;
-}
-
-async function cookiesForUrls(urls, partitionKeys = []) {
-  const exactCookies = new Map();
-  const partitionRanks = cookiePartitionPreference(partitionKeys);
-  let ordinal = 0;
-  for (const details of cookieLookupDetailsForUrls(urls, partitionKeys)) {
-    try {
-      const cookies = await chrome.cookies.getAll(details);
-      for (const cookie of cookies) {
-        const partitionKey = normalizedCookiePartitionKey(cookie.partitionKey) || normalizedCookiePartitionKey(details.partitionKey);
-        const normalizedCookie = partitionKey ? { ...cookie, partitionKey } : { ...cookie };
-        const partitionId = cookiePartitionKeyId(partitionKey);
-        const key = `${normalizedCookie.domain}|${normalizedCookie.path}|${normalizedCookie.name}|${partitionId}`;
-        if (!exactCookies.has(key)) {
-          exactCookies.set(key, {
-            cookie: normalizedCookie,
-            partitionId,
-            ordinal: ordinal++
-          });
-        }
-      }
-    } catch {
-      // Ignore browser-internal, malformed, or unsupported cookie lookups.
-    }
-  }
-
-  const grouped = new Map();
-  const hasPreferredPartitions = partitionRanks.size > 0;
-  for (const record of exactCookies.values()) {
-    const cookie = record.cookie;
-    const identity = `${cookie.domain}|${cookie.path}|${cookie.name}`;
-    const partitionRank = partitionRanks.has(record.partitionId) ? partitionRanks.get(record.partitionId) : null;
-    const partitionScore = partitionRank !== null
-      ? 10000 - partitionRank
-      : (record.partitionId ? 5000 : (hasPreferredPartitions ? 0 : 1000));
-    const scored = { ...record, score: partitionScore };
-    const previous = grouped.get(identity);
-    if (!previous || scored.score > previous.score || (scored.score === previous.score && scored.ordinal < previous.ordinal)) {
-      grouped.set(identity, scored);
-    }
-  }
-
-  return [...grouped.values()]
-    .sort((left, right) => left.ordinal - right.ordinal)
-    .map(record => record.cookie);
-}
-
-function cookieContextSummary(cookies = [], urls = [], partitionKeys = []) {
-  const domains = new Map();
-  let partitioned = 0;
-  for (const cookie of cookies || []) {
-    const domain = String(cookie.domain || "").replace(/^\./, "") || "(host)";
-    domains.set(domain, (domains.get(domain) || 0) + 1);
-    if (cookie.partitionKey) partitioned += 1;
-  }
-  const domainSummary = [...domains.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(0, 8)
-    .map(([domain, count]) => ({ domain, count }));
-  return {
-    count: cookies.length,
-    domain_count: domains.size,
-    partitioned_count: partitioned,
-    partition_key_count: partitionKeys.length,
-    target_count: urls.length,
-    domains: domainSummary
-  };
-}
-
-function cookieUrlsForContext(page = {}, tab = {}, resources = []) {
-  const urls = [];
-  const add = value => {
-    const url = cookieEligibleUrl(value);
-    if (!url) return;
-    if (!urls.includes(url)) urls.push(url);
-  };
-
-  add(page.page_url);
-  add(tab.url);
-  add(page.active_video?.src);
-  add(page.active_video?.frame_url);
-  for (const frame of page.frames || []) {
-    add(frame.page_url);
-  }
-
-  for (const resource of resources || []) {
-    add(resource.url);
-    add(resource.resolved_url);
-    add(resource.page_url);
-    add(resource.frame_url);
-    add(resource.initiator);
-    add(resource.blob_url);
-    const headers = resource.request_headers || {};
-    for (const [name, value] of Object.entries(headers)) {
-      if (/^(referer|origin)$/i.test(name)) add(value);
-    }
-    const responseHeaders = resource.headers || {};
-    for (const [name, value] of Object.entries(responseHeaders)) {
-      if (/^(location|content-location)$/i.test(name)) add(value);
-    }
-  }
-  return urls;
-}
 
 function normalizePermissionOrigin(value = "") {
   const raw = String(value || "").trim();

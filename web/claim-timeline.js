@@ -15,7 +15,7 @@ export function claimEvidenceStatus(claim, targets) {
 export const claimSourceLabel = target => `${target.candidate ? "候选来源 · " : "来源 · "}${target.source === "screen-ocr" ? "画面字幕 OCR（未核验） · " : ""}${target.locator || "出处"}`;
 
 export function claimTimelineModel(mapped, { taskId, text, revision }) {
-  if (typeof text !== "string" || !mapped || mapped.schema_version !== 6 || mapped.requires_rebuild || mapped.task_id !== taskId ||
+  if (typeof text !== "string" || !mapped || mapped.schema_version !== 7 || mapped.requires_rebuild || mapped.task_id !== taskId ||
       mapped.source_revision_kind !== "normalized_note_utf8_sha256" || !/^[a-f0-9]{64}$/.test(revision || "") ||
       mapped.source_revision !== revision || !Array.isArray(mapped.claims) || !Array.isArray(mapped.evidence)) return null;
   const points = Array.from(text), evidence = new Map(), ids = new Set(), entries = [];

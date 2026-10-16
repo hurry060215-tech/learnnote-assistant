@@ -18,6 +18,8 @@ on:
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/e2e-extension-smoke.py"
+      - "scripts/serve-samples.py"
       - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
       - "scripts/personal-review-acceptance.cjs"
@@ -42,6 +44,8 @@ on:
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/sidepanel-progressive-acceptance.cjs"
+      - "scripts/e2e-extension-smoke.py"
+      - "scripts/serve-samples.py"
       - "scripts/section-review-*"
       - "scripts/personal-anchors-*"
       - "scripts/personal-review-acceptance.cjs"
@@ -245,6 +249,58 @@ jobs:
             build/personal-anchors-acceptance/learning-backup-error-mobile.png
             build/course-question-ui
             build/model-route-ui
+          if-no-files-found: warn
+          retention-days: 14
+
+  extension-runtime:
+    name: Real Edge extension smoke (synthetic local media)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      LEARNNOTE_DATA_DIR: ${{ github.workspace }}/build/extension-smoke-data
+      ORT_DISABLE_TELEMETRY: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements*.txt
+            backend/constraints*.txt
+      - name: Install constrained local fixture dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r backend/requirements.test.txt -c backend/requirements.windows-py312.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw "Extension smoke dependency installation failed" }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { throw "Extension smoke dependency consistency failed" }
+      - name: Exercise the real unpacked extension in a fresh Edge profile
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/extension-smoke | Out-Null
+          python scripts/e2e-extension-smoke.py --browser edge --backend-port 0 --samples-port 0 --debug-port 0 2>&1 | Tee-Object build/extension-smoke/run.log
+          $smokeExit = $LASTEXITCODE
+          @{
+            commit = $env:GITHUB_SHA
+            browser = "Edge"
+            extension_source = "unpacked checkout"
+            data = "synthetic local fixtures only"
+            exit_code = $smokeExit
+            scope = "heartbeat, content injection, MP4/HLS, POST request, iframe/cookie context, Side Panel handoff"
+            excluded = "real accounts, native optional-permission prompt, store install or upgrade, long-task recovery"
+          } | ConvertTo-Json | Set-Content -Encoding UTF8 build/extension-smoke/report.json
+          if ($smokeExit -ne 0) { throw "Real Edge extension smoke failed" }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: extension-runtime-${{ github.run_id }}
+          path: |
+            build/extension-smoke
+            build/extension-smoke-data/test-runs/e2e-logs
           if-no-files-found: warn
           retention-days: 14
 

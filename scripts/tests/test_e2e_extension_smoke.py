@@ -30,6 +30,20 @@ class ExtensionSmokeIsolationTests(unittest.TestCase):
         self.assertIn("Chrome for Testing", source)
         self.assertIn("extension-browser.log", source)
 
+    def test_hosted_real_extension_gate_uses_fresh_synthetic_profile_and_no_secrets(self) -> None:
+        workflow = (ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8")
+        job = workflow.split("  extension-runtime:", 1)[1].split("  public-site:", 1)[0]
+        self.assertIn("runs-on: windows-latest", job)
+        self.assertIn("--browser edge --backend-port 0 --samples-port 0 --debug-port 0", job)
+        self.assertIn("LEARNNOTE_DATA_DIR:", job)
+        self.assertIn("unpacked checkout", job)
+        self.assertIn("excluded =", job)
+        self.assertNotIn("secrets.", job)
+        self.assertNotIn("--keep-browser", job)
+        self.assertNotIn("--no-sandbox", job)
+        self.assertNotIn("browser-profiles", job.split("path:", 1)[1])
+        self.assertIn("contents: read", workflow)
+
     def test_extension_smoke_requires_backend_protocol_compatibility(self) -> None:
         source = (ROOT / "scripts" / "e2e-extension-smoke.py").read_text(encoding="utf-8")
         self.assertIn('heartbeat_health.get("extension_protocol_version") != heartbeat_health.get("protocol_version")', source)

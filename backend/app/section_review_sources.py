@@ -89,20 +89,32 @@ def select_inputs(snapshot, section_id, offset, redact):
     # Candidate retrieval is location only. Include adjacent original cues to
     # avoid dropping a nearby negation/qualification from the model's view.
     evidence = mapped["evidence"]
-    wanted = {key for claim in chosen for key in claim["evidence_ids"] + claim["candidate_evidence_ids"]}
-    positions = {i for i, item in enumerate(evidence) if item["evidence_id"] in wanted}
-    positions |= {near for i in positions for near in (i - 1, i + 1) if 0 <= near < len(evidence)}
-    if not positions:
-        positions = set(range(len(evidence)))  # Explicitly disclosed bounded fallback.
-    selected, characters = [], 0
-    for index in sorted(positions):
-        item = evidence[index]
-        text = redact(item["text"])
-        if len(selected) >= MAX_SOURCE_ITEMS or characters + len(text) > MAX_SOURCE_CHARACTERS:
-            continue  # Never cut an original cue or hide that the view is partial.
-        characters += len(text)
-        selected.append({"source_alias": f"E{len(selected) + 1}", "text": text,
-                         "locator": item["locator"], "evidence_id": item["evidence_id"]})
+    by_id = {item["evidence_id"]: index for index, item in enumerate(evidence)}
+    ranked = [[by_id[key] for key in dict.fromkeys(claim["evidence_ids"] + claim["candidate_evidence_ids"])
+               if key in by_id] for claim in chosen]
+    # Interleave claim candidates by rank. Chronological first-fit could let an
+    # early unrelated neighbour consume the budget before the actual match.
+    cores = list(dict.fromkeys(index for rank in range(max(map(len, ranked), default=0))
+                              for candidates in ranked if rank < len(candidates) for index in [candidates[rank]]))
+    if not cores:
+        cores = list(range(len(evidence)))  # Explicitly disclosed bounded fallback.
+    def context(index):
+        return {near for near in (index - 1, index, index + 1) if 0 <= near < len(evidence)}
+    positions = {near for index in cores for near in context(index)}
+    redacted = {index: redact(evidence[index]["text"]) for index in positions}
+    included, characters = set(), 0
+    for index in cores:
+        extra = context(index) - included
+        size = sum(len(redacted[near]) for near in extra)
+        if len(included) + len(extra) > MAX_SOURCE_ITEMS or characters + size > MAX_SOURCE_CHARACTERS:
+            continue
+        # Select the entire adjacent context or none of it. A budget must not
+        # silently remove the cue containing a nearby "not" or qualification.
+        included.update(extra)
+        characters += size
+    selected = [{"source_alias": f"E{alias + 1}", "text": redacted[index],
+                 "locator": evidence[index]["locator"], "evidence_id": evidence[index]["evidence_id"]}
+                for alias, index in enumerate(sorted(included))]
     projected_claims = [{"claim_alias": f"C{index + 1}", "text": redact(claim["text"])} for index, claim in enumerate(chosen)]
     blocked = "review_source_insufficient" if not selected else (
         "review_claims_oversized" if sum(len(item["text"]) for item in projected_claims) > MAX_CLAIM_CHARACTERS else None)
@@ -112,4 +124,10 @@ def select_inputs(snapshot, section_id, offset, redact):
                          "next_offset": offset + MAX_CLAIMS if offset + MAX_CLAIMS < len(claims) else None,
                          "candidate_sources": len(positions), "selected_sources": len(selected),
                          "source_characters": characters, "source_truncated": len(selected) < len(positions),
-                         "source_scope": "selected_text_candidates_not_full_course"}, "blocking_reason": blocked}
+                         "source_scope": "selected_text_candidates_not_full_course",
+                         "selection_method": "rank_interleaved_complete_adjacent_context",
+                         "claim_candidate_coverage": [{"claim_alias": f"C{index + 1}",
+                             "candidate_sources": len(candidates),
+                             "selected_candidate_sources": sum(candidate in included for candidate in candidates),
+                             "complete_context_candidates": sum(context(candidate) <= included for candidate in candidates)}
+                             for index, candidates in enumerate(ranked)]}, "blocking_reason": blocked}

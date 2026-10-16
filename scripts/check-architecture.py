@@ -19,6 +19,10 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "backend/app/concept_relations.py": 240,
+    "backend/app/concept_relation_sources.py": 220,
+    "backend/app/concept_relation_snapshot.py": 130,
+    "backend/app/routers/concept_relations.py": 90,
     "backend/app/main.py": 4705,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
@@ -33,9 +37,14 @@ MODULE_SIZE_LIMITS = {
     "backend/app/qa_history.py": 130,
     "backend/app/task_archives.py": 140,
     "extension/page_hook.js": 2855,
-    "extension/background.js": 2500,
-    "extension/content.js": 2200,
+    "extension/background.js": 1800,
+    "extension/content.js": 1850,
     "extension/content-study-evidence.js": 110,
+    "extension/source-identity.js": 170,
+    "extension/request-context.js": 260,
+    "extension/cookie-context.js": 230,
+    "extension/backend-transport.js": 125,
+    "extension/content-media-hints.js": 405,
     "extension/sidepanel.js": 1523,
     "extension/sidepanel-progress.js": 220,
     "extension/capture-classification.js": 290,
@@ -77,6 +86,7 @@ LEGACY_DEFERRED_EDGES = {
     ("app.task_queue", "app.range_learning"): "Dispatch a recovered range intent",
 }
 PURE_MODULE_DEPENDENCIES = {
+    "concept_relations": {"concept_identity", "course_comparison", "graph_snapshot"},
     "course_comparison": {"concept_identity", "text_indices"},
     "text_indices": set(),
     "graph_snapshot": {"concept_identity", "course_comparison"},
@@ -128,7 +138,7 @@ EXTRACTED_BACKEND_MODULES = (
     "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives",
 )
 EXTENSION_SCRIPT_BUDGET_BYTES = 335000
-EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js")
+EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")
 CLASSIC_TASK_SCRIPT_BUDGET = 10100
 CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js")
 

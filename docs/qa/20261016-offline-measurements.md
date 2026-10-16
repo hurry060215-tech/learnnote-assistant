@@ -61,6 +61,17 @@ existing OCR-capable environment with the repository's markdown-it-py 4.2.0.
 No remote vision calls were made. A 50% remote-call reduction with unchanged
 fact coverage is still unproven; cache savings cannot establish it.
 
+## Actual local ASR smoke
+
+The cached, pinned public Whisper JFK fixture and faster-whisper-tiny model
+documented in [the prior provenance record](20261009-followthrough.md) were
+SHA-256 checked again. The actual current `transcribe_audio` path loaded the
+local model in CPU/int8 mode and returned one English segment in 1.323 seconds.
+No model downloads or remote inference were used. This is a short English
+inference smoke, not Chinese/long-course/remote-provider quality acceptance.
+The runtime emitted a restricted-environment UCX VFS socket warning; inference
+completed successfully despite it. [Exact result](20261016-offline-measurements/public-asr.json).
+
 ## Evidence files
 
 - [Outline report](20261016-offline-measurements/progressive-outline.json)

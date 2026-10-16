@@ -10,7 +10,7 @@ from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
 from .markdown_structure import structural_lines
 
 
-CLAIM_SCHEMA_VERSION = 6
+CLAIM_SCHEMA_VERSION = 7
 _TIMESTAMP = r"\d{1,3}:\d{2}(?::\d{2})?"
 _RANGE_RE = re.compile(rf"(?P<start>{_TIMESTAMP})\s*(?:-|–|—|~|～)\s*(?P<end>{_TIMESTAMP})")
 _POINT_RE = re.compile(rf"(?<![\d:])(?P<point>{_TIMESTAMP})(?![\d:])")
@@ -47,20 +47,28 @@ def _overlap(left_start: float, left_end: float, right_start: float, right_end: 
     return max(left_start, right_start) <= min(left_end, right_end)
 
 
-def _quotation_text(text: str) -> str:
-    # Only bracketed citation syntax is removable. A ratio such as 1:20 or
-    # a time in the actual sentence is evidence content, not a free citation.
-    text = re.sub(rf"\[{_TIMESTAMP}(?:\s*[-–—~～]\s*{_TIMESTAMP})?\]", "", text)
-    return re.sub(r"[\s\[\]*_`\"“”]+", "", text).strip("。.!！?？").casefold()
+def _quotation_text(text: str, *, claim: bool = False) -> str:
+    # Citations belong to the note, never to original evidence. Strip only
+    # edge citations separated from prose; preserve ratios/labels inside it.
+    if claim:
+        citation = rf"\[{_TIMESTAMP}(?:\s*[-–—~～]\s*{_TIMESTAMP})?\]"
+        text = re.sub(rf"^\s*{citation}\s+", "", text)
+        text = re.sub(rf"\s+{citation}(?=[。.!！?？]?\s*$)", "", text)
+    # Keep case, word boundaries, underscores, quotes and brackets: removing
+    # them can change an identifier, entity or the meaning of reported speech.
+    return re.sub(r"\s+", " ", text).strip().rstrip("。.!！").strip()
 
 
 def _supports_quotation(claim: str, evidence: str) -> bool:
-    """Only literal source quotations can skip review. Timestamps just locate."""
-    value, source = _quotation_text(claim), _quotation_text(evidence)
-    clauses = {_quotation_text(part) for part in re.split(r"[。！？!?；;，,]|\.(?!\d)", evidence)}
-    # A substring of a negated statement ("not ...") is not a quotation that
-    # supports its positive form. Only whole sentences/clauses skip review.
-    return len(value) >= 4 and (value == source or value in clauses)
+    """Literal complete source anchors only; never a semantic decision.
+
+    Conditions and attribution can span commas, semicolons, or sentences.
+    Without a semantic judgment we cannot safely remove any of that context.
+    A model may assess a paraphrase separately with the full selected context;
+    exact quotation checking is not itself such an assessment.
+    """
+    value = _quotation_text(claim, claim=True)
+    return len(value) >= 4 and value == _quotation_text(evidence)
 
 
 # Visible review markers are part of the portable note, not evidence. Rebuilds
@@ -283,24 +291,29 @@ def build_claim_evidence_map(
 
 
 def safe_claim_projection(value: dict) -> dict:
-    """Old time-only/substring matches stay navigable and require revalidation."""
+    """Prior matching contracts stay navigable but require a current rebuild."""
     if not isinstance(value, dict) or not value:
         return value
-    try:
-        schema_version = int(value.get("schema_version", 1) or 1)
-    except (TypeError, ValueError):
-        schema_version = 1
-    if schema_version >= CLAIM_SCHEMA_VERSION:
+    schema_version = value.get("schema_version")
+    if type(schema_version) is int and schema_version == CLAIM_SCHEMA_VERSION:
         return value
-    if schema_version in {4, 5}:
-        # Exact-clause results remain safe, but stable IDs and source spans need
-        # a rebuild. Never manufacture offsets for a prior note revision.
-        return {**value, "schema_version": CLAIM_SCHEMA_VERSION, "requires_rebuild": True}
-    claims = [{**c, "candidate_evidence_ids": c.get("evidence_ids", []), "evidence_ids": [],
+    # Earlier versions accepted comma/semicolon fragments after discarding
+    # potentially meaningful punctuation and word boundaries. Keep navigation
+    # but never carry their direct verdicts into the stricter contract. Unknown
+    # future schemas are also not evidence this reader knows how to validate.
+    claims = [{**c, "candidate_evidence_ids": list(dict.fromkeys(
+                   [*c.get("candidate_evidence_ids", []), *c.get("evidence_ids", [])])), "evidence_ids": [],
                "claim_type": "inference" if c.get("claim_type") == "inference" else "unsupported",
-               "verification": "pending_review", "review_required": True} for c in value.get("claims", [])]
-    return {**value, "claims": claims, "requires_rebuild": True,
-            "quality": {**value.get("quality", {}), "supported_count": 0, "unsupported_count": len(claims), "coverage_ratio": 0.0}}
+               "verification": "inference" if c.get("claim_type") == "inference" else "pending_review",
+               "review_required": True} for c in value.get("claims", [])]
+    inference_count = sum(c["claim_type"] == "inference" for c in claims)
+    return {**value, "requires_rebuild": True, "claims": claims,
+            "counts": {"transcript": 0, "visual": 0, "document": 0,
+                       "inference": inference_count, "unsupported": len(claims) - inference_count},
+            "quality": {**value.get("quality", {}), "claim_count": len(claims), "supported_count": 0,
+                        "unsupported_count": len(claims) - inference_count, "inference_count": inference_count,
+                        "direct_count": 0, "located_only_count": 0, "pending_review_count": len(claims) - inference_count,
+                        "coverage_ratio": 0.0}}
 
 
 __all__ = ["CLAIM_SCHEMA_VERSION", "build_claim_evidence_map", "mark_claims_for_review", "safe_claim_projection"]

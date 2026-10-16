@@ -105,9 +105,9 @@ def running(executable, data, output, phase):
                     process.wait(timeout=10)
 
 
-def assert_backup_annotation(backup, material_id):
+def assert_backup_annotation(backup, material_sha256):
     groups = backup["personal"]["annotations"]
-    group = next(item for item in groups if item["key"] == f"material-{material_id}")
+    group = next(item for item in groups if item["key"] == f"material-{material_sha256}")
     assert len(group["items"]) == 1
     assert group["items"][0]["text"] == PERSONAL
 
@@ -134,7 +134,7 @@ def exercise(executable, output):
             checks.append("missing_material_and_malformed_import_fail_closed")
             api.call("POST", f"/api/personal/material/{material_id}", json={"text": PERSONAL, "quote": "Learning rate"})
             backup = api.call("GET", "/api/study/backup").json()
-            assert_backup_annotation(backup, material_id)
+            assert_backup_annotation(backup, imported["material"]["sha256"])
             (output / "synthetic-backup.json").write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
             checks.append("personal_note_backup_export")
         with running(executable, data, output, "restart") as (api, _):
@@ -142,9 +142,14 @@ def exercise(executable, output):
             assert api.call("GET", f"/api/personal/material/{material_id}").json()["annotations"][0]["text"] == PERSONAL
             checks.append("real_process_restart_preserves_material_and_personal_note")
         with running(executable, restored, output, "restore") as (api, _):
+            # Learning backups carry annotations, not the original material bytes.
+            # Reimporting the same original resolves its stable content identity.
+            restored_material = api.call("POST", "/api/library/materials/import", files={"file": ("native.md", TEXT.encode(), "text/markdown")}).json()["material"]
+            assert restored_material["sha256"] == imported["material"]["sha256"]
+            restored_id = restored_material["material_id"]
             result = api.call("POST", "/api/study/backup/restore", json=backup).json()
             assert result["merge"]["restored_annotations"] == 1
-            assert api.call("GET", f"/api/personal/material/{material_id}").json()["annotations"][0]["text"] == PERSONAL
+            assert api.call("GET", f"/api/personal/material/{restored_id}").json()["annotations"][0]["text"] == PERSONAL
             checks.append("backup_restore_to_fresh_data_directory")
     return {"status": "pass", "platform": platform.platform(), "architecture": platform.machine(),
             "app_version": health["app_version"], "commit": os.getenv("GITHUB_SHA", "local"),

@@ -20,7 +20,7 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertNotIn("LLM_API_KEY", env)
         self.assertNotIn("LEARNNOTE_MODEL_CACHE", env)
-        self.assertEqual(env["LEARNNOTE_DATA_DIR"], "/tmp/synthetic")
+        self.assertEqual(env["LEARNNOTE_DATA_DIR"], str(Path("/tmp/synthetic")))
         self.assertEqual(env["LEARNNOTE_BACKEND_ORIGIN"], "http://127.0.0.1:12345")
         self.assertEqual(env["HF_HUB_OFFLINE"], "1")
 
@@ -37,7 +37,7 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
         api.session.close()
 
     def test_unsigned_workflow_cannot_publish_or_access_signing_secrets(self):
-        text = (ROOT / ".github/workflows/native-platform-acceptance.yml").read_text()
+        text = (ROOT / ".github/workflows/native-platform-acceptance.yml").read_text(encoding="utf-8")
         workflow = yaml.safe_load(text)
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertNotIn("secrets.", text)
@@ -50,7 +50,7 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
         self.assertIn("if: always()", text)
 
     def test_macos_bundle_collects_dependencies_for_excluded_binary_layout(self):
-        spec = (ROOT / "LearnNote.macos.spec").read_text()
+        spec = (ROOT / "LearnNote.macos.spec").read_text(encoding="utf-8")
         self.assertIn("exclude_binaries=True", spec)
         self.assertIn("collection = COLLECT(", spec)
         self.assertIn("exe, a.binaries, a.datas", spec)
@@ -69,7 +69,7 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     MODULE.main()
             import json
-            report = json.loads((Path(directory) / "report.json").read_text())
+            report = json.loads((Path(directory) / "report.json").read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "failed")
             self.assertIn("fixture failure", report["error"])
 

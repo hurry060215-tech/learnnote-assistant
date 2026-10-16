@@ -18,9 +18,9 @@ function mediaKindFromMime(mime = "") {
   return "unknown";
 }
 
-function isSubtitleEndpointUrl(url = "") {
+function isSubtitleEndpointUrl(url = "", baseUrl = undefined) {
   try {
-    const parsed = new URL(String(url || ""));
+    const parsed = new URL(String(url || ""), baseUrl);
     return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(parsed.pathname);
   } catch {
     return /(?:^|[/?&=._-])(?:subtitle|subtitles|caption|captions)(?:[/?&=._-]|$)/i.test(String(url || ""));
@@ -43,10 +43,10 @@ function classify(url, mime = "") {
   return "unknown";
 }
 
-function isClearlyNonMediaAssetUrl(url = "") {
+function isClearlyNonMediaAssetUrl(url = "", baseUrl = undefined) {
   let pathname = String(url || "").toLowerCase();
   try {
-    pathname = new URL(String(url || "")).pathname.toLowerCase();
+    pathname = new URL(String(url || ""), baseUrl).pathname.toLowerCase();
   } catch {
     // Keep the raw value for malformed URLs.
   }
@@ -166,9 +166,9 @@ function classifyCompletedRequest(details = {}, mime = "", requestHeaders = {}, 
   return "unknown";
 }
 
-function inferManifestUrl(url) {
+function inferManifestUrl(url, baseUrl = undefined) {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(url, baseUrl);
     const lowerPath = parsed.pathname.toLowerCase();
     for (const ext of [".m3u8", ".mpd"]) {
       const index = lowerPath.indexOf(ext);
