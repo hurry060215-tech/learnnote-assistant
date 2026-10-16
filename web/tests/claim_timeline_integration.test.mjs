@@ -70,7 +70,7 @@ async function cancellationProbe(close) {
     api: async () => ({}), drawList() {}, renderStatus() {},
     loadEdition: () => new Promise(resolve => finishEdition = resolve), loadAnnotations: async () => {},
     openSource: async seconds => { $('sourcePanel').hidden = false; calls.push(['openSource', seconds]); },
-    sourceCueCleanup: null, sourceCueRender: null, sourceWindowRender: null,
+    localPlayer: {cancelSeek() {}}, sourceCueCleanup: null, sourceCueRender: null, sourceWindowRender: null,
   });
   vm.runInContext('let sourceRequest = 0;' + desk.slice(desk.indexOf('function closeSource('), desk.indexOf('let inlineSourceRequest'))
     + desk.slice(desk.indexOf('async function openItem('), desk.indexOf('let editionRequest'))

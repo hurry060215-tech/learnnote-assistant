@@ -14,6 +14,7 @@ on:
       - "backend/constraints*.txt"
       - "scripts/*visual*.cjs"
       - "scripts/assistant-runs-fixture.py"
+      - "scripts/local-player-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
@@ -41,6 +42,7 @@ on:
       - "backend/constraints*.txt"
       - "scripts/*visual*.cjs"
       - "scripts/assistant-runs-fixture.py"
+      - "scripts/local-player-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
       - "scripts/material-catalog-recovery-acceptance.cjs"
       - "scripts/progressive-sections-acceptance.cjs"
@@ -159,6 +161,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Extension locale/layout matrix failed" }
             node scripts/study-product-visual-acceptance.cjs http://127.0.0.1:8765 build/study-product-ui
             if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
+            node scripts/local-player-visual-acceptance.cjs build/local-player-ui
+            if ($LASTEXITCODE -ne 0) { throw "Local player range, seek and source identity gate failed" }
             node scripts/evidence-source-acceptance.cjs http://127.0.0.1:8765 build/evidence-source-ui
             if ($LASTEXITCODE -ne 0) { throw "Evidence source and frame navigation failed" }
             node scripts/source-review-visual-acceptance.cjs http://127.0.0.1:8765 build/source-review-ui
@@ -242,6 +246,7 @@ jobs:
             build/task-stream-reconnect-ui
             build/extension-locales
             build/study-product-ui
+            build/local-player-ui
             build/evidence-source-ui
             build/source-review-ui
             build/screen-subtitle-ui

@@ -5,6 +5,7 @@ import { mountScreenSubtitles } from "/web/screen-subtitles.js";
 import { mountMaterialCatalogRecovery } from "/web/material-catalog-recovery.js";
 import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource } from "/web/range-source.js";
+import { localPlaybackPosition } from "/web/local-player.js";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { installCourseSynthesis } from "/web/course-synthesis.js";
@@ -34,7 +35,8 @@ export function installTools(ctx) {
     proposals = [],
     batchRunning = false,
     cleanupPolicy = null,
-    backAction = null;
+    backAction = null,
+    rangeSelection = null;
   async function api(path, options) {
     const token = generation;
     const result = await request(path, options);
@@ -393,14 +395,35 @@ export function installTools(ctx) {
     $("toolBody").innerHTML =
       `<p class="muted">先检查问题、答案和原始出处，再加入复习。</p><form id="cardsForm">${proposals.map((c, i) => `<section class="proposal"><label class="check"><input type="checkbox" data-card-index="${i}" checked>加入这张卡片</label><label for="front${i}">问题</label><input id="front${i}" maxlength="1000" value="${esc(c.front)}"><label for="back${i}">答案</label><textarea id="back${i}" maxlength="4000">${esc(c.back)}</textarea><button type="button" data-evidence="${esc(c.source_evidence_ids[0] || "")}">查看原始出处</button></section>`).join("") || "<p>没有可用的来源证据，请先完成内容处理。</p>"}<footer><button class="primary" ${proposals.length ? "" : "disabled"}>加入复习库</button></footer></form>`;
   }
+  function rangeIsCurrent(selection) {
+    return selection && selection === rangeSelection && dialog.open &&
+      selection.token === generation && selection.epoch === state.epoch &&
+      state.selected?.kind === "task" && state.selected.id === selection.source.id;
+  }
   function range() {
     const s = current();
-    if (s.kind !== "task") throw new Error("片段学习需要本地视频。");
-    show(
+    if (s.kind !== "task" || !(s.media_path || s.source_media_path)) throw new Error("片段学习需要已保存的本地视频。");
+    const duration = Number(s.media_integrity?.duration);
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error("本地视频时长尚未确认，请等待处理完成后重试。");
+    const position = localPlaybackPosition($("player"), s.id) ?? 0;
+    const token = show(
       "只整理一段视频",
-      `<p class="muted">起止位置以当前视频的秒数计算。新片段会创建独立笔记。${Object.keys(s.learning_range || {}).length ? ` 当前片段边界：${Number(s.learning_range.original_start ?? s.learning_range.start)}–${Number(s.learning_range.original_end ?? s.learning_range.end)} 秒。` : ""}</p>${Object.keys(s.learning_range || {}).length ? '<button data-action="learn-full-source">整理完整原视频（复用已保存媒体）</button>' : ""}<form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" step="0.1" required value="${Math.floor($("player").currentTime || 0)}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0.1" step="0.1" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
+      `<p><strong>${esc(s.title || "本地视频")}</strong></p><p class="muted">起止位置以当前视频的秒数计算（0–${duration} 秒），支持小数。新片段会创建独立笔记。${Object.keys(s.learning_range || {}).length ? ` 当前片段对应原视频 ${Number(s.learning_range.original_start ?? s.learning_range.start)}–${Number(s.learning_range.original_end ?? s.learning_range.end)} 秒；下方从当前片段起点计时。` : ""}</p>${Object.keys(s.learning_range || {}).length ? '<button data-action="learn-full-source">整理完整原视频（复用已保存媒体）</button>' : ""}<form id="rangeForm"><label for="rangeStart">开始（秒）</label><input id="rangeStart" type="number" min="0" max="${duration}" step="any" required value="${position}"><label for="rangeEnd">结束（秒）</label><input id="rangeEnd" type="number" min="0" max="${duration}" step="any" required><button type="button" data-action="range-position">用当前播放位置填入开始</button><footer><button class="primary">整理此片段</button></footer></form>`,
     );
+    rangeSelection = { source: s, duration, token, epoch: state.epoch, submitting: false };
     dialog.dataset.sourceId = s.id;
+    dialog.dataset.sourceKind = s.kind;
+  }
+  async function submitRange(selection, work) {
+    if (!rangeIsCurrent(selection) || selection.submitting) return;
+    selection.submitting = true;
+    try {
+      const result = await work();
+      if (!result || !rangeIsCurrent(selection)) return;
+      dialog.close();
+      await openItem({ ...result.task, id: result.task_id, kind: "task" });
+      await refresh();
+    } finally { selection.submitting = false; }
   }
   async function ocr() {
     const s = current();
@@ -934,7 +957,10 @@ export function installTools(ctx) {
       await ctx.startReview(button.dataset.courseId || "",button.dataset.taskId || "");
     },
     "range-position": () => {
-      $("rangeStart").value = Math.floor($("player").currentTime || 0);
+      if (!rangeIsCurrent(rangeSelection)) return;
+      const position = localPlaybackPosition($("player"), rangeSelection.source.id);
+      if (position === null) throw new Error("请先打开当前视频并等待播放器就绪，未使用其他来源的播放位置。");
+      $("rangeStart").value = String(position);
     },
     "screen-subtitles": async () => {
       const source = current();
@@ -1015,12 +1041,14 @@ export function installTools(ctx) {
         .join("\n");
     },
     "learn-full-source": async () => {
-      const source = await fullVideoSource(dialog.dataset.sourceId, id => api(`/api/tasks/${encodeURIComponent(id)}`));
-      if (!confirm(`使用已保存的完整原视频“${source.title}”和当前模型设置创建全片笔记？`)) return;
-      const result = await api(`/api/tasks/${encodeURIComponent(source.id)}/rerun-from-media`, { method: "POST", body: JSON.stringify(options()) });
-      dialog.close();
-      await refresh();
-      await openItem({ ...result.task, id: result.task_id, kind: "task" });
+      const selection = rangeSelection;
+      await submitRange(selection, async () => {
+        const source = await fullVideoSource(selection.source.id, id => api(`/api/tasks/${encodeURIComponent(id)}`));
+        if (!rangeIsCurrent(selection)) return;
+        if (!confirm(`使用已保存的完整原视频“${source.title}”和当前模型设置创建全片笔记？`)) return;
+        if (!rangeIsCurrent(selection)) return;
+        return api(`/api/tasks/${encodeURIComponent(source.id)}/rerun-from-media`, { method: "POST", body: JSON.stringify(options()) });
+      });
     },
     "add-to-course": async () => {
       const s = current();
@@ -1241,19 +1269,15 @@ export function installTools(ctx) {
           .querySelectorAll("input,textarea,button")
           .forEach((el) => (el.disabled = true));
       } else if (form.id === "rangeForm") {
-        const start = Number($("rangeStart").value),
-          end = Number($("rangeEnd").value);
-        if (end <= start) throw new Error("结束位置必须晚于开始位置。");
-        const r = await api(
-          `/api/tasks/${dialog.dataset.sourceId}/learn-range`,
-          {
-            method: "POST",
-            body: JSON.stringify({ start, end, options: options() }),
-          },
-        );
-        dialog.close();
-        await openItem({ ...r.task, id: r.task_id, kind: "task" });
-        await refresh();
+        const selection = rangeSelection;
+        if (!rangeIsCurrent(selection)) return;
+        const start = Number($("rangeStart").value), end = Number($("rangeEnd").value);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > selection.duration)
+          throw new Error("请选择当前视频时长内的有效起止秒数，结束位置必须晚于开始位置。");
+        await submitRange(selection, () => api(
+          `/api/tasks/${encodeURIComponent(selection.source.id)}/learn-range`,
+          { method: "POST", body: JSON.stringify({ start, end, options: options() }) },
+        ));
       } else if (form.id === "askForm") {
         const s = {
             id: dialog.dataset.sourceId,

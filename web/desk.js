@@ -14,13 +14,14 @@ import { installNoteEditor } from "/web/desk-note-controls.js";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed } from "/web/source-video.js";
+import { createLocalPlayer } from "/web/local-player.js";
 import { createTranscriptWindow } from "/web/transcript-window.js";
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js";
 import { installSettings } from "/web/desk-settings.js";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
-import { installTools } from "/web/desk-tools.js?v=0.2.15";
+import { installTools } from "/web/desk-tools.js?v=local-player-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
@@ -772,10 +773,12 @@ async function loadAnnotations(epoch) {
     } catch (error) { failure(error); }
   };
 }
+const localPlayer = createLocalPlayer($("player"));
 let sourceRequest = 0;
 function closeSource({ cancelEvidence = true } = {}) {
   if (cancelEvidence) evidenceRequest++;
   sourceRequest++;
+  localPlayer.cancelSeek();
   claimTimeline.clearActive();
   $("sourcePanel").hidden = true;
   document.body.classList.remove("source-open");
@@ -873,6 +876,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     player = $("player"),
     transcript = $("sourceTranscript"),
     sourceKey = `${s.kind}:${s.id}:${s.updated_at || ""}`;
+  localPlayer.cancelSeek();
   panel.hidden = false;
   document.body.classList.add("source-open");
   const seek = () => {
@@ -888,9 +892,6 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     if (seconds === undefined) return;
     if (sourceCueRender) sourceCueRender(seconds);
     if (transcript) transcript.open = true;
-    if (!player.hidden) {
-      player.currentTime = seconds;
-    }
     if (renderedCues.length) {
       const cue =
         renderedCues.findLast((item) => Number(item.dataset.time) <= seconds) ||
@@ -907,6 +908,7 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     panel.dataset.sourceKey === sourceKey &&
     panel.dataset.contentMode === "transcript"
   ) {
+    if (!player.hidden && seconds !== undefined) localPlayer.seek(seconds);
     seek();
     panel.scrollIntoView({ block: "nearest", behavior: "instant" });
     return;
@@ -944,13 +946,8 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
   if (embedUrl) online.src = embedUrl;
   else online.removeAttribute("src");
   player.hidden = !hasMedia;
-  if (hasMedia) {
-    const url = `/api/tasks/${s.id}/media`;
-    if (player.getAttribute("src") !== url) player.src = url;
-  } else if (player.hasAttribute("src")) {
-    player.removeAttribute("src");
-    player.load();
-  }
+  localPlayer.setSource(hasMedia ? s.id : null);
+  if (hasMedia && seconds !== undefined) localPlayer.seek(seconds);
   try {
     if (s.kind === "material") {
       const [data, anchored] = await Promise.all([api(`/api/library/materials/${s.id}/content`), api(`/api/library/materials/${s.id}/anchors?limit=1000`)]);
@@ -1049,7 +1046,7 @@ $("player").addEventListener("error", () => {
 $("sourceContent").onclick = (e) => {
   const cue = e.target.closest("[data-time]");
   if (cue && !$("player").hidden) {
-    $("player").currentTime = Number(cue.dataset.time);
+    localPlayer.seek(Number(cue.dataset.time));
   } else if (cue) {
     openSource(Number(cue.dataset.time));
   }

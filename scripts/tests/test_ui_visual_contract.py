@@ -57,6 +57,19 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertIn("accessibility-visual-acceptance.cjs", workflow)
         self.assertIn("actions/upload-artifact", workflow)
 
+    def test_local_player_gate_is_hosted_and_retains_real_media_evidence(self) -> None:
+        workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        for event in ("pull_request", "push"):
+            patterns = workflow["on"][event]["paths"]
+            for path in ("scripts/local-player-fixture.py", "scripts/local-player-visual-acceptance.cjs"):
+                self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
+        job = workflow["jobs"]["accessibility-visual"]
+        self.assertEqual(job["runs-on"], "windows-latest")
+        execution = next(step["run"] for step in job["steps"] if step.get("name") == "Start isolated local backend")
+        self.assertIn("node scripts/local-player-visual-acceptance.cjs build/local-player-ui", execution)
+        upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertIn("build/local-player-ui", upload["with"]["path"])
+
     def test_i18n_audit_script_is_present(self) -> None:
         script = (ROOT / "scripts" / "audit-i18n.py").read_text(encoding="utf-8")
         self.assertIn("missing_keys", script)
@@ -88,7 +101,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=first-run-20260924b", html)
+        self.assertIn("desk.js?v=local-player-20261016", html)
         self.assertIn("desk-product.js?v=first-run-20260923", entry)
 
 

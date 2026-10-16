@@ -268,6 +268,8 @@ test("closing the production source panel cancels an outstanding canonical looku
   const h = navigationHarness(), nodes = new Map();
   const $ = id => { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); };
   $("player").pause = () => {};
+  let pendingSeeksCancelled = 0;
+  Object.assign(h.context, { localPlayer: {cancelSeek() {pendingSeeksCancelled++;}} });
   Object.assign(h.context, { $, sourceRequest: 0, sourceCueCleanup: null, sourceCueRender: null, sourceWindowRender: null,
     claimTimeline: { clearActive() {} }, document: { body: new Element() } });
   const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
@@ -275,4 +277,5 @@ test("closing the production source panel cancels an outstanding canonical looku
   const pending = h.context.openEvidence("closed"); h.context.closeSource();
   h.requests.get("/api/knowledge/evidence/closed").resolve({ evidence: { evidence_id: "closed", task_id: "one", locator: "10-12s" } });
   await pending; assert.deepEqual(h.calls, []); assert.equal($("sourcePanel").hidden, true);
+  assert.equal(pendingSeeksCancelled, 1);
 });
