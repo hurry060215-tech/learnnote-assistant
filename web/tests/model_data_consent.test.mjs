@@ -12,7 +12,7 @@ function harness() {
       addEventListener(name, fn) { handlers.set(name, fn); },
       dispatch(name) { handlers.get(name)?.({ preventDefault() {} }); },
       showModal() { this.open = true; }, close() { this.open = false; this.dispatch("close"); },
-      remove() { this.removed = true; }, focus() {},
+      remove() { this.removed = true; }, focus(options) { this.focusOptions = options; this.focused = true; },
     }; nodes.push(element); return element;
   };
   const doc = { createElement: make, createTextNode: text => ({ textContent: text }), body: make("body") };
@@ -42,6 +42,11 @@ test("review discloses actual metadata, separate scopes and conditional audio wi
   assert.equal(h.find("allowModelPageContext").checked, false);
   assert.equal(h.find("allowPageTextFallback").checked, false);
   assert.equal(h.button("同意并开始").disabled, true);
+  const heading = h.find("modelDataConsentTitle");
+  assert.equal(heading.tabIndex, -1); assert.equal(heading.focused, true);
+  assert.equal(heading.focusOptions.preventScroll, true);
+  assert.equal(h.nodes.find(node => node.tag === "dialog").scrollTop, 0);
+  assert.equal(h.button("同意并开始").focused, undefined);
   h.button("取消").onclick(); assert.equal(await result, null);
 });
 

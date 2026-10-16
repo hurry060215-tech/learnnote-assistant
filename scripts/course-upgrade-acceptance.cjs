@@ -32,6 +32,16 @@ async function bounded(promise) {
   try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Synthetic request did not start")), 15000); })]); }
   finally { clearTimeout(timer); }
 }
+function childEventStream(method, url, headers, fixtureTasks) {
+  if (method !== "GET" || url.pathname !== "/api/tasks/visual-child/events/stream") return null;
+  assert.equal(url.search, "?after=0"); assert.equal(headers["last-event-id"] || "", "");
+  const child = fixtureTasks.find(task => task.id === "visual-child");
+  assert(child, "Child stream requested before upgrade admission");
+  assert.equal(child.status, "queued"); assert.equal(child.mode, "video"); assert.equal(child.source_task_id, "video-a");
+  // A queued fixture has no progress events. Do not fabricate completion or
+  // advance the cursor; the production hub closes this finite idle stream.
+  return { contentType: "text/event-stream", headers: { "Cache-Control": "no-cache, no-transform" }, body: ": heartbeat\n\n" };
+}
 async function main() {
   const { chromium } = require("playwright");
   const base = new URL(process.argv[2] || "http://127.0.0.1:18940");
@@ -60,6 +70,8 @@ async function main() {
         }
         report.requests.push(`${request.method()} ${pathname}`);
         if (request.method() === "GET") {
+          const stream = childEventStream(request.method(), url, request.headers(), tasks);
+          if (stream) return route.fulfill(stream);
           if (pathname === "/health") return json(health);
           if (pathname === "/api/tasks") return json({ tasks });
           if (pathname === "/api/library/materials") return json({ materials });
@@ -188,9 +200,11 @@ async function main() {
     await page.locator("#courseUpgradeReturn").click(); await page.locator('[data-open-upgrade="visual-child"]').waitFor();
     assert.equal(JSON.stringify(tasks[0]), original); assert.equal(JSON.stringify(courses[0].sources), courseSources);
     await page.locator('[data-open-upgrade="visual-child"]').click(); await page.waitForURL(/#task\/visual-child/);
+    await until(() => report.requests.includes("GET /api/tasks/visual-child/events/stream"), "linked child event stream");
     report.checks.push("Repeated confirmation creates one linked child; original task and course source remain unchanged; linked child opens");
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpectedRequests, []); report.passed = true;
   } finally { fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); await browser.close(); }
   console.log(JSON.stringify(report, null, 2));
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { childEventStream };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

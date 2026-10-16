@@ -16,7 +16,8 @@ export function reviewTaskModelData({ task, options, health = {}, isCurrent = ()
     const element = doc.createElement(tag); element.textContent = text; parent.append(element); return element;
   };
   const header = add("header", "");
-  add("h2", "确认这次任务发送的资料", header).id = "modelDataConsentTitle";
+  const heading = add("h2", "确认这次任务发送的资料", header);
+  heading.id = "modelDataConsentTitle"; heading.tabIndex = -1;
   content = add("section", ""); content.className = "section-review";
   add("p", `接收方：${host} · ${model}。本机网关也可能转发；模型服务可能收费。`);
   add("p", "来源标题：" + (preview.title || "未命名"));
@@ -74,6 +75,7 @@ export function reviewTaskModelData({ task, options, health = {}, isCurrent = ()
       if (!current) { status.textContent = "任务或模型设置已改变，请取消后重新审阅。"; send.disabled = true; return; }
       finish({ allow_model_page_context: Boolean(context?.checked), allow_page_text_fallback: Boolean(fallback?.checked), review_fingerprint: preview.fingerprint });
     };
-    doc.body.append(dialog); dialog.showModal(); cancel.focus();
+    doc.body.append(dialog); dialog.showModal();
+    dialog.scrollTop = 0; heading.focus({ preventScroll: true });
   });
 }

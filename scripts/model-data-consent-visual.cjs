@@ -5,7 +5,7 @@ const path = require("node:path");
 module.exports = async function checkModelDataConsent(page, output, report) {
   await page.locator("#settingsDialog [data-close]").first().click();
   const open = async () => page.evaluate(async () => {
-    const { reviewTaskModelData } = await import("/web/model-data-consent.js?v=20261016");
+    const { reviewTaskModelData } = await import("/web/model-data-consent.js?v=initial-focus-20261016");
     window.consentOutcome = "pending";
     reviewTaskModelData({ task: { id: "synthetic-consent", model_data_preview: {
       fingerprint: "synthetic-reviewed-source", mode: "video", title: "Synthetic course title <img src=x>",
@@ -22,7 +22,19 @@ module.exports = async function checkModelDataConsent(page, output, report) {
     await page.setViewportSize({ width, height: 1000 });
     for (const theme of ["light", "dark"]) {
       await page.evaluate(dark => document.body.classList.toggle("dark", dark), theme === "dark");
+      await page.locator("#newNote").focus();
       await open(); await dialog.waitFor();
+      assert(await dialog.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const topFields = [node.querySelector("h2"), ...node.querySelectorAll("section > p")].slice(0, 4);
+        return node.scrollTop <= 1 && document.activeElement === node.querySelector("h2")
+          && topFields.every(item => { const rect = item.getBoundingClientRect();
+            return rect.top >= bounds.top && rect.bottom <= bounds.bottom; });
+      }), "Initial focus and recipient/title/URL must be visible at the top");
+      if (width === 390) {
+        const initial = `consent-${width}-${theme}-initial.png`;
+        await page.screenshot({ path: path.join(output, initial), fullPage: true }); report.screenshots.push(initial);
+      }
       const text = await dialog.innerText();
       assert.match(text, /models\.invalid.*synthetic-model/);
       assert.match(text, /来源标题.*Synthetic course title/);
@@ -38,8 +50,26 @@ module.exports = async function checkModelDataConsent(page, output, report) {
       assert(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1), "Consent must wrap at narrow widths");
       const file = `consent-${width}-${theme}.png`;
       await page.screenshot({ path: path.join(output, file), fullPage: true }); report.screenshots.push(file);
+      if (width === 390) {
+        await dialog.evaluate(node => { node.scrollTop = node.scrollHeight; });
+        assert(await dialog.evaluate(node => {
+          const bounds = node.getBoundingClientRect();
+          return node.scrollTop > 0 && node.scrollWidth <= node.clientWidth + 1
+            && [...node.querySelectorAll("footer button")].every(item => {
+              const rect = item.getBoundingClientRect();
+              return rect.top >= bounds.top && rect.bottom <= bounds.bottom; });
+        }), "Mobile dialog must scroll to reachable bottom actions without overflow");
+        const bottom = `consent-${width}-${theme}-bottom.png`;
+        await page.screenshot({ path: path.join(output, bottom), fullPage: true }); report.screenshots.push(bottom);
+      }
+      await dialog.getByRole("button", { name: "取消", exact: true }).focus();
+      for (const key of ["Tab", "Shift+Tab"]) {
+        await page.keyboard.press(key);
+        assert(await dialog.evaluate(node => node.contains(document.activeElement)), "Keyboard focus stays inside modal");
+      }
       await dialog.getByRole("button", { name: "取消", exact: true }).click();
       await page.waitForFunction(() => window.consentOutcome === null);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "newNote", "Cancel restores opener focus");
     }
   }
   await open(); await page.locator("#allowModelPageContext").check();
@@ -49,9 +79,11 @@ module.exports = async function checkModelDataConsent(page, output, report) {
   assert.deepEqual(await page.evaluate(() => window.consentOutcome), {
     allow_model_page_context: true, allow_page_text_fallback: false, review_fingerprint: "synthetic-reviewed-source",
   });
-  await open();
+  await page.locator("#newNote").focus(); await open();
   assert.equal(await page.locator("#allowModelPageContext").isChecked(), false, "No remembered context approval");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => window.consentOutcome === null);
-  report.taskDataConsent = { preview_and_cancel_send_nothing: true, independent_scopes: true, fresh_each_time: true };
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "newNote", "Escape restores opener focus");
+  report.taskDataConsent = { preview_and_cancel_send_nothing: true, independent_scopes: true, fresh_each_time: true,
+    initial_metadata_visible: true, mobile_bottom_actions_reachable: true, keyboard_focus_restored: true, keyboard_focus_contained: true };
 };

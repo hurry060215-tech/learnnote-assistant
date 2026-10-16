@@ -24,7 +24,7 @@ import { installProductWorkspace } from "/web/desk-product.js?v=first-run-202609
 import { installTools } from "/web/desk-tools.js?v=course-upgrade-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
-import { reviewTaskModelData } from "/web/model-data-consent.js?v=20261016";
+import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
 import { installPersonalReview } from "/web/personal-review.js";
 import {
