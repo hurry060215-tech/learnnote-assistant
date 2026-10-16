@@ -1225,11 +1225,11 @@ async function checkDesktopUpdate() {
       url: result.installer_url,
       sha256: result.installer_sha256
     } : null;
-    if (els.updateStatus) els.updateStatus.textContent = result?.ok
+    if (els.updateStatus) els.updateStatus.textContent = (result?.ok
       ? newer
         ? result.installable ? `发现 v${result.latest_version}，可直接下载并安装` : `发现 v${result.latest_version}，安装包暂不可用`
         : `当前 v${current} 已是最新版本`
-      : "暂时无法连接 GitHub，请稍后重试";
+      : "暂时无法连接 GitHub，请稍后重试") + (result?.capabilities?.manual_update_message ? "。" + result.capabilities.manual_update_message : "");
     if (els.installUpdateButton) {
       els.installUpdateButton.hidden = !pendingDesktopUpdate;
       els.installUpdateButton.textContent = pendingDesktopUpdate ? `更新到 v${result.latest_version}` : "下载并安装";

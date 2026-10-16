@@ -5,10 +5,11 @@
 | 平台 | 浏览器工作台启动 | 本地后端/容器 | 浏览器扩展交接 | 数据目录与凭据 | 当前门槛 |
 | --- | --- | --- | --- | --- | --- |
 | Windows x64 | 可用：`start-learnnote.bat` 启动本机后端并打开默认浏览器 | 可用 | 可用：Chrome/Edge 真实 smoke | 可用：可迁移数据目录，凭据不写任务 | 需要用户授权浏览器页面和本地服务 |
-| macOS arm64/x64 | 预览：`start-learnnote.command` 启动本机后端并打开默认浏览器 | 预览：Python 路径需人工验证 | 可用：浏览器侧栏可连接本地服务 | 预览：macOS Keychain；脚本路径需实机验证 | 尚无 macOS 实机、签名、公证和原生安装器证据 |
-| Linux x64 | 预览：`scripts/start-linux.sh` 仍保留旧桌面路径 | 预览：Docker/手动 Python | 可用：浏览器扩展可连接本地服务 | 预览：由用户管理目录和凭据 | 不承诺发行版级集成 |
-| ARM NAS | 不提供桌面承诺 | 计划 | 计划 | 计划 | 需要 ARM ffmpeg、模型和存储基准 |
-| Docker (linux/amd64) | 不适用 | 可用：compose/镜像构建 | 可用：浏览器连接用户明确暴露的本地端口 | 可用：挂载卷；不启用官方云同步 | 需要用户自行保护端口和反向代理 |
+| macOS arm64 | 预览：浏览器优先启动；未签名 `.app` 已有托管 macOS 原生启动证据 | 合成资料导入/导出、重启及个人批注恢复通过 | 浏览器连接协议可用；本机配对仍需单独验证 | Keychain 路径存在；凭据迁移未验收 | 未签名/未公证；版本升级与回退尚未验收 |
+| macOS x64 | 预览：浏览器优先启动 | 三系统契约不等于 x64 原生应用运行 | 连接协议与 arm64 相同 | 需平台验收 | 未提供 x64 原生应用验收证据 |
+| Linux x64 | 预览：浏览器工作台；原生桌面集成未验收 | 源码后端合成导入/导出、重启及个人批注恢复通过；Docker 构建通过 | 浏览器连接协议可用 | 由用户管理目录和凭据；完整任务迁移未验收 | 不承诺发行版级集成或可执行自动更新 |
+| ARM NAS | 不提供桌面承诺 | linux/arm64 容器构建通过；NAS 运行与性能仍为预览 | 需用户明确配置可访问服务 | 用户管理挂载卷 | 多架构构建不代表 NAS 的 ffmpeg、模型和存储实测 |
+| Docker (linux/amd64、linux/arm64) | 不适用 | 可用：compose/镜像构建 | 可用：浏览器连接用户明确暴露的本地端口 | 可用：挂载卷；不启用官方云同步 | 需要用户自行保护端口和反向代理 |
 
 ## 跨平台不变量
 
@@ -19,7 +20,7 @@
 
 ## 晋级门槛
 
-macOS 进入实现前，Windows v0.2–v0.4 的任务恢复、来源适配、资料库、引用检索和导出 manifest 必须保持稳定；Linux/ARM 只有在 ffmpeg、模型缓存、磁盘预算和取消响应有实测数据后，才从“预览/计划”升级。
+各平台晋级必须保留 Windows 的任务恢复、来源适配、资料库、引用检索和导出契约。托管合成测试只覆盖报告列出的路径；Linux/ARM 的模型缓存、磁盘预算、取消响应和设备性能需要对应运行环境的实测。
 
 The browser-first launchers do not require a native window or custom URI
 protocol. The optional native packaging files remain in the repository for
@@ -53,3 +54,24 @@ vault APIs and the local backend. It does not disable an OS/browser sandbox or
 change an existing user's plugin settings. A passing native report and reviewed
 screenshots are required; a built harness alone is not #140 acceptance, and
 transcript navigation is not real-site video seek or reverse synchronization.
+
+## Verified hosted baseline (2026-10-16)
+
+[Native run 38938992009](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38938992009)
+on `f39da5f2c2901be3a05b56c13458a448a29b13e0` passed the macOS arm64
+unsigned application and Linux source-backend lanes. Reports and restart/restore
+screenshots were inspected. The first-launch screenshot captured a loading
+window, so it is not visual proof of first-launch readiness; startup/API checks
+and the later rendered windows passed. These native harness and packaging paths
+are unchanged in the current updater-capability correction.
+
+[Container run 38973618230](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38973618230)
+on `cdad6c49132f1b8640ec1330c33794fd1b1bb480` passed the existing
+linux/amd64 and linux/arm64 build-and-publish job. This proves image builds, not
+native ARM/NAS runtime performance.
+
+The updater now exposes executable download/install actions only on Windows.
+macOS/Linux show manual update guidance and retain the user-selected data
+directory; a stale copied Windows receipt cannot enable executable actions.
+This capability boundary does not establish application-version rollback,
+credential migration, or complete cross-platform task/media relocation.

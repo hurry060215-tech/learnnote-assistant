@@ -10,12 +10,12 @@ from app.routers import system
 
 class UpdateActionTests(unittest.TestCase):
     @contextmanager
-    def client(self, mode="desktop"):
+    def client(self, mode="desktop", client_supported=True):
         app=FastAPI();app.include_router(system.system_router)
         controller=SimpleNamespace(_update_lock=threading.RLock(),_update_state={"phase":"ready","version":"9.8.7","path":"owned-installer.exe"},_extension_update_state={},start_update_download=Mock(return_value={"ok":True}),apply_update=Mock(return_value={"ok":True}))
         app.state.desktop_update_api=controller
         release={"latest":{"version":"9.8.7","client":{"url":"https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v9.8.7/LearnNote-Setup-x64.exe","sha256":"a"*64}},"capabilities":{}}
-        with patch("app.config.DEPLOYMENT_MODE",mode), patch.object(system,"update_status",return_value=release):
+        with patch("app.config.DEPLOYMENT_MODE",mode), patch.object(system,"client_updater_supported",return_value=client_supported), patch.object(system,"update_status",return_value=release):
             with TestClient(app,base_url="http://127.0.0.1:8765",headers={"Origin":"http://127.0.0.1:8765"}) as client:
                 yield client,controller
 
@@ -42,3 +42,15 @@ class UpdateActionTests(unittest.TestCase):
         with self.client("server") as (client,controller):
             self.assertEqual(client.post("/api/update/intent",json={"action":"apply","version":"9.8.7"}).status_code,403)
             controller.apply_update.assert_not_called()
+
+    def test_unsupported_platform_rejects_intents_and_direct_actions(self):
+        with self.client(client_supported=False) as (client, controller):
+            for action in ("download", "apply"):
+                body = {"action": action, "version": "9.8.7", "component": "client"}
+                for path in ("/api/update/intent", "/api/update/action"):
+                    response = client.post(path, json=body)
+                    self.assertEqual(response.status_code, 409)
+                    self.assertIn("手动更新", response.json()["detail"])
+            controller.apply_update.assert_not_called()
+            controller.start_update_download.assert_not_called()
+            self.assertEqual(client.post("/api/update/intent", json={"action": "download", "version": "9.8.7", "component": "extension"}).status_code, 200)

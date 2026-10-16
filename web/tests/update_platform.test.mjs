@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const source=fs.readFileSync(new URL('../desk-settings.js',import.meta.url),'utf8');
+const slice=source.slice(source.indexOf('  let updateStatus ='),source.indexOf('  panes.usage.innerHTML'));
+const elements=new Map();
+const $=id=>{if(!elements.has(id))elements.set(id,{textContent:'',hidden:false,checked:true,disabled:false});return elements.get(id)};
+let downloads=0,installs=0;
+const context={$,window:{pywebview:{api:{start_update_download:async()=>{downloads++;return{phase:'ready',path:'owned.exe'}},apply_update:async()=>{installs++;return{ok:true}}}}},state:{items:[],health:{app_version:'0.2.9'}},ctx:{guard:()=>true},saved:()=>{},updateDirty:()=>[],notice:()=>{},api:async()=>{},setTimeout:()=>0,setInterval:()=>0,clearInterval:()=>{},Date};
+vm.createContext(context);
+vm.runInContext(slice+';globalThis.test={renderUpdateCenter,normalizeBridgeUpdate,startUpdateDownload,applyPreparedUpdate,setDownload:value=>{updateDownload=value}}',context);
+const ready={phase:'ready',path:'copied-windows.exe',version:'9.8.7'};
+for(const phase of ['idle','ready','failed']) {
+ context.test.setDownload({...ready,phase});
+ context.test.renderUpdateCenter({ok:true,client_update_available:true,capabilities:{download:false,apply:false,manual_update_message:'请保留数据目录并手动更新'},latest:{version:'9.8.7',page_url:'https://github.com/hurry060215-tech/learnnote-assistant/releases/tag/v9.8.7',client:{installable:true}}});
+ assert.equal($('downloadUpdate').hidden,true);
+ assert.equal($('applyUpdate').hidden,true);
+ assert.equal($('updateAutoDownload').disabled,true);
+ assert.match($('updateClientAvailability').textContent,/手动更新/);
+ assert.equal($('updateDownloadStatus').textContent,'');
+ await context.test.startUpdateDownload();await context.test.applyPreparedUpdate();
+}
+assert.equal(downloads,0);assert.equal(installs,0);
+assert.equal(context.test.normalizeBridgeUpdate({installable:true}).capabilities.apply,false,'Method presence does not grant execution capability');
+context.test.renderUpdateCenter({ok:true,client_update_available:true,capabilities:{download:true,apply:true},latest:{version:'9.8.7',client:{installable:true}}});
+assert.equal($('updateAutoDownload').disabled,false);
+context.test.setDownload(ready);
+await context.test.applyPreparedUpdate();await context.test.applyPreparedUpdate();
+assert.equal(installs,1,'Windows ready action retains duplicate-click guard');
+console.log('PASS: platform capability gates, stale receipt, manual guidance, guarded handlers and Windows apply');
+
+const acceptance=fs.readFileSync(new URL('../../scripts/update-center-acceptance.cjs',import.meta.url),'utf8');
+const workflow=fs.readFileSync(new URL('../../.github/workflows/ui-visual.yml',import.meta.url),'utf8');
+assert.match(acceptance,/window\.LearnNoteSettings/);
+assert.match(acceptance,/locator\('#menu'\)\.click\(\)/);
+assert.match(acceptance,/getAttribute\('aria-expanded'\)/);
+assert.equal((acceptance.match(/await openSettings\(\)/g)||[]).length,2);
+assert.match(workflow,/build\/update-center-ui/);
+assert.match(acceptance, /#homeUrlForm/);
+assert.match(fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'), /id="welcome"/);

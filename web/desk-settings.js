@@ -104,7 +104,7 @@ export function installSettings(ctx) {
       latest: result?.latest_version ? { version: result.latest_version, release_url: result.release_url || "", client: { url: result.installer_url || "", sha256: result.installer_sha256 || "", installable: Boolean(result.installable) } } : null,
       client_update_available: newer(result?.latest_version, currentVersion),
       extension: { current_version: extensionVersion, compatibility: extensionVersion && extensionVersion !== currentVersion ? "version_check_pending" : "compatible", channel: "browser_store_or_managed_unpack", store_update: "browser_managed" },
-      capabilities: { download: Boolean(updateBridge()?.start_update_download || updateBridge()?.download_update), apply: Boolean(updateBridge()?.apply_update || updateBridge()?.install_update) },
+      capabilities: { ...result?.capabilities, download: result?.capabilities?.download === true, apply: result?.capabilities?.apply === true },
       download: updateDownload || { phase: "idle" },
       error: result?.message || "",
     };
@@ -119,6 +119,9 @@ export function installSettings(ctx) {
     $("updateClientAvailability").textContent = clientAvailable
       ? "发现正式版 v" + latest.version + (latest.client?.installable ? "，安装包已通过来源与校验信息检查。" : "，当前资产暂不可自动安装。")
       : result?.ok ? "当前已是最新正式版，或当前开发版本不低于正式版。" : "暂时无法检查正式版" + (result?.error ? "：" + result.error : "");
+    const manualUpdate = result?.capabilities?.manual_update_message || "";
+    if (manualUpdate) $("updateClientAvailability").textContent += " " + manualUpdate;
+    $("updateAutoDownload").disabled = !result?.capabilities?.download;
     const ext = result?.extension || {};
     const extLatest = latest?.extension;
     const extAvailable = Boolean(result?.extension_update_available && extLatest?.available);
@@ -131,11 +134,12 @@ export function installSettings(ctx) {
     const canDownload = Boolean(clientAvailable && latest?.client?.installable && result?.capabilities?.download && bridge);
     $("downloadUpdate").hidden = !canDownload || ["downloading", "cancelling", "ready"].includes(updateDownload?.phase);
     $("cancelUpdate").hidden = !["downloading", "cancelling"].includes(updateDownload?.phase);
-    $("applyUpdate").hidden = !(updateDownload?.phase === "ready" && updateDownload?.path);
+    $("applyUpdate").hidden = !(result?.capabilities?.apply && updateDownload?.phase === "ready" && updateDownload?.path);
     const releaseUrl = latest?.page_url || latest?.release_url;
     $("updateReleaseLink").hidden = !releaseUrl;
     if (releaseUrl) $("updateReleaseLink").href = releaseUrl;
-    if (updateDownload?.phase && updateDownload.phase !== "idle") {
+    if (manualUpdate) $("updateDownloadStatus").textContent = "";
+    else if (updateDownload?.phase && updateDownload.phase !== "idle") {
       const done = updateDownload.downloaded_bytes || 0, total = updateDownload.total_bytes || 0;
       $("updateDownloadStatus").textContent = updateDownload.phase === "downloading"
         ? "正在后台下载 v" + updateDownload.version + "：" + (total ? done.toLocaleString() + " / " + total.toLocaleString() + " 字节（" + (updateDownload.progress || 0) + "%）" : done.toLocaleString() + " 字节")
@@ -171,7 +175,7 @@ export function installSettings(ctx) {
   }
   async function startUpdateDownload() {
     const latest = updateStatus?.latest, bridge = updateBridge();
-    if (!latest?.client?.installable || !bridge) return;
+    if (!updateStatus?.capabilities?.download || !latest?.client?.installable || !bridge) return;
     try {
       updateDownload = bridge.start_update_download
         ? await bridge.start_update_download(latest.version, latest.client.url, latest.client.sha256)
@@ -190,7 +194,7 @@ export function installSettings(ctx) {
     }
   }
   async function applyPreparedUpdate() {
-    if (applyingUpdate || !updateDownload?.path || !updateStatus?.latest || !updateBridge()) return;
+    if (!updateStatus?.capabilities?.apply || applyingUpdate || !updateDownload?.path || !updateStatus?.latest || !updateBridge()) return;
     if (updateDirty().length || !ctx.guard()) { $("updateDownloadStatus").textContent = "请先保存未完成的编辑与设置，再进行更新。"; return; }
     const active = state.items.filter((item) => ["queued", "running", "cancelling"].includes(item.status));
     if (active.length) {

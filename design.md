@@ -191,6 +191,10 @@ Escape; Escape returns focus, and dialog actions inherit a visible return target
 The assistant's empty explanation and dismissible suggestions share the history
 surface. Sending begins a regular history; hidden/dismissed preference state is
 preserved. The composer has one 2px focus ring, never competing inner/outer rings.
+The update center reports Windows executable download/apply capability explicitly.
+On macOS/Linux, keep official release information and manual-update guidance visible,
+disable automatic installer download, and hide executable actions even when a copied
+Windows download receipt is ready. Reuse existing status, link, and control styles.
 Keep processing details collapsed and visually secondary; warnings stay visible.
 Progressive generated chapters keep their prose readable and show one concise
 draft boundary. Literal source-matching counts describe wording only, never

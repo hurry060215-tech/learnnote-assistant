@@ -69,6 +69,28 @@ class UpdateServiceTests(unittest.TestCase):
         payload["assets"][1]["browser_download_url"] = "https://example.com/extension.zip"
         self.assertFalse(update_service._release_payload(payload)["extension"]["available"])
 
+    def test_platform_capabilities_hide_executables_but_keep_desktop_extension(self):
+        release = {
+            "version": "9.8.7", "checked_at": 4102444800,
+            "page_url": update_service.RELEASE_PAGE,
+            "client": {"url": "windows.exe", "sha256": "a" * 64, "installable": True},
+            "extension": {"url": "extension.zip", "sha256": "b" * 64, "available": True},
+        }
+        for mode, platform in (("desktop", "darwin"), ("desktop", "linux"), ("desktop", "win32"), ("server", "win32"), ("server", "linux")):
+            with self.subTest(mode=mode, platform=platform), tempfile.TemporaryDirectory() as directory, patch.object(update_service, "DATA_DIR", Path(directory)), patch.object(update_service, "DEPLOYMENT_MODE", mode), patch.object(update_service.sys, "platform", platform), patch.object(update_service, "_saved_release", return_value=release), patch.object(update_service.requests, "get") as request:
+                result = update_service.status()
+                request.assert_not_called()
+            supported = mode == "desktop" and platform == "win32"
+            self.assertEqual(result["capabilities"]["download"], supported)
+            self.assertEqual(result["capabilities"]["apply"], supported)
+            self.assertEqual(result["latest"]["client"]["installable"], supported)
+            self.assertEqual(bool(result["latest"]["client"]["url"]), supported)
+            self.assertEqual(bool(result["latest"]["extension"]["url"]), mode == "desktop")
+            self.assertEqual(result["latest"]["page_url"], update_service.RELEASE_PAGE)
+            if mode == "desktop" and not supported:
+                self.assertIn("手动更新", result["capabilities"]["manual_update_message"])
+        self.assertTrue(release["client"]["installable"], "A cached release is never mutated by platform filtering")
+
     def test_missing_cache_is_rechecked_even_with_recent_timestamp(self):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
@@ -106,6 +128,7 @@ class UpdateServiceTests(unittest.TestCase):
         self.assertEqual(result["extension"]["url"], "")
         self.assertEqual(result["extension"]["sha256"], "")
 
+    @patch.object(update_service.sys, "platform", "win32")
     def test_force_check_records_release_time_and_does_not_expose_arbitrary_urls(self):
         content = b"installer"
         checksum = hashlib.sha256(content).hexdigest()

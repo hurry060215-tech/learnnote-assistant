@@ -1,6 +1,7 @@
 /* A fresh, no-extension Edge process; genuine browser zoom keys, never emulation. */
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { captureNativeViews } = require("./timeline-native-capture.cjs");
 
 async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   assert.equal(process.platform, "win32", "Native Edge zoom acceptance requires the hosted Windows runner");
@@ -8,8 +9,8 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   const origin = new URL(base).origin;
   const server = await chromium.launchServer({ channel: "msedge", headless: false, args: ["--window-size=1440,1000"] });
   let ownedPid, browser, context, page, before, after, zoomCommand, report, failure;
-  const unexpected = [], errors = [];
-  const nativeKey = zoom => JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom], { encoding: "utf8", timeout: 15000 }));
+  const unexpected = [], errors = [], captures = [];
+  const nativeKey = (zoom, capturePath) => JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout: 15000 }));
   const metrics = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
     cssZoom: getComputedStyle(document.body).zoom, documentZoom: getComputedStyle(document.documentElement).zoom,
     visualScale: visualViewport.scale, overflow: document.documentElement.scrollWidth - innerWidth }));
@@ -34,6 +35,7 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
     const marker = page.locator(`.note-claim-marker[data-claim-id="${claimId}"]`);
     await marker.click(); await page.waitForFunction(() => document.querySelector("#player").readyState >= 1);
     await page.bringToFront(); nativeKey("reset"); before = await metrics();
+    assert.equal(before.dpr, 1, "Owned-window capture currently requires the hosted display at 100% OS scale");
     await marker.focus();
     zoomCommand = nativeKey("200");
     await page.waitForFunction(initial => Math.abs(devicePixelRatio / initial.dpr - 2) < .05 && Math.abs(innerWidth / initial.width - .5) < .03, before);
@@ -55,17 +57,15 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
     await page.waitForFunction(() => document.querySelector("#player").currentTime < .1 && !document.querySelector("#player").seeking);
     assert.equal(await page.locator("#player").evaluate(node => node.paused), true);
     assert.equal(await page.evaluate(() => document.activeElement?.dataset.cueIndex), "0");
-    await page.screenshot({path:path.join(out,"claim-timeline-native-200-percent.png"),fullPage:true});
-    await page.locator("#sourceClaims").scrollIntoViewIfNeeded();
-    await page.screenshot({path:path.join(out,"claim-timeline-native-200-percent-viewport.png")});
+    await captureNativeViews(page, { out, zoomed: after, nativeCapture: filename => nativeKey("capture", filename), reports: captures });
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
-    report = {passed:true,browser:browser.version(),method:"Owned Edge window Ctrl+0 then five Ctrl+Add keys",fresh_profile:true,extensions_loaded:false,viewport_emulation:false,before,after,zoom_command:zoomCommand,keyboard_marker_seek:true,keyboard_virtual_cues:true,unexpected_requests:unexpected,page_errors:errors};
+    report = {passed:true,browser:browser.version(),method:"Owned Edge window Ctrl+0 then five Ctrl+Add keys",fresh_profile:true,extensions_loaded:false,viewport_emulation:false,before,after,zoom_command:zoomCommand,keyboard_marker_seek:true,keyboard_virtual_cues:true,captures,visual_review_required:true,unexpected_requests:unexpected,page_errors:errors};
     writeReport();
     return report;
   } catch (error) {
     failure = error;
     await page?.screenshot({path:path.join(out,"native-zoom-failure.png")}).catch(()=>{});
-    report = {passed:false,before,after,zoom_command:zoomCommand,error:String(error),unexpected_requests:unexpected,page_errors:errors};
+    report = {passed:false,before,after,zoom_command:zoomCommand,captures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
     writeFailureReport();
     throw error;
   } finally {

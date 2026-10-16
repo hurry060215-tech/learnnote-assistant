@@ -12,6 +12,7 @@ async function probe({ failureAt = "newPage", reportFails = false, closeFails = 
   const sandbox = {module: {exports: {}}, process: {platform: "win32"}, URL, __dirname: "/not-executed",
     console: {error: (...args) => diagnostics.push(args.map(String).join(" "))},
     require: name => {
+      if (name === "./timeline-native-capture.cjs") return require("../timeline-native-capture.cjs");
       if (name === "playwright") return {chromium: {launchServer: async () => server, connect: async () => { failAt("connect"); return browser; }}};
       if (name === "node:fs") return {writeFileSync: () => { if (reportFails) throw new Error("REPORT_WRITE_FAILURE"); }};
       if (name === "node:child_process") return {execFileSync: () => { assert.fail("Native commands forbidden in fault-injection tests"); }};

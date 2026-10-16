@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from threading import RLock
@@ -29,10 +30,15 @@ RELEASE_BASE = f"https://github.com/{OFFICIAL_REPOSITORY}/releases"
 INSTALLER_NAME = "LearnNote-Setup-x64.exe"
 EXTENSION_ASSET_TEMPLATE = "LearnNote-Browser-Extension-v{version}.zip"
 MAX_UPDATE_BYTES = 500 * 1024 * 1024
+MANUAL_CLIENT_UPDATE = "当前平台不支持 Windows 安装包自动更新。请查看官方版本说明，按 macOS / Linux 部署文档手动更新，并保留原数据目录。"
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 _cache_lock = RLock()
 _release_cache: dict | None = None
 _release_cache_at = 0.0
+
+
+def client_updater_supported() -> bool:
+    return sys.platform == "win32"
 
 
 def _version_tuple(value: str) -> tuple[int, int, int] | None:
@@ -234,11 +240,12 @@ def status(*, force: bool = False) -> dict:
             preferences = save_preferences({**preferences, "last_checked_at": latest["checked_at"]})
         except (requests.RequestException, ValueError) as exc:
             error = "暂时无法连接官方更新服务，请稍后重试。已下载并校验的更新仍然保留。"
-    if latest is not None and DEPLOYMENT_MODE != "desktop":
+    client_supported = DEPLOYMENT_MODE == "desktop" and client_updater_supported()
+    if latest is not None and not client_supported:
         latest = {
             **latest,
             "client": {**latest["client"], "url": "", "sha256": "", "installable": False},
-            "extension": {**latest["extension"], "url": "", "sha256": ""},
+            "extension": latest["extension"] if DEPLOYMENT_MODE == "desktop" else {**latest["extension"], "url": "", "sha256": ""},
         }
     current = {
         "client_version": APP_VERSION,
@@ -253,9 +260,10 @@ def status(*, force: bool = False) -> dict:
         "extension_update_available": bool(latest and latest["extension"]["available"] and is_newer_version(latest["version"], current["extension_version"])),
         "capabilities": {
             "release_info": True,
-            "download": DEPLOYMENT_MODE == "desktop",
-            "apply": DEPLOYMENT_MODE == "desktop",
-            "reason": "desktop_bridge" if DEPLOYMENT_MODE == "desktop" else "server_only",
+            "download": client_supported,
+            "apply": client_supported,
+            "reason": "desktop_bridge" if client_supported else "unsupported_platform" if DEPLOYMENT_MODE == "desktop" else "server_only",
+            "manual_update_message": MANUAL_CLIENT_UPDATE if DEPLOYMENT_MODE == "desktop" and not client_supported else "",
         },
         "preferences": preferences,
         "check_due": due,

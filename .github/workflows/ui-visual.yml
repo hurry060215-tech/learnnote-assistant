@@ -31,6 +31,13 @@ on:
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-upgrade-*"
+      - "scripts/range-platform-browser-acceptance.cjs"
+      - "scripts/fixtures/range-platform-cases.json"
+      - "scripts/tests/*range*platform*"
+      - "backend/tests/test_range_platform_fixtures.py"
+      - "backend/tests/test_caption_range_context.py"
+      - "backend/app/caption_extraction.py"
+      - "backend/app/subtitle_notes.py"
       - "scripts/course-concepts-acceptance.cjs"
       - "scripts/cited-relations-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
@@ -65,6 +72,13 @@ on:
       - "scripts/personal-review-acceptance.cjs"
       - "scripts/course-question-acceptance.cjs"
       - "scripts/course-upgrade-*"
+      - "scripts/range-platform-browser-acceptance.cjs"
+      - "scripts/fixtures/range-platform-cases.json"
+      - "scripts/tests/*range*platform*"
+      - "backend/tests/test_range_platform_fixtures.py"
+      - "backend/tests/test_caption_range_context.py"
+      - "backend/app/caption_extraction.py"
+      - "backend/app/subtitle_notes.py"
       - "scripts/course-concepts-acceptance.cjs"
       - "scripts/cited-relations-acceptance.cjs"
       - ".github/workflows/ui-visual.yml"
@@ -110,6 +124,12 @@ jobs:
         run: |
           node scripts/course-upgrade-api-acceptance.cjs build/course-upgrade-ui
           if ($LASTEXITCODE -ne 0) { throw "Course episode upgrade real API/Edge gate failed" }
+      - name: Rendered platform range matrix with synthetic transport
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/range-platform-browser-acceptance.cjs build/range-platform-ui
+          if ($LASTEXITCODE -ne 0) { throw "Rendered platform range matrix failed" }
       - name: Start isolated local backend
         shell: pwsh
         run: |
@@ -255,6 +275,7 @@ jobs:
             build/model-catalog
             build/workspace-recovery
             build/core-output
+            build/update-center-ui
             build/reader-ui
             build/progressive-sections-ui
             build/sidepanel-progressive-ui
@@ -281,6 +302,7 @@ jobs:
             build/course-question-ui
             build/course-upgrade-synthetic-ui
             build/course-upgrade-ui
+            build/range-platform-ui
             build/model-route-ui
           if-no-files-found: warn
           retention-days: 14

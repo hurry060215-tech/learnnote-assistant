@@ -272,6 +272,7 @@ class DesktopLauncherTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 api.export_task("abcdef123456", "unknown")
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_check_returns_verified_windows_installer_metadata(self):
         checksum = "a" * 64
         installer_url = (
@@ -303,6 +304,7 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertEqual(installer_url, result["installer_url"])
         self.assertEqual(checksum, result["installer_sha256"])
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_download_verifies_checksum_and_stays_under_data(self):
         content = b"signed release installer bytes"
         checksum = hashlib.sha256(content).hexdigest()
@@ -329,6 +331,7 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(Path(temp_dir) / "installers" / "v9.8.7", target.parent)
             self.assertEqual(content, target.read_bytes())
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_download_runs_in_background_and_reports_progress(self):
         content = b"background installer bytes"
         checksum = hashlib.sha256(content).hexdigest()
@@ -433,6 +436,7 @@ class DesktopLauncherTests(unittest.TestCase):
             backup = Path(result["backup"])
             self.assertEqual("0.2.8", json.loads((backup / "manifest.json").read_text(encoding="utf-8"))["version"])
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_check_falls_back_to_release_page_and_checksum_asset(self):
         checksum = "b" * 64
 
@@ -464,6 +468,7 @@ class DesktopLauncherTests(unittest.TestCase):
         self.assertEqual("9.8.7", result["latest_version"])
         self.assertEqual(checksum, result["installer_sha256"])
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_rejects_untrusted_url_and_arbitrary_installer_path(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "data") as temp_dir:
             api = desktop.DesktopApi(Path(temp_dir))
@@ -498,6 +503,7 @@ class DesktopLauncherTests(unittest.TestCase):
             state = json.loads((data_dir / "config" / "release-notes.json").read_text(encoding="utf-8"))
             self.assertEqual("9.8.7", state["seen_version"])
 
+    @patch.object(desktop.sys, "platform", "win32")
     def test_update_install_schedules_wait_install_and_restart_script(self):
         class Window:
             def destroy(self):

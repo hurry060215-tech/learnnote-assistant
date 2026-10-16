@@ -1,0 +1,56 @@
+[
+  {
+    "id": "bilibili",
+    "page_url": "https://www.bilibili.com/video/BV1SYNTHETIC?p=2",
+    "title": "Synthetic range lesson bilibili",
+    "current_time": 300.25,
+    "duration": 600,
+    "chapters": [
+      {
+        "start": 300.25,
+        "end": 420.75,
+        "title": "Synthetic selected chapter"
+      }
+    ],
+    "custom_range": {
+      "start": 300.25,
+      "end": 420.75
+    }
+  },
+  {
+    "id": "youtube",
+    "page_url": "https://www.youtube.com/watch?v=abcdefghijk",
+    "title": "Synthetic range lesson youtube",
+    "current_time": 300.25,
+    "duration": 600,
+    "chapters": [
+      {
+        "start": 300.25,
+        "end": 420.75,
+        "title": "Synthetic selected chapter"
+      }
+    ],
+    "custom_range": {
+      "start": 300.25,
+      "end": 420.75
+    }
+  },
+  {
+    "id": "html5",
+    "page_url": "https://example.com/synthetic-lesson",
+    "title": "Synthetic range lesson html5",
+    "current_time": 300.25,
+    "duration": 600,
+    "chapters": [
+      {
+        "start": 300.25,
+        "end": 420.75,
+        "title": "Synthetic selected chapter"
+      }
+    ],
+    "custom_range": {
+      "start": 300.25,
+      "end": 420.75
+    }
+  }
+]

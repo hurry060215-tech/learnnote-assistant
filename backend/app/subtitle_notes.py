@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .pipeline_timing import measured_stage
+from .caption_extraction import selected_caption_context
 
 from .processor_state import TaskCancelled
 from .models import EvidenceCoverage, EvidenceGate, TranscriptResult
@@ -25,6 +26,9 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         attempt_id = current_pipeline_attempt(task_id)
     timing_callback = stage_duration_recorder(task_id, attempt_id)
     check_cancel(task_id)
+    transcript, range_notice = selected_caption_context(transcript, get_task(task_id).learning_range)
+    if range_notice:
+        write_json(task_id, "transcript.json", transcript.model_dump(mode="json"))
     is_screen_ocr = transcript.source == "screen-ocr"
     if is_screen_ocr and (transcript.provenance.get("status") != "ready" or transcript.provenance.get("coverage", {}).get("complete") is not True):
         raise ValueError("画面字幕提取未完成，不能生成完整笔记。")
@@ -91,12 +95,14 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         source_label = "画面字幕 OCR（未人工核验）" if is_screen_ocr else "浏览器平台字幕" if transcript.source == "browser-subtitle" else "平台字幕" if "subtitle" in transcript.source else "已保存的音频转写"
         provenance = f"> 证据来源：{source_label}；" + ("时间来自画面抽样，可能漏字或误识别，不等于讲者原话或已验证事实。" if is_screen_ocr else "本次未分析画面。")
         if is_screen_ocr:
-            if transcript.provenance.get("learning_range"):
+            if not range_notice and transcript.provenance.get("learning_range"):
                 provenance += f" 本片段时间从 0 秒起，对应原视频 {float(transcript.provenance.get('original_time_offset', 0)):g} 秒。"
             warning = "；".join(filter(None, [warning, transcript.warning]))
             fields["summary_warning"] = warning
             diagnostics["source_kind"] = "screen_ocr"
             diagnostics["screen_ocr_coverage"] = transcript.provenance.get("coverage", {})
+        if range_notice:
+            provenance += "\n\n" + range_notice
         if provenance not in note:
             first, sep, rest = note.lstrip().partition("\n")
             note = f"{first}\n\n{provenance}\n\n{rest.lstrip()}" if first.startswith("# ") and sep else f"{provenance}\n\n{note}"

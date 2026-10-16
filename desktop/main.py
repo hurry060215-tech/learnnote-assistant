@@ -45,6 +45,7 @@ WINDOWS_INSTALLER_NAME = "LearnNote-Setup-x64.exe"
 EXTENSION_ASSET_PREFIX = "LearnNote-Browser-Extension-v"
 EXTENSION_ASSET_SUFFIX = ".zip"
 MAX_UPDATE_BYTES = 500 * 1024 * 1024
+MANUAL_CLIENT_UPDATE = "当前平台不支持 Windows 安装包自动更新。请查看官方版本说明，按 macOS / Linux 部署文档手动更新，并保留原数据目录。"
 
 
 class _UpdateCancelled(Exception):
@@ -349,6 +350,33 @@ class DesktopApi:
         temporary.replace(state_path)
         return {"ok": True, "seen_version": version}
 
+    @staticmethod
+    def _require_client_updater() -> None:
+        if sys.platform != "win32":
+            raise RuntimeError(MANUAL_CLIENT_UPDATE)
+
+    @staticmethod
+    def _client_update_capabilities() -> dict:
+        supported = sys.platform == "win32"
+        return {
+            "download": supported,
+            "apply": supported,
+            "reason": "desktop_bridge" if supported else "unsupported_platform",
+            "manual_update_message": "" if supported else MANUAL_CLIENT_UPDATE,
+        }
+
+    def _platform_release_metadata(self, result: dict) -> dict:
+        result = {**result, "capabilities": self._client_update_capabilities()}
+        if sys.platform != "win32":
+            result.update(installer_url="", installer_sha256="", installable=False)
+        return result
+
+    def _platform_update_status(self, result: dict) -> dict:
+        result = {**result, "capabilities": {**result.get("capabilities", {}), **self._client_update_capabilities()}}
+        if sys.platform != "win32" and result.get("latest"):
+            result["latest"] = {**result["latest"], "client": {**result["latest"].get("client", {}), "url": "", "sha256": "", "installable": False}}
+        return result
+
     def check_update(self) -> dict:
         try:
             response = requests.get(
@@ -380,7 +408,7 @@ class DesktopApi:
                 "installer_sha256": sha256.lower() if installable else "",
                 "installable": installable,
             }
-            return result if installable else self._check_update_without_api()
+            return self._platform_release_metadata(result) if installable else self._check_update_without_api()
         except (requests.RequestException, ValueError):
             try:
                 return self._check_update_without_api()
@@ -402,6 +430,8 @@ class DesktopApi:
         if not match:
             raise ValueError("GitHub latest release redirect is invalid")
         version = match.group(1)
+        if sys.platform != "win32":
+            return self._platform_release_metadata({"ok": True, "latest_version": version, "release_url": f"{GITHUB_RELEASE_BASE}/tag/v{version}"})
         asset_base = f"{GITHUB_RELEASE_BASE}/download/v{version}"
         checksums = requests.get(
             f"{asset_base}/SHA256SUMS.txt",
@@ -423,6 +453,7 @@ class DesktopApi:
             "installer_url": installer_url,
             "installer_sha256": checksum_match.group(1).lower(),
             "installable": True,
+            "capabilities": self._client_update_capabilities(),
         }
 
     @staticmethod
@@ -443,6 +474,7 @@ class DesktopApi:
         return result
 
     def _download_update(self, version: str, url: str, sha256: str, progress=None, cancel_event=None) -> dict:
+        self._require_client_updater()
         version = str(version or "").strip()
         sha256 = str(sha256 or "").strip().lower()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not self._valid_installer_url(version, url):
@@ -591,7 +623,7 @@ class DesktopApi:
                 timeout=12.0,
             )
             response.raise_for_status()
-            result = response.json()
+            result = self._platform_update_status(response.json())
             client_version, extension_version = self._current_update_versions()
             result.setdefault("current", {}).setdefault("client_version", client_version)
             if not result.get("current", {}).get("extension_version"):
@@ -618,7 +650,7 @@ class DesktopApi:
             extension_state = dict(self._extension_update_state)
         client_version, extension_version = self._current_update_versions()
         latest = str(result.get("latest_version") or "")
-        return {
+        return self._platform_update_status({
             "ok": bool(result.get("ok")),
             "current": {"client_version": client_version, "extension_version": extension_version},
             "latest": {
@@ -639,7 +671,7 @@ class DesktopApi:
             },
             "download": state,
             "extension_download": extension_state,
-        }
+        })
 
     @staticmethod
     def _version_is_newer(candidate: str, current: str) -> bool:
@@ -651,6 +683,7 @@ class DesktopApi:
         return len(left) == len(right) == 3 and left > right
 
     def start_update_download(self, version: str, url: str, sha256: str) -> dict:
+        self._require_client_updater()
         with self._update_lock:
             if self._update_thread and self._update_thread.is_alive():
                 return {"ok": True, **self._update_state}
@@ -867,6 +900,7 @@ class DesktopApi:
         return self.install_extension_update(version, archive_path, sha256)
 
     def apply_update(self, version: str, installer_path: str, sha256: str = "") -> dict:
+        self._require_client_updater()
         try:
             response = requests.get(f"{self.backend_url}/api/tasks", timeout=2.0)
             response.raise_for_status()
@@ -900,6 +934,7 @@ class DesktopApi:
         return response.json()
 
     def install_update(self, version: str, installer_path: str) -> dict:
+        self._require_client_updater()
         with self._update_lock:
             if getattr(self, "_installing", False):
                 raise RuntimeError("更新安装已经启动，请等待完成。")
@@ -911,6 +946,7 @@ class DesktopApi:
                 raise
 
     def _install_verified_update(self, version: str, installer_path: str) -> dict:
+        self._require_client_updater()
         version = str(version or "").strip()
         if not re.fullmatch(r"\d+\.\d+\.\d+", version):
             raise ValueError("Invalid update version")

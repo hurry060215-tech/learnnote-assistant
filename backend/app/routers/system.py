@@ -16,6 +16,7 @@ from ..config import DATA_DIR
 from ..update_service import get_preferences as get_update_preferences
 from ..update_service import save_preferences as save_update_preferences
 from ..update_service import status as update_status
+from ..update_service import client_updater_supported, MANUAL_CLIENT_UPDATE
 from ..model_route import plan_route
 from ..integrations import integration_manifest
 from ..models import TaskOptions
@@ -51,6 +52,8 @@ def _update_controller(request: Request):
 @system_router.post("/api/update/intent")
 def api_update_intent(request: Request, payload: UpdateAction):
     _update_controller(request)
+    if payload.component == "client" and payload.action != "cancel" and not client_updater_supported():
+        raise HTTPException(409, MANUAL_CLIENT_UPDATE)
     with _update_intents_lock:
         intents = getattr(request.app.state, "update_intents", {})
         now = time.monotonic()
@@ -66,6 +69,8 @@ def api_update_intent(request: Request, payload: UpdateAction):
 @system_router.post("/api/update/action")
 def api_update_action(request: Request, payload: UpdateAction):
     controller = _update_controller(request)
+    if payload.component == "client" and payload.action != "cancel" and not client_updater_supported():
+        raise HTTPException(409, MANUAL_CLIENT_UPDATE)
     with _update_intents_lock:
         intent = getattr(request.app.state, "update_intents", {}).pop(request.headers.get("X-LearnNote-Update-Intent", ""), None)
     if not intent or intent[0] <= time.monotonic() or intent[1] != payload.model_dump():
