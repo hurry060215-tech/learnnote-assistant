@@ -125,7 +125,7 @@ class TaskExportBoundaryTests(unittest.TestCase):
         schedule.assert_called_once()
         for name, content in before.items():
             self.assertEqual((self.root / name).read_bytes(), content)
-        self.assertEqual(json.loads((self.root / "task.json").read_text())["transcript_path"], self.task.transcript_path)
+        self.assertEqual(json.loads((self.root / "task.json").read_text(encoding="utf-8"))["transcript_path"], self.task.transcript_path)
 
 
 if __name__ == "__main__":

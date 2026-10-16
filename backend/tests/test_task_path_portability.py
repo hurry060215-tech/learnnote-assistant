@@ -61,7 +61,7 @@ class TaskPathPortabilityTests(unittest.TestCase):
         before = self.hashes(root)
         self.assertIn("Copied lesson", task_artifacts.read_task_note(task.id))
         self.assertEqual(task_artifacts.read_task_transcript(task.id)["full_text"], "A copied caption.")
-        self.assertEqual(processor.read_note(task.id), (root / "note.md").read_text())
+        self.assertEqual(processor.read_note(task.id), (root / "note.md").read_text(encoding="utf-8"))
         self.assertEqual(processor.read_transcript(task.id)["full_text"], "A copied caption.")
         self.assertEqual(processor.read_visual_index(task.id), {"windows": []})
         self.assertEqual(owned_caption_path(task), root / "transcript.json")
@@ -119,11 +119,11 @@ class TaskPathPortabilityTests(unittest.TestCase):
                     resolve_task_artifact(root, task.id, str(old / "note.md"), field="note_path")
                 self.assertEqual(result.exception.reason, "native_mapping_requires_preview")
         # Explicit task-relative metadata already selects one owned destination.
-        payload = json.loads((root / "task.json").read_text())
+        payload = json.loads((root / "task.json").read_text(encoding="utf-8"))
         payload["note_path"] = "note.md"
         (root / "task.json").write_text(json.dumps(payload), encoding="utf-8")
         before = self.hashes(root)
-        self.assertEqual(task_artifacts.read_task_note(task.id), (root / "note.md").read_text())
+        self.assertEqual(task_artifacts.read_task_note(task.id), (root / "note.md").read_text(encoding="utf-8"))
         self.assertEqual(self.hashes(root), before)
 
     def test_native_owned_path_and_empty_optional_artifacts_preserve_behavior(self):
@@ -179,8 +179,8 @@ class TaskPathPortabilityTests(unittest.TestCase):
             self.assertIn("note_path", main.task_artifact_status(task)["path_diagnostics"])
         (root / "note.md").rmdir()
         (root / "note.md").write_bytes(b"owned")
-        payload = json.loads((root / "task.json").read_text()); payload["id"] = "other"
-        (root / "task.json").write_text(json.dumps(payload))
+        payload = json.loads((root / "task.json").read_text(encoding="utf-8")); payload["id"] = "other"
+        (root / "task.json").write_text(json.dumps(payload), encoding="utf-8")
         result = self.client.get(f"/api/tasks/{task.id}/note")
         self.assertEqual(result.status_code, 409, result.text)
         self.assertEqual(result.json()["detail"]["reason"], "task_identity_mismatch")

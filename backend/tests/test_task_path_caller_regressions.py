@@ -73,7 +73,7 @@ class TaskPathCallerRegressionTests(unittest.TestCase):
         self.assertEqual(saved.status, "success", saved.error_detail)
         result = self.fixture.client.get(f"/api/tasks/{child.id}/exports/subtitles")
         self.assertEqual(result.content, original)
-        self.assertNotIn("CHANGED ORIGINAL", (self.root.parent / child.id / "transcript.json").read_text())
+        self.assertNotIn("CHANGED ORIGINAL", (self.root.parent / child.id / "transcript.json").read_text(encoding="utf-8"))
 
     def test_caption_copy_failure_never_publishes_success_or_cross_task_pointer(self):
         source = self.root / "browser_subtitles.srt"
@@ -91,9 +91,9 @@ class TaskPathCallerRegressionTests(unittest.TestCase):
     def test_screen_ocr_summary_api_and_worker_never_hash_old_copied_media(self):
         outside = self.fixture.old_file("media.mp4")
         digest = hashlib.sha256(outside.read_bytes()).hexdigest()
-        transcript = json.loads((self.root / "transcript.json").read_text())
+        transcript = json.loads((self.root / "transcript.json").read_text(encoding="utf-8"))
         transcript.update(source="screen-ocr", provenance={"status": "ready", "coverage": {"complete": True}, "media_sha256": digest})
-        (self.root / "transcript.json").write_text(json.dumps(transcript))
+        (self.root / "transcript.json").write_text(json.dumps(transcript), encoding="utf-8")
         self.fixture.manifest(media_path=str(outside), screen_subtitles_media_sha256=digest)
         before = (self.root / "task.json").read_bytes()
         with self.fixture.no_old_io(outside), patch("app.screen_subtitles.media_hash") as media_hash, patch("app.main.schedule_processing") as schedule:
@@ -173,7 +173,7 @@ class TaskPathCallerRegressionTests(unittest.TestCase):
                 elif kind == "outside_reference":
                     storage.update_task(survivor.id, source_media_path=str(data / "outside" / "unavailable.mp4"))
                 elif kind == "broken":
-                    manifest.write_text("{broken")
+                    manifest.write_text("{broken", encoding="utf-8")
                 else:
                     outside = self.fixture.old_file("linked-task.json", manifest.read_bytes())
                     manifest.unlink()
@@ -287,9 +287,9 @@ class TaskPathCallerRegressionTests(unittest.TestCase):
         visual.legacy_index()
         outside = self.fixture.old_file("frame.jpg", b"old frame")
         index = visual.root / "visual_index.json"
-        payload = json.loads(index.read_text())
+        payload = json.loads(index.read_text(encoding="utf-8"))
         payload["frames"][0]["path"] = str(outside)
-        index.write_text(json.dumps(payload))
+        index.write_text(json.dumps(payload), encoding="utf-8")
         before = index.read_bytes()
         with self.fixture.no_old_io(outside), self.assertRaises(MediaProcessingError):
             _preserved_visual_evidence(visual.root, visual.video)

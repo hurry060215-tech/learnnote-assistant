@@ -106,7 +106,7 @@ class HistoricalSubtitleAncestryTests(unittest.TestCase):
                 (root / name).write_bytes((self.child_root / name).read_bytes())
             task = self.child.model_copy(update={"id": task_id, "source_task_id": previous,
                 "note_path": str(root / "captions.md"), "transcript_path": str(root / "transcript.json")})
-            (root / "task.json").write_text(task.model_dump_json())
+            (root / "task.json").write_text(task.model_dump_json(), encoding="utf-8")
             previous = task_id
         before = self.source_snapshot()
         self.assertEqual(self.fixture.client.get(f"/api/tasks/{previous}/exports/subtitles").status_code, 409)
@@ -212,7 +212,7 @@ class HistoricalSubtitleAncestryTests(unittest.TestCase):
         self.assert_rejected()
         (self.root / "task.json").write_bytes(source_original)
         evidence = self.child_root / "whole_attempt_duration_evidence.json"
-        evidence.write_text(json.dumps({"attempts": [{"context": {"entry_route": "current_page_media"}}]}))
+        evidence.write_text(json.dumps({"attempts": [{"context": {"entry_route": "current_page_media"}}]}), encoding="utf-8")
         self.assert_rejected()
 
     def test_foreign_and_linked_subtitle_or_manifest_never_probe_old_target(self):
