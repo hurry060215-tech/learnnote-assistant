@@ -56,6 +56,9 @@ class PermissionAcceptanceContracts(unittest.TestCase):
         self.assertIn("$allow.Count -eq 1 -and $deny.Count -eq 1", source)
         self.assertIn("InvokePattern", source)
         self.assertIn("CopyFromScreen", source)
+        self.assertIn("GetSupportedPatterns()", source)
+        self.assertIn("the gate will not dismiss or bypass it", source)
+        self.assertLess(source.index("$securityWarning ="), source.index("if ($Action -eq 'open-extension')"))
         self.assertNotIn("SendKeys", source)
         self.assertNotIn("mouse_event", source)
 
@@ -69,16 +72,32 @@ class PermissionAcceptanceContracts(unittest.TestCase):
         for mock in ("chrome.permissions.request =", "chrome.permissions.contains =", "grantPermissions", '"userGesture": True'):
             self.assertNotIn(mock, source)
 
-    def test_hosted_gate_keeps_current_budget_and_separate_artifacts(self):
+    def test_partial_native_scenario_is_retained_on_blocker(self):
+        source = (ROOT / "scripts/extension-permission-acceptance.py").read_text()
+        self.assertLess(source.index('report["scenarios"].append(scenario)'),
+                        source.index('run_scenario(executable, profile, output / decision'))
+        self.assertIn('result["browser_version"] = browser.version["Browser"]', source)
+
+    def test_native_gate_is_manual_only_and_automatic_smoke_is_unchanged(self):
         source = (ROOT / ".github/workflows/ui-visual.yml").read_text()
         job = source.split("  extension-runtime:", 1)[1].split("  public-site:", 1)[0]
+        self.assertNotIn("extension-permission-acceptance.py", source)
+        self.assertNotIn("extension-native-ui.ps1", source)
+        self.assertNotIn("build/extension-permissions", job)
+        self.assertIn("python scripts/e2e-extension-smoke.py", job)
+        native = (ROOT / ".github/workflows/native-permission-acceptance.yml").read_text()
+        self.assertIn("  workflow_dispatch:", native)
+        for automatic in ("  push:", "  pull_request:", "  schedule:", "  workflow_run:", "  repository_dispatch:"):
+            self.assertNotIn(automatic, native)
+        self.assertIn("contents: read", native)
+        self.assertIn("timeout-minutes: 15", native)
+        self.assertIn("python scripts/extension-permission-acceptance.py", native)
+        self.assertIn("build/extension-permissions", native)
+        self.assertNotIn("secrets.", native)
+        self.assertNotIn("profile-allow", native)
+        self.assertNotIn("continue-on-error", native)
+        self.assertIn("Do not bypass browser security warnings", native)
         self.assertIn("timeout-minutes: 15", job)
-        self.assertIn("python scripts/extension-permission-acceptance.py", job)
-        self.assertIn("build/extension-permissions", job)
-        self.assertNotIn("secrets.", job)
-        self.assertNotIn("profile-allow", job)
-        self.assertEqual(source.count('"scripts/extension-permission-acceptance.py"'), 2)
-        self.assertEqual(source.count('"scripts/extension-native-ui.ps1"'), 2)
 
 
 if __name__ == "__main__":

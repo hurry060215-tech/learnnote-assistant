@@ -46,7 +46,9 @@ function Invoke-Native($element) {
 function Save-Evidence($window, $nodes, [string]$selected) {
   $items = @($nodes | ForEach-Object {
     @{ name = $_.Current.Name; type = $_.Current.ControlType.ProgrammaticName;
-       automation_id = $_.Current.AutomationId; enabled = $_.Current.IsEnabled }
+       automation_id = $_.Current.AutomationId; enabled = $_.Current.IsEnabled;
+       offscreen = $_.Current.IsOffscreen;
+       supported_patterns = @($_.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) }
   })
   @{ process_id = $BrowserProcessId; action = $Action; expected_host = $ExpectedHost;
      selected = $selected; native_controls = $items } |
@@ -67,6 +69,13 @@ while ([DateTime]::UtcNow -lt $deadline) {
     $nodes = New-Object 'System.Collections.Generic.List[System.Windows.Automation.AutomationElement]'
     Read-NativeTree $window 0 $nodes
     $lastNames = @($nodes | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+    $securityWarning = @($nodes | Where-Object {
+      -not $_.Current.IsOffscreen -and $_.Current.Name -eq 'Turn off extensions in developer mode'
+    })
+    if ($securityWarning.Count -gt 0) {
+      Save-Evidence $window $nodes 'No control invoked: browser security warning requires user action'
+      throw 'Edge is showing its developer-mode security warning. Native acceptance is blocked; the gate will not dismiss or bypass it.'
+    }
     $buttons = @($nodes | Where-Object {
       ($_.Current.ControlType -eq $control::Button -or $_.Current.ControlType -eq $control::MenuItem) -and
       $_.Current.IsEnabled -and -not $_.Current.IsOffscreen

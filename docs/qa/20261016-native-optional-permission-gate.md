@@ -1,16 +1,43 @@
 # Native optional-host acceptance gate
 
-Implementation status: added for hosted Windows Edge execution. The Linux
-authoring environment has no native Windows desktop. Local unit/contract tests
-are not a native permission acceptance result. Review the exact commit's
-`extension-runtime` artifact before calling this gate passed.
+Implementation status: native acceptance is **unmet**. Issue #135 remains open.
+The Linux authoring environment has no native Windows desktop. Local
+unit/contract tests and the automatic real extension/media smoke are not a
+native permission acceptance result.
+
+The first hosted run on commit `81b4696e3a126230b0c84f7e74bca0aaac06cbe8`
+([run 38942622524](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38942622524))
+passed the existing real extension/media smoke but stopped before optional
+permission prompts. The correct native LearnNote toolbar control did not expose
+`InvokePattern`. Inspection of its native-window screenshot also confirmed
+Edge's “Turn off extensions in developer mode” security warning. It was not
+dismissed or bypassed. Native permission scenarios therefore remain unexecuted,
+not failed product-permission assertions. The driver now explicitly stops on
+that visible warning and includes supported UI Automation patterns in evidence.
+The [retained artifact](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38942622524/artifacts/12063932497)
+contains the original native tree, screenshot and blocker report.
 
 ## Reproduction and scope
 
-Run `python scripts/extension-permission-acceptance.py` on Windows with installed
-Edge and the repository's constrained backend test dependencies. The existing
-UI visual workflow runs it after the real extension/media smoke, retaining the
-same 15-minute job budget. Each decision starts with its own fresh profile. Each
+The native gate is isolated in `native-permission-acceptance.yml`, with only an
+explicit `workflow_dispatch` trigger, read-only repository permissions and a
+15-minute budget. It is never dispatched automatically; the existing automatic
+UI visual extension/media smoke is unchanged. A manual dispatch does not permit
+dismissing a security warning, and a blocked native run fails rather than being
+reported as a pass or an ignored failure. Review its exact commit and native
+evidence before claiming acceptance.
+
+The command is `python scripts/extension-permission-acceptance.py`, with installed
+Windows Edge and the repository's constrained backend test dependencies. The
+current cold hosted Edge setup shows a browser security warning and is not a
+completed acceptance environment. Continuing requires a human-controlled,
+suitable browser setup where the person handles any security decisions, or a
+separately reviewed store-installed setup. This harness does not silently switch
+to a real user's profile, install a store build, accept the warning, or change
+security settings/flags to avoid it. Store-installed validation must verify the
+exact installed version/source and remains separate from this unpacked gate.
+
+Each decision starts with its own fresh profile. Each
 profile is then restarted once for persistence checks and removed after Edge
 closes. The backend data and synthetic samples are also disposable.
 

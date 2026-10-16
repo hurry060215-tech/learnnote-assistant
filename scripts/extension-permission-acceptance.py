@@ -227,11 +227,11 @@ def blocked_handoffs(browser: Browser, tab_id: int, backend: str) -> dict:
 
 
 def run_scenario(executable: Path, profile: Path, output: Path, backend: str, samples_port: int,
-                 decision: str) -> dict:
+                 decision: str, result: dict) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     source_url = f"http://{HOST}:{samples_port}/mp4.html?lesson={decision}"
     baseline_tasks = task_count(backend)
-    result = {"initial_decision": decision, "steps": [], "profile_is_fresh": True}
+    result.update({"initial_decision": decision, "steps": [], "profile_is_fresh": True})
     browser = Browser(executable, profile, output, backend)
     try:
         result["browser_version"] = browser.version["Browser"]
@@ -358,7 +358,9 @@ def main() -> None:
         wait_until(lambda: smoke.port_is_open(samples_port), bool, "synthetic sample server", timeout=45)
         for decision in ("deny", "allow"):
             profile = work / f"profile-{decision}"
-            report["scenarios"].append(run_scenario(executable, profile, output / decision, backend, samples_port, decision))
+            scenario = {}
+            report["scenarios"].append(scenario)
+            run_scenario(executable, profile, output / decision, backend, samples_port, decision, scenario)
         report["passed"] = True
         print("PASS real Edge optional origin deny/allow/revoke/restart/explicit reauthorization")
     except Exception as exc:

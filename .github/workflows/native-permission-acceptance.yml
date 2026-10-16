@@ -1,0 +1,48 @@
+name: Native optional permission acceptance (manual only)
+
+# A cloud Edge developer-mode security warning is a hard stop, not consent.
+# Do not dispatch automatically or infer native acceptance from other CI gates.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-permissions:
+    name: Native Edge permission lifecycle (explicit acceptance)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      ORT_DISABLE_TELEMETRY: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements*.txt
+            backend/constraints*.txt
+      - name: Install constrained local fixture dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r backend/requirements.test.txt -c backend/requirements.windows-py312.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw "Native permission fixture dependency installation failed" }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { throw "Native permission fixture dependency consistency failed" }
+      - name: Explicit native acceptance in disposable Edge profiles
+        shell: pwsh
+        run: |
+          python scripts/extension-permission-acceptance.py --output build/extension-permissions
+          if ($LASTEXITCODE -ne 0) { throw "Native Edge optional-permission acceptance is unmet; inspect the report and native-window evidence. Do not bypass browser security warnings." }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: native-permission-acceptance-${{ github.run_id }}
+          path: build/extension-permissions
+          if-no-files-found: warn
+          retention-days: 14

@@ -71,3 +71,22 @@ class DurableIntentWaitTests(unittest.TestCase):
                 self.module.wait_for_completed_intent(lambda: {**self.intent, **change}, self.intent)
         with self.assertRaisesRegex(AssertionError, 'did not finalize'):
             self.module.wait_for_completed_intent(lambda: self.intent, self.intent, timeout=0)
+
+
+class FullSourceTransportTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node required')
+    def test_large_unicode_task_payload_uses_stdin_not_windows_argv(self):
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('range_transport', ROOT / 'scripts/local-range-acceptance.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        records = {'whole': {'task': {'id': 'whole', 'learning_range': {}, 'title': '合成资料' * 20000}},
+                   'range': {'task': {'id': 'range', 'learning_range': {'start': 5, 'end': 15}, 'source_task_id': 'whole'}}}
+        run = subprocess.run
+        with patch.object(module.subprocess, 'run', wraps=run) as observed:
+            self.assertEqual(module.resolve_full_source(records, 'range'), 'whole')
+        args, kwargs = observed.call_args
+        self.assertLess(len(' '.join(args[0])), 4000)
+        self.assertGreater(len(kwargs['input']), 32768)
+        self.assertEqual(json.loads(kwargs['input']), records)

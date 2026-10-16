@@ -49,6 +49,15 @@ def wait_for_completed_intent(read_intent, expected, timeout=10):
         time.sleep(.05)
 
 
+def resolve_full_source(records, selected_id):
+    """Keep task payloads off argv (Windows has a ~32K command-line limit)."""
+    helper = (ROOT / 'web/range-source.js').read_text(encoding='utf-8')
+    code = helper + "\nimport {readFileSync} from 'node:fs'; const records=JSON.parse(readFileSync(0,'utf8')); const source=await fullVideoSource(process.argv[1],async id=>records[id]); console.log(source.id);"
+    return subprocess.run(['node', '--input-type=module', '-e', code, selected_id],
+                          input=json.dumps(records), capture_output=True, text=True,
+                          encoding='utf-8', check=True, timeout=20).stdout.strip()
+
+
 def worker(output, mode):
     sys.path.insert(0, str(ROOT / 'backend'))
     load_script('interrupted-task-reliability').install_network_guard()
@@ -145,9 +154,7 @@ def worker(output, mode):
         assert '5–15' in selected.title
         # Run the actual browser-domain ancestry helper on actual API records.
         records = {id: client.get(f'/api/tasks/{id}').json() for id in (source_id, selected_id)}
-        helper = (ROOT / 'web/range-source.js').read_text(encoding='utf-8')
-        code = helper + '\nconst records=JSON.parse(process.argv[1]); const source=await fullVideoSource(process.argv[2],async id=>records[id]); console.log(source.id);'
-        resolved = subprocess.run(['node', '--input-type=module', '-e', code, json.dumps(records), selected_id], capture_output=True, text=True, encoding='utf-8', check=True).stdout.strip()
+        resolved = resolve_full_source(records, selected_id)
         assert resolved == source_id
         # Actual whole-source upgrade route, subtitles mode requires no provider admission.
         upgraded = client.post(f'/api/tasks/{resolved}/rerun-from-media', json={'content_mode': 'subtitles', 'visual_understanding': False})
