@@ -22,7 +22,7 @@ class NativeTimelineZoomContract(unittest.TestCase):
 
     def test_capture_is_owned_window_only_and_never_changes_zoom(self):
         source = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
-        capture = source.split('if ($Zoom -eq "capture") {', 1)[1].split('Send-OwnedZoomKey "^0"', 1)[0]
+        capture = source.split('if ($Zoom -in @("prepare", "capture")) {', 1)[1].split('Send-OwnedZoomKey "^0"', 1)[0]
         for required in ("DwmGetWindowAttribute($window", "$display.Contains($bounds)", "Assert-OwnedForeground",
                          "CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)", "$colors.Count -lt 2", "exit 0"):
             self.assertIn(required, capture)
@@ -38,6 +38,20 @@ class NativeTimelineZoomContract(unittest.TestCase):
             self.assertNotIn(forbidden, source)
         self.assertNotIn("SendWait", capture)
         self.assertNotIn("Send-OwnedZoomKey", capture)
+
+    def test_owned_window_is_fitted_only_before_native_zoom_baseline(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        prepare = helper.split('if ($Zoom -eq "prepare") {', 1)[1].split("$width =", 1)[0]
+        self.assertIn("Assert-OwnedForeground", prepare)
+        self.assertIn("ShowWindow($window, 3)", prepare)
+        self.assertIn("$rect = Read-OwnedBounds", prepare)
+        self.assertEqual(helper.count("::ShowWindow("), 1)
+        self.assertIn("$display.Contains($bounds)", helper)
+        self.assertIn("Geometry: $(Describe-Geometry $rect", helper)
+        self.assertIn("before = $initialGeometry", helper)
+        source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertLess(source.index('preparation = nativeKey("prepare")'), source.index('nativeKey("reset"); before = await metrics()'))
+        self.assertLess(source.index('nativeKey("reset"); before = await metrics()'), source.index('nativeKey("200")'))
 
     def test_gate_measures_native_zoom_and_restores_owned_browser(self):
         source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")

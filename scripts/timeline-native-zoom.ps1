@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][int]$OwnedBrowserPid,
-  [ValidateSet("reset", "200", "capture")][string]$Zoom = "reset",
+  [ValidateSet("reset", "200", "prepare", "capture")][string]$Zoom = "reset",
   [string]$CapturePath
 )
 $ErrorActionPreference = "Stop"
@@ -25,6 +25,7 @@ public static class TimelineZoomWindow {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int length);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetWindowDpiAwarenessContext(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetThreadDpiAwarenessContext();
@@ -59,18 +60,27 @@ function Send-OwnedZoomKey([string]$keys) {
   [System.Windows.Forms.SendKeys]::SendWait($keys)
   Start-Sleep -Milliseconds 150
 }
-if ($Zoom -eq "capture") {
-  if (-not $CapturePath -or [IO.Path]::GetExtension($CapturePath) -ne ".png") { throw "An owned PNG output path is required." }
+if ($Zoom -in @("prepare", "capture")) {
+  if ($Zoom -eq "capture" -and (-not $CapturePath -or [IO.Path]::GetExtension($CapturePath) -ne ".png")) { throw "An owned PNG output path is required." }
   Add-Type -AssemblyName System.Drawing
   $display = [System.Windows.Forms.SystemInformation]::VirtualScreen
   $screens = @([System.Windows.Forms.Screen]::AllScreens)
   $windowAwareness = [TimelineZoomWindow]::GetAwarenessFromDpiAwarenessContext([TimelineZoomWindow]::GetWindowDpiAwarenessContext($window))
   $threadAwareness = [TimelineZoomWindow]::GetAwarenessFromDpiAwarenessContext([TimelineZoomWindow]::GetThreadDpiAwarenessContext())
+  function Describe-Geometry($rectangle) {
+    @{ dwm = @{ left = $rectangle.Left; top = $rectangle.Top; right = $rectangle.Right; bottom = $rectangle.Bottom };
+       display = @{ left = $display.Left; top = $display.Top; width = $display.Width; height = $display.Height };
+       window_dpi = [TimelineZoomWindow]::GetDpiForWindow($window); display_count = $screens.Count;
+       window_dpi_awareness = $windowAwareness; helper_thread_dpi_awareness = $threadAwareness }
+  }
+  Assert-OwnedForeground
+  $rect = New-Object TimelineZoomWindow+Rect
+  if ([TimelineZoomWindow]::DwmGetWindowAttribute($window, 9, [ref]$rect, 16) -ne 0) { throw "Owned Edge window bounds unavailable." }
   # No DPI mode is changed. At one 96-DPI display, physical DWM and PowerShell
   # screen coordinates agree even if this helper's thread is DPI-unaware.
   if ($screens.Count -ne 1 -or $windowAwareness -lt 1 -or $threadAwareness -lt 0 -or
       [TimelineZoomWindow]::GetDpiForWindow($window) -ne 96 -or $display.Left -ne 0 -or $display.Top -ne 0 -or
-      -not $display.Equals($screens[0].Bounds)) { throw "Native capture requires one verified 96-DPI display with matching physical/screen coordinates." }
+      -not $display.Equals($screens[0].Bounds)) { throw "Native capture requires one verified 96-DPI display with matching physical/screen coordinates. Geometry: $(Describe-Geometry $rect | ConvertTo-Json -Depth 4 -Compress)" }
   function Read-OwnedBounds {
     Assert-OwnedForeground
     $current = New-Object TimelineZoomWindow+Rect
@@ -82,15 +92,29 @@ if ($Zoom -eq "capture") {
   function Assert-SameBounds($expected, $actual) {
     if ($expected.Left -ne $actual.Left -or $expected.Top -ne $actual.Top -or
         $expected.Right -ne $actual.Right -or $expected.Bottom -ne $actual.Bottom) {
-      throw "Owned Edge window moved or resized; no screenshot saved."
+      throw "Owned Edge window moved or resized; no screenshot saved. Before: $(Describe-Geometry $expected | ConvertTo-Json -Depth 4 -Compress) After: $(Describe-Geometry $actual | ConvertTo-Json -Depth 4 -Compress)"
     }
   }
-  $rect = Read-OwnedBounds
+  $initialGeometry = Describe-Geometry $rect
+  if ($Zoom -eq "prepare") {
+    # Fit only the already verified disposable window, before the zoom baseline.
+    # Capture mode never moves/resizes a window or accepts a cropped rectangle.
+    Assert-OwnedForeground
+    [void][TimelineZoomWindow]::ShowWindow($window, 3) # SW_MAXIMIZE
+    Start-Sleep -Milliseconds 250
+    $rect = Read-OwnedBounds
+  }
   $width = $rect.Right - $rect.Left
   $height = $rect.Bottom - $rect.Top
   $bounds = [System.Drawing.Rectangle]::new($rect.Left, $rect.Top, $width, $height)
   if ($width -le 0 -or $height -le 0 -or -not $display.Contains($bounds)) {
-    throw "Owned Edge window is not wholly on the display; no partial capture accepted."
+    throw "Owned Edge window is not wholly on the display; no partial capture accepted. Geometry: $(Describe-Geometry $rect | ConvertTo-Json -Depth 4 -Compress)"
+  }
+  if ($Zoom -eq "prepare") {
+    @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";
+       method = "maximize-owned-window-before-baseline"; before = $initialGeometry;
+       after = (Describe-Geometry $rect) } | ConvertTo-Json -Depth 5 -Compress
+    exit 0
   }
   $bitmap = [System.Drawing.Bitmap]::new($width, $height)
   $graphics = $null
@@ -113,7 +137,7 @@ if ($Zoom -eq "capture") {
        x = $rect.Left; y = $rect.Top; width = $width; height = $height; sampled_colors = $colors.Count;
        window_dpi = 96; display_count = $screens.Count; window_dpi_awareness = $windowAwareness;
        helper_thread_dpi_awareness = $threadAwareness; coordinate_contract = "single-display-96-dpi";
-       bounds_stable = $true } | ConvertTo-Json -Compress
+       bounds_stable = $true; geometry = (Describe-Geometry $rect) } | ConvertTo-Json -Depth 5 -Compress
   } finally { if ($graphics) { $graphics.Dispose() }; $bitmap.Dispose() }
   exit 0
 }
