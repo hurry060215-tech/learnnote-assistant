@@ -4,6 +4,9 @@ from pathlib import Path
 from fastapi import HTTPException
 from .media import probe_duration, MediaProcessingError
 from .storage import get_task, task_dir
+from . import storage
+from .task_media_guard import require_current_media_provenance, same_native_path, validated_caption_source
+from .task_paths import TaskArtifactUnavailable
 
 
 def has_selected_range(task):
@@ -11,6 +14,7 @@ def has_selected_range(task):
 
 
 def completed_range_media(task, *, verify_duration=True, duration_probe=None):
+    require_current_media_provenance(task, storage.TASK_DIR / task.id)
     # Browser tasks record the full download before clipping. These final,
     # task-owned names are installed atomically by the existing slicers.
     owner, seen = task, set()
@@ -27,7 +31,7 @@ def completed_range_media(task, *, verify_duration=True, duration_probe=None):
             path = root / name
             if root.is_symlink() or path.is_symlink() or not path.is_file():
                 continue
-            if task.screen_subtitles_media_sha256 and path.resolve() != Path(task.media_path).resolve():
+            if task.screen_subtitles_media_sha256 and not same_native_path(task.media_path, path.absolute()):
                 continue
             if verify_duration:
                 try:
@@ -38,8 +42,12 @@ def completed_range_media(task, *, verify_duration=True, duration_probe=None):
                 except (ValueError, OSError, KeyError, TypeError, ImportError, MediaProcessingError):
                     break
             return path
-        if owner.mode not in {"screen_subtitles", "rerun_from_media"} or not owner.source_task_id:
+        if not owner.source_task_id:
             break
+        if owner.mode not in {"screen_subtitles", "rerun_from_media"}:
+            if owner.mode != "subtitle_only":
+                break
+            validated_caption_source(owner, storage.TASK_DIR / owner.id)
         try:
             owner = get_task(owner.source_task_id)
         except FileNotFoundError:
@@ -53,5 +61,5 @@ def range_media_preview_state(task):
     try:
         completed_range_media(task, verify_duration=False)
         return {"range_media_ready": True}
-    except HTTPException:
+    except (HTTPException, TaskArtifactUnavailable):
         return {"range_media_ready": False}

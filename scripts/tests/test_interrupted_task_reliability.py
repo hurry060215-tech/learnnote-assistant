@@ -30,6 +30,7 @@ class InterruptedTaskReliabilityTests(unittest.TestCase):
             self.assertEqual(report['interrupted_checkpoint'], 'visual_ready')
             self.assertEqual(report['recovery'], {'recovered': 1, 'waiting_for_context': 1})
             self.assertTrue(report['same_media_and_transcript_hashes'])
+            self.assertTrue(report['same_original_and_owned_subtitle_hashes'])
             self.assertTrue(report['same_intent_sequence_and_generation'])
             self.assertEqual(report['startup_order'], ['cleanup_completed', 'recovery_dispatched'])
             self.assertNotEqual(report['terminated_worker']['pid'], report['fresh_worker_pid'])

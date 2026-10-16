@@ -176,6 +176,13 @@ class PartialNoteProjectionTests(unittest.TestCase):
                 update_task(self.task.id, **changes)
                 self.assert_unavailable("not_ready")
 
+    def test_existing_draft_with_missing_transcript_is_invalid_not_pending(self):
+        draft = self.work / "draft.md"
+        draft.write_text("Existing saved draft", encoding="utf-8")
+        update_task(self.task.id, note_path=str(draft), summary_source="transcript-draft")
+        self.transcript_path.unlink()
+        self.assert_unavailable("invalid_artifact")
+
     def test_failed_and_cancelled_current_drafts_remain_explicitly_unverified(self):
         for status in ("failed", "cancelled"):
             with self.subTest(status=status):

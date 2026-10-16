@@ -68,6 +68,7 @@ def worker(output: Path, mode: str, duration: int):
     from app.config import DATA_DIR
     from app.models import TaskOptions
     from app.storage import create_task, get_task, update_task
+    from app.subtitle_ownership import retain_subtitle_file
     from app.task_queue import schedule_processing, queue_for, recover_processing
     from app.queue_journal import read_queue_job
     queue = queue_for(DATA_DIR)
@@ -82,7 +83,8 @@ def worker(output: Path, mode: str, duration: int):
                       'media_mtime_ns': Path(current.media_path).stat().st_mtime_ns,
                       'generation': current.control_generation,
                       'intent': read_queue_job(DATA_DIR, task.id),
-                      'media_sha256': digest(current.media_path)}
+                      'media_sha256': digest(current.media_path),
+                      'subtitle_sha256': digest(DATA_DIR / 'synthetic.srt')}
             (output / 'interrupted.json').write_text(json.dumps(marker), encoding='utf-8')
             while True:
                 time.sleep(.1)  # Parent kills the whole process; no graceful cleanup.
@@ -93,7 +95,11 @@ def worker(output: Path, mode: str, duration: int):
                               frame_interval=max(5, duration // 60), low_resource_mode=True, llm_api_key='')
         task = create_task(source_type='local', title='Interrupted synthetic lesson', options=options, mode='local')
         media = DATA_DIR / 'synthetic.mp4'
-        subtitle = DATA_DIR / 'synthetic.srt'
+        source_subtitle = DATA_DIR / 'synthetic.srt'
+        original_subtitle = source_subtitle.read_bytes()
+        subtitle = retain_subtitle_file(task.id, source_subtitle)
+        assert subtitle.parent == DATA_DIR / 'tasks' / task.id
+        assert source_subtitle.read_bytes() == subtitle.read_bytes() == original_subtitle
         update_task(task.id, source_media_path=str(media), subtitle_path=str(subtitle))
         schedule_processing(BackgroundTasks(), processor.process_local_video_task,
                             task.id, media, task.title, options, subtitle_path=subtitle,
@@ -151,6 +157,8 @@ def worker(output: Path, mode: str, duration: int):
         assert final.summary_source == 'offline-fixture'
         assert digest(final.media_path) == interrupted['media_sha256']
         assert digest(final.transcript_path) == interrupted['transcript_sha256']
+        assert digest(DATA_DIR / 'synthetic.srt') == digest(final.subtitle_path) == interrupted['subtitle_sha256']
+        assert Path(final.subtitle_path).parent == DATA_DIR / 'tasks' / task_id
         assert Path(final.note_path).is_file() and Path(final.visual_index_path).is_file()
         assert 'Synthetic lesson checkpoint 4' in Path(final.note_path).read_text(encoding='utf-8')
         assert get_task(gated_id).error_code == 'resume_context_required'
@@ -166,7 +174,8 @@ def worker(output: Path, mode: str, duration: int):
                       'transcript_before': interrupted['transcript_mtime_ns'],
                       'transcript_after': Path(final.transcript_path).stat().st_mtime_ns},
                   'recovery_strategy': 'same task restarted through local pipeline; checkpoint artifacts may be recomputed',
-                  'same_media_and_transcript_hashes': True, 'repeat_recovery_dispatched': 0,
+                  'same_media_and_transcript_hashes': True, 'same_original_and_owned_subtitle_hashes': True,
+                  'repeat_recovery_dispatched': 0,
                   'summary_source': final.summary_source, 'network_calls_allowed': False,
                   'internal_socketpair_only': True,
                   'asr_attempted': False, 'summary_provider': 'deterministic test fixture',

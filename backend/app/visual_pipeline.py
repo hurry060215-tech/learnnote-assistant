@@ -15,6 +15,7 @@ from .storage import write_json
 from .storage import update_task
 from .storage import task_dir, get_task
 from .local_ocr import recognize_frames
+from .task_paths import native_task_artifact, TaskArtifactUnavailable
 from .processor_state import TaskCancelled
 
 
@@ -31,13 +32,13 @@ class VisualArtifacts:
 def _preserved_visual_evidence(work_dir: Path, media: Path, task=None) -> VisualArtifacts | None:
     """Do not remap existing W IDs merely because the extraction policy changed."""
     index_path = work_dir / "visual_index.json"
-    if not index_path.exists():
-        if task is not None and (task.visual_windows or task.frame_grids or task.visual_index_path):
-            raise MediaProcessingError("已发布画面索引缺失，已停止重新抽帧并保留现有引用；请从保存的媒体创建新任务。")
-        return None
     try:
-        if index_path.is_symlink():
-            raise ValueError("linked index")
+        index_path = native_task_artifact(work_dir, work_dir.name, str(index_path))
+    except TaskArtifactUnavailable as exc:
+        if exc.reason == "missing_destination" and not (task is not None and (task.visual_windows or task.frame_grids or task.visual_index_path)):
+            return None
+        raise MediaProcessingError("已发布画面索引缺失或无法校验，已停止重新抽帧并保留现有引用；请从保存的媒体创建新任务。") from exc
+    try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
         if not isinstance(index, dict):
             raise ValueError("invalid index")
@@ -53,9 +54,8 @@ def _preserved_visual_evidence(work_dir: Path, media: Path, task=None) -> Visual
             return None
         source_hash = extraction.get("source_sha256") if extraction.get("extractor_version") == FRAME_EXTRACTOR_VERSION else None
         if not source_hash:
-            cache_path = work_dir / "frames" / "frame_cache.json"
-            if cache_path.is_symlink():
-                raise ValueError("linked cache")
+            cache_path = native_task_artifact(work_dir, work_dir.name,
+                str(work_dir / "frames" / "frame_cache.json"), directory="frames")
             cache = json.loads(cache_path.read_text(encoding="utf-8"))
             signature = cache["signature"]
             source_hash = signature.get("source_sha256") if signature.get("extractor_version") == "adaptive-batch-v2" else None
@@ -65,8 +65,8 @@ def _preserved_visual_evidence(work_dir: Path, media: Path, task=None) -> Visual
         if not samples:
             raise ValueError("missing frames")
         for sample in samples:
-            path = Path(sample.path)
-            if path.is_symlink() or path.resolve().parent != (work_dir / "frames").resolve() or not sample.sha256 or file_sha256(path) != sample.sha256:
+            path = native_task_artifact(work_dir, work_dir.name, sample.path, directory="frames")
+            if not sample.sha256 or file_sha256(path) != sample.sha256:
                 raise ValueError("unverified frame")
         if task is not None:
             def window_identity(window):
@@ -77,8 +77,8 @@ def _preserved_visual_evidence(work_dir: Path, media: Path, task=None) -> Visual
         grids = []
         for position, raw_window in enumerate(index.get("windows", []), start=1):
             window = VisualWindow.model_validate(raw_window)
-            path = Path(window.grid_path)
-            if window.id != f"W{position:03d}" or path.is_symlink() or path.resolve().parent != (work_dir / "grids").resolve() or not path.is_file():
+            path = native_task_artifact(work_dir, work_dir.name, window.grid_path, directory="grids")
+            if window.id != f"W{position:03d}":
                 raise ValueError("unverified window")
             members = [sample for sample in samples if sample.timestamp in window.frame_timestamps]
             if len(members) != window.frame_count:

@@ -32,7 +32,7 @@ class TaskControlTests(unittest.TestCase):
         self.addCleanup(self.stack.close)
         self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
         for key, value in (("TASK_DIR", self.root / "tasks"), ("ensure_dirs", lambda: None),
-                           ("index_task", lambda task: None), ("record_task_event", lambda *a, **k: None),
+                           ("index_task", lambda task, *, task_root=None: None), ("record_task_event", lambda *a, **k: None),
                            ("record_status", lambda *a, **k: None)):
             self.stack.enter_context(patch.object(storage, key, value))
         self.stack.enter_context(patch("app.task_queue.record_task_event"))

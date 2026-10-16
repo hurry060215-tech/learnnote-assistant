@@ -9,6 +9,7 @@ from collections.abc import Callable
 from .models import BrowserSubtitleCue, TaskOptions, TranscriptResult
 from .processor_state import ContentMismatchError, TaskCancelled, check_cancel
 from .storage import task_dir, update_task, write_json
+from .subtitle_ownership import retain_subtitle_file
 from .transcript_cache import load_local_transcript, save_local_transcript, media_cache_integrity
 
 
@@ -56,15 +57,7 @@ def prepare_transcript(
     browser_fallback_transcript = transcript_from_browser_subtitles(browser_subtitles or [])
 
     if subtitle_path:
-        owned_subtitle_path = subtitle_path
-        try:
-            if subtitle_path.resolve().parent != work_dir.resolve():
-                owned_subtitle_path = work_dir / subtitle_path.name
-                if owned_subtitle_path.resolve() != subtitle_path.resolve():
-                    from shutil import copy2
-                    copy2(subtitle_path, owned_subtitle_path)
-        except OSError:
-            owned_subtitle_path = subtitle_path
+        owned_subtitle_path = retain_subtitle_file(task_id, subtitle_path)
         update_task(task_id, subtitle_path=str(owned_subtitle_path), message="已检测到页面字幕，正在解析字幕")
         transcript = parse_subtitle_or_none(owned_subtitle_path, source=subtitle_source or "page-subtitle")
 

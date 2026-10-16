@@ -44,7 +44,7 @@ class FullResponseDraftTests(unittest.TestCase):
         start_pipeline_attempt(self.task.id)
         draft = write_progressive_draft(self.task.id, self.task.title, transcript)
         update_task(self.task.id, status="running", phase="summarizing", transcript_path=str(self.path),
-                    note_path=str(draft), summary_source="transcript-draft", checkpoint="transcript_ready")
+                    note_path=str(draft) if draft else "", summary_source="transcript-draft", checkpoint="transcript_ready")
 
     def provider(self, completion):
         provider = types.ModuleType("openai")
@@ -209,6 +209,21 @@ class FullResponseDraftTests(unittest.TestCase):
         self.assertFalse(self.document()["sections"][0]["verified"])
         self.assertIn("未完成最终校验", read_task_note(self.task.id))
         self.assertFalse((self.work / "note.md").exists())
+
+    def test_unresolved_prior_note_stops_before_writing_partial_artifacts(self):
+        from app.task_paths import TaskArtifactUnavailable
+        outside = self.root / "unowned.md"
+        outside.write_text("synthetic original", encoding="utf-8")
+        update_task(self.task.id, note_path=str(outside))
+        manifest = self.work / "task.json"
+        before = manifest.read_bytes(), manifest.stat().st_mtime_ns
+        with self.assertRaises(TaskArtifactUnavailable):
+            partial_section_callback(self.task.id, self.transcript)(self.payload())
+        self.assertFalse((self.work / "partial_note.json").exists())
+        self.assertFalse((self.work / "draft.partial.md").exists())
+        self.assertEqual((manifest.read_bytes(), manifest.stat().st_mtime_ns), before)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "synthetic original")
+        self.assertEqual(self.events(), [])
 
     def test_all_actual_cue_bounds_are_bound_without_generated_attribution(self):
         self.source(TranscriptResult(segments=[TranscriptSegment(start=0, end=1, text=" "),

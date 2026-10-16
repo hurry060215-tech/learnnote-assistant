@@ -19,6 +19,7 @@ from .knowledge import evidence_for_task, evidence_ids_for_task
 from .library import get_material, material_anchors
 from .source_input import normalize_source_input
 from .storage import atomic_write_text, get_task
+from .task_artifacts import task_artifact_path
 
 SPACE_SCHEMA_VERSION = 1
 SPACE_BACKUP_SCHEMA_VERSION = 1
@@ -56,8 +57,8 @@ def _live_source(kind: str, source_id: str) -> tuple[str, str, str]:
         digest = hashlib.sha256()
         found = False
         for label, value in (("transcript", task.transcript_path), ("note", task.note_path)):
-            path = Path(str(value or ""))
-            if path.is_file():
+            path = task_artifact_path(task, label + "_path")
+            if path is not None:
                 found = True
                 digest.update(label.encode("utf-8"))
                 digest.update(path.read_bytes())

@@ -7,9 +7,12 @@ from fastapi import HTTPException
 from .config import LLM_BASE_URL, LLM_MODEL
 from .models import TaskOptions, TaskRecord
 from .storage import get_task
+from . import storage
 from .range_media import completed_range_media, has_selected_range
 from .model_connections import resolve_model_options
 from .summarizer import llm_model_supports_vision
+from .task_media_guard import require_current_media_provenance, validate_current_media_file
+from .task_paths import TaskArtifactUnavailable
 
 
 def merge_task_options(base: TaskOptions | None, overrides: TaskOptions | None, *, resolve_connection: bool = True) -> TaskOptions:
@@ -35,7 +38,13 @@ def require_ready_note_model(options: TaskOptions) -> None:
         raise HTTPException(409, {"code": "visual_model_required", "message": "当前模型不支持画面理解，请更换视觉模型或选择文字笔记。"})
 
 
-def task_media_path(task: TaskRecord, *, allow_range_source=False) -> Path | None:
+def task_media_path(task: TaskRecord, *, allow_range_source=False, strict=False) -> Path | None:
+    try:
+        require_current_media_provenance(task, storage.TASK_DIR / task.id)
+    except TaskArtifactUnavailable:
+        if strict:
+            raise
+        return None
     if has_selected_range(task) and not allow_range_source:
         try:
             return completed_range_media(task, verify_duration=False)
@@ -45,11 +54,14 @@ def task_media_path(task: TaskRecord, *, allow_range_source=False) -> Path | Non
         if not raw_path:
             continue
         try:
-            path = Path(raw_path)
-        except (OSError, ValueError):
+            return validate_current_media_file(task, raw_path, storage.TASK_DIR / task.id)
+        except TaskArtifactUnavailable as exc:
+            if exc.reason not in {"missing_destination", "invalid_destination_type"}:
+                if strict:
+                    raise
+                return None
+        except OSError:
             continue
-        if path.is_file():
-            return path
     return None
 
 
@@ -65,7 +77,8 @@ def task_preview_file(task_id: str) -> tuple[TaskRecord, Path]:
 
 
 def task_reuse_media_path(task: TaskRecord) -> Path | None:
-    return completed_range_media(task) if has_selected_range(task) else task_media_path(task)
+    require_current_media_provenance(task, storage.TASK_DIR / task.id)
+    return completed_range_media(task) if has_selected_range(task) else task_media_path(task, strict=True)
 
 
 @contextmanager

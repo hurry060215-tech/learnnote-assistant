@@ -5,13 +5,11 @@ from . import storage
 
 
 def owned_caption_path(task):
-    if not task.transcript_path:
+    from .task_paths import resolve_task_artifact, TaskArtifactUnavailable
+    try:
+        return resolve_task_artifact(storage.TASK_DIR / task.id, task.id, task.transcript_path, field="transcript_path")
+    except TaskArtifactUnavailable:
         return None
-    path = Path(task.transcript_path)
-    root = storage.TASK_DIR / task.id
-    if path.is_symlink() or root.is_symlink() or not path.is_file() or path.resolve().parent != root.resolve():
-        return None
-    return path
 
 
 def retry_kind(task):

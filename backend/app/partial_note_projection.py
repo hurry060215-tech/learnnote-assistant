@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 
 from .models import TranscriptResult
+from .task_paths import TaskArtifactUnavailable, artifact_name, resolve_task_artifact
 from .partial_outline_projection import partial_outline
 from .reading_notes import source_block_entries
 from .storage import get_task, task_file
@@ -58,9 +59,8 @@ def valid_partial_section(item: object, source_revision: str, text_blocks: list)
 
 
 def _partial_owned_file(root: Path, value: str | Path) -> Path:
-    path = Path(value)
-    if (root.is_symlink() or path.is_symlink() or path.resolve().parent != root.resolve()
-            or not path.is_file()):
+    path = resolve_task_artifact(root, root.name, str(value))
+    if path is None:
         raise ValueError("Unavailable task artifact")
     return path
 
@@ -182,7 +182,7 @@ def _partial_sections(document: object, transcript: TranscriptResult, media_sha2
 
 def _generated_partial(root: Path, task, attempt: str, transcript: TranscriptResult) -> dict:
     result = {"sections": [], "revision": "", "source_revision": "", "generation_revision": "", "reason": "not_ready"}
-    if Path(task.note_path).name != "draft.partial.md":
+    if artifact_name(task.note_path) != "draft.partial.md":
         return result
     try:
         document = _partial_json(root, root / "partial_note.json")
@@ -224,8 +224,6 @@ def read_partial_note(task_id: str) -> dict:
             raise FileNotFoundError(task_id)
         _partial_owned_file(root, task_file(task_id))
         task = get_task(task_id)
-        if task.id != task_id:
-            raise FileNotFoundError(task_id)
     except (OSError, ValueError, RuntimeError) as exc:
         raise FileNotFoundError(task_id) from exc
     response = {"task_id": task.id, "attempt_id": "", "task_updated_at": task.updated_at,
@@ -238,11 +236,14 @@ def read_partial_note(task_id: str) -> dict:
         response["attempt_id"] = attempt
         if (task.status not in {"running", "cancelling", "failed", "cancelled"}
                 or (task.status in {"running", "cancelling"} and task.summary_source not in {"partial-draft", "transcript-draft"})
-                or Path(task.note_path).name not in {"draft.md", "draft.partial.md"}):
+                or artifact_name(task.note_path) not in {"draft.md", "draft.partial.md"}):
             return response
-        if Path(task.note_path).name == "draft.md" and not Path(task.note_path).exists() and not Path(task.note_path).is_symlink():
-            return response
-        _partial_owned_file(root, task.note_path)
+        try:
+            _partial_owned_file(root, task.note_path)
+        except TaskArtifactUnavailable as exc:
+            if exc.reason == "missing_destination" and artifact_name(task.note_path) == "draft.md":
+                return response
+            raise
         transcript = TranscriptResult.model_validate(_partial_json(root, task.transcript_path))
         generated = _generated_partial(root, task, attempt, transcript)
         outline = _outline_partial(root, transcript, attempt)

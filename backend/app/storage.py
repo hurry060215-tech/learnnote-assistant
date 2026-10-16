@@ -22,6 +22,7 @@ from .summary_outcome import safe_summary_diagnostics, safe_summary_warning, sum
 from .activation import record_status
 from . import assistant_operation_store as assistant_records
 from .worker_lease import worker_lease
+from .task_paths import TaskArtifactUnavailable, task_manifest_path, validate_task_directory
 
 _lock = threading.RLock()
 _state_depth = threading.local()
@@ -136,16 +137,22 @@ def save_task(record: TaskRecord) -> None:
         record = migrate_task_record(record)
         record.updated_at = now_iso()
         atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
-        index_task(record)
+        index_task(record, task_root=TASK_DIR / record.id)
 
 
 def get_task(task_id: str) -> TaskRecord:
     with _lock:
-        path = task_file(task_id)
-        if not path.exists():
-            raise FileNotFoundError(task_id)
+        try:
+            path = task_manifest_path(TASK_DIR / task_id, task_id)
+        except TaskArtifactUnavailable as exc:
+            if exc.reason == "missing_destination":
+                raise FileNotFoundError(task_id) from exc
+            raise
         payload = json.loads(path.read_text(encoding="utf-8"))
-        return TaskRecord.model_validate(migrate_task_payload(payload))
+        record = TaskRecord.model_validate(migrate_task_payload(payload))
+        if record.id != task_id:
+            raise TaskArtifactUnavailable("task_identity_mismatch")
+        return record
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
@@ -364,7 +371,8 @@ def delete_task(task_id: str) -> dict[str, Any]:
         record = get_task(task_id)
         if record.status in {"queued", "running", "cancelling"}:
             raise RuntimeError("active_task")
-        owned_upload = Path(record.source_media_path) if record.source_media_path else None
+        from .task_media_guard import upload_cleanup_candidate, may_reference_native_path
+        owned_upload = upload_cleanup_candidate(record, TASK_DIR / task_id, UPLOAD_DIR) if record.source_media_path else None
         task_path = (TASK_DIR / task_id).resolve()
         if TASK_DIR.resolve() not in task_path.parents:
             raise ValueError("invalid_task_path")
@@ -378,15 +386,18 @@ def delete_task(task_id: str) -> dict[str, Any]:
         upload_bytes = 0
         if owned_upload:
             try:
-                resolved_upload = owned_upload.resolve()
+                from .task_paths import validate_cleanup_task_entries
+                validate_cleanup_task_entries(TASK_DIR)
+                resolved_upload = owned_upload
                 shared = any(
-                    other.id != task_id and other.source_media_path and Path(other.source_media_path).resolve() == resolved_upload
-                    for other in list_tasks_snapshot()
+                    other.id != task_id and any(value and may_reference_native_path(value, resolved_upload, tasks_root=TASK_DIR, upload_root=UPLOAD_DIR)
+                        for value in (other.source_media_path, other.media_path))
+                    for other in list_tasks_snapshot(strict=True)
                 )
-                if UPLOAD_DIR.resolve() in resolved_upload.parents and resolved_upload.is_file() and not shared:
+                if not shared:
                     upload_bytes = resolved_upload.stat().st_size
                     resolved_upload.unlink()
-            except (OSError, ValueError):
+            except (OSError, ValueError, TypeError):
                 upload_bytes = 0
         return {"task_id": task_id, "reclaimed_bytes": task_bytes + upload_bytes}
 
@@ -461,14 +472,20 @@ def read_json(task_id: str, filename: str, default: Any = None) -> Any:
 def list_tasks_snapshot(*, strict: bool = False) -> list[TaskRecord]:
     """Nonmutating manifest snapshots: no mkdir, index, reconciliation or repair."""
     records: list[TaskRecord] = []
+    try:
+        validate_task_directory(TASK_DIR)
+    except TaskArtifactUnavailable as exc:
+        if strict and exc.reason != "missing_destination":
+            raise
+        return records
     for path in TASK_DIR.glob("*/task.json"):
         try:
-            record = TaskRecord.model_validate(migrate_task_payload(json.loads(path.read_text(encoding="utf-8"))))
-            if strict and record.id != path.parent.name:
-                raise ValueError("course_episode_identity_conflict")
+            record = get_task(path.parent.name)
             records.append(record)
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError) as exc:
             if strict:
+                if isinstance(exc, TaskArtifactUnavailable) and exc.reason == "task_identity_mismatch":
+                    raise ValueError("course_episode_identity_conflict") from exc
                 raise
             continue
     return sorted(records, key=lambda item: item.created_at, reverse=True)
@@ -482,7 +499,7 @@ def list_tasks() -> list[TaskRecord]:
         with task_state_transaction():
             try:
                 record = get_task(snapshot.id)
-            except FileNotFoundError:
+            except (OSError, ValueError, TypeError):
                 continue
             title = clean_task_title(record.title, record.page_url)
             if title != record.title:
@@ -514,12 +531,21 @@ def reconcile_stale_tasks(
         with task_state_transaction():
             try:
                 record = get_task(snapshot.id)
-            except FileNotFoundError:
+            except (OSError, ValueError, TypeError):
                 continue
             updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
             # Elapsed time cannot prove that a worker observed cancellation.
             if record.status in {"queued", "running"} and not record.cancel_requested and updated and current - updated > max_age:
-                has_media = any(raw and Path(raw).is_file() for raw in (record.media_path, record.source_media_path))
+                from .task_media_guard import require_current_media_provenance, available_current_media
+                try:
+                    require_current_media_provenance(record, TASK_DIR / record.id)
+                except TaskArtifactUnavailable:
+                    result.append(record)
+                    continue  # A read/list cannot apply an uncertain migration or rewrite its state.
+                try:
+                    has_media = available_current_media(record, TASK_DIR / record.id) is not None
+                except TaskArtifactUnavailable:
+                    has_media = False
                 detail = ("任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
                           if has_media else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。")
                 record = update_task(record.id, status="failed", phase="failed", error_code="task_interrupted",

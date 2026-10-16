@@ -134,6 +134,10 @@ def archive_case(kind, rich, annotations=False, *, claim_map=None):
                    "read_task_events": [{"event": "synthetic", "message": "Authorization: Bearer SYNTHETIC_PRIVATE", "details": {"progress": 12}}]}
         for name, value in patches.items():
             stack.enter_context(patch.object(main, name, return_value=value))
+        # This frozen serializer fixture intentionally uses legacy relative paths
+        # and a missing image. Ownership/admission is tested with real selected
+        # task roots in test_task_export_boundary, not by rewriting archive bytes.
+        stack.enter_context(patch.object(main, "owned_bundle_writer", side_effect=lambda task, writer: writer))
         stack.enter_context(patch("app.personal_notes.list_annotations", return_value=[ANNOTATION]))
         # ZipFile stores local timestamps. Freeze both generated and file-backed
         # entries so local before/after whole-archive byte comparison is exact.

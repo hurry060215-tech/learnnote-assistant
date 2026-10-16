@@ -2,7 +2,8 @@ from __future__ import annotations
 from .claims import safe_claim_projection
 from .model_data_consent import page_data_preview
 from .deferred_task_consent import start_reviewed_handoff, task_or_404
-from .task_artifacts import public_summary_task
+from .task_artifacts import public_summary_task, task_artifact_path, task_artifact_states, read_task_report, owned_bundle_writer, task_media_path_diagnostics, task_report_path, saved_task_media_file
+from .task_paths import TaskArtifactUnavailable, artifact_name
 from .whole_duration_estimates import task_duration_estimates
 from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
     build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
@@ -43,7 +44,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
@@ -1113,27 +1114,11 @@ def render_task_audit_markdown(task: TaskRecord) -> str:
 
 
 def read_resource_inventory(task: TaskRecord) -> dict:
-    path_value = task.resource_inventory_path or ""
-    if path_value:
-        path = Path(path_value)
-        if path.is_file():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                return {}
-    return read_json(task.id, "resource_inventory.json", {}) or {}
+    return read_task_report(task, "resource_inventory_path")
 
 
 def read_page_preflight_report(task: TaskRecord) -> dict:
-    path_value = task.page_preflight_report_path or ""
-    if path_value:
-        path = Path(path_value)
-        if path.is_file():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                return {}
-    return read_json(task.id, "page_preflight_report.json", {}) or {}
+    return read_task_report(task, "page_preflight_report_path")
 
 
 def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dict) -> dict:
@@ -1157,9 +1142,9 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
     request_header_names = _safe_browser_request_header_names(selected)
     response_header_names = sorted((selected.headers or {}).keys()) if selected else []
     grid_entries = [
-        f"grids/{Path(grid.path).name}"
+        f"grids/{artifact_name(grid.path)}"
         for grid in task.frame_grids
-        if Path(grid.path).name
+        if artifact_name(grid.path)
     ]
     qa_history = read_task_qa_history(task.id)
     source_quality, evidence_quality = task_source_evidence_quality(task)
@@ -1292,7 +1277,7 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
         "artifacts": {
             "note": "note.md" if task.note_path else "",
             "subtitles": (
-                f"subtitles/{Path(task.subtitle_path).name}"
+                f"subtitles/{artifact_name(task.subtitle_path)}"
                 if task.subtitle_path
                 else "subtitles/generated-transcript.srt"
                 if task.transcript_path and transcript.get("segments")
@@ -1501,9 +1486,8 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
         ends = [cue.end for cue in task.browser_subtitles]
         browser_subtitle_span = max(0.0, max(ends) - min(starts))
 
-    subtitle_available = bool(task.subtitle_path and Path(task.subtitle_path).is_file())
-    transcript_ready = bool(task.transcript_path and Path(task.transcript_path).is_file())
-    note_ready = bool(task.note_path and Path(task.note_path).is_file())
+    available, _ = task_artifact_states(task, ("subtitle_path", "transcript_path", "note_path"))
+    subtitle_available, transcript_ready, note_ready = (available[field] for field in ("subtitle_path", "transcript_path", "note_path"))
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
     media_validation, media_signature = task_media_validation(task)
     media_available = media_validation == "verified"
@@ -1737,19 +1721,15 @@ def task_payload(task: TaskRecord) -> dict:
 def task_artifact_status(task: TaskRecord) -> dict[str, object]:
     """Expose progressive artifacts without claiming that a draft is final."""
 
-    def exists(value: str) -> bool:
-        try:
-            return bool(value) and Path(value).is_file()
-        except (OSError, TypeError, ValueError):
-            return False
-
-    transcript = exists(task.transcript_path)
-    note = exists(task.note_path)
-    visual = exists(task.visual_index_path) or bool(task.visual_windows)
-    partial_draft = Path(task.note_path).name == "draft.partial.md"
+    available, path_diagnostics = task_artifact_states(task, ("transcript_path", "note_path", "visual_index_path"))
+    path_diagnostics.update(task_media_path_diagnostics(task))
+    transcript, note = available["transcript_path"], available["note_path"]
+    visual = available["visual_index_path"] or bool(task.visual_windows)
+    partial_draft = artifact_name(task.note_path) == "draft.partial.md"
     draft = bool(task.summary_source in {"transcript-draft", "partial-draft"} or partial_draft or (task.checkpoint == "transcript_ready" and transcript and not note))
     return {
         "checkpoint": task.checkpoint,
+        "path_diagnostics": path_diagnostics,
         "draft_available": draft,
         "partial_draft_available": partial_draft and note,
         "transcript_ready": transcript,
@@ -2365,7 +2345,7 @@ def _task_qa_context(task: TaskRecord) -> tuple[str, list[dict]]:
         note = read_note(task.id)
     except Exception:
         note = ""
-    if note.strip() and Path(task.note_path).name != "draft.partial.md":
+    if note.strip() and artifact_name(task.note_path) != "draft.partial.md":
         citations.extend(_note_evidence_chunks(note, source_id=task.id))
 
     try:
@@ -3155,6 +3135,7 @@ def create_from_existing_media(
         detail["code"] = "media_not_found"
         raise HTTPException(status_code=400, detail=detail) from exc
 
+    source_subtitle_path = task_artifact_path(source, "subtitle_path")
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
     require_ready_note_model(parsed_options)
     with media_source_admission(task_id, source):
@@ -3185,9 +3166,6 @@ def create_from_existing_media(
         source_transcript_source = str(read_transcript(source.id).get("source") or "")
     except Exception:
         source_transcript_source = ""
-    source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
-    if source_subtitle_path and not source_subtitle_path.exists():
-        source_subtitle_path = None
     source_browser_subtitles = source.browser_subtitles
     subtitle_source = "page-subtitle"
     if source_transcript_source == "browser-subtitle" and source_browser_subtitles:
@@ -3245,8 +3223,8 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: Task
         raise HTTPException(404, "任务不存在。") from exc
     if source.status in {"running", "queued", "cancelling"}:
         raise HTTPException(409, "任务已经在处理中。")
-    path = Path(source.transcript_path) if source.transcript_path else None
-    if not path or not path.is_file() or path.resolve().parent != task_dir(task_id).resolve():
+    path = task_artifact_path(source, "transcript_path", task_id=task_id)
+    if path is None:
         raise HTTPException(409, "没有可复用的字幕，请先取得字幕或转写。")
     try:
         transcript = TranscriptResult.model_validate_json(path.read_bytes())
@@ -3254,14 +3232,18 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks, request: Task
             raise ValueError("empty")
     except ValueError as exc:
         raise HTTPException(409, "保存的字幕不可用，请重新取得字幕。") from exc
+    if transcript.source == "screen-ocr":
+        saved_task_media_file(source, source.media_path)
     options = merge_task_options(source.options, request)
     if options.content_mode == "subtitles":
         raise HTTPException(409, {"code": "summary_mode_required", "message": "当前选择仅提取字幕，不调用模型。请明确选择文字笔记后再生成总结。"})
     if options.content_mode == "visual":
         raise HTTPException(409, {"code": "visual_resume_required", "message": "图文笔记需要同时分析画面。请从本地视频继续处理，或明确切换为文字笔记后仅根据字幕总结。"})
     require_ready_note_model(options)
+    from .subtitle_ownership import retain_legacy_subtitle_for_retry
+    retained_subtitle = retain_legacy_subtitle_for_retry(source)
     _snapshot_before_retry(task_id)
-    task = admit_retry(source, error_code="", error_detail="", failed_phase="", awaiting_confirmation=False,
+    task = admit_retry(source, **retained_subtitle, error_code="", error_detail="", failed_phase="", awaiting_confirmation=False,
         message="使用已保存字幕重新生成总结，不下载视频、不重新转写。",
         options=options.model_copy(update={"llm_api_key":None}))
     schedule_processing(background_tasks, process_saved_transcript_task, task_id, options, _queue_kind="summary")
@@ -3296,6 +3278,7 @@ def resume_task_from_checkpoint(
             status_code=409,
             detail={"code": "media_not_found", "message": "没有找到可恢复的本地媒体，请重新从当前页面发起。"},
         )
+    source_subtitle_path = task_artifact_path(source, "subtitle_path")
     parsed_options = merge_task_options(source.options, rerun_options_from_body(request))
     require_ready_note_model(parsed_options)
     # Seed older owned local transcripts before resetting attempt status.
@@ -3304,8 +3287,8 @@ def resume_task_from_checkpoint(
     cache_integrity = media_cache_integrity(source.media_integrity, media_path)
     if source.transcript_path and load_local_transcript(source.id, cache_integrity, source.options) is None:
         try:
-            owned_path = Path(source.transcript_path).resolve()
-            if owned_path.parent == task_dir(source.id).resolve():
+            owned_path = task_artifact_path(source, "transcript_path")
+            if owned_path is not None:
                 cached_transcript = TranscriptResult.model_validate_json(owned_path.read_bytes())
                 save_local_transcript(source.id, cached_transcript, cache_integrity, source.options)
         except (OSError, ValueError):
@@ -3334,9 +3317,6 @@ def resume_task_from_checkpoint(
         source_transcript_source = str(read_transcript(source.id).get("source") or "")
     except Exception:
         source_transcript_source = ""
-    source_subtitle_path = Path(source.subtitle_path) if source.subtitle_path else None
-    if source_subtitle_path and not source_subtitle_path.exists():
-        source_subtitle_path = None
     source_browser_subtitles = source.browser_subtitles
     subtitle_source = "page-subtitle"
     if source_transcript_source == "browser-subtitle" and source_browser_subtitles:
@@ -3593,6 +3573,7 @@ def api_retry_task(
                 "message": "需要重新从当前播放页发起，才能刷新登录状态和视频地址。",
             },
         )
+    task_artifact_path(source, "subtitle_path")
     from .task_control import admit_retry
     admit_retry(source, clone=True)
     return create_from_existing_media(task_id, background_tasks, request)
@@ -3652,6 +3633,11 @@ def api_task_pipeline_status(task_id: str) -> dict:
     task = task_or_404(task_id, get_task, {"code": "task_not_found", "message": "任务不存在。"})
     from .summary_diagnostics import pipeline_privacy_status
     return {"task_id": task.id, "status": task.status, "phase": task.phase, "progress": task.progress, "checkpoint": task.checkpoint, "artifacts": task_artifact_status(task), "privacy": pipeline_privacy_status(task.summary_diagnostics)}
+
+
+@app.exception_handler(TaskArtifactUnavailable)
+async def task_artifact_unavailable_handler(request: Request, exc: TaskArtifactUnavailable):
+    return JSONResponse(status_code=409, content={"detail": exc.detail()})
 
 
 @app.get("/api/tasks/{task_id}/transcript")
@@ -3872,7 +3858,7 @@ def api_export_bundle(task_id: str, include_annotations: bool = False) -> Respon
         manifest=manifest, resource_inventory=resource_inventory,
         page_preflight=page_preflight, generated_subtitles=generated_subtitles,
     ), annotations=annotations, qa_history_file=QA_HISTORY_FILE,
-        write_file=_write_file_if_exists)
+        write_file=owned_bundle_writer(task, _write_file_if_exists))
 
     filename = bundle_filename(task.id, task.title)
     headers = {
@@ -3999,8 +3985,8 @@ def api_export_resource_usage(task_id: str) -> Response:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    path = Path(task.resource_usage_path) if task.resource_usage_path else task_dir(task.id) / "resource_usage.json"
-    if not path.is_file() or path.resolve().parent != task_dir(task.id).resolve():
+    path = task_report_path(task, "resource_usage_path")
+    if path is None:
         raise HTTPException(status_code=404, detail="Resource usage not found")
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -4060,7 +4046,7 @@ def api_export_subtitles(task_id: str) -> Response:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    path = Path(task.subtitle_path) if task.subtitle_path else None
+    path = task_artifact_path(task, "subtitle_path", task_id=task_id)
     if path and path.is_file():
         suffix = path.suffix.lower() or ".srt"
         filename = subtitles_filename(task.id, task.title, suffix)
@@ -4128,8 +4114,8 @@ def _task_subtitle_file(task_id: str) -> tuple[TaskRecord, Path]:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     if not task.subtitle_path:
         raise HTTPException(status_code=404, detail="Subtitles not found")
-    path = Path(task.subtitle_path)
-    if not path.is_file():
+    path = task_artifact_path(task, "subtitle_path", task_id=task_id)
+    if path is None:
         raise HTTPException(status_code=404, detail="Subtitles not found")
     return task, path
 

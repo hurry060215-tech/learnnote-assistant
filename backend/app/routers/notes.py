@@ -19,6 +19,7 @@ from ..note_document import build_note_document, normalize_note_markdown
 from ..storage import get_task
 from ..storage import read_json
 from ..task_artifacts import read_task_note
+from ..task_paths import TaskArtifactUnavailable
 from ..partial_note_projection import read_partial_note
 from .section_reviews import section_reviews_router
 from ..personal_storage import RECOVERY_MESSAGE, PersonalStorageError, PersonalRecoveryRequired, lock as _edition_lock, personal_transaction
@@ -129,6 +130,8 @@ def get_edition(kind: str, source_id: str):
     try:
         with _edition_lock:
             return _edition_state(kind, source_id)
+    except TaskArtifactUnavailable as exc:
+        raise HTTPException(409, exc.detail()) from exc
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(404, "Source unavailable") from exc
 
@@ -137,6 +140,8 @@ def put_edition(kind: str, source_id: str, request: EditionRequest):
     try:
         with edition_transaction():
             return save_edition_locked(kind, source_id, request.text, request.revision)
+    except TaskArtifactUnavailable as exc:
+        raise HTTPException(409, exc.detail()) from exc
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(404, "Source unavailable") from exc
 

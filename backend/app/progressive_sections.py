@@ -4,6 +4,8 @@ The additive JSON projection and Markdown can be rebuilt from the existing
 vision cache or completed text requests. Source artifacts and published notes stay intact.
 """
 from __future__ import annotations
+from .task_artifacts import saved_note_missing
+from .task_paths import artifact_name
 
 from contextlib import nullcontext
 from pathlib import Path
@@ -51,6 +53,7 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
     root, source_revision, text_blocks, section = prepared
     section_id = section["id"]
     check_cancel(task_id)
+    saved_note_missing(get_task(task_id))  # Reject an uncertain prior pointer before any draft writes.
     if read_json(task_id, "pipeline_metrics.json", {}).get("current_attempt_id", "") != attempt_id:
         return
     if (payload.get("kind") in {"topic_chapter", "full_response"}
@@ -124,8 +127,7 @@ def _write_partial_section(task_id: str, transcript, payload: dict, prepared, *,
         atomic_write_text(target, rendered)
     check_cancel(task_id)
     current = get_task(task_id)
-    note = Path(current.note_path) if current.note_path else None
-    can_display = not note or (note.parent.resolve() == root.resolve() and note.name in {"draft.md", target.name})
+    can_display = not current.note_path or artifact_name(current.note_path) in {"draft.md", target.name}
     if can_display and (projection_changed or current.note_path != str(target) or current.summary_source != "partial-draft"):
         update_task(task_id, note_path=str(target), summary_source="partial-draft")
     # Persist before notification. A replay after a crash repairs Markdown first,

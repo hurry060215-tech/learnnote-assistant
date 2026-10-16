@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .storage import get_task, task_dir
+from .task_paths import TaskArtifactUnavailable
 
 _VERSION_ID = re.compile(r"[a-f0-9]{64}\Z")
 _MAX_BYTES = 5 * 1024 * 1024
@@ -14,12 +15,8 @@ _MAX_BYTES = 5 * 1024 * 1024
 
 def _owned_note(task_id: str) -> Path | None:
     task = get_task(task_id)
-    if not task.note_path:
-        return None
-    path = Path(task.note_path)
-    if path.is_symlink() or path.resolve().parent != task_dir(task_id).resolve() or not path.is_file():
-        return None
-    return path
+    from .task_artifacts import task_artifact_path
+    return task_artifact_path(task, "note_path", task_id=task_id)
 
 
 def snapshot_summary(task_id: str) -> str | None:
@@ -79,7 +76,11 @@ def read_summary_version(task_id: str, version_id: str) -> dict:
 
 def list_summary_versions(task_id: str) -> dict:
     get_task(task_id)
-    note = _owned_note(task_id)
+    current_note_diagnostic = {}
+    try:
+        note = _owned_note(task_id)
+    except TaskArtifactUnavailable as exc:
+        note, current_note_diagnostic = None, exc.detail()
     current_id = hashlib.sha256(note.read_bytes()).hexdigest() if note and note.stat().st_size <= _MAX_BYTES else ""
     root = task_dir(task_id).resolve() / "summary_versions"
     versions = []
@@ -93,4 +94,4 @@ def list_summary_versions(task_id: str) -> dict:
             item["current"] = item["id"] == current_id
             versions.append(item)
     versions.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
-    return {"task_id": task_id, "versions": versions, "current_note_available": note is not None}
+    return {"task_id": task_id, "versions": versions, "current_note_available": note is not None, "current_note_diagnostic": current_note_diagnostic}

@@ -311,7 +311,8 @@ class CatalogRecoveryTests(unittest.TestCase):
         self.assertEqual(outcomes, {"delete": True, "apply": "catalog_changed_preview_again"})
 
     def test_backup_discloses_extracted_text_and_excludes_separate_private_files(self):
-        note = self.root / "indexed-note.md"
+        note = self.root / "tasks" / "disclosure-task" / "note.md"
+        note.parent.mkdir(parents=True)
         note.write_text("Indexed task text is included", encoding="utf-8")
         task = TaskRecord(id="disclosure-task", source_type="local", mode="local", title="Synthetic task",
             note_path=str(note), created_at="2026-10-09T00:00:00+00:00", updated_at="2026-10-09T00:00:00+00:00")

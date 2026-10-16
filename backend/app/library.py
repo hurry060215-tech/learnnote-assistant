@@ -169,11 +169,20 @@ def _connect(*, allow_missing: bool = False) -> tuple[sqlite3.Connection, bool]:
         raise
 
 
-def index_task(record: TaskRecord) -> bool:
+def index_task(record: TaskRecord, *, task_root: Path | None = None) -> bool:
     """Best-effort indexing; task JSON remains the source of truth if SQLite is unavailable."""
     # Incomplete generated batches must not become search or assistant evidence.
-    note = "" if Path(record.note_path).name == "draft.partial.md" else _read_text(record.note_path)
-    transcript = _read_text(record.transcript_path)
+    from .task_paths import TaskArtifactUnavailable, artifact_name, resolve_task_artifact
+    def owned_text(field):
+        try:
+            path = resolve_task_artifact(task_root or TASK_DIR / record.id, record.id, getattr(record, field), field=field)
+            return _read_text(str(path)) if path else ""
+        except TaskArtifactUnavailable:
+            # Search indexing is best effort; direct readers expose the recovery
+            # diagnostic and must never index a foreign/outside location.
+            return ""
+    note = "" if artifact_name(record.note_path) == "draft.partial.md" else owned_text("note_path")
+    transcript = owned_text("transcript_path")
     source = _safe_url(record.page_url)
     content = "\n".join(part for part in (record.title, source, note, transcript) if part)
     try:
@@ -1107,7 +1116,12 @@ def task_material_source_uri(record: TaskRecord) -> str:
 
 
 def register_task_material(record: TaskRecord) -> dict[str, object]:
-    media_path = Path(record.media_path or record.source_media_path) if (record.media_path or record.source_media_path) else None
+    from .task_media_guard import available_current_media
+    from .task_paths import TaskArtifactUnavailable, artifact_name
+    try:
+        media_path = available_current_media(record, TASK_DIR / record.id)
+    except TaskArtifactUnavailable:
+        media_path = None
     digest = str(record.source_identity.media_sha256 or "").strip()
     if not digest and media_path and media_path.is_file():
         digest = _file_sha256(media_path)
@@ -1129,7 +1143,7 @@ def register_task_material(record: TaskRecord) -> dict[str, object]:
     material_id = uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
     source_uri = task_material_source_uri(record)
-    filename = media_path.name if media_path else ""
+    filename = artifact_name(record.media_path or record.source_media_path or "")
     status = "ready" if record.status == "success" else ("failed" if record.status == "failed" else "processing")
     metadata = {
         "registration": "existing_task",

@@ -277,6 +277,9 @@ def _recover_processing(root: Path) -> dict[str, int]:
     from .task_control_state import task_generation
     from .processor import process_local_video_task, process_current_page_task
     from .models import CurrentPageTaskRequest
+    from .task_media_guard import validate_current_media_file
+    from .task_artifacts import task_artifact_path
+    from .task_paths import TaskArtifactUnavailable
 
     queue = queue_for(root)
     recovered = waiting = 0
@@ -324,8 +327,12 @@ def _recover_processing(root: Path) -> dict[str, int]:
                 from .processor import process_saved_transcript_task
                 callback = lambda task=task: process_saved_transcript_task(task.id, task.options)
             elif row["kind"] in {"local", "range", "local_light", "screen_ocr"} or (row["kind"] == "light" and task.source_type == "local"):
-                path = Path(task.source_media_path or task.media_path or "")
-                if not path.is_file() or not path.resolve().is_relative_to(Path(root).resolve()):
+                try:
+                    path = validate_current_media_file(task, task.source_media_path or task.media_path or "", TASK_DIR / task.id)
+                    subtitle = task_artifact_path(task, "subtitle_path")
+                except TaskArtifactUnavailable:
+                    path, subtitle = None, None
+                if path is None or not path.is_relative_to(Path(root).absolute()):
                     queue.set_state(task.id, "waiting_context", generation=row.get("generation", ""))
                     update_task(task.id, status="failed", phase="failed", error_code="resume_source_required", message="原媒体不在当前数据目录，请重新选择原文件恢复。")
                     waiting += 1
@@ -337,10 +344,10 @@ def _recover_processing(root: Path) -> dict[str, int]:
                     from .range_learning import process_range_task
                     callback = lambda task=task, path=path: process_range_task(task.id, path, task.title, task.options)
                 else:
-                    callback = lambda task=task, path=path: process_local_video_task(
+                    callback = lambda task=task, path=path, subtitle=subtitle: process_local_video_task(
                         task.id, path, task.title, task.options, page_url=task.page_url,
                         browser_subtitles=task.browser_subtitles,
-                        subtitle_path=Path(task.subtitle_path) if task.subtitle_path else None,
+                        subtitle_path=subtitle,
                         subtitle_source="browser-subtitle" if task.browser_subtitles else "page-subtitle")
             else:
                 request = CurrentPageTaskRequest(page_url=task.page_url, title=task.title, options=task.options,

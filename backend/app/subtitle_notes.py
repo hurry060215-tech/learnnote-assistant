@@ -16,6 +16,7 @@ from .claims import build_claim_evidence_map, mark_claims_for_review
 from .transcript_quality import preserve_transcript_review_draft
 from .pipeline_progress import UNSET_ATTEMPT, current_pipeline_attempt, finish_pipeline_attempt, record_stage_duration, stage_duration_recorder, write_progressive_draft
 from .storage import get_task, task_dir, update_task, write_json
+from .task_artifacts import saved_note_missing
 from .summary_outcome import has_generated_summary, safe_summary_events, safe_summary_text, summary_failure_message
 
 
@@ -37,7 +38,7 @@ def finish_transcript_note(task_id: str, title: str, page_url: str, transcript: 
         return
     work_dir = task_dir(task_id)
     previous = get_task(task_id)
-    if not previous.note_path or not Path(previous.note_path).is_file():
+    if saved_note_missing(previous):
         draft = write_progressive_draft(task_id, title, transcript, expected_attempt_id=attempt_id)
         if draft:
             update_task(task_id, note_path=str(draft), summary_source="transcript-draft")

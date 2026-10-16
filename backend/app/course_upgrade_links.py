@@ -1,8 +1,10 @@
 """Derived child membership bound to an original course episode, never URL cache."""
 import hashlib
 import re
-from pathlib import Path
+from . import storage
 from .source_input import normalize_source_input
+from .task_media_guard import available_current_media
+from .task_paths import TaskArtifactUnavailable
 
 
 def upgrade_prefix(course_id, episode_id, source_id):
@@ -21,7 +23,10 @@ def episode_upgrades(course_id, episode, source, tasks):
                 or normalize_source_input(task.page_url).url != normalize_source_input(source.page_url).url
                 or (source.source_identity.page_url and normalize_source_input(task.source_identity.page_url).url != normalize_source_input(source.source_identity.page_url).url)):
             raise ValueError('course_episode_identity_conflict')
-        media_available = any(Path(value).is_file() for value in (task.media_path,task.source_media_path) if value)
+        try:
+            media_available = available_current_media(task, storage.TASK_DIR / task.id) is not None
+        except TaskArtifactUnavailable:
+            media_available = False
         result.append({'task_id': task.id, 'status': task.status, 'title': task.title, 'media_available':media_available})
     return sorted(result, key=lambda item: item['task_id'])
 

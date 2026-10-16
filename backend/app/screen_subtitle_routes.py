@@ -12,6 +12,8 @@ from .storage import get_task, task_dir, update_task
 from .screen_subtitle_media import create_retained_ocr_task
 from .task_queue import schedule_processing
 from .task_inputs import merge_task_options, require_ready_note_model, task_media_path
+from .task_media_guard import require_current_media_provenance
+from . import storage
 
 router = APIRouter(prefix="/api/tasks", tags=["screen-subtitles"])
 
@@ -43,8 +45,9 @@ def _source(task_id, *, allow_pending_range=False):
         raise HTTPException(409, "请先等待当前任务停止，再复用已保存的视频。")
     if task.checkpoint == "screen_subtitles_range_pending" and not allow_pending_range:
         raise HTTPException(409, "此片段尚未生成，请先恢复原任务；不能将完整原视频当作所选片段处理。")
+    require_current_media_provenance(task, storage.TASK_DIR / task.id)
     pending = task.checkpoint == "screen_subtitles_range_pending"
-    path = _completed_range_media(task) if task.learning_range and not pending else task_media_path(task, allow_range_source=pending)
+    path = _completed_range_media(task) if task.learning_range and not pending else task_media_path(task, allow_range_source=pending, strict=True)
     if not path or not path.is_file() or path.stat().st_size <= 0:
         raise HTTPException(409, {"code": "media_not_found", "message": "没有可复用的已保存视频。"})
     return task, path

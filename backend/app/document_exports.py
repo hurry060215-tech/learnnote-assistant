@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .config import TASK_DIR
+from .task_paths import resolve_task_grid
 from .document_citations import project_claim_citations
 from .review_presentation import project_source_reviews
 from .export_inline import export_inline_tokens, export_protected_spans
@@ -509,12 +510,12 @@ def _task_image(task, markdown: str) -> tuple[Path | None, str]:
         parsed = urlsplit(url)
         if not parsed.path.startswith(expected_prefix):
             return None, _sanitize_export_text(caption)
-        root = (TASK_DIR / task.id).resolve()
+        root = TASK_DIR / task.id
         # Only embed indexed local frames; never download arbitrary Markdown
         # URLs or open a user-supplied local filename while exporting.
         for grid in getattr(task, "frame_grids", []):
-            path = Path(grid.path).resolve()
-            if path.is_relative_to(root) and path.is_file() and Path(parsed.path).name == path.name:
+            path = resolve_task_grid(root, task.id, grid.path)
+            if path is not None and Path(parsed.path).name == path.name:
                 return path, _sanitize_export_text(caption)
     except (ValueError, OSError):
         pass

@@ -11,6 +11,7 @@ from app.models import TaskOptions, TranscriptResult, TranscriptSegment
 from app.processor import process_saved_transcript_task
 from app.storage import create_task, get_task, update_task
 from app.summary_versions import list_summary_versions, read_summary_version, snapshot_summary
+from app.task_paths import TaskArtifactUnavailable
 
 
 class SummaryVersionTests(unittest.TestCase):
@@ -120,7 +121,8 @@ class SummaryVersionTests(unittest.TestCase):
         elsewhere = self.root / "outside.md"
         elsewhere.write_text("private outside file", encoding="utf-8")
         update_task(self.task.id, note_path=str(elsewhere))
-        self.assertIsNone(snapshot_summary(self.task.id))
+        with self.assertRaises(TaskArtifactUnavailable):
+            snapshot_summary(self.task.id)
 
     def test_history_cannot_read_a_link_outside_the_task(self):
         outside = self.root / "outside.md"
@@ -135,6 +137,27 @@ class SummaryVersionTests(unittest.TestCase):
         self.assertEqual(list_summary_versions(self.task.id)["versions"], [])
         with self.assertRaises(FileNotFoundError):
             read_summary_version(self.task.id, version_id)
+
+
+    def test_unresolved_current_note_blocks_retry_but_keeps_valid_history_readable(self):
+        version_id = snapshot_summary(self.task.id)
+        outside = self.root / "outside-current.md"
+        outside.write_text("Must never be read as this task note", encoding="utf-8")
+        update_task(self.task.id, note_path=str(outside))
+        manifest = self.note.parent / "task.json"
+        before = manifest.read_bytes()
+        with patch("app.main.schedule_processing") as schedule:
+            response = self.client.post(f"/api/tasks/{self.task.id}/retry-summary", json={})
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertEqual(response.json()["detail"]["code"], "summary_backup_failed")
+            schedule.assert_not_called()
+        history = self.client.get(f"/api/tasks/{self.task.id}/summary-versions")
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertFalse(history.json()["current_note_available"])
+        self.assertTrue(history.json()["current_note_diagnostic"]["requires_preview"])
+        self.assertEqual(history.json()["versions"][0]["id"], version_id)
+        self.assertEqual(manifest.read_bytes(), before)
+        self.assertEqual(outside.read_text(), "Must never be read as this task note")
 
 
 if __name__ == "__main__":

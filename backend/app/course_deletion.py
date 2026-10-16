@@ -41,7 +41,7 @@ def _busy_tasks():
 def _dependency_owners():
     """Protect source media/evidence still needed by any retained task."""
     owners = set()
-    root = storage.TASK_DIR.resolve()
+    root = storage.TASK_DIR.absolute()
     for path in storage.TASK_DIR.glob("*/task.json"):
         task = storage.get_task(path.parent.name)
         if task.id != path.parent.name:
@@ -50,11 +50,10 @@ def _dependency_owners():
             owners.add(task.source_task_id)
         for key, value in task.model_dump().items():
             if key.endswith("_path") and isinstance(value, str) and value:
-                resolved = Path(value).resolve()
-                if resolved.is_relative_to(root):
-                    relative = resolved.relative_to(root)
-                    if relative.parts and relative.parts[0] != task.id:
-                        owners.add(relative.parts[0])
+                from .task_paths import lexical_task_dependency
+                owner = lexical_task_dependency(root, value)
+                if owner and owner != task.id:
+                    owners.add(owner)
     return owners
 
 

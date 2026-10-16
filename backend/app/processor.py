@@ -1,4 +1,7 @@
 from __future__ import annotations
+from .task_paths import validate_task_id, TaskArtifactUnavailable
+from .task_artifacts import task_artifact_path, saved_note_missing, saved_task_media_file
+from .subtitle_ownership import retain_subtitle_file
 from .model_data_consent import approved_page_context
 
 import json
@@ -1114,8 +1117,8 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
             _fail(task_id, "summary_mode_required", "当前处理方式不能只生成文字总结，请明确选择文字笔记，或从本地视频继续图文处理。")
             return
         task = get_task(task_id)
-        target = Path(task.transcript_path).resolve()
-        if task_dir(task_id).resolve() not in target.parents or not target.is_file():
+        target = task_artifact_path(task, "transcript_path", task_id=task_id)
+        if target is None:
             raise ContentMismatchError("找不到此任务已保存的字幕，请重新获取内容。")
         transcript = TranscriptResult.model_validate_json(target.read_text(encoding="utf-8"))
         from .course_upgrade_captions import reviewed_captions, require_reviewed_coverage
@@ -1128,7 +1131,7 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
         if transcript.source == "screen-ocr":
             from .screen_subtitles import media_hash
             expected = task.screen_subtitles_media_sha256
-            media = Path(task.media_path)
+            media = saved_task_media_file(task, task.media_path)
             if not expected or expected != transcript.provenance.get("media_sha256") or not media.is_file() or media_hash(media, lambda: _check_cancel(task_id)) != expected:
                 raise ContentMismatchError("画面字幕关联的媒体已变化或无法确认；原文字保留，请重新提取后再生成笔记。")
         if not transcript.segments or not transcript.full_text.strip():
@@ -1151,7 +1154,7 @@ def process_saved_transcript_task(task_id: str, options: TaskOptions) -> None:
     except (TaskCancelled, SummarizationCancelled):
         if get_task(task_id).cancel_requested:
             mark_task_cancelled(task_id)
-    except ContentMismatchError as exc:
+    except (ContentMismatchError, TaskArtifactUnavailable) as exc:
         _fail(task_id, "transcript_unavailable", str(exc))
     except Exception as exc:
         _fail(task_id, "summary_unavailable", safe_summary_text(str(exc)))
@@ -1185,7 +1188,7 @@ def process_local_video_task(
             _check_cancel(task_id)
             attempt_id = start_pipeline_attempt(task_id)
             update_task(task_id, status="running", phase="detecting", progress=10, message="检查本地视频中的已有字幕，不转写音频。")
-            subtitle = subtitle_path
+            subtitle = retain_subtitle_file(task_id, subtitle_path) if subtitle_path else None
             transcript = parse_subtitle_or_none(subtitle, source=subtitle_source or "page-subtitle") if subtitle else None
             if transcript is None and browser_subtitles:
                 duration = get_task(task_id).media_integrity.duration
@@ -1305,8 +1308,8 @@ def _process_video_file(
                                normalization_reused=input_path.resolve() == normalized.resolve())
     except Exception:
         pass  # Optional provenance must not change model calls or publication.
-    previous_note = get_task(task_id).note_path
-    if draft_path and (not previous_note or not Path(previous_note).is_file()):
+    previous_note = get_task(task_id)
+    if draft_path and (saved_note_missing(previous_note)):
         update_task(
             task_id,
             note_path=str(draft_path),
@@ -1415,29 +1418,28 @@ def _process_video_file(
 
 
 def read_transcript(task_id: str) -> dict:
+    validate_task_id(task_id)
     record = get_task(task_id)
     if not record.transcript_path:
         return TranscriptResult().model_dump(mode="json")
-    path = Path(record.transcript_path)
-    if not path.is_file():
-        return TranscriptResult().model_dump(mode="json")
+    path = task_artifact_path(record, "transcript_path", task_id=task_id)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def read_note(task_id: str) -> str:
+    validate_task_id(task_id)
     record = get_task(task_id)
     if not record.note_path:
         return ""
-    path = Path(record.note_path)
-    if not path.is_file():
-        return ""
+    path = task_artifact_path(record, "note_path", task_id=task_id)
     return path.read_text(encoding="utf-8")
 
 
 def read_visual_index(task_id: str) -> dict:
+    validate_task_id(task_id)
     record = get_task(task_id)
     if record.visual_index_path:
-        path = Path(record.visual_index_path)
+        path = task_artifact_path(record, "visual_index_path", task_id=task_id)
         if path.is_file():
             return json.loads(path.read_text(encoding="utf-8"))
     return {
