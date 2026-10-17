@@ -24,10 +24,10 @@ class CommunityPackagingTests(unittest.TestCase):
 
     def test_collector_load_is_action_only_and_does_not_expand_manifest(self):
         import json
-        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text(encoding='utf-8'))
         self.assertNotIn('community', json.dumps(manifest))
-        worker = (ROOT / 'extension/background.js').read_text()
-        panel = (ROOT / 'extension/sidepanel.html').read_text()
+        worker = (ROOT / 'extension/background.js').read_text(encoding='utf-8')
+        panel = (ROOT / 'extension/sidepanel.html').read_text(encoding='utf-8')
         self.assertNotIn('content-community.js', worker.splitlines()[1])
         self.assertNotIn('content-community.js', panel)
         self.assertIn('sidepanel-community.js', panel)

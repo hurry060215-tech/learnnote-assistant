@@ -1,7 +1,18 @@
 // Deterministic product tests. All model calls and browser-extension APIs are mocked.
-const {chromium}=require('playwright');
 const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), assert=require('node:assert/strict');
-(async()=>{
+function extensionAsset(url) {
+  // Keep this finite; new shipped imports need a reviewed fixture entry.
+  const allowed = ['sidepanel.html', 'sidepanel.css', 'sidepanel.js', 'sidepanel-progress.js',
+    'i18n.js', 'community-source.js', 'sidepanel-community.js'];
+  let pathname; try { pathname = new URL(url, 'http://localhost').pathname; } catch { return null; }
+  const rawPath = String(url).replace(/^https?:\/\/[^/?#]*/i, '').split(/[?#]/, 1)[0];
+  if (rawPath !== pathname || !pathname.startsWith('/__extension/')) return null;
+  const file = pathname.slice('/__extension/'.length);
+  if (!allowed.includes(file) && !/^icons\/icon(?:16|32|48|128|256|512)\.png$/.test(file)) return null;
+  return path.join(__dirname, '../extension', file);
+}
+async function run() {
+  const {chromium}=require('playwright');
   const base=process.argv[2]||'http://127.0.0.1:18956';
   const out=process.argv[3]||fs.mkdtempSync(path.join(os.tmpdir(),'learnnote-core-output-'));fs.mkdirSync(out,{recursive:true});
   const browser=await chromium.launch({channel:'msedge',headless:true});
@@ -22,10 +33,9 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     ext.setDefaultTimeout(8000);
     ext.on('pageerror',e=>errors.push(e.message));
     await ext.route('**/__extension/**',route=>{
-      const file=path.basename(new URL(route.request().url()).pathname);
-      const icon=/^icon(?:16|32|48|128|256|512)\.png$/.test(file);
-      assert(icon || ['sidepanel.html','sidepanel.css','sidepanel.js', 'sidepanel-progress.js','i18n.js'].includes(file));
-      return route.fulfill({body:fs.readFileSync(path.join(__dirname,'../extension',icon?'icons':'',file)),contentType:icon?'image/png':file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'application/javascript'});
+      const file=extensionAsset(route.request().url());
+      assert(file, 'Unknown extension fixture asset');
+      return route.fulfill({body:fs.readFileSync(file),contentType:file.endsWith('.png')?'image/png':file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'application/javascript'});
     });
     await ext.route('**/health',r=>r.fulfill({json:{ok:true,service:'learnnote',app_version:'0.2.8',backend_version:'0.2.8',protocol_version:1,llm_model_configured:true,default_llm_model:'验收模型',default_llm_supports_vision:true}}));
     await ext.addInitScript(()=>{
@@ -57,4 +67,6 @@ const fs=require('node:fs'), path=require('node:path'), os=require('node:os'), a
     await ext.screenshot({path:path.join(out,'extension-preview.png'),fullPage:true});
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['profile stats and mobile layout','no automatic model downloads','explicit model prepare','subtitle paragraphs and search','mocked source-bound timestamp message','no page errors'],out},null,2));
   } finally {await browser.close();}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+}
+module.exports = {extensionAsset};
+if (require.main === module) run().catch(e=>{console.error(e);process.exitCode=1;});

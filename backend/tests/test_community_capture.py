@@ -84,7 +84,7 @@ class VisibleCommunityCaptureTests(unittest.TestCase):
         path.write_text(self.task.model_dump_json(), encoding="utf-8")
 
     def snapshot(self):
-        return {str(path.relative_to(self.root)): (path.read_bytes(), path.stat().st_mtime_ns)
+        return {path.relative_to(self.root).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
                 for path in self.root.rglob("*") if path.is_file()}
 
     def preview(self, body=None):
