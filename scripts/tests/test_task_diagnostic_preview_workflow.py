@@ -43,5 +43,25 @@ class TaskDiagnosticPreviewWorkflowTests(unittest.TestCase):
         self.assertNotIn("build/task-diagnostic-preview/**", self.source)
 
 
+    def test_early_evidence_is_bounded_and_does_not_replace_final_upload(self):
+        marker = "      - name: Retain early synthetic diagnostic preview evidence\n"
+        step = self.source.split(marker, 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: always()", step)
+        self.assertIn("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", step)
+        self.assertIn("name: diagnostic-preview-${{ github.run_id }}", step)
+        paths = [line.strip() for line in step.splitlines() if line.startswith("            build/")]
+        self.assertEqual(paths, [f"build/{folder}/*.{suffix}"
+                                for folder in ("task-diagnostic-preview", "task-diagnostic-preview-native")
+                                for suffix in ("json", "png")])
+        self.assertNotIn("run:", step)
+        self.assertNotIn("continue-on-error", step)
+        self.assertLess(self.source.index("Safe diagnostic preview with owned native Edge zoom"), self.source.index(marker))
+        self.assertLess(self.source.index(marker), self.source.index("      - name: Start isolated local backend"))
+        final = self.source.split("      - name: Start isolated local backend", 1)[1]
+        for path in paths:
+            self.assertIn(path, final)
+        self.assertIn("if: always()", final)
+
+
 if __name__ == "__main__":
     unittest.main()

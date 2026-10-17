@@ -7,6 +7,30 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeTimelineZoomContract(unittest.TestCase):
+    def test_ambiguous_owned_windows_emit_bounded_read_only_facts(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        start = helper.index('if ($windows.Count -ne 1) {')
+        end = helper.index('$window = $windows[0]', start)
+        diagnostic = helper[start:end]
+        for text in ['Select-Object -First 16', '[Math]::Min(17, $windows.Count)',
+                     'truncated = ($windows.Count -gt 16)', '"zero"', '"multiple"',
+                     'foreground_is_browser = ($foregroundPid -eq $OwnedBrowserPid)',
+                     'hwnd = $_.ToInt64()', 'class = "Chrome_WidgetWin_1"',
+                     'owner_is_browser = ($ownerPid -eq $OwnedBrowserPid)',
+                     'LN_NATIVE_WINDOWS:', 'ConvertTo-Json -Depth 4 -Compress',
+                     'throw "Expected exactly one visible window owned by the disposable Edge process."']:
+            self.assertIn(text, diagnostic)
+        for forbidden in ['SetForegroundWindow', 'ShowWindow', 'SendWait', 'CopyFromScreen',
+                          'GetWindowText', 'MainWindowTitle', 'Start-Sleep']:
+            self.assertNotIn(forbidden, diagnostic)
+        self.assertLess(end, helper.index('[void][TimelineZoomWindow]::SetForegroundWindow($window)'))
+        self.assertIn('try {\n    # Diagnostic facts only', diagnostic)
+        self.assertIn('} catch {\n    # Evidence must not replace the original ownership failure', diagnostic)
+        self.assertIn('try { [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:unavailable"); [Console]::Error.Flush() } catch {}', diagnostic)
+        self.assertLess(diagnostic.index('LN_NATIVE_WINDOWS:unavailable'), diagnostic.index('throw "Expected exactly one'))
+        self.assertIn('ConvertTo-Json -Depth 4 -Compress))\n    [Console]::Error.Flush()', diagnostic)
+
+
     def test_prepare_phase_markers_are_fixed_and_bounded(self):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
         phases = ["entered", "process-lookup", "forms-load", "native-type-compile",

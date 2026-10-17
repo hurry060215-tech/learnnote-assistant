@@ -97,9 +97,10 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
         for exits_first in (False, True, "cooperative"):
             with self.subTest(exits_first=exits_first), tempfile.TemporaryDirectory(prefix="stdin-probe-cleanup-") as temporary:
                 marker = Path(temporary) / "child.pid"
-                code = ("import subprocess,sys,time; assert sys.stdin.readline().strip()=='start'; "
+                code = ("import subprocess,sys,time; from pathlib import Path; assert sys.stdin.readline().strip()=='start'; "
                         "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
-                        f"open({str(marker)!r},'w').write(str(p.pid)); " + ("sys.stdin.readline()" if exits_first == "cooperative" else "" if exits_first else "time.sleep(60)"))
+                        f"Path({str(marker) + '.tmp'!r}).write_text(str(p.pid)); "
+                        f"Path({str(marker) + '.tmp'!r}).replace({str(marker)!r}); " + ("sys.stdin.readline()" if exits_first == "cooperative" else "" if exits_first else "time.sleep(60)"))
                 command = [sys.executable, "-c", code]
                 child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                          text=True, start_new_session=os.name != "nt")
@@ -135,7 +136,11 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
                         else: self.assertEqual(ctypes.get_last_error(), 87)
                     else:
                         state = Path(f"/proc/{descendant}/stat")
-                        self.assertTrue(not state.exists() or state.read_text().split()[2] == "Z")
+                        try:
+                            process_state = state.read_text().split()[2]
+                        except (FileNotFoundError, ProcessLookupError):
+                            process_state = None  # The verified descendant exited during the read.
+                        self.assertIn(process_state, (None, "Z"))
                 finally:
                     if child.poll() is None: probe.stop_owned(child, command, cooperative_seconds=.05, job=job)
                     if job: job.close()

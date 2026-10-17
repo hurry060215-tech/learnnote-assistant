@@ -113,7 +113,8 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", shared)
         self.assertIn("} finally {", shared["run"])
         self.assertIn("Stop-Process", shared["run"])
-        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@")
+                      and step.get("with", {}).get("name") == "ui-visual-${{ github.run_id }}")
         self.assertEqual(upload["if"], "always()")
         for directory in ("build/progressive-sections-ui", "build/reader-ui", "build/ui-backend-diagnostics"):
             self.assertIn(directory, upload["with"]["path"])
@@ -128,7 +129,8 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertEqual(job["runs-on"], "windows-latest")
         execution = next(step["run"] for step in job["steps"] if step.get("name") == "Start isolated local backend")
         self.assertIn("node scripts/local-player-visual-acceptance.cjs build/local-player-ui", execution)
-        upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))
+        upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")
+                      and step.get("with", {}).get("name") == "ui-visual-${{ github.run_id }}")
         self.assertIn("build/local-player-ui", upload["with"]["path"])
 
     def test_i18n_audit_script_is_present(self) -> None:
@@ -184,7 +186,8 @@ class UiVisualContractTests(unittest.TestCase):
         for step in (synthetic, actual):
             self.assertNotIn("continue-on-error", step)
             self.assertIn('if ($LASTEXITCODE -ne 0) { throw', step["run"])
-        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@")
+                      and step.get("with", {}).get("name") == "ui-visual-${{ github.run_id }}")
         self.assertEqual(upload["if"], "always()")
         for path in ("build/course-upgrade-synthetic-ui", "build/course-upgrade-ui"):
             self.assertIn(path, upload["with"]["path"])

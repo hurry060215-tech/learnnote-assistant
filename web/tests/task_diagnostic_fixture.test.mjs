@@ -57,17 +57,17 @@ test("fixture rejects wrong asset/API methods and unapproved querystrings before
   assert.equal(allow("POST", "/api/study/activity?unexpected=1"), false);
 });
 
-test("native post-zoom capture failure still resets and closes owned process despite cleanup failures", async () => {
-  const primary = new Error("owned capture failed"), logged = [], actions = []; let closed = 0, serverClosed = 0;
+for (const captureFails of [false, true]) test(`native failure page capture ${captureFails ? "failure" : "success"} preserves original error and independent cleanup`, async () => {
+  const primary = new Error("owned capture failed"), logged = [], actions = []; let closed = 0, serverClosed = 0, captured = 0, report;
   const process = { argv: ["node", "fixture", "out", "--native"], platform: "win32", env: {}, exitCode: 0 };
   const locator = { async inputValue() { return "md"; }, async isChecked() { return false; }, async isDisabled() { return true; }, getByText() { return this; }, getByRole() { return this; }, async waitFor() {}, filter() { return this; }, locator() { return this; }, async click() {} };
-  const page = { setDefaultTimeout() {}, on() {}, async goto() {}, locator() { return locator; }, async bringToFront() {}, async waitForFunction() {}, async evaluate() { return { width: 1440, height: 900, dpr: 1, cssZoom: "1", documentZoom: "1", visualScale: 1, overflow: 0 }; } };
+  const page = { async screenshot(options) { captured++; assert.equal(options.fullPage, true); assert.equal(options.timeout, 15000); assert.equal(path.basename(options.path), "desk-failure-page.png"); if (captureFails) throw new Error("capture failed"); }, setDefaultTimeout() {}, on() {}, async goto() {}, locator() { return locator; }, async bringToFront() {}, async waitForFunction() {}, async evaluate() { return { width: 1440, height: 900, dpr: 1, cssZoom: "1", documentZoom: "1", visualScale: 1, overflow: 0 }; } };
   const browser = { async newContext() { return { async route() {}, async newPage() { return page; } }; }, async close() { closed++; throw new Error("browser cleanup failed"); } };
   const require = name => {
     if (name === "playwright") return { chromium: { async launchServer() { return { process: () => ({ pid: 123 }), wsEndpoint: () => "ws://owned", async close() { serverClosed++; throw new Error("server cleanup failed"); } }; }, async connect() { return browser; } } };
     if (name === "node:assert/strict") return assert;
     if (name === "node:path") return path;
-    if (name === "node:fs") return { mkdirSync() {}, writeFileSync() { throw new Error("write failed"); } };
+    if (name === "node:fs") return { mkdirSync() {}, writeFileSync(_file, value) { report = JSON.parse(value); throw new Error("write failed"); } };
     if (name === "node:child_process") return { execFileSync(_command, args) { const action = args[args.indexOf("-Zoom") + 1]; actions.push(action); if (action === "capture") throw primary; if (action === "reset" && actions.includes("capture")) throw new Error("reset failed"); return "{}"; } };
     if (name === "./classic-visual-study-fixture.cjs") return { TASK_ID: "synthetic", createStudyPlan() {} };
     if (name === "./timeline-native-zoom-matrix.cjs") return { assertZoomMetrics() {}, async waitForNativePreset() { return { dpr: 2 }; } };
@@ -76,6 +76,10 @@ test("native post-zoom capture failure still resets and closes owned process des
   await vm.runInNewContext(source, { require, __dirname: "/fixture/scripts", process, console: { error(value) { logged.push(value); } } });
   assert.deepEqual(actions, ["prepare", "dismiss-translation", "reset", "200", "capture", "reset"]);
   assert.equal(closed, 1); assert.equal(serverClosed, 1); assert.equal(logged.at(-1), primary); assert.equal(process.exitCode, 1);
+  assert.equal(captured, 1); assert.equal(report.currentCase.surface, 'desk');
+  assert.equal(report.currentCase.phase, 'native-preview-capture'); assert.equal(report.currentCase.zoomEvidence.zoomed.dpr, 2);
+  assert.equal(report.failureCaptureError, captureFails ? 'Synthetic page failure capture unavailable' : undefined);
+  assert.deepEqual(report.screenshots, captureFails ? [] : ['desk-failure-page.png']);
 });
 
 test("actual settings startup model-route query has one explicit synthetic response", () => {

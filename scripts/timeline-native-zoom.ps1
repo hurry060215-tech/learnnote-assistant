@@ -32,6 +32,7 @@ public static class TimelineZoomWindow {
   public delegate bool Callback(IntPtr window, IntPtr parameter);
   [DllImport("user32.dll")] public static extern bool EnumWindows(Callback callback, IntPtr parameter);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr window, uint command);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int length);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
@@ -56,7 +57,33 @@ public static class TimelineZoomWindow {
 "@
 Write-NativePhase "owned-window-enumeration"
 $windows = @([TimelineZoomWindow]::OwnedWindows([uint32]$OwnedBrowserPid))
-if ($windows.Count -ne 1) { throw "Expected exactly one visible window owned by the disposable Edge process." }
+if ($windows.Count -ne 1) {
+  try {
+    # Diagnostic facts only, before any foreground/input/capture action. No titles or URLs.
+    $foreground = [TimelineZoomWindow]::GetForegroundWindow()
+    [uint32]$foregroundPid = 0
+    [void][TimelineZoomWindow]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid)
+    $facts = @($windows | Select-Object -First 16 | ForEach-Object {
+      [uint32]$pidValue = 0
+      [void][TimelineZoomWindow]::GetWindowThreadProcessId($_, [ref]$pidValue)
+      $ownerWindow = [TimelineZoomWindow]::GetWindow($_, 4) # GW_OWNER; read-only relation
+      [uint32]$ownerPid = 0
+      if ($ownerWindow -ne [IntPtr]::Zero) { [void][TimelineZoomWindow]::GetWindowThreadProcessId($ownerWindow, [ref]$ownerPid) }
+      @{ hwnd = $_.ToInt64(); class = "Chrome_WidgetWin_1"; pid = $pidValue;
+         visible = [TimelineZoomWindow]::IsWindowVisible($_); foreground = ($_ -eq $foreground);
+         owner_hwnd = $ownerWindow.ToInt64(); owner_is_browser = ($ownerPid -eq $OwnedBrowserPid) }
+    })
+    $diagnostic = @{ state = $(if ($windows.Count -eq 0) { "zero" } else { "multiple" });
+      count_capped = [Math]::Min(17, $windows.Count); truncated = ($windows.Count -gt 16);
+      foreground_is_browser = ($foregroundPid -eq $OwnedBrowserPid); windows = $facts }
+    [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:" + ($diagnostic | ConvertTo-Json -Depth 4 -Compress))
+    [Console]::Error.Flush()
+  } catch {
+    # Evidence must not replace the original ownership failure, even if stderr fails.
+    try { [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:unavailable"); [Console]::Error.Flush() } catch {}
+  }
+  throw "Expected exactly one visible window owned by the disposable Edge process."
+}
 $window = $windows[0]
 Write-NativePhase "foreground"
 [void][TimelineZoomWindow]::SetForegroundWindow($window)

@@ -52,7 +52,7 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
 (async () => {
   fs.mkdirSync(output, { recursive: true });
   const report = { passed: false, cases: [], screenshots: [], errors: [], requests: [], unexpected: [], cleanupErrors: [] };
-  let browser, server, ownedPid, prepared = false, failure;
+  let browser, server, ownedPid, currentPage, prepared = false, failure;
   const nativeKey = (zoom, capturePath) => JSON.parse(require('node:child_process').execFileSync('powershell.exe',
     ['-NoProfile', '-NonInteractive', '-File', path.join(__dirname, 'timeline-native-zoom.ps1'), '-OwnedBrowserPid', String(ownedPid), '-Zoom', zoom,
       ...(capturePath ? ['-CapturePath', capturePath] : [])], { encoding: 'utf8', timeout: zoom === 'prepare' ? 45000 : 15000 }));
@@ -63,6 +63,7 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       ownedPid = server.process().pid; browser = await chromium.connect(server.wsEndpoint());
     } else browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, headless: true } : { channel: 'msedge', headless: true });
     for (const surface of ['desk', 'classic']) for (const width of (native ? [null] : [1280, 390])) {
+      report.currentCase = { surface, width, native, phase: 'context', downloads: 0 };
       const context = await browser.newContext({ viewport: native ? null : { width, height: 900 }, acceptDownloads: true, reducedMotion: 'reduce', serviceWorkers: 'block', timezoneId: 'UTC' });
       const plan = createStudyPlan(); let diagnosticGets = 0;
       await context.route('**/*', route => {
@@ -102,10 +103,11 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         if (Object.hasOwn(exact, key)) return route.fulfill({ json: exact[key] });
         report.unexpected.push(`${req.method()} ${key}`); return route.abort('blockedbyclient');
       });
-      const page = await context.newPage(); page.setDefaultTimeout(15000);
+      const page = await context.newPage(); currentPage = page; page.setDefaultTimeout(15000);
       page.on('pageerror', error => report.errors.push({ surface, width, error: error.message }));
       await page.goto('about:blank#diagnostic-history-start');
       await page.goto(`${base}/web/${surface === 'classic' ? 'classic' : 'index'}.html?task=${TASK_ID}&tab=diagnostics`);
+      report.currentCase.phase = 'open-preview';
       const opener = await openDiagnosticEntry(page, surface);
       await opener.click(); const dialog = page.locator('.task-diagnostic-export');
       await dialog.locator('pre').filter({ hasText: '历史构建' }).waitFor();
@@ -117,6 +119,7 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         cssZoom: getComputedStyle(document.body).zoom, documentZoom: getComputedStyle(document.documentElement).zoom,
         visualScale: visualViewport.scale, overflow: document.documentElement.scrollWidth - innerWidth }));
       if (native) {
+        report.currentCase.phase = 'native-prepare';
         await page.bringToFront(); const preparation = nativeKey('prepare'); prepared = true;
         const translation = nativeKey('dismiss-translation'); nativeKey('reset');
         await page.waitForFunction(() => Math.abs(devicePixelRatio - 1) < .01);
@@ -125,8 +128,9 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         assertZoomMetrics(baseline, baseline, 100); nativeKey('200');
         const zoomed = await waitForNativePreset(page, metrics, baseline, 200);
         assertZoomMetrics(zoomed, baseline, 200);
-        zoomEvidence = { preparation, translation, baseline, zoomed };
+        zoomEvidence = { preparation, translation, baseline, zoomed }; report.currentCase.zoomEvidence = zoomEvidence;
         const filename = `${surface}-native-200-owned-window.png`;
+        report.currentCase.phase = 'native-preview-capture';
         const capture = nativeKey('capture', path.join(output, filename));
         const size = require('./timeline-native-capture.cjs').pngSize(fs.readFileSync(path.join(output, filename)));
         assert.equal(size.width, capture.width); assert.equal(size.height, capture.height); assert(capture.sampled_colors > 1);
@@ -137,8 +141,9 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       assert(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1), 'Narrow dialog wraps');
       const screenshot = `${surface}-${native ? "native-200" : width}-preview.png`;
       await page.screenshot({ path: path.join(output, screenshot), fullPage: true }); report.screenshots.push(screenshot);
-      let downloads = 0; page.on('download', () => downloads++);
+      let downloads = 0; page.on('download', () => { downloads++; report.currentCase.downloads = downloads; });
       for (const [format, bytes] of [['md', markdown], ['json', json]]) {
+        report.currentCase.phase = `download-${format}`;
         if (format === 'json') {
           await dialog.locator('select').selectOption('json');
           await page.waitForFunction(text => document.querySelector('.task-diagnostic-export pre')?.textContent === text, json);
@@ -157,9 +162,11 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         const event = page.waitForEvent('download'); await dialog.getByRole('button', { name: '保存已预览报告' }).click();
         const download = await event; assert.equal(download.suggestedFilename(), `learnnote-diagnostics.${format}`);
         await assertDownloadedBytes(download, Buffer.from(bytes));
+        report.currentCase[`${format}ByteEquality`] = true;
         await dialog.getByRole('button', { name: '保存已预览报告' }).evaluate(node => node.click());
       }
       assert.equal(downloads, 2); assert.equal(diagnosticGets, 2);
+      report.currentCase.phase = 'focus-and-cancel';
       await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
       assert(await opener.evaluate(node => document.activeElement === (node.closest('details:not([open])')?.querySelector('summary') || node)), 'Close restores visible opener or collapsed menu summary');
       if (surface === 'classic') await page.locator('#resultMoreActions > summary').click();
@@ -169,7 +176,9 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       assert.equal(await dialog.getByRole('button', { name: '保存已预览报告' }).isDisabled(), true);
       await dialog.getByRole('button', { name: '取消导出' }).click(); await dialog.waitFor({ state: 'detached' });
       assert.equal(downloads, 2);
+      report.currentCase.cancel = true;
       if (native) {
+        report.currentCase.phase = 'native-restore';
         nativeKey('reset');
         zoomEvidence.restored = await require('./timeline-native-zoom-matrix.cjs').waitForNativePreset(page, metrics, zoomEvidence.baseline, 100);
         prepared = false;
@@ -177,14 +186,27 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       // Native zoom is restored before Back leaves the app's origin and live metrics.
       if (surface === 'classic') await page.locator('#resultMoreActions > summary').click();
       await opener.click(); await dialog.locator('pre').filter({ hasText: '历史构建' }).waitFor();
+      report.currentCase.phase = 'browser-back';
       await page.goBack({ waitUntil: 'load' });
       assert.equal(page.url(), 'about:blank#diagnostic-history-start');
       await dialog.waitFor({ state: 'detached' }); assert.equal(downloads, 2);
       report.cases.push({ surface, width, native, zoomEvidence, downloads, diagnosticGets, byteEquality: true, focusRestore: true, cancel: true, wholePageBrowserBack: true });
-      await context.close();
+      report.currentCase.phase = 'context-close';
+      await context.close(); currentPage = null;
+      report.currentCase = null;
     }
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpected, []); report.passed = true;
-  } catch (error) { failure = error; report.failure = error.message; }
+  } catch (error) {
+    failure = error; report.failure = error.message;
+    // Playwright captures only our synthetic page, never an ambiguous OS window.
+    if (currentPage) {
+      try {
+        const filename = `${report.currentCase.surface}-failure-page.png`;
+        await currentPage.screenshot({ path: path.join(output, filename), fullPage: true, timeout: 15000 });
+        report.screenshots.push(filename);
+      } catch (_) { report.failureCaptureError = 'Synthetic page failure capture unavailable'; }
+    }
+  }
   finally {
     if (prepared) { try { nativeKey('reset'); } catch (error) { report.cleanupErrors.push(error.message); failure ||= error; report.passed = false; } }
     try { await browser?.close(); } catch (error) { report.cleanupErrors.push(error.message); failure ||= error; report.passed = false; }
