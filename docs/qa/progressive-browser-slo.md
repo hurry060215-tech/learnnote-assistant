@@ -9,8 +9,10 @@ node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui
 ```
 
 An optional `LEARNNOTE_ACCEPTANCE_BROWSER` selects an installed Edge executable.
-The gate records the actual browser process executable, version, user-agent and
-brands, and rejects a non-Edge executable. Use a separate runner/job, sequentially,
+The gate validates a canonical Edge executable file and passes that exact path
+to the owned browser launch. It records that launch path plus the instance version,
+user-agent and brands, and rejects a non-Edge executable. A missing or invalid
+explicit override fails without selecting another browser. Use a separate runner/job, sequentially,
 without heavy concurrent media tests. The hosted job timeout is 30 minutes.
 
 ## What is measured

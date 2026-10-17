@@ -110,12 +110,42 @@ test("DOM measurement rejects invisible ancestors despite a visible child box an
   assert.equal(readableGeometry(measure(heading)), false, "Hidden DOM text is not rendered source text");
 });
 
-test("native Edge identity is taken from the actual browser process executable", () => {
+test("owned Edge launch uses the validated canonical file without command-line telemetry or added flags", () => {
+  const first = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+  const second = "C:/Program Files/Microsoft/Edge/Application/msedge.exe";
+  const canonical = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+  const io = { existsSync: value => value === first, realpathSync: value => { assert.equal(value, first); return canonical; },
+    statSync: value => { assert.equal(value, canonical); return { isFile: () => true }; } };
+  assert.deepEqual(fixture.edgeLaunchOptions(undefined, io), { executablePath: canonical, headless: true });
+  assert.deepEqual(fixture.edgeLaunchOptions(undefined, { existsSync: value => value === second,
+    realpathSync: value => value, statSync: () => ({ isFile: () => true }) }), { executablePath: second, headless: true });
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  assert.match(source, /browser = await chromium\.launch\(launchOptions\)/);
+  assert.match(source, /executable: launchOptions\.executablePath/);
+  assert.match(source, /instance_version: browser\.version\(\)/);
+  assert.match(source, /user_agent: navigator\.userAgent/);
+  assert.doesNotMatch(source, /getBrowserCommandLine|enable-automation|newBrowserCDPSession/);
+});
+
+test("explicit Edge override is validated and cannot fall back to a different installed browser", () => {
+  const explicit = "D:/Browsers/Edge/msedge.exe", requested = [];
+  const io = { existsSync: value => { requested.push(value); return value === explicit; }, realpathSync: value => value,
+    statSync: () => ({ isFile: () => true }) };
+  assert.deepEqual(fixture.edgeLaunchOptions(explicit, io), { executablePath: explicit, headless: true });
+  assert.deepEqual(requested, [explicit]);
+  requested.length = 0;
+  assert.throws(() => fixture.edgeLaunchOptions("D:/missing/msedge.exe", io), /not found/);
+  assert.deepEqual(requested, ["D:/missing/msedge.exe"]);
+});
+
+test("missing files, directories and non-Edge canonical targets fail before launch", () => {
+  assert.throws(() => fixture.edgeLaunchOptions(undefined, { existsSync: () => false }), /not found/);
+  const io = { existsSync: () => true, realpathSync: value => value, statSync: () => ({ isFile: () => true }) };
+  assert.throws(() => fixture.edgeLaunchOptions("D:/msedge.exe", { ...io, statSync: () => ({ isFile: () => false }) }), /must be a file/);
+  assert.throws(() => fixture.edgeLaunchOptions("D:/msedge.exe", { ...io, realpathSync: () => "D:/chrome.exe" }), /canonical Microsoft Edge/);
+  assert.throws(() => fixture.edgeLaunchOptions("D:/chrome.exe", io), /canonical Microsoft Edge/);
   assert(fixture.edgeExecutable("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"));
   assert(fixture.edgeExecutable("/opt/microsoft/msedge/msedge"));
   for (const value of [undefined, "chrome.exe", "/usr/bin/chromium", "/tmp/not-msedge", "msedge.exe --fake"])
     assert.equal(fixture.edgeExecutable(value), false);
-  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
-  assert.match(source, /Browser\.getBrowserCommandLine/); assert.match(source, /user_agent: navigator\.userAgent/);
-  assert.match(source, /assert\(edgeExecutable\(report\.browser_identity\.executable\)/);
 });

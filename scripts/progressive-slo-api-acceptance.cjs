@@ -9,6 +9,18 @@ const OPTIONS = { content_mode: "text", visual_understanding: false, local_ocr: 
   llm_api_key: "", use_saved_connection: false, llm_base_url: "http://127.0.0.1:9/v1", llm_model: "slo-reference" };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function edgeExecutable(value) { return typeof value === "string" && /^msedge(?:\.exe)?$/i.test(value.split(/[\\/]/).pop()); }
+function edgeLaunchOptions(configured, filesystem = fs) {
+  const candidates = configured ? [configured] : [
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  ];
+  const selected = candidates.find(candidate => filesystem.existsSync(candidate));
+  assert(selected, "Microsoft Edge executable not found; configure LEARNNOTE_ACCEPTANCE_BROWSER explicitly");
+  const executablePath = filesystem.realpathSync(selected);
+  assert(filesystem.statSync(executablePath).isFile(), "Microsoft Edge executable must be a file");
+  assert(edgeExecutable(executablePath), "This acceptance gate requires a canonical Microsoft Edge executable");
+  return { executablePath, headless: true };
+}
 function p95(values) { return [...values].sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]; }
 function summarize(samples) {
   return DURATIONS.map(minutes => {
@@ -198,9 +210,8 @@ async function main(output = "build/progressive-slo-ui") {
   }
   try {
     save(); await startBackend();
-    browser = await chromium.launch(process.env.LEARNNOTE_ACCEPTANCE_BROWSER
-      ? { executablePath: process.env.LEARNNOTE_ACCEPTANCE_BROWSER, headless: true }
-      : { channel: "msedge", headless: true });
+    const launchOptions = edgeLaunchOptions(process.env.LEARNNOTE_ACCEPTANCE_BROWSER);
+    browser = await chromium.launch(launchOptions);
     report.browser_version = browser.version(); report.platform = process.platform;
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block" });
     await context.addInitScript(() => localStorage.setItem("learnnote.sidebar.collapsed", "true"));
@@ -209,13 +220,10 @@ async function main(output = "build/progressive-slo-ui") {
       return route.continue();
     });
     await newPage();
-    const browserSession = await browser.newBrowserCDPSession();
-    const command = await browserSession.send("Browser.getBrowserCommandLine");
-    report.browser_identity = { selected_channel: process.env.LEARNNOTE_ACCEPTANCE_BROWSER ? null : "msedge",
-      configured_executable: process.env.LEARNNOTE_ACCEPTANCE_BROWSER || null, executable: command.arguments[0],
+    report.browser_identity = { configured_executable: process.env.LEARNNOTE_ACCEPTANCE_BROWSER || null,
+      executable: launchOptions.executablePath, executable_evidence: "canonical path passed to chromium.launch",
+      instance_version: browser.version(),
       ...await page.evaluate(() => ({ user_agent: navigator.userAgent, brands: navigator.userAgentData?.brands || [] })) };
-    assert(edgeExecutable(report.browser_identity.executable), "This acceptance gate requires the actual Microsoft Edge executable");
-    await browserSession.detach();
     for (const minutes of DURATIONS) for (let repetition = 1; repetition <= REPETITIONS; repetition++) {
       const row = { minutes, repetition, index: report.samples.length + 1, first_task_in_initialized_runtime: report.samples.length === 0, status: "pending" };
       report.samples.push(row); save(); const started = performance.now(); let sampleError;
@@ -282,5 +290,5 @@ async function main(output = "build/progressive-slo-ui") {
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });
