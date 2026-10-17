@@ -31,7 +31,7 @@ function harness() {
   const context = vm.createContext({ state, claimMapVersion, $, document, readerNav: {}, timestamp: () => "3:00",
     api: route => new Promise(resolve => pending.push(() => resolve(route.endsWith("/partial-note") ? { actualProjection: true } : { ...edition }))),
     sourcePath: selected => `/edition/${selected.kind}/${selected.id}`, LearnNoteMarkdown: { configure() {}, markdownToHtml: text => `<main>${text}</main>` },
-    taskAsset: value => value, renderEditionStable, sectionReader: { clear() { projected = false; }, render() { if (progressive) projected = true; return progressive; } },
+    taskAsset: value => value, renderEditionStable, sectionReader: { retainableSnapshot: () => false, clear() { projected = false; }, render() { if (progressive) projected = true; return progressive; } },
     claimTimeline: { reset() {} }, loadClaimTimeline() { claims++; }, esc: value => value, canOcrMaterial: () => false,
     mountMaterialOcr() {}, collapseSourceReviews() {}, decorateSourceTimes() {},
     window: { dispatchEvent() {}, addEventListener: (name, callback) => { listeners[name] = callback; } }, Event });

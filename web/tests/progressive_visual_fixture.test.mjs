@@ -338,3 +338,133 @@ test("stage navigation is separate from retained prose and rechecks current iden
   assert.match(script, /generation: report\.cancelled\.state\.generation/);
   assert.doesNotMatch(script, /progress\.locator\("\.task-timeline"\)\.evaluate/);
 });
+
+test("reader response diagnostics accept only exact same-origin task reads and safe metadata", () => {
+  const origin = "http://127.0.0.1:12345", id = "abcdef123456";
+  assert.deepEqual(fixture.readerResponseSource(`${origin}/api/tasks/${id}/partial-note`, origin), { kind: "partial", task_id: id });
+  for (const path of [`https://other.test/api/tasks/${id}`, `${origin}/api/tasks/${id}?token=private`,
+    `${origin}/api/tasks/${id}/events/stream?after=1`, `${origin}/api/tasks/editions/material/${id}`, `${origin}/api/tasks/invalid`,
+    `http://user:secret@127.0.0.1:12345/api/tasks/${id}`]) assert.equal(fixture.readerResponseSource(path, origin), null);
+  const partial = fixture.readerResponseMetadata({ kind: "partial", task_id: id }, { task_id: id, schema_version: 1, verified: false,
+    status: "unavailable", reason: "snapshot_changed", task_updated_at: "2026-10-17T12:00:00+00:00", attempt_id: id,
+    source_revision: hash("a"), generation_revision: hash("b"), revision: hash("c"), sections: [], secret: "private" });
+  assert.equal(fixture.readerResponseMetadata({ kind: "partial", task_id: id }, { attempt_id: [id] }).attempt_id, null);
+  assert.equal(partial.reason, "snapshot_changed"); assert.equal(partial.identity_matches, true); assert(!JSON.stringify(partial).includes("private"));
+  assert.equal(fixture.readerResponseMetadata({ kind: "partial", task_id: id }, { task_id: "other", reason: "private" }).identity_matches, false);
+  assert.equal(fixture.readerResponseMetadata({ kind: "partial", task_id: id }, { reason: "private" }).reason, "unknown");
+  const edition = fixture.readerResponseMetadata({ kind: "edition", task_id: id }, { revision: hash("a"), text: "private prose", edited: false });
+  assert.equal(edition.text_bytes, 13); assert.match(edition.text_sha256, /^[a-f0-9]{64}$/); assert(!JSON.stringify(edition).includes("private"));
+  const task = { id, control_generation: hash("a"), page_url: "https://private.test/?token=secret", source_media_path: "private.mp4" };
+  const first = fixture.readerResponseMetadata({ kind: "selected", task_id: id }, { task });
+  const second = fixture.readerResponseMetadata({ kind: "selected", task_id: id }, { task: { ...task, learning_range: { start: 1, end: 9 } } });
+  assert.notEqual(first.source_binding_sha256, second.source_binding_sha256); assert(!JSON.stringify(first).includes("private"));
+});
+
+function responseObserver({ body = {}, reader = {}, hold = false, reject = false } = {}) {
+  const listeners = new Map(), calls = [], completions = [], report = {}, origin = "http://127.0.0.1:12345", id = "abcdef123456";
+  const cdp = { on: (name, fn) => listeners.set(name, fn), off: name => listeners.delete(name),
+    send: (method, params) => { calls.push({ method, params }); if (reject) return Promise.reject(new Error("private error"));
+      return hold ? new Promise(resolve => completions.push(resolve)) : Promise.resolve({ body: JSON.stringify(body), base64Encoded: false }); } };
+  let evaluations = 0;
+  const page = { evaluate: async callback => { assert.equal(callback, fixture.currentReaderIdentity); evaluations++; return reader; } };
+  const stop = fixture.observeReaderResponses(cdp, page, report, origin);
+  const emit = (name, event) => listeners.get("Network." + name)?.(event);
+  const request = (requestId, suffix = "", method = "GET") => emit("requestWillBeSent", { requestId, request: { url: `${origin}/api/tasks/${id}${suffix}`, method } });
+  const finish = (requestId, suffix = "", status = 200, encodedDataLength = 100) => {
+    emit("responseReceived", { requestId, response: { url: `${origin}/api/tasks/${id}${suffix}`, status } });
+    emit("loadingFinished", { requestId, encodedDataLength });
+  };
+  return { report, calls, completions, stop, close: () => listeners.get("close")?.(), emit, request, finish, evaluations: () => evaluations, listeners };
+}
+const drainDiagnostics = () => new Promise(resolve => setImmediate(resolve));
+
+test("diagnostic responses retain exact request binding asynchronously without an action wait", async () => {
+  const h = responseObserver({ body: { task_id: "abcdef123456", status: "unavailable", reason: "snapshot_changed" }, reader: { shell_id: 2 } });
+  h.request("owned", "/partial-note"); h.finish("owned", "/partial-note");
+  assert.equal(h.calls.length, 0); assert.equal(h.report.reader_responses[0].capture, "reading");
+  await drainDiagnostics();
+  const row = h.report.reader_responses[0]; assert.equal(row.capture, "complete"); assert.equal(row.metadata.reason, "snapshot_changed");
+  assert.equal(row.reader.shell_id, 2); assert.equal(h.evaluations(), 1);
+  assert.deepEqual(h.calls, [{ method: "Network.getResponseBody", params: { requestId: "owned" } }]); h.stop();
+  assert.equal(h.listeners.size, 0); assert.equal(row.capture, "complete");
+});
+
+test("diagnostic missing, replaced, wrong-source, failed and closed requests remain explicit and never read unrelated bodies", async () => {
+  const h = responseObserver({ hold: true }); h.finish("missing");
+  h.request("post", "", "POST"); h.finish("post");
+  h.request("reused"); h.request("reused", "/events/stream?after=1"); h.finish("reused");
+  h.request("wrong"); h.finish("wrong", "/partial-note");
+  h.request("failed"); h.emit("loadingFailed", { requestId: "failed" });
+  h.request("large"); h.finish("large", "", 200, 2097153);
+  h.request("closed"); h.finish("closed"); await drainDiagnostics(); h.stop();
+  h.completions[0]({ body: "{}" }); await drainDiagnostics();
+  assert.deepEqual(h.report.reader_responses.map(row => row.capture), ["request_replaced", "response_identity_mismatch", "network_failed", "body_size_limit", "closed_before_capture"]);
+  assert.equal(h.calls.length, 1); assert.equal(h.evaluations(), 0); assert.equal(h.report.reader_responses_unavailable, 5);
+});
+
+test("diagnostic record, concurrency, body and retained-byte budgets are enforced without throwing primary errors", async () => {
+  const h = responseObserver({ hold: true });
+  for (let i = 0; i < 140; i++) { h.request(String(i)); h.finish(String(i)); }
+  await drainDiagnostics(); assert.equal(h.report.reader_responses.length, 128); assert.equal(h.report.reader_responses_dropped, 12);
+  assert.equal(h.calls.length, 4); assert.equal(h.report.reader_responses_unavailable, 124); h.stop();
+  for (const complete of h.completions) complete({ body: "{}" }); await drainDiagnostics();
+  assert(Buffer.byteLength(JSON.stringify(h.report.reader_responses)) < h.report.reader_response_limits.retained_bytes);
+  const failed = responseObserver({ reject: true }); failed.request("one"); failed.finish("one"); await drainDiagnostics();
+  assert.equal(failed.report.reader_responses[0].capture, "body_or_reader_unavailable"); assert(!JSON.stringify(failed.report).includes("private")); failed.stop();
+  const oversized = responseObserver({ reader: { untrusted: "x".repeat(4097) } }); oversized.request("one"); oversized.finish("one"); await drainDiagnostics();
+  assert.equal(oversized.report.reader_responses[0].capture, "metadata_size_limit"); oversized.stop();
+});
+
+test("one-shot reader identity distinguishes replacement shells and lost retained nodes without selecting or scrolling", () => {
+  let shell = {}, current = true;
+  const id = "abcdef123456", reader = { dataset: { readerSource: `task:${id}`, readerRevision: hash("a") + ":partial-draft:" },
+    querySelector: selector => { assert.equal(selector, "[data-progressive-reader]"); return shell; }, contains: () => current };
+  const anchor = { chapter: { isConnected: true }, batch: { isConnected: true }, paragraph: {} };
+  const context = vm.createContext({ performance, document: { getElementById: () => reader }, visualReadingAnchor: anchor,
+    referenceReadingMetadata: { event: { id, control_generation: hash("b"), source_event: "metadata" }, error: null } });
+  const inspect = () => vm.runInContext(`(${fixture.currentReaderIdentity.toString()})()`, context);
+  const before = inspect(); assert.equal(before.shell_id, 1); assert.equal(before.selected_generation, hash("b"));
+  assert.equal(inspect().shell_id, 1);
+  shell = {}; current = false; anchor.chapter.isConnected = anchor.batch.isConnected = false;
+  const after = inspect(); assert.equal(after.shell_id, 2); assert.equal(after.retained_paragraph_in_reader, false);
+  assert.equal(after.retained_batch_connected, false); assert.equal(after.retained_chapter_connected, false);
+  reader.dataset.readerSource = "private URL"; reader.dataset.readerRevision = "private title";
+  assert.equal(inspect().reader_source, null); assert.equal(inspect().reader_revision, null);
+  shell = null; assert.equal(inspect().shell_id, null);
+});
+
+test("replaced or closed bindings before the queued dispatch never retrieve a reused body", async () => {
+  for (const action of [h => h.request("same", "/events/stream?after=1"), h => h.stop(), h => h.close()]) {
+    const h = responseObserver(); h.request("same"); h.finish("same"); action(h); await drainDiagnostics();
+    assert.equal(h.calls.length, 0); assert.equal(h.evaluations(), 0);
+    assert(["request_replaced", "closed_before_capture"].includes(h.report.reader_responses[0].capture)); h.stop();
+  }
+});
+
+test("CDP session closure marks both awaiting and in-flight reads unavailable and ignores late bodies", async () => {
+  const h = responseObserver({ hold: true }); h.request("awaiting"); h.request("pending"); h.finish("pending"); await drainDiagnostics();
+  assert.equal(h.calls.length, 1); h.close(); h.stop();
+  assert.equal(h.listeners.size, 0); assert.equal(h.report.reader_responses_unavailable, 2);
+  h.completions[0]({ body: "{}" }); await drainDiagnostics();
+  assert(h.report.reader_responses.every(row => row.capture === "closed_before_capture")); assert.equal(h.evaluations(), 0);
+});
+
+test("decoded oversized bodies are explicitly unavailable even when encoded size is small", async () => {
+  const h = responseObserver({ body: { text: "x".repeat(2097153) } }); h.request("compressed"); h.finish("compressed", "", 200, 100);
+  await drainDiagnostics(); assert.equal(h.calls.length, 1); assert.equal(h.evaluations(), 0);
+  assert.equal(h.report.reader_responses[0].capture, "body_size_limit"); h.stop();
+});
+
+test("diagnostics stop before cleanup so browser-close failure preserves the primary error and final report", async () => {
+  const { default: reference } = await import("../../scripts/progressive-slo-api-acceptance.cjs");
+  const h = responseObserver({ hold: true }); h.request("pending"); h.finish("pending"); await drainDiagnostics();
+  const primary = new Error("original gate failure"); h.report.failure = primary.message; let saved;
+  h.stop();
+  await reference.finishAcceptance({ closeBrowser: async () => { throw new Error("close failed"); }, stopBackend: async () => {},
+    save: () => { saved = JSON.stringify(h.report); } }, h.report, primary);
+  assert.equal(h.report.failure, "original gate failure"); assert.equal(primary.cleanupErrors.length, 1);
+  assert.equal(h.report.reader_responses[0].capture, "closed_before_capture"); assert.equal(h.listeners.size, 0);
+  h.completions[0]({ body: "{}" }); await drainDiagnostics(); assert.equal(JSON.stringify(h.report), saved);
+  const source = readFileSync(new URL("../../scripts/progressive-visual-api-acceptance.cjs", import.meta.url), "utf8");
+  assert.match(source, /finally \{ releaseDelayed\?\.\(\); stopReaderResponses\?\.\(\); await finishAcceptance/);
+});

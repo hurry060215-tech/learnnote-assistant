@@ -124,7 +124,7 @@ class ProgressiveSloIndexEnvelopeTests(unittest.TestCase):
         self.assertTrue(report["operations"][0]["raised"])
         self.assertIsNone(report["operations"][0]["thread_cpu_s"])
 
-    def test_twenty_six_labels_fit_unchanged_default_budgets(self):
+    def test_twenty_eight_labels_fit_unchanged_default_budgets(self):
         labels = {
             "task_lock_wait", "task_lock_hold", "state_lease_enter", "update_task",
             "manifest_read_validate", "task_json_read_decode", "atomic_file_write",
@@ -134,8 +134,9 @@ class ProgressiveSloIndexEnvelopeTests(unittest.TestCase):
             "index_artifact_text", "index_connect_schema", "index_note_evidence",
             "index_transcript_evidence", "index_replace_evidence", "edition_handler",
             "personal_review_handler", "fixture_state_handler", "visible_handler",
+            "catalog_lock_wait", "catalog_lock_hold",
         }
-        self.assertEqual(len(labels), 26)
+        self.assertEqual(len(labels), 28)
         collector = self.module.Collector()
         with collector.operation("update_task", task_id="a" * 12):
             for label in labels:
@@ -226,7 +227,7 @@ try:
             for name, label in labels.items():
                 call = getattr(library, name)
                 assert inspect.signature(call) == inspect.signature(originals[name])
-                assert call.__wrapped__ is originals[name]
+                assert inspect.unwrap(call) is originals[name]
                 args = (primary, extra)
                 kwargs = {'option': option, 'private': 'synthetic-private-source'}
                 # An unrelated operation must not activate indexing subspans.
@@ -306,7 +307,12 @@ with ExitStack() as profile_stack:
     # The unchanged direct library binding is not the storage index boundary.
     assert library.index_task is original_index
     assert library.index_task(record, task_root=task_root) is True
-    assert collector.snapshot()['totals'] == report['totals']
+    # Global catalog ownership includes direct library callers outside the
+    # storage-only index span. The five index subspans remain scoped as before.
+    after = collector.snapshot()['totals']
+    for label in expected:
+        assert after[label] == report['totals'][label]
+    assert after['catalog_lock_hold']['count'] == 2 * report['totals']['catalog_lock_hold']['count']
     assert 'Synthetic note evidence' not in json.dumps(report)
     assert 'Synthetic transcript' not in json.dumps(report)
     assert str(task_root) not in json.dumps(report)

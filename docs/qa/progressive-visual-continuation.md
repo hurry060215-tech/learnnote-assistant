@@ -172,3 +172,49 @@ emergency cleanup is separate from the measured normal task cancellation/drain.
 Report, browser, and backend cleanup are attempted independently, preserving the
 primary failure. The helper does not kill processes by executable name or erase
 user data.
+
+## Reader response identity diagnostics
+
+The visual helper observes only the existing same-origin browser GET responses
+for selected task records, task editions and partial-note projections. The CDP
+request ID binds each observation to its exact request; replaced, redirected,
+failed or closed bindings remain explicit unavailable records. It performs no
+extra HTTP request and does not wrap or delay the production response consumer.
+Body retrieval and a later one-shot reader identity observation run asynchronously,
+outside action waits. They can add diagnostic CPU/browser overhead; they do not
+change the separate reference helper or its 80 measurements.
+
+Each record retains only validated task/generation/attempt IDs, timestamps,
+revision hashes, enum status/reason, section count, edition text byte count/hash,
+and a hash of the selected task's source binding. No prose, title, path, URL,
+header, query value or credentials are retained. The reader snapshot records its
+current shell ID, source/revision, existing selection/metadata event generation,
+and whether the original retained chapter/batch/paragraph is still attached.
+The observation time is separate from response receipt: it does not prove that
+this response was admitted by `loadEdition` or caused a particular mutation.
+
+Limits are 128 records, 4,000 UTF-8 JSON bytes per record and less than 512 KiB for
+the retained array, four concurrent body reads, and 2 MiB per accepted decoded
+body. An encoded response larger than that is skipped before retrieval. CDP
+materializes a response before its decoded size can be checked, so this bounds
+accepted diagnostic bodies, not the transport allocation for compressed data.
+Dropped and unavailable counts are explicit. Oversized or unavailable bodies and
+reader failures do not replace the gate's primary error. Closing the page or CDP session marks
+unfinished records unavailable and removes all listeners. The finalizer also
+stops this observer before attempting browser cleanup, so failed browser closure
+cannot leave later diagnostic mutations or unfinished records at report save.
+The strict retained
+body/selection assertion still runs once without a replacement-node retry.
+
+Run 39029327055 preserved the same saved draft and projection hashes across
+cancellation but lost the original selected chapter/batch nodes. The failure PNG
+contains source-grid controls, so it may show a rebuilt progressive shell; its
+heading alone does not establish an ordinary Markdown fallback. Actual-function
+regressions reproduce a fallback remount for an inconsistent ready timestamp
+and for `snapshot_changed`; the old artifact did not retain those response
+bodies, so its exact branch remains unproven. The product correction retains only
+an attached previously validated body whose ready response differs solely in
+its timestamp and whose full source/content binding still matches. It shares
+one reconciliation budget with existing selected-read/CAS/404 handling.
+`snapshot_changed` lacks that proof and keeps its existing fallback behavior;
+these diagnostics make any future occurrence distinguishable.

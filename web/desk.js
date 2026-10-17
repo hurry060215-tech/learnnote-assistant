@@ -2,7 +2,7 @@ import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { collapseSourceReviews } from "/web/source-review.js";
 import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js?v=native-anchor-20261017";
-import { createSectionReader } from "/web/reader-sections.js?v=visual-anchor-20261017";
+import { createSectionReader } from "/web/reader-sections.js?v=snapshot-conflict-20261017";
 import {
   installConnections,
   loadModelConnection,
@@ -344,7 +344,9 @@ async function refreshLibrary() {
         (i) => i.kind === state.selected.kind && i.id === state.selected.id,
       );
     if (selected) {
-      await adoptSelectedSnapshot(selected, snapshot);
+      const conflict = await adoptSelectedSnapshot(selected, snapshot);
+      if (conflict === "projection_conflict" && selectedSourceCurrent(snapshot))
+        refreshSelectedTask(selected.id, true).catch(failure);
     } else if (state.selected && !state.editing) {
       if (state.selected.kind === "task" && selectedSnapshotCurrent(snapshot)) showHome({ remember: false, check: false });
       else state.personalReview?.load();
@@ -407,30 +409,36 @@ async function adoptSelectedSnapshot(selected, snapshot, forceEdition = false) {
   state.selectedRevision = (state.selectedRevision || 0) + 1;
   renderStatus();
   window.dispatchEvent(new CustomEvent("learnnote:metadata", { detail: { id: selected.id, kind: selected.kind, epoch: snapshot.epoch, control_generation: selected.control_generation } }));
+  let conflict;
   if ((changed || forceEdition) && !state.editing) {
     claimTimeline.reset();
-    await loadEdition(snapshot.epoch);
+    conflict = await loadEdition(snapshot.epoch);
   } else if (!state.editing) state.personalReview?.load();
   if (mediaChanged && selectedSourceCurrent(snapshot) && media === JSON.stringify(localMediaSource(state.selected)) &&
       !$("sourcePanel").hidden && $("sourcePanel").dataset.sourceTaskId === selected.id)
     await openSource();
+  return conflict;
 }
-function refreshSelectedTask(taskId = state.selected?.id) {
+function refreshSelectedTask(taskId = state.selected?.id, reconciliation = false) {
   if (state.selected?.kind !== "task" || state.selected.id !== taskId || state.editing || state.selectedControlPending?.id === taskId) return Promise.resolve();
   let lane = state.selectedRefresh;
   if (!lane || !selectedSourceCurrent(lane)) {
     lane = state.selectedRefresh = { ...selectedSnapshot(), dirty: false, promise: null };
   }
+  if (reconciliation && lane.promise) {
+    if (!lane.replayedConflict) { lane.dirty = true; lane.replayedConflict = true; }
+    return lane.promise;
+  }
   lane.dirty = true;
   if (lane.promise) return lane.promise;
+  lane.replayedConflict = reconciliation;
   lane.promise = (async () => {
-    let replayedConflict = false;
     while (lane.dirty && state.selectedRefresh === lane && selectedSourceCurrent(lane) && !state.editing && state.selectedControlPending?.id !== taskId) {
       lane.dirty = false;
       const snapshot = selectedSnapshot();
-      // Successful replies and missing-task replies share one contention replay.
+      // CAS, missing-task and ready-projection conflicts share one replay.
       const replayConflict = () => {
-        if (!replayedConflict && selectedSourceCurrent(snapshot)) { lane.dirty = true; replayedConflict = true; }
+        if (!lane.replayedConflict && selectedSourceCurrent(snapshot)) { lane.dirty = true; lane.replayedConflict = true; }
       };
       lane.controller = new AbortController();
       try {
@@ -439,7 +447,8 @@ function refreshSelectedTask(taskId = state.selected?.id) {
           replayConflict();
           continue;
         }
-        if (value.task?.id === taskId) await adoptSelectedSnapshot({ ...value.task, kind: "task" }, snapshot, true);
+        if (value.task?.id === taskId &&
+            await adoptSelectedSnapshot({ ...value.task, kind: "task" }, snapshot, true) === "projection_conflict") replayConflict();
       } catch (error) {
         if (error.status === 404) {
           if (selectedSnapshotCurrent(snapshot) && !state.editing) showHome({ remember: false, check: false });
@@ -448,7 +457,12 @@ function refreshSelectedTask(taskId = state.selected?.id) {
         // Keep the readable edition on transient failures; events/polling retry.
       }
     }
-  })().finally(() => { lane.promise = null; });
+  })().finally(() => {
+    lane.promise = null;
+    // A list conflict can arrive after the loop ends but before this handoff.
+    if (lane.dirty && state.selectedRefresh === lane && selectedSourceCurrent(lane))
+      return refreshSelectedTask(taskId, lane.replayedConflict);
+  });
   return lane.promise;
 }
 async function openItem(item, { remember = true, check = true, openMedia = true } = {}) {
@@ -544,6 +558,7 @@ async function loadEdition(epoch) {
   if (epoch !== state.epoch || request !== editionRequest || state.editing
       || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind
       || claimMapVersion(state.selected) !== version) return;
+  if (sectionReader.retainableSnapshot(projection, selected, edition)) return "projection_conflict";
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;

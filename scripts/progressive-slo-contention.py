@@ -31,6 +31,7 @@ MAX_METRICS = 32
 _current = ContextVar("reference_contention_operation", default=None)
 _section = ContextVar("reference_contention_section", default="unlabelled")
 _index_active = ContextVar("reference_contention_index_active", default=False)
+_catalog_origin = ContextVar("reference_contention_catalog_origin", default=None)
 
 
 def _task_id(value):
@@ -67,6 +68,7 @@ class Collector:
         self.serial = itertools.count(1)
         self.epoch_wall, self.epoch_monotonic = time.time(), time.perf_counter()
         self.lock = None
+        self.catalog_lock = None
         self.totals = {}
 
     def identity(self):
@@ -187,22 +189,37 @@ class Collector:
                 operations=list(self.operations), recent_events=list(self.events),
                 slow_events=[entry[2] for entry in sorted(
                     (entry for heap in self.slow.values() for entry in heap), reverse=True)],
-                active=list(self.active.values()), lock_owner=self.lock.owner if self.lock else None)
+                active=list(self.active.values()), lock_owner=self.lock.owner if self.lock else None,
+                catalog_lock_owner=self.catalog_lock.owner if self.catalog_lock else None)
             return copy.deepcopy(result)
 
 
 class MeasuredTaskLock:
     """The same underlying RLock, with bounded ownership and wait accounting."""
-    def __init__(self, real, collector):
+    def __init__(self, real, collector, name="task_lock"):
+        if name not in {"task_lock", "catalog_lock"}:
+            raise ValueError("invalid diagnostic lock name")
         self.real, self.collector = real, collector
+        self.name = name
         self.local = threading.local()
         self.owner = None
         self.serial = itertools.count(1)
-        collector.lock = self
+        if name == "task_lock":
+            collector.lock = self
+        else:
+            collector.catalog_lock = self
+
+    def _task_link(self):
+        # Caller holds collector.mutex; this never obtains either product lock.
+        owner = self.collector.lock.owner if self.collector.lock else None
+        if self.name == "catalog_lock" and owner and owner["thread_id"] == threading.get_ident():
+            return dict(lock_name="task_lock", hold_id=owner["hold_id"], thread_id=owner["thread_id"])
+        return None
 
     def acquire(self, *args, **kwargs):
         with self.collector.mutex:
             owner = dict(self.owner) if self.owner else None
+            task_link = self._task_link()
         start = _clock()
         acquired = self.real.acquire(*args, **kwargs)
         end = _clock()
@@ -220,12 +237,18 @@ class MeasuredTaskLock:
                 self.local.start = end
                 self.local.owner = dict(hold_id=next(self.serial), thread_id=threading.get_ident(),
                     operation=self.collector.identity(), section=_section.get(),
-                    critical=label, start_s=end[0]-self.collector.epoch_monotonic)
+                    critical=label, start_s=end[0]-self.collector.epoch_monotonic,
+                    lock_name=self.name)
                 with self.collector.mutex:
+                    if self.name == "catalog_lock":
+                        self.local.owner.update(catalog_origin=_catalog_origin.get(), task_owner=self._task_link())
                     self.owner = self.local.owner
             self.local.depth = depth + 1
-        self.collector.metric("task_lock_wait", end[0]-start[0], end[1]-start[1])
-        self.collector.event("lock_wait", "task_lock", start, end, owner_at_entry=owner, acquired=bool(acquired))
+        self.collector.metric(self.name + "_wait", end[0]-start[0], end[1]-start[1])
+        values = dict(owner_at_entry=owner, acquired=bool(acquired))
+        if self.name == "catalog_lock":
+            values["task_owner_at_entry"] = task_link
+        self.collector.event("lock_wait", self.name, start, end, **values)
         return acquired
 
     def release(self):
@@ -241,8 +264,8 @@ class MeasuredTaskLock:
         self.local.depth = depth - 1
         if owner:
             start = self.local.start
-            self.collector.metric("task_lock_hold", end[0]-start[0], end[1]-start[1])
-            self.collector.event("lock_hold", "task_lock", start, end, owner=owner)
+            self.collector.metric(self.name + "_hold", end[0]-start[0], end[1]-start[1])
+            self.collector.event("lock_hold", self.name, start, end, owner=owner)
         return result
 
     def __enter__(self):
@@ -286,7 +309,7 @@ def _install(app, stack):
     """Call only after configure_fixture has verified its synthetic data marker."""
     from app import (storage, main, processor, processor_state, subtitle_notes,
                      pipeline_progress, progressive_sections, screen_subtitle_tasks,
-                     duration_estimates, whole_duration_estimates, library)
+                     duration_estimates, whole_duration_estimates, library, knowledge, catalog_guard)
     collector = Collector()
     real_lock = storage._lock
     measured = MeasuredTaskLock(real_lock, collector)
@@ -295,6 +318,10 @@ def _install(app, stack):
         if getattr(module, name) is not real_lock:
             raise AssertionError("fixture task lock aliases disagree")
         stack.enter_context(patch.object(module, name, measured))
+    # All direct guards and guarded connections use this single module lookup.
+    # The original connection retains its guard through close; no proxy is used.
+    stack.enter_context(patch.object(catalog_guard, "_mutex",
+        MeasuredTaskLock(catalog_guard._mutex, collector, "catalog_lock")))
 
     def wrapped(function, label, operation=False):
         @functools.wraps(function)
@@ -342,6 +369,38 @@ def _install(app, stack):
         original = getattr(library, name)
         require_sync(original)
         stack.enter_context(patch.object(library, name, index_part(original, label)))
+
+    # One direct caller frame only, never a stack walk, path, argument or retained
+    # frame. Fixed known code identities label owners outside timed HTTP routes.
+    # Unknown callers/direct outer guards remain explicitly unavailable (None).
+    for module, names in (
+        (library, ("index_task", "remove_task", "_remove_task_index", "rebuild_index",
+                   "search_library", "library_status", "duplicate_groups", "backup_library",
+                   "list_materials", "get_material", "_delete_material_locked",
+                   "import_document_material", "register_task_material",
+                   "_rewrite_document_material", "apply_material_ocr")),
+        (knowledge, ("add_evidence", "replace_task_evidence", "remove_task_evidence",
+                     "clear_task_evidence", "remove_evidence", "search_evidence",
+                     "evidence_for_task", "evidence_by_ids", "evidence_ids_for_task", "redecode_evidence")),
+    ):
+        origins = {inspect.unwrap(getattr(module, name)).__code__: module.__name__.split(".")[-1] + "." + name
+                   for name in names}
+        def connection_label(function, origins):
+            @functools.wraps(function)
+            def call(*args, **kwargs):
+                import sys
+                frame = sys._getframe(1)
+                origin = origins.get(frame.f_code)
+                del frame
+                token = _catalog_origin.set(origin)
+                try:
+                    return function(*args, **kwargs)
+                finally:
+                    _catalog_origin.reset(token)
+            return call
+        original = module._connect
+        require_sync(original)
+        stack.enter_context(patch.object(module, "_connect", connection_label(original, origins)))
 
     original_index = storage.index_task
     require_sync(original_index)

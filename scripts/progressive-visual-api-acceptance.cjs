@@ -16,6 +16,115 @@ function boundedDiagnostic(report, key, value) {
   if (rows.length < 64) rows.push(value);
   else report[key + "_dropped"] = (report[key + "_dropped"] || 0) + 1;
 }
+// Diagnostic reads of these existing browser responses never gate an action or
+// alter which response the production reader consumes.
+function readerResponseSource(value, origin) {
+  const url = new URL(value);
+  if (url.origin !== origin || url.username || url.password || url.search || url.hash) return null;
+  const selected = /^\/api\/tasks\/([a-f0-9]{12})$/.exec(url.pathname);
+  const partial = /^\/api\/tasks\/([a-f0-9]{12})\/partial-note$/.exec(url.pathname);
+  const edition = /^\/api\/tasks\/editions\/task\/([a-f0-9]{12})$/.exec(url.pathname);
+  return selected ? { kind: "selected", task_id: selected[1] } : partial ? { kind: "partial", task_id: partial[1] }
+    : edition ? { kind: "edition", task_id: edition[1] } : null;
+}
+function readerResponseMetadata(source, value) {
+  const digest = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value) ? value : null;
+  const date = value => typeof value === "string" && value.length <= 40 && /^\d{4}-\d{2}-\d{2}T[0-9:.+Z-]+$/.test(value) ? value : null;
+  const sha = value => require("node:crypto").createHash("sha256").update(value).digest("hex");
+  if (source.kind === "edition") return { revision: digest(value?.revision), edited: value?.edited === true,
+    text_sha256: typeof value?.text === "string" ? sha(value.text) : null,
+    text_bytes: typeof value?.text === "string" ? Buffer.byteLength(value.text) : null };
+  if (source.kind === "partial") return { identity_matches: value?.task_id === source.task_id,
+    schema_version: value?.schema_version === 1 ? 1 : null, verified: value?.verified === false ? false : null,
+    status: ["draft", "unavailable"].includes(value?.status) ? value.status : "unknown",
+    reason: ["ready", "snapshot_changed", "not_ready", "publication_pending", "source_mismatch", "attempt_mismatch", "legacy_unproven", "invalid_artifact"].includes(value?.reason) ? value.reason : "unknown",
+    task_updated_at: date(value?.task_updated_at), attempt_id: typeof value?.attempt_id === "string" && /^[a-f0-9]{12}$/.test(value.attempt_id) ? value.attempt_id : null,
+    revision: digest(value?.revision), source_revision: digest(value?.source_revision), generation_revision: digest(value?.generation_revision),
+    section_count: Array.isArray(value?.sections) ? value.sections.length : null };
+  const task = value?.task;
+  const keys = ["id", "created_at", "retry_count", "control_retry_count", "control_generation", "source_identity", "options", "mode",
+    "note_path", "transcript_path", "summary_source", "title", "frame_grids", "visual_windows", "source_type", "page_url", "learning_range",
+    "range_media_ready", "media_path", "source_media_path", "source_task_id"];
+  return { identity_matches: task?.id === source.task_id, task_updated_at: date(task?.updated_at),
+    control_generation: digest(task?.control_generation),
+    status: ["queued", "running", "cancelling", "cancelled", "failed", "success"].includes(task?.status) ? task.status : "unknown",
+    source_binding_sha256: task ? sha(JSON.stringify([...keys.map(key => task[key]), task.media_integrity?.sha256])) : null };
+}
+function currentReaderIdentity() {
+  const reader = document.getElementById("document"), shell = reader?.querySelector("[data-progressive-reader]");
+  const nodes = globalThis.visualResponseNodes ||= new WeakMap(), selected = globalThis.referenceReadingMetadata;
+  if (shell && !nodes.has(shell)) nodes.set(shell, globalThis.visualResponseNodeNext = (globalThis.visualResponseNodeNext || 0) + 1);
+  const source = reader?.dataset.readerSource, revision = reader?.dataset.readerRevision, anchor = globalThis.visualReadingAnchor;
+  return { browser_monotonic_ms: performance.now(), shell_id: shell ? nodes.get(shell) : null,
+    reader_source: /^task:[a-f0-9]{12}$/.test(source || "") ? source : null,
+    reader_revision: /^[a-f0-9]{64}:[a-z-]{0,40}:$/.test(revision || "") ? revision : null,
+    selected_task_id: /^[a-f0-9]{12}$/.test(selected?.event?.id || "") ? selected.event.id : null,
+    selected_generation: /^[a-f0-9]{64}$/.test(selected?.event?.control_generation || "") ? selected.event.control_generation : null,
+    selected_event: ["selection", "metadata"].includes(selected?.event?.source_event) ? selected.event.source_event : null,
+    metadata_error: Boolean(selected?.error), retained_chapter_connected: anchor ? Boolean(anchor.chapter?.isConnected) : null,
+    retained_batch_connected: anchor ? Boolean(anchor.batch?.isConnected) : null,
+    retained_paragraph_in_reader: anchor ? Boolean(reader?.contains(anchor.paragraph)) : null };
+}
+function observeReaderResponses(cdp, page, report, origin) {
+  const rows = report.reader_responses = [], requests = new Map(), pending = new Set(), listeners = [];
+  const limits = report.reader_response_limits = { records: 128, record_bytes: 4000, retained_bytes: 524288, body_bytes: 2097152, concurrent_reads: 4 };
+  let closed = false;
+  const count = key => { report[key] = (report[key] || 0) + 1; };
+  function unavailable(row, reason) {
+    if (!["awaiting_response", "reading"].includes(row.capture)) return;
+    row.capture = reason; count("reader_responses_unavailable");
+  }
+  function on(name, callback) { const guarded = event => { if (closed) return; try { callback(event); } catch { count("reader_response_observer_errors"); } };
+    cdp.on(name, guarded); listeners.push([name, guarded]); }
+  on("Network.requestWillBeSent", event => {
+    const previous = requests.get(event.requestId); if (previous) unavailable(previous, "request_replaced");
+    for (const row of pending) if (row.request_id === event.requestId) unavailable(row, "request_replaced");
+    requests.delete(event.requestId);
+    if (typeof event.requestId !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(event.requestId)) return;
+    const source = event.request.method === "GET" && readerResponseSource(event.request.url, origin);
+    if (!source) return;
+    if (rows.length >= limits.records || requests.size >= limits.records) { count("reader_responses_dropped"); return; }
+    const row = { ...source, request_id: event.requestId, capture: "awaiting_response", request_host_ms: performance.now() };
+    rows.push(row); requests.set(event.requestId, row);
+  });
+  on("Network.responseReceived", event => { const row = requests.get(event.requestId); if (row) {
+    const source = readerResponseSource(event.response.url, origin);
+    if (!source || source.kind !== row.kind || source.task_id !== row.task_id) {
+      requests.delete(event.requestId); return unavailable(row, "response_identity_mismatch");
+    }
+    row.http_status = Number.isInteger(event.response.status) ? event.response.status : null; row.response_host_ms = performance.now(); } });
+  on("Network.loadingFailed", event => { const row = requests.get(event.requestId); requests.delete(event.requestId);
+    if (row) unavailable(row, "network_failed"); });
+  on("Network.loadingFinished", event => {
+    const row = requests.get(event.requestId); requests.delete(event.requestId); if (!row) return;
+    row.finished_host_ms = performance.now();
+    if (row.http_status !== 200) return unavailable(row, "non_success_status");
+    if (event.encodedDataLength > limits.body_bytes) return unavailable(row, "body_size_limit");
+    if (pending.size >= limits.concurrent_reads) return unavailable(row, "concurrency_limit");
+    row.capture = "reading"; pending.add(row);
+    Promise.resolve().then(async () => {
+      if (closed || row.capture !== "reading") return;
+      const body = await cdp.send("Network.getResponseBody", { requestId: event.requestId });
+      if (closed || row.capture !== "reading") return;
+      const bytes = Buffer.from(body.body, body.base64Encoded ? "base64" : "utf8");
+      if (bytes.length > limits.body_bytes) return unavailable(row, "body_size_limit");
+      const metadata = readerResponseMetadata(row, JSON.parse(bytes.toString("utf8")));
+      const reader = await page.evaluate(currentReaderIdentity); if (closed || row.capture !== "reading") return;
+      const result = { ...row, capture: "complete", metadata, reader, observed_host_ms: performance.now() };
+      if (Buffer.byteLength(JSON.stringify(result)) > limits.record_bytes) return unavailable(row, "metadata_size_limit");
+      Object.assign(row, result);
+    }).catch(() => { if (!closed) unavailable(row, "body_or_reader_unavailable"); }).finally(() => pending.delete(row));
+  });
+  function stop() { if (closed) return; closed = true;
+    for (const row of [...requests.values(), ...pending]) unavailable(row, "closed_before_capture");
+    requests.clear(); for (const [name, callback] of listeners) {
+      try { cdp.off(name, callback); } catch { count("reader_response_observer_errors"); }
+    }
+  }
+  on("close", stop);
+  return stop;
+}
+
 function visibleStageStates(rows) {
   for (const key of ["queue", "download", "transcript", "frames", "vision", "merge", "verify"]) {
     const row = rows.find(value => value.stage === key);
@@ -169,7 +278,7 @@ async function main(output = "build/progressive-visual-ui") {
       substitute: "Only OpenAI chat Completions.create returns held deterministic unverified visual prose",
       actual: "HTTP upload, queue, real batch scheduling/cache, partial callback, persisted projection, native SSE and Edge reader",
       excluded: "Provider quality/latency, semantic verification, ASR, download, automatic update checks, 80-row caption SLO" } };
-  let child, browser, context, page, base, fixture, startupError, primaryError, bytes = 0, releaseDelayed;
+  let child, browser, context, page, base, fixture, startupError, primaryError, bytes = 0, releaseDelayed, stopReaderResponses;
   const save = () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
   const api = async (route, options) => {
     const response = await page.request.fetch(base + route, options);
@@ -254,6 +363,8 @@ async function main(output = "build/progressive-visual-ui") {
     });
     page = await context.newPage(); page.on("pageerror", error => boundedDiagnostic(report, "errors", error.message));
     const cdp = await context.newCDPSession(page); const stop = observeNativeSse(cdp, report, base); page.once("close", stop);
+    stopReaderResponses = observeReaderResponses(cdp, page, report, base);
+    page.once("close", stopReaderResponses);
     cdp.on("Network.eventSourceMessageReceived", event => { try {
       const value = visualEventDetail(event); if (value) { assert(report.visual_events.length < 80); report.visual_events.push(value); }
     } catch (error) { boundedDiagnostic(report, "errors", error.message); } });
@@ -362,8 +473,8 @@ async function main(output = "build/progressive-visual-ui") {
         reader_revision: document.getElementById("document")?.dataset.readerRevision, status: document.getElementById("taskStatus")?.dataset.status })),
       fixture: () => api("/_fixture/state"), task: () => report.current_task_id ? state(report.current_task_id) : null,
     });
-  } finally { releaseDelayed?.(); await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError); }
+  } finally { releaseDelayed?.(); stopReaderResponses?.(); await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError); }
   if (primaryError) throw primaryError;
 }
-module.exports = { visualProse, captionText, captureReadableCaption, boundedDiagnostic, visibleStageStates, captureStageNavigation, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
+module.exports = { readerResponseSource, readerResponseMetadata, currentReaderIdentity, observeReaderResponses, visualProse, captionText, captureReadableCaption, boundedDiagnostic, visibleStageStates, captureStageNavigation, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

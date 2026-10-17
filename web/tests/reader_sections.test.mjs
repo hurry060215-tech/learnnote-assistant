@@ -49,7 +49,7 @@ class Element {
   setAttribute(key, value) { this[key] = value; }
   addEventListener(key, callback) { this.events[key] = callback; }
   querySelectorAll(selector) {
-    const keys = { "[data-reader-groups]": "readerGroups", "[data-reader-section]": "readerSection", "[data-reader-batch]": "readerBatch" };
+    const keys = { "[data-progressive-reader]": "progressiveReader", "[data-reader-groups]": "readerGroups", "[data-reader-section]": "readerSection", "[data-reader-batch]": "readerBatch" };
     const matches = node => selector.split(",").some(part => keys[part.trim()] in node.dataset);
     return this.children.flatMap(child => [...(matches(child) ? [child] : []), ...child.querySelectorAll(selector)]);
   }
@@ -177,4 +177,112 @@ test("only exact task-owned grids supplement evidence; unrelated and external as
   assert.equal(details.tagName, "DETAILS"); assert.equal(details.children.length, 2);
   assert.equal(details.children[1].src, "/api/tasks/synthetic/frames/good.jpg");
   assert.equal(details.children[1].loading, "lazy");
+});
+
+// Use the actual consumer as well as the section renderer: a rejected pair must
+// not clear the live shell before the selected refresh lane can reconcile it.
+const { default: vm } = await import("node:vm");
+const desk = fs.readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+const imported = name => import(`data:text/javascript;base64,${Buffer.from(fs.readFileSync(new URL(`../${name}`, import.meta.url), "utf8")).toString("base64")}`);
+const { renderEditionStable } = await imported("reader-progress.js");
+const { claimMapVersion } = await imported("claim-timeline.js");
+const { localMediaSource } = await imported("local-player.js");
+function editionHarness() {
+  const h = harness(), pending = [], nodes = new Map([["document", h.element]]);
+  const state = { epoch: 1, selected: { ...task, control_generation: hash("9"), control_retry_count: 0,
+    options: { visual_understanding: true }, artifact_status: { partial_draft_available: true }, summary_source: "partial-draft",
+    source_identity: { source: "owned" }, note_path: "draft.partial.md", transcript_path: "transcript.json" } };
+  let bodyWrites = 0;
+  Object.defineProperty(h.element, "innerHTML", { set() { bodyWrites++; h.element.replaceChildren(); h.doc.selected = null; h.doc.activeElement = null; } });
+  const $ = id => { if (id === "reviewNoteSources") return null; if (!nodes.has(id)) nodes.set(id, { dataset: {} }); return nodes.get(id); };
+  const context = vm.createContext({ state, $, localMediaSource, renderStatus() {}, CustomEvent, AbortController, document: h.doc, sectionReader: h.reader, renderEditionStable, claimMapVersion,
+    api: path => new Promise(resolve => pending.push({ path, resolve })), sourcePath: () => "/edition",
+    LearnNoteMarkdown: { configure() {}, markdownToHtml: text => text }, taskAsset: value => value,
+    claimTimeline: { reset() {} }, loadClaimTimeline() {}, esc: value => value, canOcrMaterial: () => false,
+    mountMaterialOcr() {}, collapseSourceReviews() {}, decorateSourceTimes() {}, window: h.doc.defaultView, Event });
+  vm.runInContext(desk.slice(desk.indexOf("function selectedSnapshot()"), desk.indexOf("async function openItem(")), context);
+  vm.runInContext("let editionRequest = 0;" + desk.slice(desk.indexOf("async function loadEdition("), desk.indexOf("function decorateSourceTimes(")), context);
+  const edition = { revision: hash("f"), text: "# Exact retained draft", edited: false };
+  const payload = projection([outline("one", 0, 10), batch("first", 0, 10)]);
+  const load = async (next = payload, value = edition, mutate = () => {}) => {
+    const result = context.loadEdition(state.epoch); mutate();
+    const responses = pending.splice(0); responses[0].resolve(value); responses[1]?.resolve(next);
+    return await result;
+  };
+  return { ...h, state, context, edition, payload, load, pending, bodyWrites: () => bodyWrites };
+}
+
+test("ready timestamp conflicts retain the exact accepted body, selection, focus and scroll before any consumer writes", async () => {
+  for (const timestamp of ["t0", "t2"]) {
+    const h = editionHarness(); await h.load();
+    const chapter = h.element.querySelector("[data-reader-section]"), batch = h.element.querySelector("[data-reader-batch]");
+    h.doc.selected = batch.children[2]; h.doc.activeElement = batch.children[1].children[1]; h.scroller.scrollTop = 712;
+    const focus = h.doc.activeElement, selected = h.doc.selected, text = h.state.text, edition = h.state.edition;
+    h.state.selected = { ...h.state.selected, status: "cancelled" };
+    assert.equal(await h.load({ ...h.payload, task_updated_at: timestamp }), "projection_conflict");
+    assert.equal(h.bodyWrites(), 0); assert.equal(h.state.edition, edition); assert.equal(h.state.text, text);
+    assert.equal(h.element.querySelector("[data-reader-section]"), chapter); assert.equal(h.element.querySelector("[data-reader-batch]"), batch);
+    assert(chapter.isConnected); assert.equal(h.doc.selected, selected); assert.equal(h.doc.activeElement, focus); assert.equal(h.scroller.scrollTop, 712);
+    assert.equal(h.state.selected.status, "cancelled");
+    await h.load(); assert.equal(h.element.querySelector("[data-reader-batch]"), batch, "A later consistent pair reconciles without remounting");
+  }
+});
+
+test("ready-conflict retention rejects changed provenance, content, edits and unproven unavailable responses", async () => {
+  const mutations = [
+    h => { h.state.selected.id = "other"; }, h => { h.state.selected.control_generation = hash("8"); },
+    h => { h.state.selected.control_generation = undefined; }, h => { h.state.selected.control_generation = "invalid"; },
+    h => { h.state.selected.control_retry_count++; }, h => { h.state.selected.retry_count = 1; },
+    h => { h.state.selected.source_identity = { source: "other" }; }, h => { h.state.selected.transcript_path = "other.json"; },
+    h => { h.state.selected.note_path = "edited.md"; }, h => { h.state.selected.options.model = "different"; },
+    h => { h.state.selected.page_url = "https://example.test/changed"; },
+    h => { h.state.selected.learning_range = { start: 1, end: 10 }; }, h => { h.state.selected.range_media_ready = true; },
+    h => { h.state.selected.media_path = "new.mp4"; }, h => { h.state.selected.source_media_path = "new-source.mp4"; },
+    h => { h.state.selected.source_task_id = "other-source"; }, h => { h.state.selected.media_integrity = { sha256: hash("7") }; },
+    h => { h.state.selected.frame_grids = [{ url: "different" }]; }, h => { h.state.selected.title = "Different title"; },
+    h => { h.state.selected.summary_source = "local-template"; }, h => { h.state.selected.status = "success"; },
+    h => { h.edition.revision = hash("1"); }, h => { h.edition.text = "Different draft"; }, h => { h.edition.edited = true; },
+    h => { h.payload.attempt_id = "123456abcdef"; }, h => { h.payload.source_revision = hash("1"); },
+    h => { h.payload.generation_revision = hash("1"); }, h => { h.payload.revision = hash("1"); },
+    h => { h.payload.sections[1].markdown = "Changed bytes with an unchanged claimed hash"; },
+    h => { h.payload.reason = "snapshot_changed"; h.payload.status = "unavailable"; },
+    h => { h.element.children[0].remove(); },
+  ];
+  for (const mutate of mutations) {
+    const h = editionHarness(); await h.load();
+    assert.equal(await h.load({ ...h.payload, task_updated_at: "t0" }), "projection_conflict");
+    mutate(h); const attached = Boolean(h.element.children[0]);
+    assert.notEqual(await h.load({ ...h.payload, task_updated_at: "t0" }), "projection_conflict", mutate.toString());
+    if (attached) assert.equal(h.bodyWrites(), 1, mutate.toString());
+  }
+});
+
+test("pending conflicts still obey source, epoch, generation and editing admission guards", async () => {
+  for (const mutate of [h => h.state.epoch++, h => { h.state.editing = true; },
+    h => { h.state.selected = { ...h.state.selected, control_generation: "new" }; },
+    h => { h.state.selected = { ...h.state.selected, id: "new" }; }]) {
+    const h = editionHarness(); await h.load(); const shell = h.element.children[0];
+    assert.equal(await h.load({ ...h.payload, task_updated_at: "t0" }, h.edition, () => mutate(h)), undefined);
+    assert.equal(h.element.children[0], shell); assert.equal(h.bodyWrites(), 0);
+  }
+});
+
+test("actual cancelled selected lane reconciles an older ready pair without remounting the live section reader", async () => {
+  const h = editionHarness(); await h.load();
+  const chapter = h.element.querySelector("[data-reader-section]"), batch = h.element.querySelector("[data-reader-batch]");
+  h.doc.selected = batch.children[2]; h.doc.activeElement = chapter.children[1].children[0].children[0]; h.scroller.scrollTop = 719;
+  const selected = h.doc.selected, focus = h.doc.activeElement, cancelled = { ...h.state.selected, status: "cancelled", updated_at: "t2" };
+  const pending = h.context.refreshSelectedTask();
+  for (const timestamp of ["t1", "t2"]) {
+    const target = h.pending.shift(); assert.equal(target.path, `/api/tasks/${task.id}`); target.resolve({ task: cancelled });
+    await new Promise(resolve => setImmediate(resolve)); assert.equal(h.state.selected.status, "cancelled");
+    const pair = h.pending.splice(0); assert.equal(pair.length, 2);
+    pair[0].resolve(h.edition); pair[1].resolve({ ...h.payload, task_updated_at: timestamp });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.element.querySelector("[data-reader-section]"), chapter); assert.equal(h.element.querySelector("[data-reader-batch]"), batch);
+    assert.equal(h.doc.selected, selected); assert.equal(h.doc.activeElement, focus); assert.equal(h.scroller.scrollTop, 719);
+    assert.equal(h.bodyWrites(), 0);
+  }
+  await pending; assert.equal(h.pending.length, 0); assert.equal(h.state.selectedRefresh.promise, null);
+  assert.equal(h.reader.retainableSnapshot({ ...h.payload, task_updated_at: "t1" }, cancelled, h.edition), true);
 });

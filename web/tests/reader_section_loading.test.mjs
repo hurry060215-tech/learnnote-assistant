@@ -12,7 +12,7 @@ function harness() {
   const context = vm.createContext({ claimMapVersion: task => JSON.stringify([task?.control_generation, task?.control_retry_count, task?.updated_at]), state, $, document: { scrollingElement: {} }, timestamp: value => value,
     LearnNoteMarkdown: { configure() {}, markdownToHtml: value => value }, taskAsset: () => "", openSource() {}, failure() {}, decorateSourceTimes() {},
     sourcePath: value => `/editions/${value.id}`, api: path => new Promise((resolve, reject) => pending.push({ path, resolve, reject })),
-    createSectionReader: () => ({ render: (projection, task, edition) => { applied.push({ projection, task, edition }); return !!projection?.accepted && !edition.edited; }, clear() {} }),
+    createSectionReader: () => ({ retainableSnapshot: () => false, render: (projection, task, edition) => { applied.push({ projection, task, edition }); return !!projection?.accepted && !edition.edited; }, clear() {} }),
     renderEditionStable: (...args) => ordinary.push(args), renderNote() {},
     claimTimeline: { reset: () => timelines.push("reset") }, loadClaimTimeline: () => timelines.push("load"),
   });

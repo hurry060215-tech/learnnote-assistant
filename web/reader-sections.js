@@ -50,8 +50,20 @@ export function sectionPlan(payload, task, edition) {
     generation: payload.generation_revision, outlines, unmatched };
 }
 
+// Exclude only the independently sampled timestamp and terminal status. Retention
+// must prove the accepted content and source binding, not trust a claimed hash alone.
+function snapshotKey(payload, task, edition) {
+  const { task_updated_at, ...content } = payload;
+  return JSON.stringify([content, edition.revision, edition.text, task.id, task.kind,
+    task.created_at, task.retry_count, task.source_identity, task.options, task.mode,
+    task.note_path, task.transcript_path, task.summary_source, task.control_generation,
+    task.control_retry_count, task.title, task.frame_grids, task.visual_windows,
+    task.source_type, task.page_url, task.learning_range, task.range_media_ready, task.media_path,
+    task.source_media_path, task.source_task_id, task.media_integrity?.sha256]);
+}
+
 export function createSectionReader({ element, scroller, timestamp, renderMarkdown, decorate, openSource, asset }) {
-  let identity = "", generation = "", shell = null, overflow = null;
+  let identity = "", generation = "", acceptedSnapshot = "", shell = null, overflow = null;
   let outlines = new Map(), batches = new Map();
   const doc = element.ownerDocument;
   const make = (tag, text, className) => {
@@ -68,12 +80,19 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
     button.addEventListener("click", () => openSource(start));
     return button;
   }
-  function clear() { identity = ""; generation = ""; shell = null; outlines = new Map(); batches = new Map(); }
+  function clear() { identity = ""; generation = ""; acceptedSnapshot = ""; shell = null; outlines = new Map(); batches = new Map(); }
   function sync(parent, desired) {
     desired.forEach((node, index) => {
       if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] || null);
     });
     for (const node of [...parent.children]) if (!desired.includes(node)) node.remove();
+  }
+  function retainableSnapshot(payload, task, edition) {
+    if (!hash(task?.control_generation) || !shell?.isConnected || shell.parentElement !== element
+        || !payload || payload.task_updated_at === task.updated_at) return false;
+    const plan = sectionPlan({ ...payload, task_updated_at: task.updated_at }, task, edition);
+    return Boolean(plan && plan.identity === identity && plan.generation === generation
+      && acceptedSnapshot === snapshotKey(payload, task, edition));
   }
   function render(payload, task, edition) {
     const plan = sectionPlan(payload, task, edition);
@@ -174,8 +193,9 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
       if (delta === null) scroller.scrollTop = top;
       else if (delta) scroller.scrollTop += delta;
     }
+    acceptedSnapshot = snapshotKey(payload, task, edition);
     if (changed) doc.defaultView.dispatchEvent(new Event("learnnote:document"));
     return true;
   }
-  return { render, clear };
+  return { render, clear, retainableSnapshot };
 }

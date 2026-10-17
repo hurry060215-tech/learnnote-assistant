@@ -14,7 +14,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const task = (changes = {}) => ({ id: "selected", kind: "task", title: "Selected", status: "running", updated_at: "one",
   control_generation: "generation-one", options: {}, summary_source: "transcript-draft", transcript_path: "transcript.json",
   artifact_status: { draft_available: true }, frame_grids: [], ...changes });
-function harness({ holdEdition = false, reading = {}, ignoreAbort = false } = {}) {
+function harness({ holdEdition = false, reading = {}, ignoreAbort = false, projectionConflict = () => false } = {}) {
   const old = task(), nodes = new Map(), events = [], listeners = new Map(), requests = [], targets = [], lists = [], editions = [], controls = [], streams = [];
   const renders = [], sources = [], notices = [], notifications = [];
   let active = 0, maxActive = 0, currentEdition = { text: "Existing text", revision: "same" };
@@ -66,7 +66,7 @@ function harness({ holdEdition = false, reading = {}, ignoreAbort = false } = {}
     claimTimeline: { reset() {} }, personalAnchorPicker: { reset() {} },
     closeSource: () => { $("sourcePanel").hidden = true; }, openSource: async () => sources.push(localMediaSource(state.selected)),
     loadAnnotations: async () => {}, sourcePath: selected => `/api/tasks/editions/${selected.kind}/${selected.id}`,
-    sectionReader: { render: () => false }, LearnNoteMarkdown: { configure() {} }, taskAsset: value => value,
+    sectionReader: { retainableSnapshot: projectionConflict, render: () => false }, LearnNoteMarkdown: { configure() {} }, taskAsset: value => value,
     renderEditionStable: (element, _scroller, source, revision, render) => {
       if (element.dataset.readerSource === source && element.dataset.readerRevision === revision) return false;
       render(); element.dataset.readerSource = source; element.dataset.readerRevision = revision; return true;
@@ -352,4 +352,94 @@ test("actual initialize refresh and route opening run after the edition counter 
   h.lists[0].resolve({ tasks: [h.old] }); await startup;
   assert.equal(h.state.selected.id, h.old.id); assert.equal(intervals, 1);
   assert.deepEqual(h.notices, []); assert.equal(h.$("document").dataset.readerSource, "task:selected");
+});
+
+test("terminal projection conflict reconciles once with unchanged metadata and no later event", async () => {
+  let conflicts = 1;
+  const h = harness({ projectionConflict: () => conflicts-- > 0 }); h.emit("task_terminal");
+  const pending = h.state.selectedRefresh.promise, cancelled = task({ status: "cancelled", updated_at: "terminal" });
+  h.targets[0].resolve({ task: cancelled }); await flush();
+  assert.equal(h.state.selected.status, "cancelled"); assert.match(h.$("readerMetadata").textContent, /已停止/);
+  assert.equal(h.targets.length, 2, "The returned edition conflict must not await its own pending lane");
+  h.targets[1].resolve({ task: cancelled }); await pending;
+  assert.equal(h.targets.length, 2); assert.equal(h.renders.length, 0); assert.equal(h.state.selectedRefresh.promise, null);
+});
+
+test("persistent ready conflict shares the one replay budget and a later ordinary event remains eligible", async () => {
+  const h = harness({ projectionConflict: () => true }), pending = h.context.refreshSelectedTask();
+  for (let i = 0; i < 2; i++) { h.targets[i].resolve({ task: task({ status: "cancelled" }) }); await flush(); }
+  await pending; assert.equal(h.targets.length, 2); assert.equal(h.renders.length, 0);
+  h.emit("task_updated"); assert.equal(h.targets.length, 3);
+  h.targets[2].resolve({ task: h.old }); await flush(); h.targets[3].resolve({ task: h.old }); await h.state.selectedRefresh.promise;
+  assert.equal(h.targets.length, 4);
+});
+
+test("full-list conflict schedules one bounded targeted reconciliation without awaiting it", async () => {
+  const h = harness({ projectionConflict: () => true }), periodic = h.context.refresh();
+  h.lists[0].resolve({ tasks: [task({ status: "cancelled", updated_at: "terminal" })] }); await periodic;
+  assert.equal(h.targets.length, 1); const pending = h.state.selectedRefresh.promise;
+  h.targets[0].resolve({ task: h.state.selected }); await pending;
+  assert.equal(h.targets.length, 1, "The failed full-list pair consumed the same replay budget");
+  for (let i = 1; i < 4; i++) { const list = h.context.refresh(); h.lists[i].resolve({ tasks: [h.state.selected] }); await list; }
+  assert.equal(h.targets.length, 1); assert.equal(h.state.selected.status, "cancelled");
+});
+
+test("interleaved full-list, CAS and projection conflicts cannot repeatedly re-dirty the selected lane", async () => {
+  const h = harness({ projectionConflict: () => true }), targeted = h.context.refreshSelectedTask(), library = h.context.refresh();
+  h.lists[0].resolve({ tasks: [task({ status: "cancelled", updated_at: "terminal" })] }); await library;
+  h.targets[0].resolve({ task: h.old }); await flush(); assert.equal(h.targets.length, 2);
+  const secondList = h.context.refresh(); h.lists[1].resolve({ tasks: [task({ status: "cancelled", updated_at: "last" })] }); await secondList;
+  h.targets[1].resolve({ task: h.state.selected }); await targeted; await flush();
+  assert.equal(h.targets.length, 2); assert.equal(h.maxActive(), 1); assert.equal(h.state.selectedRefresh.promise, null);
+});
+
+test("retained conflict followed by missing task clears it under the existing 404 contract", async () => {
+  const h = harness({ projectionConflict: () => true }), pending = h.context.refreshSelectedTask();
+  h.targets[0].resolve({ task: h.old }); await flush();
+  h.targets[1].reject(Object.assign(new Error("Deleted"), { status: 404 })); await pending;
+  assert.equal(h.state.selected, null); assert.equal(h.targets.length, 2);
+});
+
+test("full-list conflict finishing after away/back cannot dispatch reconciliation for the newer intent", async () => {
+  const h = harness({ holdEdition: true, projectionConflict: () => true }), library = h.context.refresh();
+  h.lists[0].resolve({ tasks: [task({ updated_at: "terminal", status: "cancelled" })] }); await flush();
+  h.state.epoch++; h.context.invalidateSelectedReads(); h.state.selected = task();
+  h.editions[0].resolve({ text: "Existing text", revision: "same" }); await library;
+  assert.equal(h.targets.length, 0); assert.equal(h.state.selected.status, "running");
+});
+
+test("a full-list reconciliation at lane completion is not lost or repeated", async () => {
+  for (const microtasks of [0, 1, 2, 3, 4, 5]) {
+    let h, scheduled = false;
+    const after = (count, callback) => count ? queueMicrotask(() => after(count - 1, callback)) : callback();
+    h = harness({ projectionConflict: () => {
+      if (!scheduled) { scheduled = true; after(microtasks, () => h.context.refreshSelectedTask("selected", true)); }
+      return false;
+    } });
+    const pending = h.context.refreshSelectedTask(); h.targets[0].resolve({ task: h.old }); await flush();
+    assert.equal(h.targets.length, 2, `A proven list conflict at microtask boundary ${microtasks} must get its one reconciliation`);
+    h.targets[1].resolve({ task: h.old }); await pending; await flush();
+    assert.equal(h.targets.length, 2); assert.equal(h.state.selectedRefresh.promise, null);
+  }
+});
+
+test("persistent conflict and invalidation at finalization cannot renew the budget or revive an obsolete lane", async () => {
+  for (const mutation of [null, h => { h.state.epoch++; h.context.invalidateSelectedReads(); },
+    h => { h.state.editing = true; }, h => { h.state.selectedControlPending = { id: "selected", kind: "task" }; }]) {
+    let h, calls = 0;
+    const later = (count, callback) => count ? queueMicrotask(() => later(count - 1, callback)) : callback();
+    h = harness({ projectionConflict: () => {
+      calls++;
+      if (calls === 1) {
+        const snapshot = h.context.selectedSnapshot();
+        later(3, () => { mutation?.(h); if (h.context.selectedSourceCurrent(snapshot)) h.context.refreshSelectedTask("selected", true); });
+      }
+      return calls > 1;
+    } });
+    const pending = h.context.refreshSelectedTask(); h.targets[0].resolve({ task: h.old }); await flush();
+    if (!mutation) h.targets[1].resolve({ task: h.old });
+    await pending; await flush();
+    assert.equal(h.targets.length, mutation ? 1 : 2); assert.equal(h.active(), 0);
+    assert.equal(h.renders.length, 0);
+  }
 });

@@ -21,7 +21,7 @@ function harness() {
   const state = { epoch: 1, selected: task, editing: false }, pending = [];
   const context = vm.createContext({ claimMapVersion: task => JSON.stringify([task?.control_generation, task?.control_retry_count, task?.updated_at]), state, $: id => id === "document" ? reader : { dataset: {} },
     api: () => new Promise(resolve => pending.push(resolve)), sourcePath: selected => `/edition/${selected.id}`,
-    LearnNoteMarkdown: { configure() {} }, taskAsset: value => value, sectionReader: { render: () => false },
+    LearnNoteMarkdown: { configure() {} }, taskAsset: value => value, sectionReader: { retainableSnapshot: () => false, render: () => false },
     renderEditionStable, document: { scrollingElement: scroller }, loadClaimTimeline() {},
     renderNote() {
       renders++; heading.isConnected = false; heading = node();

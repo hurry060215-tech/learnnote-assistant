@@ -230,3 +230,92 @@ labeled observer-enabled and paired with the clean failure above. All prior
 5.9–21.4% local observations remain evidence, not a guaranteed overhead range.
 After diagnosis and any reviewed fix, remove the flag and pass the complete
 original observer-disabled gate; do not weaken the ACK clocks or thresholds.
+
+## Catalog-owner follow-on after the scoped Windows capture
+
+Observer-enabled [run 39029327055](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39029327055)
+on `fa4239474549ebcb072baeaf51f1f4dcf2c045a5` completed all 80 reference
+samples and recovery. In sample 18 (5 minutes, task `b331b30d0393`), a completed
+update directly held the task lock for **13.807872 seconds**. The inclusive index
+was 13.796706 seconds and its evidence replacement was **8.766599 seconds**.
+Edition and fixture-state waiters explicitly named that hold. The sample had
+already passed its initial readability and visible ACK; its later edition GET
+started 422 ms after ACK and took 13.811 seconds. These are correlated browser
+and server observations, without a propagated request-ID join.
+
+Only 15.625 ms of thread CPU was reported for that long completion/index/replacement
+span. This does not identify SQL, disk, a catalog mutex, or host scheduling as the
+cause. The 5.030107 seconds outside the replacement boundary is also mixed work.
+The operation's smaller subspans had been evicted; other operations' global
+maxima cannot reconstruct them. The clean d790 failure above remains authoritative.
+
+Source inspection found a missing ownership boundary: `catalog_guard._mutex`
+is a process-wide reentrant lock held through the guarded connection's original
+`close()`. The index connection hook measures only `library._connect`, while
+replacement opens through `knowledge._connect`. Thus the replacement boundary
+can include an unmeasured catalog-lock wait and another connection's lifetime.
+No retained catalog-owner evidence in the fa423947 artifact resolves this gap.
+A differential evidence-write optimization is deferred pending that attribution;
+fewer SQL writes alone would not establish the cause of the observed wall time.
+
+The next explicitly opted-in synthetic diagnostic reuses the existing lock wrapper
+with exactly two allowed names, `task_lock` and `catalog_lock`. It patches the
+single existing catalog mutex alias, in addition to the existing task aliases.
+All direct/imported catalog guards dynamically use that alias. Connections,
+transaction boundaries, close behavior and product lock order remain unchanged.
+There is no production import, connection proxy, runtime-wide patch or new cache.
+
+- Task and catalog reentrant depths and owner state are separate. A hold ID is
+  qualified by `event.name` / `owner.lock_name`; the integer alone is not unique.
+- Both locks share the existing **16 wait / 16 hold** retention buckets. Lease 8,
+  boundary 24, total slow 64, recent 256, operations 256 and active 128 remain unchanged.
+  Existing cumulative/per-kind drops still apply; one lock can evict the other
+  from its shared kind bucket. Never interpret every `lock_hold` as a task hold.
+- The metric vocabulary rises from 26 to 28 within the unchanged 32-key cap.
+- A catalog waiter/owner links to a task hold only if that hold belongs to the
+  same physical thread, copied under collector metadata synchronization without
+  acquiring either product lock.
+- Explicit `library._connect` and `knowledge._connect` wrappers attach fixed known
+  calling-boundary labels using one direct caller code identity. They preserve
+  exact arguments/results/exceptions and return the original connection. They do
+  not walk or retain a stack, log paths/content, or time every new boundary.
+- Direct outer guards acquire before a connection label exists; unknown callers
+  have unavailable (`null`) provenance. An unscoped owner keeps operation ID 0;
+  the waiter's operation is never substituted as its owner.
+- Connection provenance uses its own scoped context so existing nested index spans
+  do not overwrite it. Context and all aliases/mutexes restore on setup/runtime
+  failure and teardown after serving stops. Owner-at-entry and hold-end accounting
+  retain their previously documented limits.
+
+Nine focused tests cover separate reentrancy/IDs, nonblocking/timeout/error behavior,
+a deterministic catalog-owner → task-owning catalog-waiter → task-reader wait chain,
+shared bounds/drops, real outside-index callers, direct/imported guards, nested
+original connections, failure propagation/connection close and restoration. The
+existing reader/index contracts retain exact response and scoped-span checks.
+
+The frozen two-lock collector was measured in six alternating pairs on Linux,
+Python 3.12.14, nine logical CPUs, during **12:03:34.621–12:03:57.791 UTC** after
+focused tests ended and before coordinated aggregates began. All original 80 tasks
+and 1,520 file hashes remained intact; full original 80 and reader responses matched
+after only observation-clock/root normalization.
+
+- Fresh-catalog exact 80 list: median 648.935 ms disabled /631.859 enabled
+  (−2.631% wall, −2.660% thread CPU). Selected calls: 8.129/8.621 ms; edition:
+  1.735/1.826 ms; personal-review: 4.159/4.107 ms; fixture-state: 5.549/5.663 ms.
+- Fresh catalog's separate 360-cue control update: 44.890/47.944 ms
+  (+6.803% wall, +5.936% CPU). Only this control was indexed in that catalog.
+- Separate catalog seeded through actual index_task: 80 tasks/11,080 evidence rows,
+  in 1.914 s wall/1.652 s CPU. The control brought it to 81/11,441. Update medians:
+  49.986/49.960 ms (−0.051% wall); CPU 46.644/46.711 ms (+0.144%).
+
+These percentages are ratios of the separately calculated enabled/disabled group
+medians. The median of the six within-pair percentage changes is different: list
++1.181% wall/+1.185% CPU, fresh update +6.888%/+7.383%, and seeded update
++1.718%/+1.966%. Seeded wall changes range from −4.551% to +13.766%.
+Both definitions and all raw pairs are retained.
+
+Negative or tiny differences are measurement variation, not product speedups or
+proof of zero observer cost. Earlier 5.9–21.4% list observations remain evidence.
+These direct-call Linux experiments cannot calibrate Windows diagnostic overhead.
+The next enabled run remains diagnostic; after diagnosis and a reviewed fix,
+remove the flag and pass the complete original observer-disabled gate.

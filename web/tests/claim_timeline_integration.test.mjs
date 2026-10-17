@@ -99,7 +99,7 @@ const editionNodes = new Map([
 let renderCalls = 0, timelineCalls = 0;
 const editionContext = vm.createContext({ claimMapVersion, state: { selected, epoch: 3, text: note, revision, editing: false }, $: id => editionNodes.get(id),
   api: async () => ({ text: note, revision }), sourcePath: () => '/synthetic/edition', LearnNoteMarkdown: { configure() {} },
-  taskAsset: value => value, sectionReader: { render: () => false }, renderEditionStable,
+  taskAsset: value => value, sectionReader: { retainableSnapshot: () => false, render: () => false }, renderEditionStable,
   document: { scrollingElement: { scrollTop: 0 } }, renderNote: () => { renderCalls++; timelineCalls++; },
   loadClaimTimeline: () => timelineCalls++,
 });
