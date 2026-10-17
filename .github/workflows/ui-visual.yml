@@ -15,6 +15,8 @@ on:
       - "scripts/*visual*.cjs"
       - "scripts/core-output-acceptance.cjs"
       - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/community-timestamp-fixture.cjs"
+      - "scripts/tests/community-timestamp-fixture.test.cjs"
       - "scripts/tests/sidepanel-assets.test.cjs"
       - "scripts/tests/test_sidepanel_assets.py"
       - "scripts/tests/community-capture-fixture.test.cjs"
@@ -64,6 +66,8 @@ on:
       - "scripts/*visual*.cjs"
       - "scripts/core-output-acceptance.cjs"
       - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/community-timestamp-fixture.cjs"
+      - "scripts/tests/community-timestamp-fixture.test.cjs"
       - "scripts/tests/sidepanel-assets.test.cjs"
       - "scripts/tests/test_sidepanel_assets.py"
       - "scripts/tests/community-capture-fixture.test.cjs"
@@ -152,7 +156,14 @@ jobs:
         run: |
           node scripts/data-migration-visual-acceptance.cjs build/data-migration-ui
           if ($LASTEXITCODE -ne 0) { throw "Data migration preview/confirmation Edge gate failed" }
+      - name: Visible community preview with actual Edge and synthetic page transport
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/community-capture-visual-acceptance.cjs build/community-capture-ui
+          if ($LASTEXITCODE -ne 0) { throw "Visible community preview and scope gate failed" }
       - name: Start isolated local backend
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/ui-visual-data | Out-Null
@@ -225,8 +236,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Existing material re-decode gate failed" }
             node scripts/extension-locale-visual-acceptance.cjs build/extension-locales
             if ($LASTEXITCODE -ne 0) { throw "Extension locale/layout matrix failed" }
-            node scripts/community-capture-visual-acceptance.cjs build/community-capture-ui
-            if ($LASTEXITCODE -ne 0) { throw "Visible community preview and scope gate failed" }
             node scripts/study-product-visual-acceptance.cjs http://127.0.0.1:8765 build/study-product-ui
             if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
             node scripts/local-player-visual-acceptance.cjs build/local-player-ui

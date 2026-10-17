@@ -4,6 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), http = require('node
 const { execFileSync } = require('node:child_process');
 const { asset, installFixtures, FIXTURE } = require('./extension-locale-visual-acceptance.cjs');
 const { bounded, cleanup, writeReport } = require('./range-platform-browser-acceptance.cjs');
+const { syntheticTimestampRanges } = require('./community-timestamp-fixture.cjs');
 const TIMEOUT = 15000;
 const ROOT = path.resolve(__dirname, '..'), SITE = 'https://www.bilibili.com/video/BV1234567890?p=2';
 function communityFixture() {
@@ -167,6 +168,22 @@ function syntheticPanelDiagnostics() {
     selected_count: document.querySelectorAll('#communityItems input:checked').length,
     controls: ids.map(id => { const node = document.getElementById(id); return { id, found: Boolean(node), hidden: node?.hidden, open: node?.open, disabled: node?.disabled, busy: node?.getAttribute('aria-busy') }; }) };
 }
+async function captureInlineTimestampProbes({ browser, origin, out, report }) {
+  let inline, primary;
+  try {
+    inline = await bounded(browser.newPage({ viewport: { width: 1100, height: 850 } }), 'create inline timestamp probe page', TIMEOUT);
+    await inline.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+    await inline.goto(origin + '/extension/tests/fixtures/community/inline-timestamp.html');
+    for (const name of ['community-source.js', 'content-community.js']) await inline.addScriptTag({ url: origin + '/extension/' + name });
+    const sample = await collect(inline);
+    report.inline_timestamp_ranges = await bounded(inline.evaluate(syntheticTimestampRanges, { mode: 'representative', items: sample.items }), 'representative inline timestamp ranges', TIMEOUT);
+    await inline.screenshot({ path: path.join(out, 'inline-timestamp-probes.png') }); report.screenshots.push('inline-timestamp-probes.png');
+    const covered = report.inline_timestamp_ranges.samples.find(item => item.id === 'covered-inline');
+    assert.equal(covered.characters[4].values[0].hits[0].hit?.id, 'timestampCover', 'The negative fixture must actually cover a digit center');
+    assert.equal(sample.items.find(item => item.text === 'Covered inline timestamp example.')?.timestamp_seconds, null, 'A genuinely covered digit cannot supply timestamp provenance');
+  } catch (error) { primary = error; }
+  finally { await cleanup(primary, [['close inline timestamp probe page', () => inline?.close()]]); }
+}
 async function run() {
   const { chromium } = require('playwright');
   const out = path.resolve(process.argv[2] || 'build/community-capture-ui'); fs.mkdirSync(out, { recursive: true });
@@ -185,6 +202,11 @@ async function run() {
     phase('dom/initial-collection');
     const result = await collect(dom);
     report.dom_diagnostics = await bounded(dom.evaluate(syntheticDOMDiagnostics, result), 'synthetic DOM diagnostics', TIMEOUT);
+    report.timestamp_ranges = await bounded(dom.evaluate(syntheticTimestampRanges, { mode: 'original', items: result.items }), 'synthetic timestamp ranges', TIMEOUT);
+    // Preserve the original inline case and gather a separate truly covered digit
+    // before the unchanged 83s assertion. No fixture style is used to make it pass.
+    phase('dom/inline-timestamp-probes');
+    await captureInlineTimestampProbes({ browser, origin, out, report });
     assertSyntheticDOMGeometry(report.dom_diagnostics);
     assert.equal(result.items.length, 5, `Expected all five fixture bodies; missing: ${report.dom_diagnostics.missing_expected.join(', ')}`);
     assert(result.items.some(item => item.text === 'Open-shadow comment body only.'));
@@ -277,8 +299,9 @@ async function run() {
 }
 if (require.main === module && process.argv.includes('--self-test')) {
   assert(asset('/extension/community-source.js')); assert(asset('/extension/content-community.js')); assert(asset('/extension/tests/fixtures/community/visible-page.html'));
+  assert(asset('/extension/tests/fixtures/community/inline-timestamp.html'));
   assert.equal(asset('/extension/../backend/app/community.py'), null);
   new Function('return ' + communityFixture.toString());
   console.log('Community rendered fixture syntax and asset/path checks pass; actual Edge rendering is a hosted gate.');
 } else if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics, assertSyntheticDOMGeometry, syntheticPanelDiagnostics };
+module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics, assertSyntheticDOMGeometry, syntheticPanelDiagnostics, captureInlineTimestampProbes };

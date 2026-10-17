@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Synthetic inline timestamp geometry fixture</title>
+<style>body{font:16px/1.5 sans-serif;margin:20px}section{margin:12px 0}.bpx-player-dm-list-dm{display:inline-block}#timestampCover{position:absolute;background:#000;pointer-events:auto;z-index:10}</style>
+<p>Synthetic inline timestamps. One digit below is deliberately covered.</p>
+<section class="bpx-player-dm-list-item"><span id="inlineClearTime" class="bpx-player-dm-list-time">01:23</span> <span class="bpx-player-dm-list-dm">Clear inline timestamp example.</span></section>
+<section class="bpx-player-dm-list-item"><span id="inlineCoveredTime" class="bpx-player-dm-list-time">01:23</span> <span class="bpx-player-dm-list-dm">Covered inline timestamp example.</span></section>
+<div id="timestampCover" aria-hidden="true"></div>
+<script>
+const time=document.querySelector('#inlineCoveredTime'),range=document.createRange();
+range.setStart(time.firstChild,4);range.setEnd(time.firstChild,5);
+const box=range.getBoundingClientRect(),cover=document.querySelector('#timestampCover');
+Object.assign(cover.style,{left:`${box.left+scrollX}px`,top:`${box.top+scrollY}px`,width:`${box.width}px`,height:`${box.height}px`});
+</script></html>
