@@ -2,6 +2,8 @@ import { createReadingSettingsAdapter, normalizeReading, applyReadingAppearance 
 import { installModelCatalog } from "/web/desk-model-catalog.js";
 import { api, escapeHtml as esc } from "/web/desk-api.js";
 import { usageCoverage } from "/web/usage-coverage.js";
+import { installDataMigration } from "/web/data-migration.js";
+import { installMigrationStatus } from "/web/data-migration-status.js";
 export function installSettings(ctx) {
   const { state, notice, loadKey } = ctx,
     $ = (id) => document.getElementById(id),
@@ -433,7 +435,7 @@ export function installSettings(ctx) {
     '<label for="prefReaderSize">正文字号</label><select id="prefReaderSize"><option value="15">15 px · 紧凑</option><option value="16">16 px</option><option value="17">17 px · 标准</option><option value="18">18 px · 较大</option><option value="20">20 px · 大字</option></select><label for="prefDensity">界面密度</label><select id="prefDensity"><option value="comfortable">标准</option><option value="compact">紧凑</option></select><label class="check"><input type="checkbox" id="prefAutoOpen">完成后自动打开笔记</label><label class="check"><input type="checkbox" id="prefNotify">任务完成时发送系统通知</label><p class="muted">系统通知需要你授予浏览器或客户端通知权限。</p>';
   panes.storage.insertAdjacentHTML(
     "afterbegin",
-    '<p id="settingsDataRoot" class="settings-status"></p><div class="settings-inline-actions"><button type="button" id="openSettingsFolder">打开数据目录</button><button type="button" id="changeSettingsFolder">更改数据位置</button><button type="button" id="extensionSetupSettings">连接浏览器扩展</button></div><p id="connectionReadiness" class="muted"></p>',
+    '<p id="settingsDataRoot" class="settings-status"></p><div class="settings-inline-actions"><button type="button" id="openSettingsFolder">打开数据目录</button><button type="button" id="changeSettingsFolder">更改数据位置</button><button type="button" id="extensionSetupSettings">连接浏览器扩展</button></div><p id="connectionReadiness" class="muted"></p><section id="settingsMigrationOutcome" hidden></section>',
   );
   const taskFormat = document.createElement("div");
   taskFormat.className = "task-format-fields";
@@ -702,6 +704,7 @@ export function installSettings(ctx) {
   }
   let loadGeneration = 0;
   async function load() {
+    migrationStatus.refresh();
     const generation = ++loadGeneration;
     try {
       let result = await api("/api/preferences");
@@ -877,22 +880,12 @@ export function installSettings(ctx) {
     $("openSettingsFolder") && window.pywebview?.api?.open_data_folder
       ? window.pywebview.api.open_data_folder()
       : notice("浏览器模式请按上方路径打开数据目录。");
-  $("changeSettingsFolder").onclick = async () => {
-    if (!window.pywebview?.api?.choose_data_directory) {
-      notice("更改数据位置请使用桌面客户端。");
-      return;
-    }
-    try {
-      const r = await window.pywebview.api.choose_data_directory(true);
-      if (r.cancelled) return;
-      $("settingsDataRoot").textContent =
-        r.message || r.path || "未更改数据位置";
-      if (r.ok && !r.unchanged)
-        notice("选择的数据目录准备好后，重启客户端生效。");
-    } catch (e) {
-      notice(e.message);
-    }
-  };
+  const migrationStatus = installMigrationStatus({ element: $("settingsMigrationOutcome") });
+  installDataMigration({ button: $("changeSettingsFolder"), settingsDialog: dialog, beforeConfirm: () => {
+    if (updateDirty().length || !ctx.guard()) return "请先保存未完成的编辑与设置，再迁移数据。";
+    if (state.items.some(item => ["queued", "running", "cancelling"].includes(item.status))) return "还有任务正在处理，请完成或停止后再迁移数据。";
+    return "";
+  } });
   $("extensionSetupSettings").onclick = () => $("setupExtension")?.click();
   $("exportProfile").onclick = () => {
     const url = URL.createObjectURL(

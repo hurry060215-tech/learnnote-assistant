@@ -29,6 +29,8 @@ MODULE_SIZE_LIMITS = {
     "backend/app/model_data_consent.py": 80,
     "backend/app/deferred_task_consent.py": 80,
     "web/model-data-consent.js": 110,
+    "web/data-migration-status.js": 75,  # Read-only post-restart receipt visibility.
+    "web/data-migration.js": 170,  # Bounded native preview/confirmation controller and view.
     "web/platform-signals.js": 220,
     "web/cited-relations.js": 180,
     "web/course-episodes.js": 180,
@@ -212,7 +214,8 @@ def module_size_violations() -> list[str]:
     # +64 bounded lines for the reader utility disclosure, compact personal-review
     # summary, unified empty assistant suggestions and responsive/focus states.
     # No second runtime stylesheet or separate token system is introduced.
-    runtime_budget = 2310 + 17 + 64
+    # +5 migration-only lines for wrapped paths and 44px native-dialog controls.
+    runtime_budget = 2310 + 17 + 64 + 5
     if runtime_lines > runtime_budget:
         violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is {runtime_budget}")
     if legacy_lines > 23000:

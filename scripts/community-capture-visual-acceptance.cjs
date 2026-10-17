@@ -133,14 +133,19 @@ function syntheticDOMDiagnostics(result) {
   const captured = result.items.slice(0, 20);
   const candidates = expected.map(([id, selector, text]) => {
     const node = selector ? document.querySelector(selector) : document.querySelector('#shadowComment')?.shadowRoot?.querySelector('bili-rich-text')?.shadowRoot?.querySelector('#contents');
-    return { id, accepted: captured.some(item => item.text === text), ...describe(node) };
+    const item = captured.find(item => item.text === text);
+    return { id, accepted: Boolean(item), timestamp_seconds: Number.isFinite(item?.timestamp_seconds) ? item.timestamp_seconds : null, ...describe(node) };
   });
   const exclusions = [['hidden-parent', '.reply-item[hidden] .reply-content'], ['offscreen', '.offscreen .reply-content'],
     ['aria-hidden', '[aria-hidden="true"] .reply-content'], ['clipped', '.clipped .reply-content'],
     ['covered', '.covered .reply-content'], ['partial-viewport', '.partial .reply-content']].map(([id, selector]) => ({ id, ...describe(document.querySelector(selector)) }));
+  const time = document.querySelector('.bpx-player-dm-list-time'), timed = document.querySelector('.bpx-player-dm-list-dm');
+  const seconds = captured.find(item => item.text === expected[2][2])?.timestamp_seconds;
+  const timestamp_element = { collected_seconds: Number.isFinite(seconds) ? seconds : null, expected_text_matches: time?.innerText?.trim() === '01:23',
+    associated_with_timed_body: Boolean(time && timed?.closest?.('.bpx-player-dm-list-item')?.querySelector?.('.bpx-player-dm-list-time') === time), ...describe(time) };
   const untimed = document.querySelector('.bili-dm'), following = document.querySelector('#shadowComment');
   const separation = untimed && following ? { untimed_bottom: rect(untimed).bottom, following_top: rect(following).top, gap: rect(following).top - rect(untimed).bottom } : null;
-  return { fixture: 'synthetic-community-dom-v1', viewport: { width: innerWidth, height: innerHeight }, separation,
+  return { fixture: 'synthetic-community-dom-v1', viewport: { width: innerWidth, height: innerHeight }, separation, timestamp_element,
     captured_count: result.items.length, truncated: result.truncated,
     missing_expected: candidates.filter(item => !item.accepted).map(item => item.id), candidates, exclusions };
 }
@@ -151,12 +156,24 @@ function assertSyntheticDOMGeometry(diagnostics) {
   assert(untimed.hits.every(point => point.contained), 'All five untimed-danmaku hit points must stay inside that body');
   assert.equal(untimed.visible, true, 'The separated positive body must pass the unchanged collector visibility gate');
 }
+function syntheticPanelDiagnostics() {
+  const fixture = globalThis.__communityFixture;
+  if (!fixture) return { fixture_installed: false };
+  const ids = ['communityPanel', 'communityPreview', 'communityEnable', 'communitySave', 'communityCancel', 'sendButton'];
+  return { fixture_installed: true, enabled: fixture.enabled, permission: fixture.permission,
+    calls: fixture.calls.slice(-10).map(item => String(item.type).slice(0, 80)), saved_count: fixture.saved.length,
+    pending_type: fixture.pending ? String(fixture.pending.type).slice(0, 80) : null, unsettled_actions: fixture.actions.filter(item => !item.settled).length,
+    item_count: document.querySelectorAll('#communityItems input').length,
+    selected_count: document.querySelectorAll('#communityItems input:checked').length,
+    controls: ids.map(id => { const node = document.getElementById(id); return { id, found: Boolean(node), hidden: node?.hidden, open: node?.open, disabled: node?.disabled, busy: node?.getAttribute('aria-busy') }; }) };
+}
 async function run() {
   const { chromium } = require('playwright');
   const out = path.resolve(process.argv[2] || 'build/community-capture-ui'); fs.mkdirSync(out, { recursive: true });
   const report = { source_sha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(), passed: false, synthetic_data: true, native_permissions_tested: false, live_platform_tested: false, model_called: false, checks: [], screenshots: [] };
   const server = http.createServer((req, res) => { const file = asset(req.url); if (!file) { res.writeHead(404); return res.end(); } res.setHeader('Content-Type', file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.png') ? 'image/png' : 'text/html'); fs.createReadStream(file).pipe(res); });
   let browser, activePage, primary;
+  const phase = name => { report.phase = name; };
   try {
     await bounded(new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); }), 'listen for community assets', TIMEOUT);
     browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -165,21 +182,26 @@ async function run() {
     await dom.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     await dom.goto(origin + '/extension/tests/fixtures/community/visible-page.html');
     for (const name of ['community-source.js', 'content-community.js']) await dom.addScriptTag({ url: origin + '/extension/' + name });
+    phase('dom/initial-collection');
     const result = await collect(dom);
     report.dom_diagnostics = await bounded(dom.evaluate(syntheticDOMDiagnostics, result), 'synthetic DOM diagnostics', TIMEOUT);
     assertSyntheticDOMGeometry(report.dom_diagnostics);
     assert.equal(result.items.length, 5, `Expected all five fixture bodies; missing: ${report.dom_diagnostics.missing_expected.join(', ')}`);
     assert(result.items.some(item => item.text === 'Open-shadow comment body only.'));
+    phase('dom/timestamp-and-privacy');
     assert(result.items.some(item => item.timestamp_seconds === 83));
     assert(result.items.some(item => item.kind === 'danmaku' && item.timestamp_seconds === null));
     assert(!JSON.stringify(result.items).match(/decoy|secret|Offscreen|Covered|Clipped|Unseen|Only this first|Like 999/));
     await dom.screenshot({ path: path.join(out, 'visible-dom.png') }); report.screenshots.push('visible-dom.png');
+    phase('dom/oversize');
     await dom.evaluate(() => { document.querySelector('.reply-content').firstChild.nodeValue = 'x'.repeat(2001); });
     assert(!(await collect(dom)).items.some(item => item.text.startsWith('xxx')));
+    phase('dom/traversal-limit');
     await dom.evaluate(() => { document.body.replaceChildren(); const wrapper = document.createElement('div'); for (let i = 0; i < 1600; i++) wrapper.append(document.createElement('div')); document.body.append(wrapper); });
     const limited = await collect(dom); assert.equal(limited.items.length, 0); assert.equal(limited.truncated, true);
     await dom.close(); report.checks.push('real DOM: content-only/open-shadow, hidden/offscreen/clipped/occluded rejection, explicit/unknown timestamps, oversize and traversal bounds');
     for (const locale of ['zh-CN', 'en-US']) for (const width of [390, 768]) {
+      report.current_case = { locale, width }; phase('panel/setup-and-task');
       const page = activePage = await browser.newPage({ viewport: { width, height: 900 }, locale });
       const errors = []; page.on('pageerror', error => errors.push(error.message));
       const catalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/_locales', locale === 'en-US' ? 'en' : 'zh_CN', 'messages.json')));
@@ -189,12 +211,14 @@ async function run() {
       await page.waitForFunction(() => __learnnoteSidepanel.getState().clientConnected);
       await page.locator('#sendButton').click();
       await page.locator('#communityPanel').waitFor();
+      phase('panel/default-disabled');
       assert.equal(await page.evaluate(() => __communityFixture.calls.length), 0, 'No automatic community read');
       await page.locator('#communityPanel > summary').click();
       assert.equal(await page.evaluate(() => __communityFixture.calls.length), 0, 'Opening disclosure is not capture');
       await page.locator('#communityPreview').click();
       await page.waitForFunction(() => !document.querySelector('#communityPanel').getAttribute('aria-busy').includes('true'));
       assert.equal(await page.locator('#communityItems input').count(), 0, 'Default disabled');
+      phase('panel/enable-and-preview');
       await page.locator('#communityEnable').click();
       await page.waitForFunction(() => __communityFixture.enabled && document.querySelector('#communityPanel').getAttribute('aria-busy') === 'false');
       await page.locator('#communityPreview').click();
@@ -206,17 +230,20 @@ async function run() {
       const filename = `${locale}-${width}-preview.png`;
       await page.locator('#communityPanel').screenshot({ path: path.join(out, filename) }); report.screenshots.push(filename);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      phase('panel/selected-save');
       await page.locator('#communitySave').click();
       await page.waitForFunction(() => __communityFixture.saved.length === 1);
       assert.deepEqual(await page.evaluate(() => __communityFixture.saved[0]), ['c'.repeat(32)]);
       await page.waitForFunction(() => document.querySelector('#communityPanel').getAttribute('aria-busy') === 'false');
       await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      phase('panel/navigation-and-preview-cancel');
       await page.evaluate(() => __communityFixture.change());
       assert.equal(await page.locator('#communityItems input').count(), 0, 'Navigation clears preview');
       await heldAction(page, { selector: '#communityPreview', type: 'community-preview', invalidate: () => page.locator('#communityCancel').click() });
       assert.equal(await page.locator('#communityItems input').count(), 0, 'Late cancelled result is ignored');
       await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
       await page.locator('#communityItems input').first().check();
+      phase('panel/save-navigation');
       await heldAction(page, { selector: '#communitySave', type: 'community-save', invalidate: async () => {
         await page.evaluate(() => { __communityFixture.change(); document.querySelector('#communityPanel').open = false; });
         const handle = await page.waitForFunction(() => document.querySelector('#communityStatus').textContent === LearnNoteI18n.message('community_save_uncertain'), null, { timeout: TIMEOUT });
@@ -226,11 +253,13 @@ async function run() {
       assert.equal(await page.locator('#communityStatus').textContent(), catalog.community_save_uncertain.message);
       await page.locator('#communityPanel > summary').click();
       await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      phase('panel/escape');
       await page.locator('#communityPanel > summary').focus(); await page.keyboard.press('Escape');
       assert.equal(await page.locator('#communityPanel').evaluate(element => element.open), false);
       assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#communityPanel > summary')), true);
       await page.locator('#communityPanel > summary').click();
       await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      phase('panel/revocation');
       await page.evaluate(() => __communityFixture.revoke());
       assert.equal(await page.locator('#communityItems input').count(), 0, 'Revocation clears preview');
       assert(await page.locator('#communityPanel').isHidden(), 'Existing panel clears revoked source identity');
@@ -239,8 +268,10 @@ async function run() {
       await page.close();
     }
     report.checks.push('shipped panel: no automatic collection, disabled lane, local opt-in, unchecked selection, exact selected save, literal content, navigation/revocation/cancel races, Escape/focus, bilingual 390/768px');
-    report.passed = true;
-  } catch (error) { primary = error; report.error = String(error.stack || error); if (activePage && !activePage.isClosed()) { try { await activePage.screenshot({ path: path.join(out, 'failure.png'), timeout: 3000 }); report.screenshots.push('failure.png'); } catch {} } }
+    report.passed = true; phase('complete');
+  } catch (error) { primary = error; report.error = String(error.stack || error); if (activePage && !activePage.isClosed()) {
+    if (report.phase?.startsWith('panel/')) { try { report.panel_diagnostics = await bounded(activePage.evaluate(syntheticPanelDiagnostics), 'synthetic panel diagnostics', 3000); } catch { report.panel_diagnostics = { unavailable: true }; } }
+    try { await activePage.screenshot({ path: path.join(out, 'failure.png'), timeout: 3000 }); report.screenshots.push('failure.png'); } catch {} } }
   await finishCapture({ out, report, browser, server }, primary);
   console.log(JSON.stringify(report));
 }
@@ -250,4 +281,4 @@ if (require.main === module && process.argv.includes('--self-test')) {
   new Function('return ' + communityFixture.toString());
   console.log('Community rendered fixture syntax and asset/path checks pass; actual Edge rendering is a hosted gate.');
 } else if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics, assertSyntheticDOMGeometry };
+module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics, assertSyntheticDOMGeometry, syntheticPanelDiagnostics };

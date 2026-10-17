@@ -6,12 +6,16 @@ on:
     tags: ["v*"]
     paths:
       - "backend/app/**"
+      - "desktop/**"
+      - "docs/DATA_DIRECTORY_MIGRATION.md"
       - "docs/PLATFORM_SUPPORT.md"
       - "docs/ARCHITECTURE.md"
       - ".github/workflows/platform-contracts.yml"
   pull_request:
     paths:
       - "backend/app/**"
+      - "desktop/**"
+      - "docs/DATA_DIRECTORY_MIGRATION.md"
       - "docs/PLATFORM_SUPPORT.md"
       - "docs/ARCHITECTURE.md"
       - ".github/workflows/platform-contracts.yml"
@@ -44,3 +48,8 @@ jobs:
           python -m compileall backend/app
           python -m unittest backend/tests/test_migrations.py backend/tests/test_integrations.py backend/tests/test_knowledge.py
           python -c "from app.main import health_payload; print(health_payload()['assistant_capabilities']['media_adapter_contract_version'])"
+      - name: Verify stopped desktop data migration contracts
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration

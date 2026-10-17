@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -192,66 +193,72 @@ class DesktopApi:
             "message": message,
         }
 
+    def _migration_idle(self) -> None:
+        # GET /api/tasks reconciles stale jobs and can rewrite manifests. Use
+        # only service health here; preview validates every task and queue state
+        # from a verified read-only scratch snapshot, without list side effects.
+        from desktop.data_migration_inventory import fail
+        if not backend_ready(self.backend_url):
+            fail("task_status_unavailable", "无法确认本地服务状态。请稍后重试，不会切换数据目录。")
+
     def choose_data_directory(self, migrate: bool = True) -> dict:
+        from desktop.data_migration import preview_migration, public_preview
+        self._migration_plan = None
         if self._window is None:
             return {"ok": False, "code": "desktop_window_unavailable", "message": "客户端窗口尚未就绪。"}
+        if migrate is not True:
+            return {"ok": False, "code": "preview_required", "message": "请先预览迁移，不会直接切换数据目录。"}
         import webview
-
         selected = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=str(self.data_dir.parent))
         if not selected:
             return {"ok": False, "cancelled": True}
         raw_path = selected[0] if isinstance(selected, (list, tuple)) else selected
-        target = Path(str(raw_path)).expanduser().resolve()
-        if target.drive.upper() == "C:":
-            return {"ok": False, "code": "system_drive_not_allowed", "message": "请选择 D 盘或其他非系统盘。"}
-        if target == self.data_dir.resolve():
+        target = Path(str(raw_path)).expanduser()
+        if os.name == "nt" and target.drive.upper() == "C:":
+            return {"ok": False, "code": "system_drive_not_allowed", "message": "请选择非系统盘的空文件夹。"}
+        if target == self.data_dir:
             return {"ok": True, "unchanged": True, "path": str(target)}
-        if self.data_dir.resolve() in target.parents:
-            return {"ok": False, "code": "nested_data_directory", "message": "新位置不能放在当前数据目录里面。"}
         try:
-            target.mkdir(parents=True, exist_ok=True)
-            probe = target / ".learnnote-write-test"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
-        except OSError:
-            return {"ok": False, "code": "directory_not_writable", "message": "所选文件夹无法写入，请换一个位置。"}
+            self._migration_idle()
+            self._migration_plan = preview_migration(self.data_dir, target, self.app_root)
+            return public_preview(self._migration_plan)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "code": getattr(exc, "code", "migration_preview_failed"),
+                    "message": "迁移预览未通过，请检查空目标目录、源文件和任务状态。" + str(exc)}
 
-        if migrate:
-            try:
-                response = requests.get(f"{self.backend_url}/api/tasks", timeout=3.0)
-                payload = response.json() if response.ok else []
-                task_items = payload.get("tasks", []) if isinstance(payload, dict) else payload
-                if not isinstance(task_items, list):
-                    task_items = []
-                running = [
-                    task for task in task_items
-                    if isinstance(task, dict) and task.get("status") in {"queued", "running", "cancelling"}
-                ]
-            except (requests.RequestException, TypeError, ValueError):
-                running = []
-            if running:
-                return {"ok": False, "code": "tasks_running", "message": "还有任务正在处理，请完成或停止任务后再迁移。"}
-            try:
-                shutil.copytree(
-                    self.data_dir,
-                    target,
-                    dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("webview-profile", "temp", "*.lock", ".desktop-session.*"),
-                )
-            except OSError as exc:
-                return {"ok": False, "code": "migration_failed", "message": f"迁移没有完成：{exc}"}
+    def apply_data_directory(self, token: str) -> dict:
+        from desktop.data_migration import prepare_request, fail_scheduled_request
+        plan, self._migration_plan = getattr(self, "_migration_plan", None), None
+        if not plan or not isinstance(token, str) or token != plan["token"]:
+            return {"ok": False, "code": "preview_expired", "message": "预览已失效，请重新选择目录并核对。"}
+        if self._window is None:
+            return {"ok": False, "code": "desktop_window_unavailable", "message": "窗口不可用，迁移没有开始。"}
+        request = None
+        try:
+            self._migration_idle()
+            request = prepare_request(self.app_root, plan)
+            command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+            command.extend(["--apply-data-migration", request["token"], "--migration-digest", request["digest"],
+                            "--wait-for-parent", str(os.getpid()), "--port", str(urlparse(self.backend_url).port or 8765)])
+            subprocess.Popen(command, cwd=str(self.app_root), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            threading.Timer(0.35, self._window.destroy).start()
+            return {"ok": True, "restarting": True,
+                    "message": "迁移已安排。客户端关闭后会校验复制并重新打开。请查看迁移结果；原目录和原配置备份仍保留。"}
+        except (OSError, ValueError) as exc:
+            if request is not None:
+                try:
+                    fail_scheduled_request(self.app_root, request)
+                except (OSError, ValueError):
+                    pass
+            return {"ok": False, "code": getattr(exc, "code", "migration_start_failed"),
+                    "message": "迁移没有开始，当前目录未切换。请重新预览。" + str(exc)}
 
-        config_path = self.app_root / "learnnote-config.json"
-        temp_path = config_path.with_suffix(".tmp")
-        temp_path.write_text(json.dumps({"data_dir": str(target)}, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp_path.replace(config_path)
-        return {
-            "ok": True,
-            "path": str(target),
-            "migrated": bool(migrate),
-            "restart_required": True,
-            "message": "现有数据已迁移，重启客户端后使用新位置。" if migrate else "新位置已保存，重启客户端后生效。",
-        }
+    def data_migration_status(self) -> dict:
+        from desktop.data_migration import migration_status
+        try:
+            return migration_status(self.app_root)
+        except (OSError, ValueError):
+            return {"ok": False, "status": "incomplete", "message": "无法验证迁移记录。请保留原目录与配置备份，不要删除或合并数据。"}
 
     def restart_application(self) -> dict:
         command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
@@ -1279,6 +1286,8 @@ def _run() -> int:
     parser.add_argument("--webview-debug-port", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--protocol", default="", help=argparse.SUPPRESS)
     parser.add_argument("--wait-for-parent", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--apply-data-migration", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--migration-digest", default="", help=argparse.SUPPRESS)
     parser.add_argument("--health-check", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     args.port = protocol_port(args.protocol) or args.port
@@ -1286,6 +1295,19 @@ def _run() -> int:
     root = application_root()
     if os.name == "nt" and root.drive.upper() == "C:":
         raise RuntimeError("LearnNote 请安装在 D: 或其他非系统盘，再从快捷方式启动。")
+    if args.apply_data_migration:
+        if args.wait_for_parent <= 0:
+            raise ValueError("LearnNote 迁移需要等待原客户端完全关闭。请重新预览。")
+        # Add backend modules for Windows worker mutex coordination only; the
+        # server and queue are not imported/started until migration terminates.
+        sys.path.insert(0, str(bundled_root() / "backend"))
+        from desktop.data_migration import apply_request
+        try:
+            apply_request(root, args.apply_data_migration, args.migration_digest)
+        except (OSError, ValueError, sqlite3.Error) as error:
+            report_startup_error(error)
+            # Reload the actual config: a committed migration is never rolled
+            # back automatically, including after a later startup/report error.
     if args.health_check:
         return run_health_check(root, args.port)
     session = DesktopSession(configured_data_directory(root))

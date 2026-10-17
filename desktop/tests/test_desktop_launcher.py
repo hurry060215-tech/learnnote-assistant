@@ -82,33 +82,28 @@ class DesktopLauncherTests(unittest.TestCase):
             (root / "learnnote-config.json").write_text(json.dumps({"data_dir": str(custom)}), encoding="utf-8")
             self.assertEqual(custom, desktop.configure_runtime(root, 18767))
 
-    def test_choose_data_directory_migrates_and_persists_selection(self):
+    def test_choose_data_directory_only_previews_before_explicit_confirmation(self):
         class Window:
             def create_file_dialog(self, *_args, **_kwargs):
                 return [str(target)]
-
         class Response:
-            ok = True
-
+            status_code = 200
             @staticmethod
             def json():
                 return {"tasks": []}
-
-        with tempfile.TemporaryDirectory(dir=ROOT / "data") as root_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as source_dir, tempfile.TemporaryDirectory(dir=ROOT / "data") as target_dir:
-            root = Path(root_dir)
-            source = Path(source_dir)
-            target = Path(target_dir)
-            (source / "tasks").mkdir()
-            (source / "tasks" / "note.md").write_text("lesson", encoding="utf-8")
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as base_dir:
+            base = Path(base_dir).resolve()
+            root, source, target = [base / name for name in ("app", "source", "target")]
+            for path in (root, source, target):
+                path.mkdir()
             api = desktop.DesktopApi(source, "http://127.0.0.1:18766", root)
             api._bind_window(Window())
-            with patch.object(desktop.requests, "get", return_value=Response()):
+            with patch.object(desktop, "backend_ready", return_value=True):
                 result = api.choose_data_directory(True)
             self.assertTrue(result["ok"])
-            self.assertTrue(result["restart_required"])
-            self.assertEqual("lesson", (target / "tasks" / "note.md").read_text(encoding="utf-8"))
-            saved = json.loads((root / "learnnote-config.json").read_text(encoding="utf-8"))
-            self.assertEqual(str(target.resolve()), saved["data_dir"])
+            self.assertTrue(result["preview"])
+            self.assertFalse((root / "learnnote-config.json").exists())
+            self.assertEqual(list(target.iterdir()), [])
 
     def test_choose_data_directory_blocks_migration_while_task_is_running(self):
         class Window:
@@ -116,7 +111,7 @@ class DesktopLauncherTests(unittest.TestCase):
                 return [str(target)]
 
         class Response:
-            ok = True
+            status_code = 200
 
             @staticmethod
             def json():
@@ -126,9 +121,12 @@ class DesktopLauncherTests(unittest.TestCase):
             root = Path(root_dir)
             source = Path(source_dir)
             target = Path(target_dir)
+            task_root = source / "tasks" / "a123456789bc"
+            task_root.mkdir(parents=True)
+            (task_root / "task.json").write_text('{"id":"a123456789bc","status":"running"}', encoding="utf-8")
             api = desktop.DesktopApi(source, "http://127.0.0.1:18766", root)
             api._bind_window(Window())
-            with patch.object(desktop.requests, "get", return_value=Response()):
+            with patch.object(desktop, "backend_ready", return_value=True):
                 result = api.choose_data_directory(True)
             self.assertFalse(result["ok"])
             self.assertEqual("tasks_running", result["code"])

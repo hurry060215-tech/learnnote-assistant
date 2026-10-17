@@ -30,3 +30,16 @@ class PlatformWorkflowScopeTests(unittest.TestCase):
         job = workflow["jobs"]["python-local-contract"]
         self.assertEqual(set(job["strategy"]["matrix"]["os"]), {"windows-latest", "ubuntu-latest", "macos-latest"})
         self.assertNotIn("continue-on-error", job)
+
+    def test_desktop_migration_runs_on_each_native_platform_and_main_ci(self):
+        matrix = yaml.safe_load((ROOT / ".github/workflows/platform-contracts.yml").read_text(encoding="utf-8"))
+        events = matrix.get("on", matrix.get(True))
+        self.assertIn("desktop/**", events["push"]["paths"])
+        command = "python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration"
+        native = next(step for step in matrix["jobs"]["python-local-contract"]["steps"] if command in step.get("run", ""))
+        self.assertEqual(native["env"]["PYTHONPATH"], "backend")
+        self.assertNotIn("continue-on-error", native)
+        ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        windows = next(step for step in ci["jobs"]["checks"]["steps"] if command in step.get("run", ""))
+        self.assertEqual(windows["env"]["PYTHONPATH"], "backend")
+        self.assertIn('if ($LASTEXITCODE -ne 0) { throw "Desktop migration tests failed" }', windows["run"])

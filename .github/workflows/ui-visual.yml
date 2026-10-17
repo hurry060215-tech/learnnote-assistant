@@ -13,6 +13,14 @@ on:
       - "backend/requirements*.txt"
       - "backend/constraints*.txt"
       - "scripts/*visual*.cjs"
+      - "scripts/core-output-acceptance.cjs"
+      - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/tests/sidepanel-assets.test.cjs"
+      - "scripts/tests/test_sidepanel_assets.py"
+      - "scripts/tests/community-capture-fixture.test.cjs"
+      - "scripts/tests/test_community_capture_fixture.py"
+      - "scripts/data-migration-visual-acceptance.cjs"
+      - "scripts/tests/test_ui_visual_contract.py"
       - "scripts/assistant-runs-fixture.py"
       - "scripts/local-player-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
@@ -54,6 +62,14 @@ on:
       - "backend/requirements*.txt"
       - "backend/constraints*.txt"
       - "scripts/*visual*.cjs"
+      - "scripts/core-output-acceptance.cjs"
+      - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/tests/sidepanel-assets.test.cjs"
+      - "scripts/tests/test_sidepanel_assets.py"
+      - "scripts/tests/community-capture-fixture.test.cjs"
+      - "scripts/tests/test_community_capture_fixture.py"
+      - "scripts/data-migration-visual-acceptance.cjs"
+      - "scripts/tests/test_ui_visual_contract.py"
       - "scripts/assistant-runs-fixture.py"
       - "scripts/local-player-fixture.py"
       - "scripts/material-batch-acceptance.cjs"
@@ -130,6 +146,12 @@ jobs:
         run: |
           node scripts/range-platform-browser-acceptance.cjs build/range-platform-ui
           if ($LASTEXITCODE -ne 0) { throw "Rendered platform range matrix failed" }
+      - name: Data migration preview with actual Edge and synthetic native bridge
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/data-migration-visual-acceptance.cjs build/data-migration-ui
+          if ($LASTEXITCODE -ne 0) { throw "Data migration preview/confirmation Edge gate failed" }
       - name: Start isolated local backend
         shell: pwsh
         run: |
@@ -306,6 +328,7 @@ jobs:
             build/course-upgrade-synthetic-ui
             build/course-upgrade-ui
             build/range-platform-ui
+            build/data-migration-ui
             build/model-route-ui
           if-no-files-found: warn
           retention-days: 14

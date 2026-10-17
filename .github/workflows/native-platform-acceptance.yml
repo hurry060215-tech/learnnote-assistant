@@ -7,6 +7,9 @@ on:
       - LearnNote.macos.spec
       - desktop/**
       - scripts/native-platform-acceptance.py
+      - scripts/native-migration-quit.swift
+      - scripts/native-version-window.swift
+      - scripts/tests/test_native_platform_acceptance.py
       - .github/workflows/native-platform-acceptance.yml
 
 permissions:
@@ -36,9 +39,9 @@ jobs:
         run: |
           python -m pip install pyinstaller==6.22.2 pyinstaller-hooks-contrib==2026.7
           pyinstaller --noconfirm --clean LearnNote.macos.spec
-      - name: Exercise native macOS window and packaged backend
+      - name: Exercise native macOS window and packaged migration restart
         if: runner.os == 'macOS'
-        run: python scripts/native-platform-acceptance.py --app dist/LearnNote.app --output build/native-acceptance
+        run: python scripts/native-platform-acceptance.py --app dist/LearnNote.app --migration-smoke --output build/native-acceptance
       - name: Exercise Linux source backend
         if: runner.os == 'Linux'
         run: python scripts/native-platform-acceptance.py --output build/native-acceptance
@@ -46,6 +49,23 @@ jobs:
         if: always()
         with:
           name: native-acceptance-${{ runner.os }}-${{ github.run_id }}
-          path: build/native-acceptance/
+          path: |
+            build/native-acceptance/
+            !build/native-acceptance/capture-home/**
+            !build/native-acceptance/migration-smoke/*-home/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain scoped synthetic migration state including hidden files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && runner.os == 'macOS'
+        with:
+          name: native-migration-state-${{ runner.os }}-${{ github.run_id }}
+          path: |
+            build/native-acceptance/migration-smoke/source/
+            build/native-acceptance/migration-smoke/destination/
+            build/native-acceptance/migration-smoke/app-root/
+            build/native-acceptance/migration-smoke/.learnnote-migration-*/
+            build/native-acceptance/migration-smoke/previous-config.bin
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14

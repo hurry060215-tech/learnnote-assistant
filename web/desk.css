@@ -2389,3 +2389,8 @@ small, .muted, .settings-status { color: var(--muted); font-weight: 500; }
 @container assistant (max-width: 300px) {
   .assistant-history .assistant-prompt-items { grid-template-columns: minmax(0, 1fr); }
 }
+
+.data-migration-dialog button, .data-migration-dialog summary { min-height: 44px; }
+.data-migration-dialog dd { margin: 8px 0 16px; }
+.data-migration-dialog p, .data-migration-dialog dt { overflow-wrap: anywhere; }
+.data-migration-dialog footer { justify-content: flex-end; }

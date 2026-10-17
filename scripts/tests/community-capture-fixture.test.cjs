@@ -122,9 +122,10 @@ test('Synthetic DOM diagnostics identify the missing body and cap geometry witho
   const { syntheticDOMDiagnostics } = require('../community-capture-visual-acceptance.cjs');
   const node = { tagName: 'SPAN', id: 'synthetic', hidden: false,
     getBoundingClientRect: () => ({left: 20, top: 60, right: 220, bottom: 84, width: 200, height: 24}),
-    getAttribute: () => null, hasAttribute: () => false, contains: () => true,
+    getAttribute: () => null, hasAttribute: () => false, contains: () => true, innerText: '01:23',
     get textContent() { throw Error('Diagnostics must not read page text'); },
   };
+  node.closest = () => ({querySelector: () => node});
   node.parentElement = node; // A hostile cycle cannot make diagnostics unbounded.
   node.shadowRoot = {querySelector: () => node, elementFromPoint: () => node};
   const context = vm.createContext({document: {title: 'Synthetic Bilibili-shaped visible DOM fixture', querySelector: () => node, elementFromPoint: () => node},
@@ -135,11 +136,16 @@ test('Synthetic DOM diagnostics identify the missing body and cap geometry witho
   const result = {items: [
     {text: 'Why does this example use a smaller batch?'},
     {text: 'This explanation helped me compare the examples.'},
-    {text: 'Could we revisit this step?'},
+    {text: 'Could we revisit this step?', timestamp_seconds: 83},
     {text: 'Rendered overlay without an asserted timestamp'},
   ], truncated: false};
   const diagnostic = JSON.parse(JSON.stringify(vm.runInContext(`(${syntheticDOMDiagnostics})(${JSON.stringify(result)})`, context)));
   assert.deepEqual(diagnostic.missing_expected, ['open-shadow-comment']);
+  assert.equal(diagnostic.timestamp_element.expected_text_matches, true);
+  assert.equal(diagnostic.timestamp_element.associated_with_timed_body, true);
+  assert.equal(diagnostic.timestamp_element.collected_seconds, 83);
+  assert.equal(diagnostic.timestamp_element.visible, true);
+  assert.equal(diagnostic.timestamp_element.hits.length, 5);
   assert.equal(diagnostic.captured_count, 4); assert.equal(diagnostic.candidates.length, 5); assert.equal(diagnostic.exclusions.length, 6);
   for (const candidate of [...diagnostic.candidates, ...diagnostic.exclusions]) {
     assert.equal(candidate.ancestors.length, 10); assert.equal(candidate.hits.length, 5);
@@ -202,4 +208,27 @@ test('Unchanged collector rejects the reported shadow hit and accepts clear sepa
   assert.equal(collector.LearnNoteCommunityDOM.visible(node, view), false);
   followingTop = 286;
   assert.equal(collector.LearnNoteCommunityDOM.visible(node, view), true);
+});
+
+test('Remaining panel phases use shipped selectors and bounded state-only failure diagnostics', () => {
+  const { syntheticPanelDiagnostics } = require('../community-capture-visual-acceptance.cjs');
+  const html = fs.readFileSync(path.join(__dirname, '../../extension/sidepanel.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '../community-capture-visual-acceptance.cjs'), 'utf8');
+  const phases = ['setup-and-task', 'default-disabled', 'enable-and-preview', 'selected-save',
+    'navigation-and-preview-cancel', 'save-navigation', 'escape', 'revocation'];
+  for (const phase of phases) assert(source.includes(`phase('panel/${phase}')`));
+  const seen = [];
+  const context = vm.createContext({document: {
+    getElementById(id) { seen.push(id); assert(html.includes(`id="${id}"`)); return {hidden: false, open: true, disabled: false, getAttribute: () => 'false', get textContent() {throw Error('Do not report content');}}; },
+    querySelectorAll(selector) { assert(['#communityItems input', '#communityItems input:checked'].includes(selector)); return {length: 2}; },
+  }, __communityFixture: {enabled: true, permission: true, calls: Array.from({length: 30}, () => ({type: 'community-preview', pageUrl: 'secret source', text: 'private body'})),
+    saved: [['private selected id']], pending: {type: 'community-preview', requestId: 'private request'}, actions: [{settled: false}, {settled: true}]}});
+  const diagnostic = JSON.parse(JSON.stringify(vm.runInContext(`(${syntheticPanelDiagnostics})()`, context)));
+  assert.equal(diagnostic.calls.length, 10); assert.equal(diagnostic.controls.length, 6);
+  assert.equal(diagnostic.saved_count, 1); assert.equal(diagnostic.unsettled_actions, 1);
+  assert.equal(diagnostic.pending_type, 'community-preview');
+  assert(!JSON.stringify(diagnostic).match(/secret|private/));
+  assert.deepEqual(seen, ['communityPanel', 'communityPreview', 'communityEnable', 'communitySave', 'communityCancel', 'sendButton']);
+  assert(source.includes("'synthetic panel diagnostics', 3000"));
+  assert(!source.includes('waitForTimeout('));
 });

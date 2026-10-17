@@ -29,6 +29,34 @@ class UiVisualContractTests(unittest.TestCase):
                          "scripts/timeline-native-zoom-acceptance.cjs", "scripts/timeline-native-zoom.ps1"):
                 self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
 
+    def test_targeted_fixture_updates_trigger_both_visual_events(self) -> None:
+        workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        # Keep these exact dependencies auditable, including the focused Node
+        # fixtures and the Python wrappers that run them in the core test suite.
+        exact_paths = (
+            "scripts/core-output-acceptance.cjs",
+            "scripts/community-capture-visual-acceptance.cjs",
+            "scripts/tests/sidepanel-assets.test.cjs",
+            "scripts/tests/test_sidepanel_assets.py",
+            "scripts/tests/community-capture-fixture.test.cjs",
+            "scripts/tests/test_community_capture_fixture.py",
+            "scripts/data-migration-visual-acceptance.cjs",
+            "scripts/tests/test_ui_visual_contract.py",
+        )
+        migration_tests = (
+            "web/tests/data_migration.test.mjs",
+            "web/tests/data_migration_fixture.test.mjs",
+            "web/tests/data_migration_status.test.mjs",
+            "web/tests/data_migration_settings_load.test.mjs",
+        )
+        for event in ("pull_request", "push"):
+            patterns = workflow["on"][event]["paths"]
+            for path in exact_paths:
+                self.assertIn(path, patterns, (event, path))
+                self.assertEqual(patterns.count(path), 1, (event, path))
+            for path in migration_tests:
+                self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
+
     def test_visual_runtime_uses_production_constraints_and_refreshes_cache(self) -> None:
         workflow = yaml.safe_load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"))
         job = workflow["jobs"]["accessibility-visual"]
@@ -137,10 +165,22 @@ class UiVisualContractTests(unittest.TestCase):
         for path in ("build/course-upgrade-synthetic-ui", "build/course-upgrade-ui"):
             self.assertIn(path, upload["with"]["path"])
 
+    def test_migration_entry_settings_and_css_share_fresh_cache_key(self) -> None:
+        html = (ROOT / "web/index.html").read_text(encoding="utf-8")
+        entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
+        settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
+        key = "data-migration-20261017"
+        self.assertIn(f'src="/web/desk.js?v={key}"', html)
+        self.assertIn(f'href="/web/desk.css?v={key}"', html)
+        self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
+        self.assertNotIn('from "/web/desk-settings.js"', entry)
+        for module in ("data-migration.js", "data-migration-status.js"):
+            self.assertIn(f'from "/web/{module}"', settings)
+
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=timeline-acceptance-20261016", html)
+        self.assertIn("desk.js?v=data-migration-20261017", html)
         self.assertIn("desk-tools.js?v=course-timeline-20261016", entry)
         self.assertIn("model-data-consent.js?v=initial-focus-20261016", entry)
         self.assertIn("desk-product.js?v=first-run-20260923", entry)
