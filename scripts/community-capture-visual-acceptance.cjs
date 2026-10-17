@@ -181,6 +181,10 @@ async function captureInlineTimestampProbes({ browser, origin, out, report }) {
     const covered = report.inline_timestamp_ranges.samples.find(item => item.id === 'covered-inline');
     assert.equal(covered.characters[4].values[0].hits[0].hit?.id, 'timestampCover', 'The negative fixture must actually cover a digit center');
     assert.equal(sample.items.find(item => item.text === 'Covered inline timestamp example.')?.timestamp_seconds, null, 'A genuinely covered digit cannot supply timestamp provenance');
+    assert.equal(sample.items.find(item => item.text === 'Clear inline timestamp example.')?.timestamp_seconds, 83, 'A clear inline timestamp retains its explicit time');
+    for (const label of ['Hidden', 'Offscreen', 'Partially clipped']) {
+      assert.equal(sample.items.find(item => item.text === `${label} timestamp example.`)?.timestamp_seconds, null, `${label} timestamp cannot supply provenance`);
+    }
   } catch (error) { primary = error; }
   finally { await cleanup(primary, [['close inline timestamp probe page', () => inline?.close()]]); }
 }

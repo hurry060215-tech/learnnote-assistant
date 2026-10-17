@@ -64,8 +64,11 @@ test('representative fixture preserves inline spans and uses the exact last-digi
   assert(source.indexOf('report.timestamp_ranges = ') < source.indexOf('await captureInlineTimestampProbes('));
   assert(source.indexOf('await captureInlineTimestampProbes(') < source.indexOf('assert(result.items.some(item => item.timestamp_seconds === 83))'));
   assert(source.includes('assert.equal(result.items.length, 5,'));
+  assert(source.includes("sample.items.find(item => item.text === 'Clear inline timestamp example.')?.timestamp_seconds, 83"));
+  for (const label of ['Hidden', 'Offscreen', 'Partially clipped']) assert(html.includes(`${label} timestamp example.`));
+  assert(source.includes("['Hidden', 'Offscreen', 'Partially clipped']"));
 });
-test('unchanged collector conservatively rejects the observed inline parent-edge hit', () => {
+test('body visibility still rejects the observed inline parent-edge hit', () => {
   const context = {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../extension/content-community.js'), 'utf8'), context);
   const box = {left: 20, right: 60.046875, top: 217, bottom: 234, width: 40.046875, height: 17};
@@ -75,6 +78,77 @@ test('unchanged collector conservatively rejects the observed inline parent-edge
     getComputedStyle: () => ({display: 'inline', visibility: 'visible', opacity: '1', overflowX: 'visible', overflowY: 'visible'}),
     document: {elementFromPoint: x => x > 59 ? row : node}};
   assert.equal(context.LearnNoteCommunityDOM.visible(node, view), false);
+});
+function collectorHarness() {
+  const context = { LearnNoteCommunitySource: { canonicalPage: value => value } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../extension/content-community.js'), 'utf8'), context);
+  const box = (left, right, top = 217, bottom = 234) => ({left, right, top, bottom, width: right - left, height: bottom - top});
+  const element = rect => ({nodeType: 1, hidden: false, parentElement: null, children: [], childNodes: [],
+    rect, style: {display: 'inline', visibility: 'visible', opacity: '1', overflowX: 'visible', overflowY: 'visible'},
+    attributes: {}, getRootNode: () => ({}), getBoundingClientRect() { return this.rect; },
+    getAttribute(name) { return this.attributes[name] ?? null; }, hasAttribute(name) { return name in this.attributes; },
+    matches: () => false, contains(hit) { return hit === this || this.children.includes(hit); }});
+  const row = element(box(20, 600, 214, 238)), time = element(box(20, 60.046875)), body = element(box(70, 300));
+  row.matches = selector => selector === '.bpx-player-dm-list-item';
+  row.querySelector = selector => selector === '.bpx-player-dm-list-time' ? time : null;
+  row.children = [time, body]; time.parentElement = row; body.parentElement = row;
+  body.matches = selector => selector === '.bpx-player-dm-list-dm'; body.closest = () => row;
+  body.childNodes = [{nodeType: 3, nodeValue: 'Synthetic timed body'}]; time.innerText = '01:23';
+  const calls = [], cover = element(box(51.140625, 60.046875));
+  const document = { documentElement: row,
+    elementFromPoint: x => x >= 70 ? body : x > 59 ? row : time,
+    elementsFromPoint: (x, y) => { calls.push([x, y]); return [time, row]; } };
+  const view = {document, innerWidth: 1100, innerHeight: 850, getComputedStyle: node => node.style};
+  const collect = () => context.LearnNoteCommunityDOM.collect({document, view, pageUrl: 'fixture', expectedPageUrl: 'fixture'});
+  return {context, collect, row, time, body, cover, view, document, calls, box};
+}
+test('only timestamp collection uses the first topmost hit at all five original fractional coordinates', () => {
+  const h = collectorHarness();
+  assert.equal(h.context.LearnNoteCommunityDOM.visible(h.time, h.view), false, 'General/body visibility stays conservative');
+  assert.equal(h.collect().items[0].timestamp_seconds, 83);
+  assert.deepEqual(h.calls, [[40.0234375, 225.5], [20.5, 217.5], [59.546875, 217.5], [20.5, 233.5], [59.546875, 233.5]]);
+  h.document.elementsFromPoint = () => ({0: h.time, get 1() { throw Error('Do not search deeper hits'); }});
+  assert.equal(h.collect().items[0].timestamp_seconds, 83);
+  const child = {}; h.time.children = [child]; h.document.elementsFromPoint = () => [child, h.time];
+  assert.equal(h.collect().items[0].timestamp_seconds, 83, 'An actual contained descendant may be first');
+  h.document.elementFromPoint = () => h.row;
+  h.document.elementsFromPoint = () => [h.body];
+  assert.equal(h.collect().items.length, 0, 'A permissive list result never changes body visibility');
+});
+test('timestamp hit mode rejects a covered final digit, a first parent/host, empty/missing lists and never falls back', () => {
+  for (const variant of ['covered-digit', 'parent', 'shadow-host', 'empty', 'missing', 'throws']) {
+    const h = collectorHarness();
+    if (variant === 'covered-digit') h.document.elementsFromPoint = x => x > 51 ? [h.cover, h.time] : [h.time];
+    if (variant === 'parent' || variant === 'shadow-host') h.document.elementsFromPoint = () => [h.row, h.time];
+    if (variant === 'shadow-host') { h.row.shadowRoot = {children: h.row.children}; h.time.parentElement = null; h.time.getRootNode = () => ({host: h.row}); }
+    if (variant === 'empty') h.document.elementsFromPoint = () => [];
+    if (variant === 'missing') delete h.document.elementsFromPoint;
+    if (variant === 'throws') h.document.elementsFromPoint = () => { throw Error('Unavailable hit test'); };
+    const result = h.collect();
+    assert.equal(result.items.length, 1, `${variant}: body survives`);
+    assert.equal(result.items[0].timestamp_seconds, null, variant);
+  }
+});
+test('timestamp topmost hits cannot override hidden styles, ancestor clipping, partial viewport or absent geometry', () => {
+  const variants = {
+    hidden: h => { h.time.hidden = true; },
+    aria: h => { h.time.attributes['aria-hidden'] = 'true'; },
+    inert: h => { h.time.attributes.inert = ''; },
+    display: h => { h.time.style.display = 'none'; },
+    visibility: h => { h.time.style.visibility = 'hidden'; },
+    collapse: h => { h.time.style.visibility = 'collapse'; },
+    opacity: h => { h.time.style.opacity = '0'; },
+    ancestor: h => { h.row.hidden = true; },
+    clipped: h => { h.row.style.overflowX = 'hidden'; h.row.rect = h.box(21, 600, 214, 238); },
+    partial: h => { h.time.rect = h.box(-1, 39.046875); },
+    offscreen: h => { h.time.rect = h.box(1200, 1240.046875); },
+    empty: h => { h.time.rect = h.box(20, 20); },
+  };
+  for (const [name, change] of Object.entries(variants)) {
+    const h = collectorHarness(); change(h);
+    assert.equal(h.collect().items[0]?.timestamp_seconds ?? null, null, name);
+    assert.equal(h.calls.length, 0, `${name}: reject before topmost hit lookup`);
+  }
 });
 test('probe failure retains its primary error if closing the extra page also fails', async () => {
   const primary = Error('timestamp page failed'); let closed = false;

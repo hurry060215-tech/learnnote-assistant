@@ -30,3 +30,19 @@ class CommunityCaptureFixtureTests(unittest.TestCase):
         self.assertIn("build/community-capture-ui", upload)
         for path in ("scripts/community-timestamp-fixture.cjs", "scripts/tests/community-timestamp-fixture.test.cjs"):
             self.assertEqual(workflow.count('"' + path + '"'), 2)
+
+    def test_remaining_independent_gates_retain_failure_and_cleanup(self):
+        workflow = (ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8")
+        for name in ("Personal annotations with actual Edge and backend",
+                     "Material catalog recovery with actual Edge and synthetic responses"):
+            start = workflow.index("      - name: " + name)
+            end = workflow.find("      - ", start + 10)
+            step = workflow[start:end]
+            self.assertIn("if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}", step)
+            self.assertIn("if ($LASTEXITCODE -ne 0) { throw", step)
+            self.assertNotIn("continue-on-error", step)
+            if name.startswith("Personal"):
+                self.assertIn("personal-anchors-fixture.py", step)
+                self.assertIn('"8766"', step)
+                self.assertIn("} finally {", step)
+                self.assertIn("Stop-Process -Id $server.Id", step)

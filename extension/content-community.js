@@ -7,7 +7,7 @@
     for (let depth = 0; node && depth < LIMITS.depth; depth++, node = parent(node)) if (node.matches?.(selector)) return node;
     return null;
   }
-  function visible(node, view) {
+  function visible(node, view, timestampOnly = false) {
     try {
       let rect = node.getBoundingClientRect();
       const own = rect;
@@ -26,6 +26,10 @@
       if (current || right <= left || bottom <= top || left > own.left + 0.5 || top > own.top + 0.5 || right < own.right - 0.5 || bottom < own.bottom - 0.5) return false;
       const points = [[(left + right) / 2, (top + bottom) / 2], [left + .5, top + .5], [right - .5, top + .5], [left + .5, bottom - .5], [right - .5, bottom - .5]];
       return points.every(([x, y]) => {
+        if (timestampOnly) {
+          const hit = view.document.elementsFromPoint(x, y)[0];
+          return node === hit || node.contains(hit);
+        }
         let hit = view.document.elementFromPoint(x, y);
         for (let depth = 0; hit?.shadowRoot?.elementFromPoint && depth < LIMITS.depth; depth++) {
           const inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner;
@@ -66,7 +70,7 @@
   function timestamp(node, view) {
     const row = node.closest(".bpx-player-dm-list-item");
     const time = row?.querySelector(".bpx-player-dm-list-time");
-    if (!time || !visible(time, view)) return null;
+    if (!time || !visible(time, view, true)) return null;
     const match = /^(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)$/.exec(time.innerText.trim());
     return match ? Number(match[1] || 0) * 3600 + Number(match[2]) * 60 + Number(match[3]) : null;
   }

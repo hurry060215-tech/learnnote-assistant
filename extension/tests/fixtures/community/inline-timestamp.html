@@ -3,6 +3,9 @@
 <p>Synthetic inline timestamps. One digit below is deliberately covered.</p>
 <section class="bpx-player-dm-list-item"><span id="inlineClearTime" class="bpx-player-dm-list-time">01:23</span> <span class="bpx-player-dm-list-dm">Clear inline timestamp example.</span></section>
 <section class="bpx-player-dm-list-item"><span id="inlineCoveredTime" class="bpx-player-dm-list-time">01:23</span> <span class="bpx-player-dm-list-dm">Covered inline timestamp example.</span></section>
+<section class="bpx-player-dm-list-item"><span class="bpx-player-dm-list-time" style="visibility:hidden">01:23</span> <span class="bpx-player-dm-list-dm">Hidden timestamp example.</span></section>
+<section class="bpx-player-dm-list-item"><span class="bpx-player-dm-list-time" style="position:relative;left:1200px">01:23</span> <span class="bpx-player-dm-list-dm">Offscreen timestamp example.</span></section>
+<section class="bpx-player-dm-list-item"><span class="bpx-player-dm-list-time" style="position:relative;left:-21px">01:23</span> <span class="bpx-player-dm-list-dm">Partially clipped timestamp example.</span></section>
 <div id="timestampCover" aria-hidden="true"></div>
 <script>
 const time=document.querySelector('#inlineCoveredTime'),range=document.createRange();

@@ -166,7 +166,7 @@ EXTRACTED_BACKEND_MODULES = (
 # #139 adds independently reviewed seek identity checks; see ISSUE_TIMELINE_SYNC_20261009.md.
 # #158 adds a bounded on-demand community collector and a separate local handoff.
 # See ISSUE_COMMUNITY_CAPTURE_20261016.md for measured eager/on-demand costs.
-EXTENSION_SCRIPT_BUDGET_BYTES = 355500
+EXTENSION_SCRIPT_BUDGET_BYTES = 355550
 EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js", "community-source.js", "content-community.js", "background-community.js")
 # Sidepanel code is loaded when its UI opens, separate from worker/content capture.
 EXTENSION_COMMUNITY_UI_SCRIPTS = ("sidepanel-community.js",)

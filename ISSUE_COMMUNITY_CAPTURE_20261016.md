@@ -116,22 +116,22 @@ must be inspected before claiming rendered acceptance complete.
 
 | Item | Before | After | Guard |
 | --- | ---: | ---: | ---: |
-| Complete capture-script inventory | 339,271 B | 355,340 B | 355,500 B |
+| Complete capture-script inventory | 339,271 B | 355,525 B | 355,550 B |
 | Separate, explicitly counted community UI module | 0 B | 7,253 B | 7,500 B |
 | identity/origin helper | 0 B | 1,106 B / 22 lines | 30 lines |
 | background transport | 0 B | 8,360 B / 100 lines | 135 lines |
-| on-demand collector | 0 B | 6,553 B / 99 lines | 125 lines |
+| on-demand collector | 0 B | 6,738 B / 103 lines | 125 lines |
 | sidepanel community module | 0 B | 7,253 B / 99 lines | 130 lines |
-| Full package files, uncompressed | 620,798 B / 26 files | 659,135 B / 30 files | Explicit release whitelist |
-| Deterministic comparison ZIP | 185,430 B | 197,787 B | Measurement only |
+| Full package files, uncompressed | 620,798 B / 26 files | 659,320 B / 30 files | Explicit release whitelist |
+| Deterministic comparison ZIP | 185,430 B | 197,825 B | Measurement only |
 
-The complete capture inventory grows 16,069 B (4.74%). Worker startup parsing
+The complete capture inventory grows 16,254 B (4.79%). Worker startup parsing
 adds 9,516 B including the 50-byte import change. Each explicit injection loads
-7,659 B (helper plus collector). Sidepanel-only helper/UI parsing adds 8,359 B;
+7,844 B (helper plus collector). Sidepanel-only helper/UI parsing adds 8,359 B;
 existing panel hooks add 150 B, HTML 1,779 B, CSS 898 B, and bilingual runtime
 fallback messages 5,562 B. These costs are disclosed separately rather than
 calling all additions lazy-loaded. Unique capture+community-UI inventory is
-362,593 B. The full package grows 38,337 raw bytes / 12,357 compressed bytes.
+362,778 B. The full package grows 38,522 raw bytes / 12,395 compressed bytes.
 The comparison ZIP uses sorted release whitelist/locales/icons, fixed timestamps
 and Python deflate level 6; it is not the Windows release artifact or a network
 benchmark. LF checkout tests cover all four new modules.
@@ -150,3 +150,39 @@ helper now observes actual click-handler promises and pending transport IDs,
 releases held requests in finally, and waits for both settled states. Nine
 injected fixture contracts verify original-error preservation through cleanup
 and report failures, request-arrival/settlement order, and shipped selectors.
+
+### Inline timestamp hit-test correction (2026-10-17)
+
+Actual Edge run [38996866095](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38996866095)
+on 67549d4 retained all five intended bodies but rejected the visible inline
+`01:23` timestamp. In both the original and separate clear fixture, the element
+and full-text Range had the same fractional right edge (60.046875 CSS pixels).
+At the two right-edge sample points, `elementFromPoint` returned the containing
+section while `elementsFromPoint` returned the timestamp span as its first item.
+All five character centers hit the span. A genuinely covered final digit instead
+returned the opaque covering element first from both APIs and remained untimed.
+The screenshots and bounded diagnostics establish a native fractional-boundary
+divergence on these fixtures, not a proven argument-rounding bug or live-site proof.
+[Chromium's TreeScope implementation](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/core/dom/tree_scope.cc)
+uses floating-point hit locations for both APIs and distinct single/list result
+paths; that source is explanatory context, not an exact Edge binary trace.
+
+Only the timestamp caller now selects topmost-list hit testing. The existing
+geometry, viewport/ancestor clipping, hidden/style checks and five coordinates
+are shared unchanged. Each point accepts only the first list item when it is the
+timestamp or a contained descendant. It never searches past an overlay, accepts
+a parent/shadow host, or falls back when the list API is absent. General comment
+and danmaku body visibility is unchanged. There is no production Range walker.
+The original five-body and 83-second assertions remain; the representative fixture
+also requires clear 83 seconds and rejects covered, hidden, offscreen and partially
+clipped timestamps. Deterministic tests cover those failures plus unavailable APIs,
+empty lists, ancestor clipping, and unchanged body behavior. Actual hosted Edge
+acceptance for the corrected tree is still required.
+
+Compared with 67549d4, this correction adds **185 actual bytes** only to the
+on-demand collector (6,553 to 6,738 bytes; 99 to 103 lines). The reviewed aggregate
+cap rises by **50 bytes**, from 355,500 to 355,550; actual inventory is 355,525.
+All per-file line caps, the separate UI byte cap, and eager startup/sidepanel costs
+remain unchanged. Package size increases by 185 raw bytes and 38 deterministic
+ZIP bytes. The branch shares visibility checks rather than duplicating them;
+no code compression or inventory omission is used to meet the budget.

@@ -258,6 +258,7 @@ jobs:
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
       - name: Personal annotations with actual Edge and backend
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
         shell: pwsh
         run: |
           python scripts/personal-anchors-fixture.py
@@ -283,6 +284,7 @@ jobs:
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
       - name: Material catalog recovery with actual Edge and synthetic responses
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
         shell: pwsh
         run: |
           node scripts/material-catalog-recovery-acceptance.cjs http://127.0.0.1:18932 build/material-catalog-recovery-ui
