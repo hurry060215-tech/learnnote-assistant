@@ -15,6 +15,8 @@ import socket
 import sys
 import threading
 import time
+import traceback
+from urllib.parse import urlsplit
 from unittest.mock import patch
 
 MARKER = {"schema_version": 1, "fixture": "progressive-slo-complete-captions"}
@@ -42,16 +44,21 @@ def configure_fixture(root, data, stack, *, resume=False):
     spec.loader.exec_module(offline)
     stack.enter_context(offline.offline_network())
     from fastapi import HTTPException
-    from app import main, processor, storage
+    from app import main, processor, storage, update_service
     import openai
     from app.observability import read_task_events
     from app.queue_journal import read_queue_job
     from app.task_artifacts import task_artifact_path
     from app.task_control_state import task_generation
 
+    if not resume:
+        update_service.save_preferences({"auto_check": False, "auto_download": False})
+
     records, titles, startup = {}, {}, {}
     forbidden_path = data / "forbidden-operations.json"
     forbidden = json.loads(forbidden_path.read_text()) if forbidden_path.exists() else []
+    diagnostic_path = data / "forbidden-diagnostics.json"
+    network_diagnostics = json.loads(diagnostic_path.read_text()) if diagnostic_path.exists() else []
     lock = threading.RLock()
 
     def register(task_id, *, admission=False):
@@ -104,10 +111,13 @@ def configure_fixture(root, data, stack, *, resume=False):
         finally:
             record["waiting"] = False
 
-    def record_forbidden(kind):
+    def record_forbidden(kind, diagnostic=None):
         with lock:
             forbidden.append(kind)
             forbidden_path.write_text(json.dumps(forbidden), encoding="utf-8")
+            if diagnostic and len(network_diagnostics) < 32:
+                network_diagnostics.append(diagnostic)
+                diagnostic_path.write_text(json.dumps(network_diagnostics), encoding="utf-8")
 
     def deny(kind):
         def forbidden_call(*args, **kwargs):
@@ -115,20 +125,29 @@ def configure_fixture(root, data, stack, *, resume=False):
             raise AssertionError("Forbidden fixture operation: " + kind)
         return forbidden_call
 
-    def observed_guard(function):
+    def observed_guard(function, transport):
         def guarded(*args, **kwargs):
             try:
                 return function(*args, **kwargs)
             except OSError as error:
                 if "Offline tests forbid external" in str(error):
-                    record_forbidden("external_network_blocked")
+                    if transport == "send":
+                        parsed = urlsplit(args[1].url)
+                        host, endpoint_path = parsed.hostname or "", parsed.path
+                    else:
+                        target = args[0] if transport == "getaddrinfo" else args[1]
+                        host, endpoint_path = (target[0] if isinstance(target, tuple) else target), ""
+                    record_forbidden("external_network_blocked", {"transport": transport,
+                        "host": str(host)[:253], "path": str(endpoint_path)[:200],
+                        "locations": [{"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+                                      for frame in traceback.extract_stack(limit=10)[:-1]]})
                 raise
         return guarded
 
     import requests
     for module, name in ((socket.socket, "connect"), (socket.socket, "connect_ex"),
                          (socket, "getaddrinfo"), (requests.adapters.HTTPAdapter, "send")):
-        stack.enter_context(patch.object(module, name, observed_guard(getattr(module, name))))
+        stack.enter_context(patch.object(module, name, observed_guard(getattr(module, name), name)))
 
     for module, name, replacement in (
         (main, "schedule_processing", schedule), (main, "recover_processing", recover),
@@ -175,7 +194,8 @@ def configure_fixture(root, data, stack, *, resume=False):
 
     @main.app.get("/_fixture/state")
     def state():
-        return {"startup_recovery": startup, "forbidden_attempts": forbidden, "worker_pid": os.getpid()}
+        return {"startup_recovery": startup, "forbidden_attempts": forbidden, "network_diagnostics": network_diagnostics,
+                "update_preferences": update_service.get_preferences(), "worker_pid": os.getpid()}
 
     @main.app.get("/_fixture/tasks/{task_id}")
     def task_state(task_id: str):

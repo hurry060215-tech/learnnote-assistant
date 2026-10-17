@@ -19,7 +19,7 @@ import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-foc
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
-import { installSettings } from "/web/desk-settings.js?v=data-migration-20261017";
+import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
 import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
 import { installTools } from "/web/desk-tools.js?v=course-timeline-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";

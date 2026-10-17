@@ -124,8 +124,8 @@ function verifyContract(readSource, ending) {
   assert.equal(scripts.filter(match => match[1] === "/web/visual-study.js").length, 1);
   for (const name of providerFiles) assert(position(name) < position("visual-study.js"), name);
   assert(position("visual-study.js") < position("app.js"));
-  assert.equal(scripts[position("visual-study.js")][2], "20261017-visual-study");
-  assert.equal(scripts[position("app.js")][2], "20261017-visual-study");
+  assert.equal(scripts[position("visual-study.js")][2], "20261017-visual-focus");
+  assert.equal(scripts[position("app.js")][2], "20261017-visual-focus");
   assert(!readSource("index.html").includes("visual-study.js"), "Classic renderer stays outside the native reader entry");
   console.log(`Visual study ${ending}: ${snapshot.cases.length} frozen original cases, exact bodies, immutable inputs, live adapters and load order pass`);
 }

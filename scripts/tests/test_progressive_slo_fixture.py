@@ -103,6 +103,29 @@ class ProgressiveSloFixtureTests(unittest.TestCase):
         created = self.api("/api/tasks/from-current-page?defer=true", request)
         task_id = created["task_id"]
         self.assertEqual(self.state(task_id)["continuation_calls"], 0)
+        stream_url = self.base + f"/api/tasks/{task_id}/events/stream?after=0"
+        with urlopen(stream_url, timeout=10) as response:
+            self.assertIn("text/event-stream", response.headers["Content-Type"])
+            self.assertIn("no-transform", response.headers["Cache-Control"])
+            frame = {}
+            while (line := response.readline().decode().strip()):
+                name, value = line.split(": ", 1)
+                frame[name] = value
+        self.assertEqual(frame["event"], "task_created")
+        # Feed an actual pre-submission HTTP frame through the browser observer's
+        # parser. The request ID is transport metadata, not invented event data.
+        code = """const fs=require('node:fs'); const f=require('./scripts/progressive-slo-api-acceptance.cjs');
+const input=JSON.parse(fs.readFileSync(0,'utf8'));
+const source=f.streamIdentity(input.url,input.origin);
+console.log(JSON.stringify(f.nativeSseRecord({requestId:'request-regression',eventName:input.frame.event,
+eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',source]]))));"""
+        parsed = subprocess.run(["node", "-e", code], cwd=ROOT, input=json.dumps({"url": stream_url,
+            "origin": self.base, "frame": frame}), text=True, capture_output=True, timeout=10, check=True)
+        native = json.loads(parsed.stdout)
+        self.assertEqual(native["task_id"], task_id)
+        self.assertEqual(native["event"], "task_created")
+        self.assertEqual(native["id"], frame["id"])
+        self.assertEqual(self.state(task_id)["continuation_calls"], 0)
         with self.assertRaises(HTTPError) as rejected:
             self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
         self.assertEqual(rejected.exception.code, 409)
@@ -202,3 +225,30 @@ class ProgressiveSloFixtureTests(unittest.TestCase):
                     and state["queue"]["callback_finished"] else None), "reference completion")
                 self.assertEqual(after["hashes"], before["hashes"])
         self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
+
+    def test_update_preferences_keep_startup_local_and_forced_check_is_denied(self):
+        self.launch()
+        for _ in range(3):
+            status = self.api("/api/update/status")
+            self.assertTrue(status["ok"])
+            self.assertFalse(status["check_due"])
+            self.assertFalse(status["preferences"]["auto_check"])
+            self.assertFalse(status["preferences"]["auto_download"])
+        self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
+        forced = self.api("/api/update/check", method="POST")
+        self.assertFalse(forced["ok"])
+        state = self.api("/_fixture/state")
+        self.assertEqual(state["forbidden_attempts"], ["external_network_blocked"])
+        diagnostic = state["network_diagnostics"][0]
+        self.assertEqual(diagnostic["host"], "api.github.com")
+        self.assertEqual(diagnostic["path"], "/repos/hurry060215-tech/learnnote-assistant/releases/latest")
+        self.assertIn("fetch_latest_release", [location["function"] for location in diagnostic["locations"]])
+        self.assertNotIn("headers", diagnostic)
+        self.assertNotIn("url", diagnostic)
+        self.assertNotIn("?", diagnostic["path"])
+        self.stop()
+        self.launch(resume=True)
+        resumed = self.api("/_fixture/state")
+        self.assertEqual(resumed["forbidden_attempts"], state["forbidden_attempts"])
+        self.assertEqual(resumed["network_diagnostics"], state["network_diagnostics"])
+        self.assertFalse(self.api("/api/update/status")["check_due"])

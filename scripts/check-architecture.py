@@ -43,7 +43,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/task_recovery_guidance.py": 451,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
-    "web/app.js": 8757,
+    "web/app.js": 8769,
     "web/visual-study.js": 387,
     "web/visual-window-evidence.js": 164,
     "web/styles.css": 12262,
@@ -172,7 +172,7 @@ EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evide
 # Sidepanel code is loaded when its UI opens, separate from worker/content capture.
 EXTENSION_COMMUNITY_UI_SCRIPTS = ("sidepanel-community.js",)
 EXTENSION_COMMUNITY_UI_BUDGET_BYTES = 7500
-CLASSIC_TASK_SCRIPT_BUDGET = 10124  # +28 explicit renderer interface lines; see architecture record.
+CLASSIC_TASK_SCRIPT_BUDGET = 10136  # +28 interface and +12 guarded source-focus/navigation lines; see architecture record.
 CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js", "visual-study.js")
 
 

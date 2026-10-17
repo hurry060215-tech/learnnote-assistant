@@ -420,6 +420,7 @@ let taskStatusSnapshot = new Map();
 let taskStatusSnapshotReady = false;
 let lastDetailFingerprint = "__unrendered__";
 let detailRenderGeneration = 0;
+let resultViewGeneration = 0;
 let lastBrowserRouteSummaryHtml = "";
 let lastSourceRouteRailHtml = "";
 let lastSourceWorkflowHtml = "";
@@ -953,6 +954,7 @@ function showAppView(view = "workspace") {
   const settingsMode = requestedView === "settings";
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
   const normalizedView = ["workspace", "notes", "study", "settings"].includes(requestedView) ? requestedView : "workspace";
+  if (normalizedView !== document.body?.dataset?.appView) resultViewGeneration++;
   if (normalizedView !== "study") studyViewRequestGeneration++;
   if (document.body?.dataset) document.body.dataset.appView = normalizedView;
   syncLayoutForView(normalizedView);
@@ -6983,9 +6985,19 @@ function switchResultTab(tabName, focusWindowId = "") {
     selectedTab = normalizedTab;
     renderResultTabState();
     syncSelectedTaskUrl(selectedTaskId);
-    renderDetail();
+  } else if (!focusWindowId) {
+    return;
   }
-  if (focusWindowId) window.setTimeout(() => focusVisualWindow(focusWindowId), 0);
+  const taskId = selectedTaskId;
+  const viewGeneration = resultViewGeneration;
+  const rendering = renderDetail();
+  const generation = detailRenderGeneration;
+  if (!focusWindowId) return;
+  rendering.then(() => {
+    if (generation !== detailRenderGeneration || taskId !== selectedTaskId || normalizedTab !== selectedTab
+      || viewGeneration !== resultViewGeneration) return;
+    focusVisualWindow(focusWindowId);
+  });
 }
 
 function noteHeadingStats(markdown) {

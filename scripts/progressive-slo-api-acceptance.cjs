@@ -21,6 +21,78 @@ function edgeLaunchOptions(configured, filesystem = fs) {
   assert(edgeExecutable(executablePath), "This acceptance gate requires a canonical Microsoft Edge executable");
   return { executablePath, headless: true };
 }
+function networkLocation(value) {
+  const url = new URL(value);
+  return { origin: url.origin, path: url.pathname.slice(0, 256) };
+}
+function streamIdentity(value, origin) {
+  const url = new URL(value), match = /^\/api\/tasks\/([A-Za-z0-9_-]{1,128})\/events\/stream$/.exec(url.pathname);
+  if (url.origin !== origin || url.username || url.password || url.hash || !match) return null;
+  const entries = [...url.searchParams];
+  if (entries.length !== 1 || entries[0][0] !== "after" || !/^\d+$/.test(entries[0][1])) return null;
+  return { task_id: match[1], ...networkLocation(value) };
+}
+function nativeSseRecord(event, requests) {
+  const source = requests.get(event.requestId);
+  assert(source, "Native SSE has no current task-stream request binding");
+  let payload;
+  try { payload = JSON.parse(event.data); } catch { throw new Error("Malformed native SSE JSON"); }
+  assert(payload && typeof payload === "object" && !Array.isArray(payload), "Malformed native SSE payload");
+  assert(typeof event.eventName === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(event.eventName), "Malformed native SSE event name");
+  const id = Number(event.eventId);
+  assert(Number.isSafeInteger(id) && id > 0 && String(id) === event.eventId, "Malformed native SSE event ID");
+  if (Object.hasOwn(payload, "task_id")) assert(payload.task_id === source.task_id, "Conflicting native SSE task identity");
+  if (Object.hasOwn(payload, "event_id")) assert(payload.event_id === id, "Conflicting native SSE event ID");
+  if (Object.hasOwn(payload, "event")) assert(payload.event === event.eventName, "Conflicting native SSE event name");
+  return { ...source, request_id: event.requestId, event: event.eventName, id: event.eventId };
+}
+function boundedRecord(report, key, value, limit = 256) {
+  const rows = report[key] ||= [];
+  if (rows.length === limit) { rows.shift(); report[key + "_dropped"] = (report[key + "_dropped"] || 0) + 1; }
+  rows.push(value);
+}
+function observeNativeSse(cdp, report, origin) {
+  const requests = new Map(), listeners = [];
+  function on(name, callback) {
+    const guarded = event => { try { callback(event); } catch (error) { boundedRecord(report, "errors", error.message, 64); } };
+    cdp.on(name, guarded); listeners.push([name, guarded]);
+  }
+  on("Network.requestWillBeSent", event => {
+    requests.delete(event.requestId);
+    const source = streamIdentity(event.request.url, origin);
+    if (source) requests.set(event.requestId, source);
+    const location = networkLocation(event.request.url);
+    if (location.origin === origin && location.path.startsWith("/api/")) boundedRecord(report, "network", {
+      event: "request", request_id: event.requestId, method: event.request.method, resource_type: event.type, ...location });
+  });
+  on("Network.responseReceived", event => {
+    const location = networkLocation(event.response.url);
+    if (location.origin === origin && location.path.startsWith("/api/")) boundedRecord(report, "network", {
+      event: "response", request_id: event.requestId, status: event.response.status, mime_type: event.response.mimeType, ...location });
+  });
+  on("Network.eventSourceMessageReceived", event => boundedRecord(report, "native_sse", nativeSseRecord(event, requests), 8192));
+  on("Network.loadingFailed", event => {
+    const source = requests.get(event.requestId);
+    if (source) boundedRecord(report, "network", { event: "stream_failed", request_id: event.requestId, ...source,
+      canceled: Boolean(event.canceled), error: /^[A-Za-z0-9_:]+$/.test(event.errorText) ? event.errorText : "unclassified_failure" });
+    requests.delete(event.requestId);
+  });
+  on("Network.loadingFinished", event => requests.delete(event.requestId));
+  function stop() { requests.clear(); for (const [name, listener] of listeners) cdp.off(name, listener); }
+  on("close", stop);
+  return stop;
+}
+async function recordFailureDiagnostics(report, operations, timeout = 5000) {
+  report.failure_diagnostics = {};
+  for (const [name, operation] of Object.entries(operations)) {
+    let timer;
+    try {
+      report.failure_diagnostics[name] = await Promise.race([Promise.resolve().then(operation),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Diagnostic timed out")), timeout); })]);
+    } catch (error) { (report.diagnostic_errors ||= []).push({ operation: name, error: error.message.slice(0, 250) }); }
+    finally { clearTimeout(timer); }
+  }
+}
 function p95(values) { return [...values].sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]; }
 function summarize(samples) {
   return DURATIONS.map(minutes => {
@@ -107,9 +179,9 @@ async function main(output = "build/progressive-slo-ui") {
     scope: { complete_reference_captions: true, final_summary: "deterministic adapter held until browser observation",
       measure: "Explicit /start submission through actual reader outline heading and source excerpt in viewport, including harness scroll and two animation frames",
       post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including local ACK transport",
-      excluded: ["application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
+      excluded: ["automatic release checks (fixture update preferences disabled)", "application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
       warmth: "Fresh task/artifacts each sample; same initialized backend/browser context. OS/HTTP caches not forced cold; first task identified separately." } };
-  let backend, browser, context, page, base, fixture, primaryError, logBytes = 0;
+  let backend, browser, context, page, base, fixture, primaryError, stopObserving, logBytes = 0;
   const save = () => { report.summary = summarize(report.samples); fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); };
   async function stopBackend() {
     if (!backend || backend.exitCode !== null || backend.signalCode !== null) return;
@@ -145,13 +217,12 @@ async function main(output = "build/progressive-slo-ui") {
     assert.equal(fixture.offline_network, true); base = fixture.fixture_origin;
   }
   async function newPage() {
-    page = await context.newPage(); page.on("pageerror", error => report.errors.push(error.message));
-    const cdp = await context.newCDPSession(page); await cdp.send("Network.enable");
-    cdp.on("Network.eventSourceMessageReceived", event => {
-      try { const payload = JSON.parse(event.data);
-        report.native_sse.push({ task_id: payload.task_id, event: event.eventName, id: event.eventId });
-      } catch { report.errors.push("Malformed native SSE data"); }
-    });
+    stopObserving?.();
+    page = await context.newPage(); page.on("pageerror", error => boundedRecord(report, "errors", error.message, 64));
+    const cdp = await context.newCDPSession(page);
+    stopObserving = observeNativeSse(cdp, report, base);
+    page.once("close", stopObserving);
+    await cdp.send("Network.enable");
   }
   const api = async (route, options) => {
     const response = await page.request.fetch(base + route, options);
@@ -159,13 +230,23 @@ async function main(output = "build/progressive-slo-ui") {
   };
   const snapshot = id => api(`/_fixture/tasks/${id}`);
   async function capture(name) { await page.screenshot({ path: path.join(out, name), animations: "disabled" }); report.screenshots.push(name); }
-  async function prepare(minutes, serial) {
+  async function prepare(minutes, serial, record) {
+    report.current_task_id = null;
     const result = await api("/api/tasks/from-current-page?defer=true", { method: "POST", data: captionRequest(minutes, serial) });
     const id = result.task_id;
+    report.current_task_id = id; if (record) record.task_id = id; save();
     await page.goto(base + "/#task/" + id);
     await page.locator(`#document[data-reader-source="task:${id}"]`).waitFor({ state: "visible" });
     await until(() => report.native_sse.some(event => event.task_id === id && event.event === "task_created"), "native SSE connected before submission");
     assert.equal(await page.locator("#document h2").filter({ hasText: "按时间段的阅读提纲" }).count(), 0);
+    if (!report.settings_startup) {
+      const response = await until(() => report.network?.find(event => event.event === "response"
+        && event.path === "/api/update/status" && event.status === 200), "normal settings startup response");
+      const state = await api("/_fixture/state");
+      assert.equal(state.update_preferences.auto_check, false); assert.equal(state.update_preferences.auto_download, false);
+      assert.deepEqual(state.forbidden_attempts, []);
+      report.settings_startup = { response, update_preferences: state.update_preferences, forbidden_attempts: state.forbidden_attempts };
+    }
     return id;
   }
   async function submit(id, suffix = "start") {
@@ -192,13 +273,13 @@ async function main(output = "build/progressive-slo-ui") {
     const geometry = await readerGeometry(id);
     const measured = { geometry, first_outline_seconds: await page.evaluate(() => (performance.now() - window.sloStart) / 1000) };
     const state = await api(`/_fixture/tasks/${id}/visible`, { method: "POST" });
-    await until(() => report.native_sse.some(event => event.task_id === id && event.event === "draft_ready" && Number(event.id) > 0), "actual native draft_ready SSE");
+    const nativeDraft = await until(() => report.native_sse.find(event => event.task_id === id && event.event === "draft_ready" && Number(event.id) > 0), "actual native draft_ready SSE");
     assert.equal(state.status, "running"); assert.equal(state.waiting, true);
     assert.equal(Object.keys(state.hashes).length, 3);
     assert.deepEqual(state.source_coverage, { duration: minutes * 60, cue_count: minutes * 2,
       first_start: 0, last_end: minutes * 60, reference_cues_complete: true,
       section_count: minutes / 5, final_section_end: minutes * 60 });
-    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, phases: state.stages, source_coverage: state.source_coverage, state };
+    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, phases: state.stages, source_coverage: state.source_coverage, native_draft_event: nativeDraft, state };
   }
   async function release(id, checkResponse = true) {
     await api(`/_fixture/tasks/${id}/release`, { method: "POST" });
@@ -216,7 +297,7 @@ async function main(output = "build/progressive-slo-ui") {
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block" });
     await context.addInitScript(() => localStorage.setItem("learnnote.sidebar.collapsed", "true"));
     await context.route("**/*", route => {
-      if (new URL(route.request().url()).origin !== base) { report.external_requests.push(route.request().url()); return route.abort(); }
+      if (new URL(route.request().url()).origin !== base) { boundedRecord(report, "external_requests", networkLocation(route.request().url())); return route.abort(); }
       return route.continue();
     });
     await newPage();
@@ -228,7 +309,7 @@ async function main(output = "build/progressive-slo-ui") {
       const row = { minutes, repetition, index: report.samples.length + 1, first_task_in_initialized_runtime: report.samples.length === 0, status: "pending" };
       report.samples.push(row); save(); const started = performance.now(); let sampleError;
       try {
-        row.task_id = await prepare(minutes, repetition); await submit(row.task_id);
+        row.task_id = await prepare(minutes, repetition, row); await submit(row.task_id);
         const result = await visible(row.task_id, minutes); delete result.state; Object.assign(row, result);
         if (repetition === 1) await capture(`outline-${minutes}m.png`);
         if (row.index === 1) {
@@ -280,15 +361,25 @@ async function main(output = "build/progressive-slo-ui") {
     report.passed = true;
   } catch (error) {
     primaryError = error; report.failure = error.stack;
-    if (page && !page.isClosed()) {
-      try { const response = await page.request.get(base + "/_fixture/state", { timeout: 3000 }); report.failed_fixture_state = await response.json(); }
-      catch (diagnostic) { report.fixture_diagnostic_error = diagnostic.message; }
-    }
+    if (page && !page.isClosed()) await recordFailureDiagnostics(report, {
+      screenshot: async () => {
+        await page.screenshot({ path: path.join(out, "failure.png"), animations: "disabled", timeout: 5000 });
+        report.screenshots.push("failure.png"); return "failure.png";
+      },
+      page: () => page.evaluate(() => ({ path: location.pathname, hash: location.hash,
+        ready_state: document.readyState, visibility: document.visibilityState,
+        reader_source: document.getElementById("document")?.dataset.readerSource || null,
+        task_status: document.getElementById("taskStatus")?.dataset.status || null,
+        headings: Array.from(document.querySelectorAll("#document h1,#document h2")).slice(0, 8).map(node => node.innerText.slice(0, 120)) })),
+      fixture: async () => (await page.request.get(base + "/_fixture/state", { timeout: 3000 })).json(),
+      task: async () => report.current_task_id
+        ? (await page.request.get(base + "/_fixture/tasks/" + report.current_task_id, { timeout: 3000 })).json() : null,
+    });
   }
   finally {
     await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError);
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, observeNativeSse, recordFailureDiagnostics };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

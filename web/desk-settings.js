@@ -75,7 +75,7 @@ export function installSettings(ctx) {
     "<label class='check'><input type='checkbox' id='updateAutoDownload' checked>发现正式版后在后台下载完整安装包</label>" +
     "<div class='settings-inline-actions'><button type='button' id='checkUpdates'>立即检查</button><button type='button' id='downloadUpdate' hidden>后台下载</button><button type='button' id='cancelUpdate' hidden>取消下载</button><button type='button' class='primary' id='applyUpdate' hidden>重启并更新</button><a class='tool-link' id='updateReleaseLink' hidden target='_blank' rel='noreferrer'>查看版本说明 ↗</a></div>" +
     "<p id='updateDownloadStatus' class='settings-status' role='status' aria-live='polite'></p>";
-  let updateStatus = null, updateDownload = null, extensionDownload = null, updatePolling = 0, updateLoading = false, applyingUpdate = false;
+  let updateStatus = null, updateDownload = null, extensionDownload = null, updatePolling = 0, updateRead = null, applyingUpdate = false;
   async function updateAction(component, action, version) {
     const body = JSON.stringify({component, action, version});
     const intent = await api("/api/update/intent", {method:"POST", body});
@@ -155,14 +155,14 @@ export function installSettings(ctx) {
     $("applyExtensionUpdate").hidden = !(extensionDownload?.phase === "ready" && extensionDownload?.path);
   }
   async function readUpdateStatus(force = false) {
-    if (updateLoading && !force) return updateStatus;
-    updateLoading = true;
-    try {
+    if (updateRead && !force) return updateRead;
+    const pending = (async () => {
       const bridge = updateBridge();
       let result;
       if (bridge?.update_status) result = await bridge.update_status(Boolean(force));
       else if (force && bridge?.check_update) result = normalizeBridgeUpdate(await bridge.check_update());
       else result = await api("/api/update/status" + (force ? "?force=true" : ""));
+      if (updateRead !== pending) return result;
       updateDownload = result.download || updateDownload || { phase: "idle" };
       extensionDownload = result.extension_download || extensionDownload || { phase: "idle" };
       if (![updateDownload.phase, extensionDownload.phase].some(phase => ["downloading", "cancelling"].includes(phase))) clearInterval(updatePolling);
@@ -173,7 +173,10 @@ export function installSettings(ctx) {
       }
       renderUpdateCenter(result);
       return result;
-    } finally { updateLoading = false; }
+    })();
+    updateRead = pending;
+    try { return await pending; }
+    finally { if (updateRead === pending) updateRead = null; }
   }
   async function startUpdateDownload() {
     const latest = updateStatus?.latest, bridge = updateBridge();
@@ -282,11 +285,11 @@ export function installSettings(ctx) {
     refresh: refreshUpdates,
     startupCheck: async () => {
       const result = await refreshUpdates(false);
-      const preferences = result?.preferences || {};
-      if (preferences.auto_check === false) return result;
+      const preferences = result?.preferences;
+      if (result !== updateStatus || result?.ok !== true || preferences?.auto_check !== true) return result;
       if (preferences.last_checked_at && Date.now() / 1000 - preferences.last_checked_at < 24 * 60 * 60) return result;
       const checked = await refreshUpdates(true);
-      if (checked?.client_update_available && checked.preferences?.auto_download !== false) await startUpdateDownload();
+      if (checked === updateStatus && checked?.ok === true && checked.client_update_available && checked.preferences?.auto_download === true) await startUpdateDownload();
       return checked;
     },
   };

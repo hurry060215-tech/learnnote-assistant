@@ -8,10 +8,12 @@ async function main() {
   const output = path.resolve(process.argv[3] || "build/learning-ui");
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  const errors = [];
-  page.on("pageerror", error => errors.push(error.message));
+  let primaryError;
   try {
+    await require("./classic-visual-study-fixture.cjs").runClassicVisualStudy(browser, base, path.join(output, "visual-study"));
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
     await page.goto(base, { waitUntil: "networkidle" });
     if (await page.locator("#skipOnboardingButton").isVisible()) await page.locator("#skipOnboardingButton").click();
     if (await page.locator("#confirmReleaseNotesButton").isVisible()) await page.locator("#confirmReleaseNotesButton").click();
@@ -273,8 +275,14 @@ async function main() {
     assert.equal(await crossTimezonePage.locator("#studyPlanTimezone").inputValue(), selectedTimezone);
     process.stdout.write(JSON.stringify({ ok: true, preflightCases, contrast, studyGeometry, geometry, initialSuggestedTimezone, selectedTimezone, crossTimezoneRequest, changedBrowserTimezone, crossContextActuallyChanged: changedBrowserTimezone !== initialSuggestedTimezone, restoredCards: restoredCards.length, restoredReviews: restoredReviews.length, errors }));
     assert.deepEqual(errors, []);
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await browser.close();
+    try { await browser.close(); } catch (error) {
+      if (!primaryError) throw error;
+      console.error(`Could not close learning acceptance browser: ${error.message}`);
+    }
   }
 }
 

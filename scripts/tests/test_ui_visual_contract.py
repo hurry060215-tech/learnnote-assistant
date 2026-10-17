@@ -165,13 +165,13 @@ class UiVisualContractTests(unittest.TestCase):
         for path in ("build/course-upgrade-synthetic-ui", "build/course-upgrade-ui"):
             self.assertIn(path, upload["with"]["path"])
 
-    def test_migration_entry_settings_and_css_share_fresh_cache_key(self) -> None:
+    def test_migration_and_coordinated_update_assets_keep_fresh_cache_keys(self) -> None:
         html = (ROOT / "web/index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
-        key = "data-migration-20261017"
+        key = "update-coordination-20261017"
         self.assertIn(f'src="/web/desk.js?v={key}"', html)
-        self.assertIn(f'href="/web/desk.css?v={key}"', html)
+        self.assertIn('href="/web/desk.css?v=data-migration-20261017"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
         for module in ("data-migration.js", "data-migration-status.js"):
@@ -180,7 +180,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=data-migration-20261017", html)
+        self.assertIn("desk.js?v=update-coordination-20261017", html)
         self.assertIn("desk-tools.js?v=course-timeline-20261016", entry)
         self.assertIn("model-data-consent.js?v=initial-focus-20261016", entry)
         self.assertIn("desk-product.js?v=first-run-20260923", entry)

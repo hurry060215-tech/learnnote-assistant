@@ -131,3 +131,93 @@ canonicalize CRLF to Git's LF form, without changing any other source bytes.
 The complete contract executes both LF and CRLF provider/renderer sources and
 compares all 19 cases against the same immutable baseline. Product sources and
 expected HTML/record fixtures are unchanged by this test-harness correction.
+
+## Reachable classic browser acceptance fixture
+
+`scripts/classic-visual-study-fixture.cjs` reuses the existing hosted Edge process
+from `learning-workflow-acceptance.cjs`, with a fresh isolated context at 1440 x
+1000 and 390 x 844. It loads the shipped classic page and its actual script/style
+assets. Only task metadata, note text, timed subtitles, SVG grids and a download
+response are synthetic. Routing permits declared same-origin fixture GETs and
+static assets, rejecting unexpected API requests, writes and external origins.
+No provider, playable media, renderer-global call or injected DOM is involved.
+
+The normal task URL and visible controls exercise overview, handout, correlation
+and deck rendering. The test checks four window identities/evidence states,
+loaded image dimensions and exact grid paths, the W002 subtitle focus action,
+note/source navigation, actual downloaded index contents, repeated navigation,
+and clearing windows when visiting an empty task. The index verifies the UI link
+and browser download against the synthetic response; it is not a backend export
+correctness claim. Existing backend export tests remain the separate contract.
+
+`visualStudyReviewPathHtml` and `visualStudyNavigatorHtml` have no production call
+sites and remain frozen-contract-only coverage. This fixture adds no call sites
+for them. Video playback, provider behavior and long-task recovery remain outside
+this acceptance slice; it does not close all of #143.
+
+The existing hosted artifact includes `build/learning-ui/visual-study/report.json`,
+two downloaded JSON indices, and six full-page screenshots:
+
+- `desktop-overview-handout.png`, `mobile-overview-handout.png`
+- `desktop-source-window.png`, `mobile-source-window.png`
+- `desktop-correlation-deck.png`, `mobile-correlation-deck.png`
+
+Offline tests verify fixture identity, fail-closed routing, actual UI selector
+usage, existing workflow integration and preservation of primary errors when
+page/context setup, failure capture or browser cleanup fails. Before context
+cleanup, a failed page gets one viewport screenshot with a five-second bound;
+a failed capture cannot replace the primary assertion. Fresh contexts assert
+that explicit task routing suppresses first-run onboarding. Hosted execution and inspection of
+the six actual Edge images are still required before claiming visual acceptance.
+
+## Source-focus ordering correction
+
+The strict browser fixture exposed an existing lifecycle race, independently
+reproduced with deferred task fetches: `switchResultTab` started `renderDetail`
+and scheduled focus immediately. The focus timer could select a handout node
+before the asynchronous transcript render replaced it, so the later highlight
+was attached to a detached node instead of the intended transcript window.
+
+A separate correctness commit keeps synchronous tab/URL changes and the void
+switch API, but waits for its render promise before focusing. Captured task,
+tab, navigation generation and the existing `detailRenderGeneration` must still match.
+A focused same-tab action starts a fresh guarded render, including one task GET,
+so repeated source clicks cannot focus a still-pending prior view. Ordinary
+same-tab clicks remain no-ops. There is no retry loop or timing workaround; the
+original highlight duration and source action bindings are unchanged.
+
+This adds exactly ten readable correctness lines: `web/app.js` is now 8,767
+lines and the classic task-script group is 10,134. These exact caps have a scoped
+approval; all other caps and the 387-line extracted renderer remain unchanged.
+The earlier table records the extraction stage, not this later correctness fix.
+All eight extracted bodies and the frozen LF/CRLF outputs remain unchanged.
+The app and renderer now share cache key `20261017-visual-focus`; matching-key
+and load-order assertions are updated, with no change to provider keys.
+
+`web/tests/visual_window_focus_races.test.mjs` runs actual binding, task fetch,
+render, switch and focus bodies with deferred transport and a small test DOM.
+It covers delayed task/transcript replies, both repeated-click response orders,
+late transcript replacement, newer same-task rendering and task/tab/view/render
+cancellation while waiting. It fails against the pre-fix production source on
+old-handout focus. The hosted fixture retains the strict resulting W002
+transcript highlight assertion and still requires actual Edge execution.
+
+A follow-on navigation check found that settings → notes could return to the
+same view value without invalidating an older source action. Two further scoped
+lines add `resultViewGeneration` and advance it only when `showAppView` changes
+the normalized view. The focus guard captures this epoch instead of comparing
+view strings. Only pending focus intent is cancelled: the existing render can
+finish normally, with no extra GET, early startup render or stranded detail.
+Same-view and normalized history → notes calls preserve the epoch.
+
+A reviewed refresh-on-return alternative was removed before publication because
+it could render initial detail before the task list supplied the complete note
+version family, and duplicate GETs from existing task-entry callers. Regression
+tests run actual startup/load/fingerprint/version functions with deferred list
+arrival, asserting no early detail GET and the correct two-version header. They
+also run actual `showAppView` during task/transcript waits and actual task entry,
+checking no stale focus, late replacement or redundant request.
+
+Final exact caps are 8,769 for `app.js` and 10,136 for the aggregate; all other
+caps, extracted bodies and frozen outputs are unchanged. Material and empty
+selection paths retain their original loading behavior.
