@@ -871,5 +871,89 @@
   },
   "model_data_summary": {
     "message": "总结接收方：{host} · {model}。会发送来源标题、页面链接、必要字幕和整理要求，图文模式另含选定画面。页面上下文（最多 4,000 字符）和页面全文兜底在工作台分开审阅、仅本次选择。来源获取后可能以发现的标题替换当前标题。已按现有规则遮盖常见凭据，仍请检查私人内容。本机网关可能转发，服务可能收费。"
+  },
+  "community_title": {
+    "message": "独立社区观点 · 可选"
+  },
+  "community_boundary": {
+    "message": "默认关闭。仅在你点击后读取当前可见评论或弹幕，最多 20 条、共 20,000 字符；不滚动、不读取作者、不调用模型。"
+  },
+  "community_destination": {
+    "message": "仅发送到本机 {host} 进行过滤和预览。遮盖并不完整，请检查私人内容后逐条勾选。"
+  },
+  "community_support": {
+    "message": "仅支持 B 站部分可见页面结构；未识别、隐藏或需加载的内容不会采集。观点不作为课程事实。"
+  },
+  "community_enable": {
+    "message": "启用本地观点层"
+  },
+  "community_preview": {
+    "message": "预览当前可见观点"
+  },
+  "community_initial": {
+    "message": "预览不会保存。请先在原页面显示要查看的内容，再点击预览。"
+  },
+  "community_cancel": {
+    "message": "取消并清除预览"
+  },
+  "community_save": {
+    "message": "保存勾选的观点"
+  },
+  "community_manage": {
+    "message": "已保存内容可在工作台“独立社区观点”中删除或单独导出。关闭观点层不会删除已保存内容。"
+  },
+  "community_loading": {
+    "message": "正在读取本地状态或预览…"
+  },
+  "community_saving": {
+    "message": "正在保存勾选内容…"
+  },
+  "community_enabled": {
+    "message": "观点层已启用。仍需点击预览，不会自动采集。"
+  },
+  "community_disabled": {
+    "message": "观点层未启用。点击“启用本地观点层”后，再预览。"
+  },
+  "community_permission_required": {
+    "message": "当前站点未授权或权限已撤销，本次预览不可用。请使用已授权的页面。"
+  },
+  "community_empty": {
+    "message": "当前视口没有可保存的受支持观点。请手动显示评论正文或弹幕后重新预览；不会自动加载内容。"
+  },
+  "community_source_changed": {
+    "message": "来源、任务或权限已变化，预览已失效。请重新预览。"
+  },
+  "community_failed": {
+    "message": "无法读取观点预览。请检查本机连接或受支持页面；主任务不受影响。"
+  },
+  "community_save_uncertain": {
+    "message": "保存请求可能已到达本机。请到工作台核对已保存观点；不会自动重试。"
+  },
+  "community_cancelled": {
+    "message": "预览已清除，未提交新的保存请求。"
+  },
+  "community_review": {
+    "message": "已过滤 {count} 条候选。请检查内容，再勾选要保存的条目；未勾选不会保存。"
+  },
+  "community_limited": {
+    "message": "已达到本次快照的读取上限。"
+  },
+  "community_saved": {
+    "message": "已在本机保存 {count} 条观点，其余未保存；主任务未更改。"
+  },
+  "community_comment": {
+    "message": "观众评论 · 未核实"
+  },
+  "community_danmaku": {
+    "message": "观众弹幕 · 未核实"
+  },
+  "community_time_unknown": {
+    "message": "来源时间未知"
+  },
+  "community_seconds": {
+    "message": "来源 {seconds} 秒"
+  },
+  "community_invalid_destination": {
+    "message": "需要有效的本地服务地址；尚未发送请求。"
   }
 }

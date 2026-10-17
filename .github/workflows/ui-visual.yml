@@ -203,6 +203,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Existing material re-decode gate failed" }
             node scripts/extension-locale-visual-acceptance.cjs build/extension-locales
             if ($LASTEXITCODE -ne 0) { throw "Extension locale/layout matrix failed" }
+            node scripts/community-capture-visual-acceptance.cjs build/community-capture-ui
+            if ($LASTEXITCODE -ne 0) { throw "Visible community preview and scope gate failed" }
             node scripts/study-product-visual-acceptance.cjs http://127.0.0.1:8765 build/study-product-ui
             if ($LASTEXITCODE -ne 0) { throw "Default reader/studio accessibility matrix failed" }
             node scripts/local-player-visual-acceptance.cjs build/local-player-ui
@@ -290,6 +292,7 @@ jobs:
             build/pdf-ocr-ui
             build/task-stream-reconnect-ui
             build/extension-locales
+            build/community-capture-ui
             build/study-product-ui
             build/local-player-ui
             build/evidence-source-ui

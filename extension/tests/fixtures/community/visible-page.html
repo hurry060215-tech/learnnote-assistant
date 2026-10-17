@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Synthetic Bilibili-shaped visible DOM fixture</title>
+<style>body{font:16px/1.5 sans-serif;margin:20px}section{margin:12px 0}.reply-content,.sub-reply-content,.bpx-player-dm-list-dm,.bili-dm{display:inline-block}bili-comment-renderer{display:block;width:480px} .offscreen{position:absolute;top:2500px}.covered{position:absolute;top:460px;left:20px}.cover{position:absolute;top:450px;left:0;width:600px;height:70px;background:white;z-index:3}.clipped{height:10px;overflow:hidden}.clipped .reply-content{height:90px}.partial{position:absolute;top:830px;left:650px;width:240px}.partial .reply-content{width:240px}</style>
+<p>Synthetic fixture, not a live platform page. Unknown generic text must not be captured.</p>
+<section class="reply-item"><a class="user-name">Author identity decoy</a><div class="reply-content">Why does this example use a smaller batch?</div><div class="reply-info">Like 999 Reply</div></section>
+<section class="reply-wrap"><div class="reply-content">This explanation helped me compare the examples.<button>Player control decoy</button><span hidden>Hidden private text</span></div></section>
+<section class="reply-item" hidden><div class="reply-content">Hidden parent secret</div></section>
+<section class="reply-item offscreen"><div class="reply-content">Offscreen preloaded content</div></section>
+<section class="reply-item" aria-hidden="true"><div class="reply-content">ARIA-hidden secret</div></section>
+<section class="reply-item clipped"><div class="reply-content">Clipped offscreen lines must be skipped entirely.</div></section>
+<section class="bpx-player-dm-list-item"><span class="bpx-player-dm-list-time">01:23</span> <span class="bpx-player-dm-list-dm">Could we revisit this step?</span></section>
+<div class="bpx-player-dm-wrap"><span class="bili-dm">Rendered overlay without an asserted timestamp</span></div>
+<bili-comment-renderer id="shadowComment"></bili-comment-renderer>
+<section class="reply-item covered"><div class="reply-content">Covered text must not be collected</div></section><div class="cover">Opaque covering surface</div>
+<section class="reply-item partial"><div class="reply-content">Only this first line is near the viewport. Unseen long comment continuation must never leave this page. More unseen discussion continues below the viewport boundary.</div></section>
+<script>
+const renderer=document.querySelector('#shadowComment');
+const shadow=renderer.attachShadow({mode:'open'});
+shadow.innerHTML='<div class="user-name">Shadow author decoy</div><bili-rich-text></bili-rich-text>';
+shadow.querySelector('bili-rich-text').attachShadow({mode:'open'}).innerHTML='<style>#contents{display:inline-block}.partial{position:absolute;top:830px;left:650px;width:240px}.partial .reply-content{width:240px}</style><span id="contents">Open-shadow comment body only.</span>';
+</script></html>

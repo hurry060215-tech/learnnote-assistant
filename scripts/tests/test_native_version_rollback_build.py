@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -41,6 +42,28 @@ class RollbackBuildPatchTests(unittest.TestCase):
 
     def test_new_spec_is_the_immutable_unmodified_candidate_spec(self):
         self.assertEqual(BUILD.sha256(NEW_SPEC), BUILD.NEW_SPEC_SHA256)
+
+    def test_frozen_specs_keep_exact_bytes_with_windows_git_line_endings(self):
+        # Exercise Git's real checkout filter without changing global config.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+            (root / ".gitattributes").write_bytes((ROOT / ".gitattributes").read_bytes())
+            paths = []
+            for label, expected in (("old", BUILD.OLD_SPEC_SHA256), ("new", BUILD.NEW_SPEC_SHA256)):
+                relative = f"scripts/fixtures/native-version-rollback-{label}.macos.spec"
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / relative).read_bytes())
+                paths.append((relative, expected))
+            subprocess.run(["git", "-c", "core.autocrlf=true", "add", "."], cwd=root, check=True, capture_output=True)
+            for relative, _ in paths:
+                (root / relative).unlink()
+            subprocess.run(["git", "-c", "core.autocrlf=true", "checkout-index", "--all", "--force"], cwd=root, check=True)
+            for relative, expected in paths:
+                checked_out = (root / relative).read_bytes()
+                self.assertNotIn(b"\r\n", checked_out)
+                self.assertEqual(BUILD.sha256(checked_out), expected)
 
     def make_source(self, root, label):
         source = root / label
@@ -137,8 +160,15 @@ class RollbackBuildProvenanceTests(unittest.TestCase):
             (root / "z").write_bytes(b"changed")
             self.assertNotEqual(BUILD.tree_digest(root), initial)
             changed = BUILD.tree_digest(root)
-            (root / "z").chmod(stat.S_IMODE((root / "z").stat().st_mode) ^ stat.S_IXUSR)
-            self.assertNotEqual(BUILD.tree_digest(root), changed)
+            original_mode = stat.S_IMODE((root / "z").stat().st_mode)
+            # Windows chmod supports the read-only flag, not POSIX execute bits.
+            mode_bit = stat.S_IWRITE if os.name == "nt" else stat.S_IXUSR
+            try:
+                (root / "z").chmod(original_mode ^ mode_bit)
+                self.assertNotEqual(stat.S_IMODE((root / "z").stat().st_mode), original_mode)
+                self.assertNotEqual(BUILD.tree_digest(root), changed)
+            finally:
+                (root / "z").chmod(original_mode)
 
     def test_tree_digest_does_not_follow_linked_directories(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -239,11 +269,20 @@ class RollbackBuildProvenanceTests(unittest.TestCase):
                 record["status"] = "built"
             argv = ["build", "--old-source", str(root / "old"), "--new-source", str(root / "new"),
                     "--output", str(output), "--environments", str(root / "environments")]
-            with patch("sys.argv", argv), patch.object(BUILD.sys, "platform", "darwin"), \
+            host_platform = sys.platform
+            real_platform = BUILD.platform.platform
+            def describe_host():
+                # A shared sys.platform mock can poison platform's uname cache
+                # on Windows and break later native SDK imports.
+                self.assertEqual(sys.platform, host_platform)
+                return real_platform()
+            with patch("sys.argv", argv), patch.object(BUILD, "sys", SimpleNamespace(platform="darwin", executable=sys.executable)), \
+                 patch.object(BUILD.platform, "platform", side_effect=describe_host) as describe, \
                  patch.object(BUILD, "prepare_source", side_effect=prepare), patch.object(BUILD, "build_source", side_effect=build):
                 self.assertEqual(BUILD.main(), 1)
                 with self.assertRaisesRegex(ValueError, "overwrite existing"):
                     BUILD.main()
+                describe.assert_called_once()
             manifest = json.loads((output / "build-manifest.json").read_text())
             self.assertEqual(manifest["status"], "failed")
             self.assertEqual(manifest["builds"]["old"]["status"], "failed")

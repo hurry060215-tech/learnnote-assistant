@@ -1,5 +1,5 @@
 // Load pure helpers before registering browser event handlers.
-importScripts("capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js");
+importScripts("capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "community-source.js", "background-community.js");
 // var preserves historical global helper names for integrations and tests.
 var {
   VIDEO_RE,

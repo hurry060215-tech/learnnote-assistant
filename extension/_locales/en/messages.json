@@ -871,5 +871,89 @@
   },
   "model_data_summary": {
     "message": "Summary recipient: {host} · {model}. Sends the source title, page URL, necessary subtitles and instructions; visual mode also includes selected frames. Review the optional page context (up to 4,000 characters) and full-page fallback separately in the workbench for this task. Source retrieval may replace the captured title with the discovered title. Existing rules mask common credentials; still review private content. Local gateways may forward requests and the service may charge fees."
+  },
+  "community_title": {
+    "message": "Community perspectives · optional"
+  },
+  "community_boundary": {
+    "message": "Off by default. Your click reads only currently visible comments or danmaku: up to 20 items and 20,000 characters. No scrolling, author profiles, or model calls."
+  },
+  "community_destination": {
+    "message": "Sent only to your local service at {host} for filtering and preview. Redaction is incomplete; review private content before selecting each item."
+  },
+  "community_support": {
+    "message": "Supports some visible Bilibili page structures. Unrecognized, hidden, or unloaded content is skipped. Audience views are not course facts."
+  },
+  "community_enable": {
+    "message": "Enable local perspectives"
+  },
+  "community_preview": {
+    "message": "Preview visible perspectives"
+  },
+  "community_initial": {
+    "message": "Preview does not save. Display the content on the original page, then click Preview."
+  },
+  "community_cancel": {
+    "message": "Cancel and clear preview"
+  },
+  "community_save": {
+    "message": "Save selected perspectives"
+  },
+  "community_manage": {
+    "message": "Delete or separately export saved items in the workspace’s Community perspectives tool. Disabling the lane does not delete saved items."
+  },
+  "community_loading": {
+    "message": "Reading local status or preview…"
+  },
+  "community_saving": {
+    "message": "Saving selected content…"
+  },
+  "community_enabled": {
+    "message": "Perspectives enabled. Click Preview to collect; nothing is collected automatically."
+  },
+  "community_disabled": {
+    "message": "Perspectives are disabled. Enable local perspectives before previewing."
+  },
+  "community_permission_required": {
+    "message": "Existing site permission is unavailable or was revoked. This preview cannot be used. Use an already-authorized page."
+  },
+  "community_empty": {
+    "message": "No supported, saveable viewpoints in this viewport. Manually display comment text or danmaku, then preview again. Content will not be loaded automatically."
+  },
+  "community_source_changed": {
+    "message": "The source, task, or permission changed. This preview is invalid; preview again."
+  },
+  "community_failed": {
+    "message": "Perspective preview is unavailable. Check the local connection or supported page; your main task is unaffected."
+  },
+  "community_save_uncertain": {
+    "message": "The save request may have reached your local service. Check saved perspectives in the workspace; it will not retry automatically."
+  },
+  "community_cancelled": {
+    "message": "Preview cleared. No new save request was submitted."
+  },
+  "community_review": {
+    "message": "{count} filtered candidates. Review and select each item to save. Unchecked items will not be saved."
+  },
+  "community_limited": {
+    "message": "This snapshot reached its read limit."
+  },
+  "community_saved": {
+    "message": "Saved {count} perspectives locally; other items were not saved. Your main task is unchanged."
+  },
+  "community_comment": {
+    "message": "Audience comment · unverified"
+  },
+  "community_danmaku": {
+    "message": "Audience danmaku · unverified"
+  },
+  "community_time_unknown": {
+    "message": "Source time unknown"
+  },
+  "community_seconds": {
+    "message": "Source {seconds} seconds"
+  },
+  "community_invalid_destination": {
+    "message": "A valid local-service destination is required; no request was sent."
   }
 }

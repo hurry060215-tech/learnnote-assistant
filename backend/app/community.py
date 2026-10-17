@@ -8,10 +8,12 @@ import unicodedata
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 from uuid import uuid4
 
 from .config import DATA_DIR, ensure_dirs
+from .document_exports import sanitize_export_text
+from .summary_outcome import safe_summary_text
 
 
 COMMUNITY_CONTEXT_SCHEMA_VERSION = 1
@@ -20,6 +22,14 @@ COMMUNITY_CONTEXT_MAX_REQUEST_CHARS = 500_000
 COMMUNITY_CONTEXT_MAX_ITEMS_PER_TASK = 10_000
 COMMUNITY_CONTEXT_MAX_ITEMS_TOTAL = 100_000
 _lock = threading.RLock()
+_preview_generation = 0
+
+
+def community_preview_generation() -> int:
+    # A process-local revocation generation keeps this storage module free of
+    # capture/task dependencies. Disable or clear invalidates pending reviews.
+    with _lock:
+        return _preview_generation
 
 
 def _db_path():
@@ -60,7 +70,31 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def canonical_bilibili_source(value: str) -> str:
+    """Exact supported public video/part identity; never resolve or fetch a URL."""
+    if not isinstance(value, str) or not value or len(value) > 2000 or re.search(r"[\s\\\x00-\x1f\x7f]", value):
+        raise ValueError("community_source_unsupported")
+    try:
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or parsed.netloc.lower() not in {"www.bilibili.com", "bilibili.com", "www.bilibili.com:443", "bilibili.com:443"}
+                or not re.fullmatch(r"/video/(?:BV[0-9A-Za-z]{10}|av[0-9]{1,20})/?", parsed.path)):
+            raise ValueError("community_source_unsupported")
+        parts = [item for key, item in parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=100) if key == "p"]
+        if len(parts) > 1 or (parts and not re.fullmatch(r"[1-9][0-9]{0,5}", parts[0])):
+            raise ValueError("community_source_unsupported")
+        part = int(parts[0]) if parts else 1
+        if part < 1:
+            raise ValueError("community_source_unsupported")
+        return f"https://www.bilibili.com{parsed.path.rstrip('/')}?p={part}"
+    except (TypeError, ValueError) as exc:
+        raise ValueError("community_source_unsupported") from exc
+
+
 def _safe_source_uri(value: str) -> str:
+    try:
+        return canonical_bilibili_source(value)
+    except ValueError:
+        pass
     try:
         parsed = urlsplit(str(value or "").strip())
     except ValueError:
@@ -83,16 +117,22 @@ def _safe_source_uri(value: str) -> str:
 
 
 def community_settings() -> dict[str, object]:
+    # Reading settings, including preview validation, must not create a DB,
+    # run schema writes, or persist any part of a transient capture.
+    enabled = False
+    count = 0
     with _lock:
-        connection = _connect()
-        try:
-            row = connection.execute("SELECT value FROM community_meta WHERE key = 'enabled'").fetchone()
-            count = int(connection.execute("SELECT COUNT(*) FROM community_context_items").fetchone()[0])
-        finally:
-            connection.close()
+        if _db_path().is_file():
+            connection = sqlite3.connect(_db_path().resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+            try:
+                row = connection.execute("SELECT value FROM community_meta WHERE key = 'enabled'").fetchone()
+                enabled = bool(int(row[0])) if row else False
+                count = int(connection.execute("SELECT COUNT(*) FROM community_context_items").fetchone()[0])
+            finally:
+                connection.close()
     return {
         "schema_version": COMMUNITY_CONTEXT_SCHEMA_VERSION,
-        "enabled": bool(int(row[0])) if row else False,
+        "enabled": enabled,
         "default_enabled": False,
         "stored_item_count": count,
         "storage": "local-only",
@@ -103,7 +143,10 @@ def community_settings() -> dict[str, object]:
 
 
 def set_community_enabled(enabled: bool) -> dict[str, object]:
+    global _preview_generation
     with _lock:
+        if not enabled:
+            _preview_generation += 1
         connection = _connect()
         try:
             connection.execute(
@@ -150,7 +193,10 @@ def _redact_email_tokens(text: str) -> str:
 
 def _filter_community_text(value: str) -> str:
     """Conservative local filtering, never used to rewrite transcript evidence."""
-    text = " ".join(str(value or "")[:8000].split()).strip()[:2000]
+    # Redact credential-shaped content before whitespace folding/truncation.
+    # These are the established export/diagnostic sanitizers, not a DLP claim.
+    text = safe_summary_text(sanitize_export_text(str(value or "")[:8000]))
+    text = " ".join(text.split()).strip()[:2000]
     if not text:
         return ""
     normalized = unicodedata.normalize("NFKC", text).casefold()
@@ -172,6 +218,46 @@ def _perspective_groups(items: list[dict]) -> dict[str, list[str]]:
         category = "questions" if re.search(r"[?？]|为什么|如何|怎么|what |why |how ", text, re.I) else "disagreements" if re.search(r"不同意|有争议|错误|不正确|disagree|incorrect|not correct", text, re.I) else "perspectives"
         groups[category].append(str(item["item_id"]))
     return groups
+
+
+def normalize_community_item(raw: dict) -> dict | None:
+    """One shared local policy for manual imports and transient previews."""
+    if not isinstance(raw, dict):
+        return None
+    kind = str(raw.get("kind") or "comment")[:32].strip().lower()
+    if kind not in {"comment", "danmaku"}:
+        return None
+    text = _filter_community_text(raw.get("text"))
+    if not text:
+        return None
+    try:
+        timestamp = float(raw["timestamp_seconds"]) if raw.get("timestamp_seconds") is not None else None
+        timestamp = min(604800.0, max(0.0, timestamp)) if timestamp is not None and math.isfinite(timestamp) else None
+    except (TypeError, ValueError):
+        timestamp = None
+    return {
+        "kind": kind, "text": text, "timestamp_seconds": timestamp,
+        "source_uri": _safe_source_uri(str(raw.get("source_uri") or "")[:2000]),
+        "fingerprint": hashlib.sha256(f"{kind}\0{unicodedata.normalize('NFKC', text).casefold()}".encode("utf-8")).hexdigest(),
+    }
+
+
+def existing_community_fingerprints(task_id: str, fingerprints: list[str]) -> set[str]:
+    """Read only bounded candidate keys; do not create/migrate persistent data."""
+    if not fingerprints:
+        return set()
+    with _lock:
+        if not _db_path().is_file():
+            return set()
+        connection = sqlite3.connect(_db_path().resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+        try:
+            placeholders = ",".join("?" for _ in fingerprints)
+            return {row[0] for row in connection.execute(
+                f"SELECT fingerprint FROM community_context_items WHERE task_id=? AND fingerprint IN ({placeholders})",
+                (task_id, *fingerprints),
+            )}
+        finally:
+            connection.close()
 
 
 def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, object]:
@@ -198,27 +284,16 @@ def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, obje
             task_count = int(connection.execute("SELECT COUNT(*) FROM community_context_items WHERE task_id = ?", (str(task_id)[:128],)).fetchone()[0])
             total_count = int(connection.execute("SELECT COUNT(*) FROM community_context_items").fetchone()[0])
             for raw in raw_items:
-                if not isinstance(raw, dict):
-                    continue
-                kind = str(raw.get("kind") or "comment")[:32].strip().lower()
-                if kind not in {"comment", "danmaku"}:
-                    continue
-                text = _filter_community_text(raw.get("text"))
-                if not text:
+                item = normalize_community_item(raw)
+                if item is None:
                     filtered += 1
                     continue
-                timestamp = raw.get("timestamp_seconds")
-                try:
-                    timestamp_value = float(timestamp) if timestamp is not None else None
-                    timestamp_seconds = min(604800.0, max(0.0, timestamp_value)) if timestamp_value is not None and math.isfinite(timestamp_value) else None
-                except (TypeError, ValueError):
-                    timestamp_seconds = None
-                # Author identity is unnecessary for a learning perspective.
+                kind = item["kind"]
+                text = item["text"]
+                timestamp_seconds = item["timestamp_seconds"]
                 author_label = ""
-                source_uri = _safe_source_uri(str(raw.get("source_uri") or "")[:2000])
-                fingerprint = hashlib.sha256(
-                    f"{kind}\0{unicodedata.normalize('NFKC', text).casefold()}".encode("utf-8")
-                ).hexdigest()
+                source_uri = item["source_uri"]
+                fingerprint = item["fingerprint"]
                 if connection.execute(
                     "SELECT 1 FROM community_context_items WHERE task_id=? AND (fingerprint=? OR (kind=? AND text=?)) LIMIT 1",
                     (str(task_id)[:128], fingerprint, kind, text),
@@ -317,7 +392,9 @@ def list_community_context(task_id: str, limit: int = 500) -> dict[str, object]:
 
 
 def clear_community_context(task_id: str) -> int:
+    global _preview_generation
     with _lock:
+        _preview_generation += 1
         connection = _connect()
         try:
             cursor = connection.execute(
@@ -362,7 +439,9 @@ def delete_community_item(task_id: str, item_id: str) -> bool:
 
 
 def clear_all_community_context() -> int:
+    global _preview_generation
     with _lock:
+        _preview_generation += 1
         connection = _connect()
         try:
             count = int(connection.execute("SELECT COUNT(*) FROM community_context_items").fetchone()[0])

@@ -3,6 +3,8 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import sys
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, Mock
 
@@ -77,9 +79,17 @@ class NativeVersionRollbackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             manifest = Path(temp)/'manifest.json';manifest.write_text('{}')
             args = ['gate','--old-app','old','--new-app','new','--build-manifest',str(manifest),'--output',temp]
-            with patch.object(M.sys,'argv',args), patch.object(M.sys,'platform','darwin'), patch.object(M,'verify_builds',side_effect=primary), patch.object(M,'write_json',side_effect=OSError('report unavailable')):
+            host_platform = sys.platform
+            real_platform = M.platform.platform
+            def describe_host():
+                self.assertEqual(sys.platform, host_platform)
+                return real_platform()
+            with patch('sys.argv', args), patch.object(M, 'sys', SimpleNamespace(platform='darwin', stderr=sys.stderr)), \
+                    patch.object(M.platform, 'platform', side_effect=describe_host) as describe, \
+                    patch.object(M,'verify_builds',side_effect=primary), patch.object(M,'write_json',side_effect=OSError('report unavailable')):
                 with self.assertRaises(RuntimeError) as caught: M.main()
                 self.assertIs(caught.exception, primary)
+                describe.assert_called_once()
 
     def test_cleanup_terminates_app_even_when_session_close_fails(self):
         primary = RuntimeError('phase failed')

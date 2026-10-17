@@ -243,7 +243,34 @@ Keyword-based groups such as audience questions and possible disagreements
 are organizational hints, not factual conclusions. The lane supports removing
 one item, clearing a task, and a separate JSON export. Disabling it does not
 silently erase previously saved samples. No Bilibili API crawl or authenticated
-comment collection is enabled by this implementation.
+comment API collection is enabled by this implementation.
+
+For an already-authorized Bilibili video tab, the extension offers an explicit
+**Preview visible perspectives** action. It reads supported, fully visible
+comment bodies or danmaku in the current viewport, including supported open
+shadow roots. It does not scroll, load more, read author profiles, request site
+permissions, or fall back to whole-page text. The limits are 20 items, 2,000
+characters per item, 20,000 characters total, and 1,500 visited nodes. Unknown,
+partially clipped, hidden or unsupported content is skipped. Synthetic fixtures
+do not establish compatibility with every current live page layout.
+
+The action sends that bounded text only to the displayed loopback service for
+existing local sanitization. No model is called. Raw input is not put in task
+files, diagnostic logs, extension storage or the preview cache. Sanitized
+previews are memory-only and initially unchecked. Preview tokens are usable
+for five minutes; expired entries are pruned on later preview/save activity,
+and bounded memory is cleared when the service exits. Closing/cancelling clears
+the extension preview; it does not promise immediate server-memory erasure.
+
+A separate **Save selected perspectives** action persists only the selected
+reviewed text to the existing community store. The task, tab, video and Bilibili
+part must still match. Saved source URLs retain only the canonical video path
+and validated `p` part, never tracking or authentication query values. Missing
+source timestamps stay unknown. Navigation, revocation or source changes
+invalidate pending browser previews. Cancelling after Save was dispatched may
+not undo a completed local write; inspect saved items and use existing Delete
+if needed. Neither collection nor saving includes community text in model
+requests, transcript evidence, course claims or ordinary Q&A citations.
 
 ## Local activation checklist and support summary
 

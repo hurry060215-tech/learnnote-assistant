@@ -67,10 +67,18 @@ jobs:
           security import "$certificate" -k "$RUNNER_TEMP/learnnote.keychain-db" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$RUNNER_TEMP/learnnote.keychain-db"
           codesign --force --deep --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" dist/LearnNote.app
-          ditto -c -k --sequesterRsrc --keepParent dist/LearnNote.app LearnNote-macOS.zip
-          xcrun notarytool submit LearnNote-macOS.zip --apple-id "$APPLE_NOTARY_APPLE_ID" --password "$APPLE_NOTARY_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          submission="$RUNNER_TEMP/LearnNote-notary-submission.zip"
+          ditto -c -k --sequesterRsrc --keepParent dist/LearnNote.app "$submission"
+          xcrun notarytool submit "$submission" --apple-id "$APPLE_NOTARY_APPLE_ID" --password "$APPLE_NOTARY_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple dist/LearnNote.app
+          xcrun stapler validate dist/LearnNote.app
           codesign --verify --deep --strict --verbose=2 dist/LearnNote.app
+          # Package only after stapling, then verify the exact distributable bytes.
+          ditto -c -k --sequesterRsrc --keepParent dist/LearnNote.app LearnNote-macOS.zip
+          verification_dir="$(mktemp -d "$RUNNER_TEMP/learnnote-final-zip.XXXXXX")"
+          ditto -x -k LearnNote-macOS.zip "$verification_dir"
+          xcrun stapler validate "$verification_dir/LearnNote.app"
+          codesign --verify --deep --strict --verbose=2 "$verification_dir/LearnNote.app"
           rm -f "$certificate"
       - name: Package unsigned macOS preview
         if: env.APPLE_SIGNING_IDENTITY == '' || env.APPLE_CERTIFICATE_BASE64 == '' || env.APPLE_NOTARY_APPLE_ID == '' || env.APPLE_NOTARY_PASSWORD == '' || env.APPLE_TEAM_ID == ''

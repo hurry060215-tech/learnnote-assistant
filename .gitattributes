@@ -3,3 +3,7 @@
 extension/*.js text eol=lf
 # Frozen legacy export has a byte-level provenance assertion on every platform.
 backend/tests/fixtures/graph_snapshot_unicode_v1.json text eol=lf
+
+# Frozen macOS build specs are compared with immutable Git-source SHA-256 values.
+scripts/fixtures/native-version-rollback-old.macos.spec text eol=lf
+scripts/fixtures/native-version-rollback-new.macos.spec text eol=lf

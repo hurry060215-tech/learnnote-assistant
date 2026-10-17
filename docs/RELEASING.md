@@ -49,6 +49,14 @@ The release workflow supports Authenticode signing for both `LearnNote.exe` and 
 
 Without the certificate, builds remain checksum-verified but Windows can display an unknown-publisher warning. The current dependency ranges and hosted build tools do not provide bit-for-bit reproducible binaries.
 
+## macOS signing
+
+For the optional macOS preview workflow, see the separate
+[macOS signing and notarization setup guide](MACOS_SIGNING.md). It documents
+owner-controlled credentials, final-archive verification, and the remaining
+distribution checks. Configuration and a source-level workflow correction do
+not establish signed-distribution acceptance.
+
 ## Browser stores
 
 The Windows release workflow pins Inno Setup 7.1.0 and checks the resolved ISCC

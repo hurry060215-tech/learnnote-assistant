@@ -76,6 +76,12 @@ def public_contract():
         schema["paths"].pop("/api/courses/{course_id}/episodes/{episode_id}/" + suffix)
     for name in ("EpisodeRetry", "EpisodeUpgradePreview", "EpisodeUpgrade"):
         schema["components"]["schemas"].pop(name)
+    # #158 adds only local reviewed community preview/save. Their strict request
+    # schemas and operations are independently checked in test_community_capture.
+    for suffix in ("preview", "save"):
+        schema["paths"].pop("/api/tasks/{task_id}/community-context/" + suffix)
+    for name in ("CommunityPreviewRequest", "CommunitySaveRequest", "VisibleCommunityItem"):
+        schema["components"]["schemas"].pop(name)
     # #135/#146 add only per-request captured-page scopes and reviewed-start
     # parameters. Their strict defaults and stale-source enforcement have their
     # own contracts; every pre-existing field and /start operation stays frozen.

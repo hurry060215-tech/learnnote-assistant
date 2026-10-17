@@ -473,6 +473,7 @@ function sameSourceIdentity(left, right) {
 }
 
 function resetSourceState(keepRange = false) {
+  globalThis.LearnNoteCommunityPanel?.invalidate?.();
   if (!keepRange) {
     for (const id of ["learningRangeStart","learningRangeEnd"]) { const field=document.querySelector("#"+id); if(field)field.value=""; }
     const mode=document.querySelector("#learningRangeMode"); if(mode)mode.value="whole";
@@ -586,6 +587,7 @@ function setIntegrityItem(kind, value) {
 }
 
 function renderContext(message = "") {
+  globalThis.LearnNoteCommunityPanel?.sync?.();
   renderSourcePreview();
   const page = currentContext?.page || {};
   const tab = currentContext?.tab || {};
@@ -677,6 +679,7 @@ function setConnection(state, title, detail) {
 }
 
 function setProgress(value, message, state = "active") {
+  globalThis.LearnNoteCommunityPanel?.sync?.();
   const progress = Math.max(0, Math.min(100, Math.round(Number(value || 0))));
   els.handoffProgress.hidden = false;
   els.handoffPercent.hidden = false;

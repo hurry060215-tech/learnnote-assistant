@@ -1,6 +1,22 @@
 # Native macOS version upgrade and snapshot rollback gate
 
-Status: harness and source-only rehearsal; native hosted acceptance is pending.
+Status: bounded native macOS arm64 acceptance passed and artifacts inspected.
+
+[Run 38983333352](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38983333352)
+on harness commit `779fd5df0c00b0a0a8d7b8c12dfa5b7f8337c191` built and ran the
+immutable application sources below. Actual macOS 26.6.2 arm64 health versions
+were 0.2.14 → 0.2.15 → 0.2.14. The three owned-window PNGs show rendered LearnNote
+startup/workspace content; they do not show opened migrated-note contents.
+
+The real API checks retained task `a4060586b555`, exact caption timings/text,
+material bytes and Markdown/SRT hashes through upgrade and restoration. The
+original annotation was restored; newer edits remained in the separate upgraded
+snapshot. All 20 pre-upgrade files and 35 files in each upgraded copy were rehashed
+independently against the retained manifests, as were all three screenshots.
+Artifact `12081734141` ZIP SHA-256:
+`26160d5bd739bce7219d4e11be62bcf56a389be4c583906222f269380a0c7b51`.
+This establishes the snapshot-restoration rollback boundary described below,
+not compatibility of an older binary with newer-schema data.
 
 Run `Native macOS version rollback gate` manually with no inputs. It builds two
 separate immutable source checkouts in separate Python environments:

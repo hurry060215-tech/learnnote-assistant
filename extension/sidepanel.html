@@ -133,6 +133,24 @@
         </div>
       </section>
 
+      <details id="communityPanel" class="quick-result-card community-panel" hidden>
+        <summary data-i18n="community_title">独立社区观点 · 可选</summary>
+        <p data-i18n="community_boundary">默认关闭。仅在你点击后读取当前可见评论或弹幕，最多 20 条、共 20,000 字符；不滚动、不读取作者、不调用模型。</p>
+        <p id="communityDestination"></p>
+        <p data-i18n="community_support">仅支持 B 站部分可见页面结构；未识别、隐藏或需加载的内容不会采集。观点不作为课程事实。</p>
+        <div class="community-actions">
+          <button id="communityEnable" class="secondary-button" type="button" data-i18n="community_enable">启用本地观点层</button>
+          <button id="communityPreview" class="secondary-button" type="button" data-i18n="community_preview">预览当前可见观点</button>
+        </div>
+        <p id="communityStatus" role="status" aria-live="polite" data-i18n="community_initial">预览不会保存。请先在原页面显示要查看的内容，再点击预览。</p>
+        <div id="communityItems"></div>
+        <div class="community-actions">
+          <button id="communityCancel" class="secondary-button" type="button" hidden data-i18n="community_cancel">取消并清除预览</button>
+          <button id="communitySave" class="primary-button" type="button" hidden disabled data-i18n="community_save">保存勾选的观点</button>
+        </div>
+        <p data-i18n="community_manage">已保存内容可在工作台“独立社区观点”中删除或单独导出。关闭观点层不会删除已保存内容。</p>
+      </details>
+
       <nav class="client-links" aria-label="客户端功能" data-i18n-aria="clientFeatures">
         <button type="button" data-client-view="settings"><span data-i18n="ui_models_and_preferences">模型与偏好</span><b>›</b></button>
         <button type="button" data-client-view="diagnostics"><span data-i18n="ui_connection_and_diagnostics">连接与诊断</span><b>›</b></button>
@@ -142,5 +160,7 @@
     <script src="i18n.js"></script>
     <script src="sidepanel-progress.js"></script>
     <script src="sidepanel.js?v=0.2.15"></script>
+    <script src="community-source.js"></script>
+    <script src="sidepanel-community.js"></script>
   </body>
 </html>

@@ -19,6 +19,13 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "backend/app/community.py": 465,
+    "backend/app/community_capture.py": 230,
+    "backend/app/routers/community_capture.py": 80,
+    "extension/community-source.js": 30,
+    "extension/content-community.js": 125,
+    "extension/background-community.js": 135,
+    "extension/sidepanel-community.js": 130,
     "backend/app/model_data_consent.py": 80,
     "backend/app/deferred_task_consent.py": 80,
     "web/model-data-consent.js": 110,
@@ -155,8 +162,13 @@ EXTRACTED_BACKEND_MODULES = (
     "deferred_task_consent",
 )
 # #139 adds independently reviewed seek identity checks; see ISSUE_TIMELINE_SYNC_20261009.md.
-EXTENSION_SCRIPT_BUDGET_BYTES = 339500
-EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js")
+# #158 adds a bounded on-demand community collector and a separate local handoff.
+# See ISSUE_COMMUNITY_CAPTURE_20261016.md for measured eager/on-demand costs.
+EXTENSION_SCRIPT_BUDGET_BYTES = 355500
+EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evidence.js", "page_hook.js", "capture-classification.js", "capture-ranking.js", "source-identity.js", "request-context.js", "cookie-context.js", "backend-transport.js", "content-media-hints.js", "community-source.js", "content-community.js", "background-community.js")
+# Sidepanel code is loaded when its UI opens, separate from worker/content capture.
+EXTENSION_COMMUNITY_UI_SCRIPTS = ("sidepanel-community.js",)
+EXTENSION_COMMUNITY_UI_BUDGET_BYTES = 7500
 CLASSIC_TASK_SCRIPT_BUDGET = 10100
 CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js")
 
@@ -169,6 +181,9 @@ def aggregate_size_violations() -> list[str]:
     size = sum((ROOT / "extension" / name).stat().st_size for name in EXTENSION_CAPTURE_SCRIPTS)
     if size > EXTENSION_SCRIPT_BUDGET_BYTES:
         violations.append(f"Extension capture scripts have {size} bytes; bundle budget is {EXTENSION_SCRIPT_BUDGET_BYTES}")
+    ui_size = sum((ROOT / "extension" / name).stat().st_size for name in EXTENSION_COMMUNITY_UI_SCRIPTS)
+    if ui_size > EXTENSION_COMMUNITY_UI_BUDGET_BYTES:
+        violations.append(f"Extension community UI scripts have {ui_size} bytes; UI budget is {EXTENSION_COMMUNITY_UI_BUDGET_BYTES}")
     lines = sum(len((ROOT / "web" / name).read_text(encoding="utf-8").splitlines()) for name in CLASSIC_TASK_SCRIPTS)
     if lines > CLASSIC_TASK_SCRIPT_BUDGET:
         violations.append(f"Classic task scripts have {lines} lines; combined budget is {CLASSIC_TASK_SCRIPT_BUDGET}")

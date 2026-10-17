@@ -1,0 +1,197 @@
+/* Hosted Edge renders the shipped collector and sidepanel. Synthetic DOM and local replies only. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), http = require('node:http');
+const { execFileSync } = require('node:child_process');
+const { asset, installFixtures, FIXTURE } = require('./extension-locale-visual-acceptance.cjs');
+const { bounded, cleanup, writeReport } = require('./range-platform-browser-acceptance.cjs');
+const TIMEOUT = 15000;
+const ROOT = path.resolve(__dirname, '..'), SITE = 'https://www.bilibili.com/video/BV1234567890?p=2';
+function communityFixture() {
+  const base = chrome.runtime.sendMessage, listeners = [];
+  const control = globalThis.__communityFixture = { calls: [], enabled: false, permission: true, pending: null, hold: false, saved: [], requests: [], actions: [], release() { this.pending?.release(); this.pending = null; } };
+  // Observe the promise returned by the shipped click handler, not click timing.
+  const add = HTMLElement.prototype.addEventListener;
+  HTMLElement.prototype.addEventListener = function (type, handler, options) {
+    if (type === 'click' && ['communityPreview', 'communitySave'].includes(this.id)) {
+      const original = handler;
+      handler = function (event) {
+        const action = { id: control.actions.length + 1, type: this.id, settled: false }; control.actions.push(action);
+        try {
+          const result = original.call(this, event);
+          Promise.resolve(result).then(() => { action.settled = true; }, error => { action.settled = true; action.error = String(error); });
+          return result;
+        } catch (error) { action.settled = true; action.error = String(error); throw error; }
+      };
+    }
+    return add.call(this, type, handler, options);
+  };
+  const previousAdd = chrome.runtime.onMessage.addListener;
+  chrome.runtime.onMessage.addListener = fn => { listeners.push(fn); previousAdd(fn); };
+  control.change = () => listeners.forEach(fn => fn({ type: 'current-context-updated', reason: 'navigation', tabId: 7 }));
+  control.revoke = () => { control.permission = false; listeners.forEach(fn => fn({ type: 'site-permission-revoked', origin: 'https://www.bilibili.com/*' })); };
+  const getAll = chrome.permissions.getAll;
+  chrome.permissions.contains = async () => control.permission;
+  chrome.permissions.getAll = async () => { const all = await getAll(); return control.permission ? all : { origins: [] }; };
+  chrome.permissions.request = async () => { throw Error('Community flow must not request permission'); };
+  chrome.runtime.sendMessage = async message => {
+    if (!message.type.startsWith('community-')) return base(message);
+    control.calls.push(message);
+    if (message.type === 'community-cancel') return { ok: true };
+    const request = { id: message.requestId, type: message.type, settled: false }; control.requests.push(request);
+    try {
+      if (control.hold) await new Promise(release => { control.pending = { requestId: message.requestId, type: message.type, release }; });
+      if (message.type === 'community-settings') { control.enabled = message.enabled; return { enabled: control.enabled }; }
+      if (!control.permission) return { error: 'community_permission_required' };
+      if (!control.enabled) return { error: 'community_context_disabled' };
+      if (message.type === 'community-preview') return { preview_id: 'a'.repeat(64), fingerprint: 'b'.repeat(64), items: [
+        { item_id: 'c'.repeat(32), kind: 'comment', timestamp_seconds: null, text: 'Why use this example? [邮箱已省略]' },
+        { item_id: 'd'.repeat(32), kind: 'danmaku', timestamp_seconds: 83, text: '<img src=x onerror="globalThis.injected=true"> Literal audience content.' }
+      ] };
+      if (message.type === 'community-save') { control.saved.push(message.selectedItemIds); return { stored_count: message.selectedItemIds.length }; }
+      throw Error('Unexpected community action');
+    } finally { request.settled = true; }
+  };
+}
+async function heldAction(page, { selector, type, invalidate }) {
+  let primary, held;
+  try {
+    await page.evaluate(() => { __communityFixture.hold = true; });
+    await page.locator(selector).click();
+    const handle = await page.waitForFunction(type => {
+      const control = __communityFixture, action = control.actions.at(-1);
+      return control.pending?.type === type && action && !action.settled
+        ? { requestId: control.pending.requestId, actionId: action.id } : false;
+    }, type, { timeout: TIMEOUT });
+    try { held = await handle.jsonValue(); } finally { await handle.dispose(); }
+    await invalidate();
+  } catch (error) { primary = error; }
+  finally { await cleanup(primary, [
+    ['release held request', () => page.evaluate(() => { __communityFixture.hold = false; __communityFixture.release(); })],
+    ['settle held request and UI action', async () => {
+      if (!held) return;
+      const handle = await page.waitForFunction(({ requestId, actionId }) => {
+        const control = __communityFixture;
+        return !control.pending && control.requests.some(item => item.id === requestId && item.settled)
+          && control.actions.some(item => item.id === actionId && item.settled);
+      }, held, { timeout: TIMEOUT });
+      await handle.dispose();
+      const action = await page.evaluate(({ actionId }) => __communityFixture.actions.find(item => item.id === actionId), held);
+      assert.equal(action.error, undefined, 'The actual click handler must settle successfully');
+    }],
+  ]); }
+}
+async function finishCapture({ out, report, browser, server, write = fs.writeFileSync }, primary) {
+  try {
+    await cleanup(primary, [['browser close', () => browser?.close()],
+      ['asset connections close', () => { if (server?.listening) server.closeAllConnections(); }],
+      ['asset server close', () => {
+        if (!server?.listening) return;
+        return new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      }]]);
+  } catch (error) {
+    primary = error; report.passed = false; report.error ||= String(error.stack || error);
+    report.cleanup_errors = error.cleanup_errors || [];
+  }
+  writeReport(out, report, primary, write);
+}
+async function collect(page) {
+  return page.evaluate(site => LearnNoteCommunityDOM.collect({ document, view: window, pageUrl: site, expectedPageUrl: site }), SITE);
+}
+async function run() {
+  const { chromium } = require('playwright');
+  const out = path.resolve(process.argv[2] || 'build/community-capture-ui'); fs.mkdirSync(out, { recursive: true });
+  const report = { source_sha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(), passed: false, synthetic_data: true, native_permissions_tested: false, live_platform_tested: false, model_called: false, checks: [], screenshots: [] };
+  const server = http.createServer((req, res) => { const file = asset(req.url); if (!file) { res.writeHead(404); return res.end(); } res.setHeader('Content-Type', file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.png') ? 'image/png' : 'text/html'); fs.createReadStream(file).pipe(res); });
+  let browser, activePage, primary;
+  try {
+    await bounded(new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); }), 'listen for community assets', TIMEOUT);
+    browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const dom = activePage = await browser.newPage({ viewport: { width: 1100, height: 850 } });
+    await dom.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+    await dom.goto(origin + '/extension/tests/fixtures/community/visible-page.html');
+    for (const name of ['community-source.js', 'content-community.js']) await dom.addScriptTag({ url: origin + '/extension/' + name });
+    const result = await collect(dom);
+    assert.equal(result.items.length, 5);
+    assert(result.items.some(item => item.text === 'Open-shadow comment body only.'));
+    assert(result.items.some(item => item.timestamp_seconds === 83));
+    assert(result.items.some(item => item.kind === 'danmaku' && item.timestamp_seconds === null));
+    assert(!JSON.stringify(result.items).match(/decoy|secret|Offscreen|Covered|Clipped|Unseen|Only this first|Like 999/));
+    await dom.screenshot({ path: path.join(out, 'visible-dom.png') }); report.screenshots.push('visible-dom.png');
+    await dom.evaluate(() => { document.querySelector('.reply-content').firstChild.nodeValue = 'x'.repeat(2001); });
+    assert(!(await collect(dom)).items.some(item => item.text.startsWith('xxx')));
+    await dom.evaluate(() => { document.body.replaceChildren(); const wrapper = document.createElement('div'); for (let i = 0; i < 1600; i++) wrapper.append(document.createElement('div')); document.body.append(wrapper); });
+    const limited = await collect(dom); assert.equal(limited.items.length, 0); assert.equal(limited.truncated, true);
+    await dom.close(); report.checks.push('real DOM: content-only/open-shadow, hidden/offscreen/clipped/occluded rejection, explicit/unknown timestamps, oversize and traversal bounds');
+    for (const locale of ['zh-CN', 'en-US']) for (const width of [390, 768]) {
+      const page = activePage = await browser.newPage({ viewport: { width, height: 900 }, locale });
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      const catalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/_locales', locale === 'en-US' ? 'en' : 'zh_CN', 'messages.json')));
+      await page.addInitScript({ content: `(${installFixtures})(${JSON.stringify({ locale, catalog, fixture: FIXTURE })});(${communityFixture})();` });
+      await page.goto(origin + '/extension/sidepanel.html');
+      await page.evaluate(() => __localeFixture.connect());
+      await page.waitForFunction(() => __learnnoteSidepanel.getState().clientConnected);
+      await page.locator('#sendButton').click();
+      await page.locator('#communityPanel').waitFor();
+      assert.equal(await page.evaluate(() => __communityFixture.calls.length), 0, 'No automatic community read');
+      await page.locator('#communityPanel > summary').click();
+      assert.equal(await page.evaluate(() => __communityFixture.calls.length), 0, 'Opening disclosure is not capture');
+      await page.locator('#communityPreview').click();
+      await page.waitForFunction(() => !document.querySelector('#communityPanel').getAttribute('aria-busy').includes('true'));
+      assert.equal(await page.locator('#communityItems input').count(), 0, 'Default disabled');
+      await page.locator('#communityEnable').click();
+      await page.waitForFunction(() => __communityFixture.enabled && document.querySelector('#communityPanel').getAttribute('aria-busy') === 'false');
+      await page.locator('#communityPreview').click();
+      await page.locator('#communityItems input').first().waitFor();
+      assert.equal(await page.locator('#communityItems input:checked').count(), 0);
+      assert(await page.locator('#communitySave').isDisabled());
+      assert.equal(await page.locator('#communityItems img').count(), 0, 'Literal content is not HTML');
+      await page.locator('#communityItems input').first().check();
+      const filename = `${locale}-${width}-preview.png`;
+      await page.locator('#communityPanel').screenshot({ path: path.join(out, filename) }); report.screenshots.push(filename);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await page.locator('#communitySave').click();
+      await page.waitForFunction(() => __communityFixture.saved.length === 1);
+      assert.deepEqual(await page.evaluate(() => __communityFixture.saved[0]), ['c'.repeat(32)]);
+      await page.waitForFunction(() => document.querySelector('#communityPanel').getAttribute('aria-busy') === 'false');
+      await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      await page.evaluate(() => __communityFixture.change());
+      assert.equal(await page.locator('#communityItems input').count(), 0, 'Navigation clears preview');
+      await heldAction(page, { selector: '#communityPreview', type: 'community-preview', invalidate: () => page.locator('#communityCancel').click() });
+      assert.equal(await page.locator('#communityItems input').count(), 0, 'Late cancelled result is ignored');
+      await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      await page.locator('#communityItems input').first().check();
+      await heldAction(page, { selector: '#communitySave', type: 'community-save', invalidate: async () => {
+        await page.evaluate(() => { __communityFixture.change(); document.querySelector('#communityPanel').open = false; });
+        const handle = await page.waitForFunction(() => document.querySelector('#communityStatus').textContent === LearnNoteI18n.message('community_save_uncertain'), null, { timeout: TIMEOUT });
+        await handle.dispose();
+      } });
+      assert.equal(await page.locator('#communityItems input').count(), 0, 'Late save cannot restore stale preview');
+      assert.equal(await page.locator('#communityStatus').textContent(), catalog.community_save_uncertain.message);
+      await page.locator('#communityPanel > summary').click();
+      await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      await page.locator('#communityPanel > summary').focus(); await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#communityPanel').evaluate(element => element.open), false);
+      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#communityPanel > summary')), true);
+      await page.locator('#communityPanel > summary').click();
+      await page.locator('#communityPreview').click(); await page.locator('#communityItems input').first().waitFor();
+      await page.evaluate(() => __communityFixture.revoke());
+      assert.equal(await page.locator('#communityItems input').count(), 0, 'Revocation clears preview');
+      assert(await page.locator('#communityPanel').isHidden(), 'Existing panel clears revoked source identity');
+      assert.deepEqual(errors, []); assert.deepEqual(await page.evaluate(() => __communityFixture.actions.filter(action => action.error)), []);
+      assert.equal(await page.evaluate(() => Boolean(globalThis.injected)), false);
+      await page.close();
+    }
+    report.checks.push('shipped panel: no automatic collection, disabled lane, local opt-in, unchecked selection, exact selected save, literal content, navigation/revocation/cancel races, Escape/focus, bilingual 390/768px');
+    report.passed = true;
+  } catch (error) { primary = error; report.error = String(error.stack || error); if (activePage && !activePage.isClosed()) { try { await activePage.screenshot({ path: path.join(out, 'failure.png'), timeout: 3000 }); report.screenshots.push('failure.png'); } catch {} } }
+  await finishCapture({ out, report, browser, server }, primary);
+  console.log(JSON.stringify(report));
+}
+if (require.main === module && process.argv.includes('--self-test')) {
+  assert(asset('/extension/community-source.js')); assert(asset('/extension/content-community.js')); assert(asset('/extension/tests/fixtures/community/visible-page.html'));
+  assert.equal(asset('/extension/../backend/app/community.py'), null);
+  new Function('return ' + communityFixture.toString());
+  console.log('Community rendered fixture syntax and asset/path checks pass; actual Edge rendering is a hosted gate.');
+} else if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { communityFixture, heldAction, finishCapture };
