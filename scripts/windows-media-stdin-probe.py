@@ -37,6 +37,13 @@ def command_identity(command, source, output_directory):
             for value in values[1:-1]], "<owned-output>"]
 
 
+def set_child_stdin(options, mode):
+    if mode not in {"inherited", "devnull"}: raise ValueError("Unknown diagnostic stdin arm")
+    # Explicitly retain the historical comparison if production defaults change.
+    # This touches only the normalization child, never the worker control input.
+    options["stdin"] = None if mode == "inherited" else subprocess.DEVNULL
+
+
 def worker(source, directory, stdin_mode):
     sys.path.insert(0, str(ROOT / "backend"))
     os.environ.update(LEARNNOTE_DATA_DIR=str(directory), HF_HUB_OFFLINE="1",
@@ -58,7 +65,7 @@ def worker(source, directory, stdin_mode):
         processes = []
         original = subprocess.Popen
         def launch(command, **kwargs):
-            if stdin_mode == "devnull": kwargs["stdin"] = subprocess.DEVNULL
+            set_child_stdin(kwargs, stdin_mode)
             result["command"] = command_identity(command, source, directory)
             result["tool_executable"] = str(Path(command[0]).resolve())
             result["stdin"] = "DEVNULL" if kwargs.get("stdin") == subprocess.DEVNULL else "inherited"

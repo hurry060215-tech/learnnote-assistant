@@ -138,3 +138,19 @@ listener is armed before cancellation. This separate UI wait occurs after the
 unchanged API/worker-drain clock and 2-second assertion, so it cannot hide slow
 cancellation. Missing/stale metadata fails the screenshot gate instead of
 capturing an old waiting label; no delay, reload or source change is substituted.
+
+The sole outline scroll resolves its exact current heading synchronously inside
+one browser evaluation, rather than scrolling a locator handle that an intervening
+edition response may already have detached. That operation checks the current
+task route/source and the selected generation from the existing `learnnote:selection`
+or `learnnote:metadata` event against the generation already returned by deferred
+creation (or the already-captured recovery payload). An init-script listener
+captures the selected item before its initial edition loads; later metadata
+adoption refines its epoch. It records which event supplied identity and clears
+obsolete identity on navigation/material selection. No new API request, generation DOM
+attribute, waiting period or second scroll is introduced. Missing/stale metadata,
+wrong generation/source and missing/duplicate headings fail before scrolling.
+Selected task generation is bound by these existing selected-record events; edition content remains separately
+bound by reader source/revision and persisted source hashes. Replacement during
+the original two frames remains visible in node diagnostics and still must pass
+the unchanged final onscreen readability check.

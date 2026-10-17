@@ -2319,7 +2319,7 @@ class MediaDownloader:
         ]
         if output.exists() and output.stat().st_nlink > 1:
             output.unlink()
-        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:
@@ -2507,7 +2507,7 @@ class MediaDownloader:
         self._notify_status("正在用 ffmpeg 合并 HLS/DASH 分片", 35, candidate)
         if output.exists() and output.stat().st_nlink > 1:
             output.unlink()
-        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, **text_subprocess_kwargs())
         if result.returncode != 0:
             stderr = (result.stderr or "").lower()
             if "403" in stderr or "401" in stderr:

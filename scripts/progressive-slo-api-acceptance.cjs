@@ -165,7 +165,42 @@ function readableGeometry(value) {
     && rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0
     && rect.bottom <= value.viewport.height && rect.right <= value.viewport.width));
 }
-async function scrollOutlineObserved(element) {
+function observeReadingMetadata() {
+  const state = globalThis.referenceReadingMetadata = { event: null, error: null };
+  const clear = () => { state.event = null; state.error = null; };
+  window.addEventListener("learnnote:navigation", clear);
+  function accept(detail, source) {
+    if (detail?.kind !== "task") { clear(); return; }
+    if (typeof detail.id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(detail.id)
+      || !/^[a-f0-9]{64}$/.test(detail.control_generation || "")
+      || (source === "metadata" && (!Number.isInteger(detail.epoch) || detail.epoch < 0))) {
+      state.event = null; state.error = "Invalid selected task metadata"; return;
+    }
+    if (source === "metadata" && Number.isInteger(state.event?.epoch) && detail.epoch < state.event.epoch) {
+      state.event = null; state.error = "Obsolete selected task metadata"; return;
+    }
+    state.event = { id: detail.id, kind: detail.kind, epoch: source === "metadata" ? detail.epoch : null,
+      control_generation: detail.control_generation, source_event: source };
+    state.error = null;
+  }
+  window.addEventListener("learnnote:selection", event => { clear(); accept(event.detail, "selection"); });
+  window.addEventListener("learnnote:metadata", event => accept(event.detail, "metadata"));
+}
+async function scrollOutlineObserved(expected) {
+  const selected = globalThis.referenceReadingMetadata;
+  const reader = document.getElementById("document");
+  if (!expected || !/^[a-f0-9]{64}$/.test(expected.generation || "") || selected?.error
+    || selected?.event?.id !== expected.task_id || selected.event.kind !== "task"
+    || selected.event.control_generation !== expected.generation
+    || location.hash !== "#task/" + expected.task_id || reader?.dataset.readerSource !== "task:" + expected.task_id)
+    throw new Error("One-shot scroll requires current task/source/route and selected generation metadata");
+  const headings = [...reader.querySelectorAll("h2")].filter(node => node.innerText.includes("按时间段的阅读提纲"));
+  if (headings.length !== 1 || !headings[0].isConnected || !reader.contains(headings[0]))
+    throw new Error("One-shot scroll requires exactly one connected current outline heading");
+  // Resolve and scroll synchronously: a locator's transported handle may already
+  // have been detached by an edition response before its evaluate callback runs.
+  const element = headings[0], metadata = { ...selected.event };
+
   const nodes = globalThis.__sloReaderNodes ||= new WeakMap();
   if (!nodes.has(element)) nodes.set(element, globalThis.__sloReaderNodeNext = (globalThis.__sloReaderNodeNext || 0) + 1);
   function snapshot() {
@@ -179,7 +214,7 @@ async function scrollOutlineObserved(element) {
   element.scrollIntoView({ block: "start", behavior: "instant" });
   const after_scroll = snapshot();
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  return { before, after_scroll, after_two_frames: snapshot() };
+  return { selected_metadata: metadata, before, after_scroll, after_two_frames: snapshot() };
 }
 function outlineGeometry(element) {
   const siblings = []; for (let next = element.nextElementSibling; next && next.tagName !== "H2"; next = next.nextElementSibling) siblings.push(next);
@@ -255,6 +290,7 @@ async function main(output = "build/progressive-slo-ui") {
       excluded: ["automatic release checks (fixture update preferences disabled)", "application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
       warmth: "Fresh task/artifacts each sample; same initialized backend/browser context. OS/HTTP caches not forced cold; first task identified separately." } };
   let backend, browser, context, page, base, fixture, primaryError, stopObserving, trace, logBytes = 0;
+  const generations = new Map();
   const phase = name => { if (trace) boundedRecord(trace, "phases", { name, received_host_monotonic_ms: performance.now() }, 64); };
   const save = () => { report.summary = summarize(report.samples); fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); };
   async function stopBackend() {
@@ -292,7 +328,9 @@ async function main(output = "build/progressive-slo-ui") {
   }
   async function newPage() {
     stopObserving?.();
-    page = await context.newPage(); page.on("pageerror", error => boundedRecord(report, "errors", error.message, 64));
+    page = await context.newPage();
+    await page.addInitScript(observeReadingMetadata);
+    page.on("pageerror", error => boundedRecord(report, "errors", error.message, 64));
     const cdp = await context.newCDPSession(page);
     stopObserving = observeNativeSse(cdp, report, base, event => { if (trace) boundedRecord(trace, "network", event); });
     page.once("close", stopObserving);
@@ -309,6 +347,8 @@ async function main(output = "build/progressive-slo-ui") {
     const result = await api("/api/tasks/from-current-page?defer=true", { method: "POST", data: captionRequest(minutes, serial) });
     const id = result.task_id; phase("deferred_created");
     report.current_task_id = id; if (record) record.task_id = id; save();
+    assert(/^[a-f0-9]{64}$/.test(result.task?.control_generation || ""), "Missing deferred task generation");
+    generations.set(id, result.task.control_generation);
     await page.goto(base + "/#task/" + id);
     await page.locator(`#document[data-reader-source="task:${id}"]`).waitFor({ state: "visible" });
     await until(() => report.native_sse.some(event => event.task_id === id && event.event === "task_created"), "native SSE connected before submission");
@@ -336,7 +376,7 @@ async function main(output = "build/progressive-slo-ui") {
   async function readerGeometry(id) {
     const heading = page.locator(`#document[data-reader-source="task:${id}"] h2`).filter({ hasText: "按时间段的阅读提纲" });
     await heading.waitFor({ state: "visible", timeout: 30000 }); phase("heading_locator_visible");
-    const scroll = await heading.evaluate(scrollOutlineObserved);
+    const scroll = await page.evaluate(scrollOutlineObserved, { task_id: id, generation: generations.get(id) });
     if (trace) boundedRecord(trace, "reader_observations", { scroll }, 8);
     phase("scroll_and_two_frames_complete");
     const geometry = await heading.evaluate(outlineGeometry); phase("geometry_returned");
@@ -351,13 +391,12 @@ async function main(output = "build/progressive-slo-ui") {
     if (record) { Object.assign(record, measured); save(); }
     // Draft publication precedes adapter entry. Keep the first-readable clock,
     // but include this coordination in the unchanged transcript-to-ACK bound.
-    let generation;
+    const generation = generations.get(id);
     phase("held_continuation_wait_started");
     const held = await until(async () => {
       const current = await snapshot(id);
       assert.equal(current.task_id, id); assert.equal(current.status, "running");
       assert(/^[a-f0-9]{64}$/.test(current.generation), "Missing accepted task generation");
-      if (generation === undefined) generation = current.generation;
       assert.equal(current.generation, generation); assert.equal(current.queue?.generation, generation);
       assert.equal(current.queue?.task_id, id);
       assert.equal(current.queue?.state, "running"); assert.equal(current.queue?.callback_finished, 0);
@@ -455,6 +494,7 @@ async function main(output = "build/progressive-slo-ui") {
     const recovered = await until(async () => { const state = await snapshot(id); return state.waiting ? state : null; }, "fresh process recovered held summary");
     await page.locator(`#document[data-reader-source="task:${id}"] h2`).filter({ hasText: "按时间段的阅读提纲" }).waitFor();
     assert.deepEqual(recovered.hashes, before.hashes); assert.equal(recovered.generation, retry.generation);
+    generations.set(id, recovered.generation);
     assert.equal(recovered.queue.sequence, retry.queue.sequence); assert.equal(recovered.queue.generation, retry.queue.generation);
     const startup = await api("/_fixture/state"); assert.equal(startup.startup_recovery.recovered, 1); assert.equal(startup.startup_recovery.waiting_for_context, 0);
     const recoveredGeometry = await readerGeometry(id);
@@ -490,5 +530,5 @@ async function main(output = "build/progressive-slo-ui") {
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics, observeCancelledMetadata, cancelledUiObservation, cancelledUiReady };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, observeReadingMetadata, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics, observeCancelledMetadata, cancelledUiObservation, cancelledUiReady };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

@@ -136,6 +136,8 @@ fixture.main()
         request = reference_request(5, "contract")
         created = self.api("/api/tasks/from-current-page?defer=true", request)
         task_id = created["task_id"]
+        expected_generation = created["task"]["control_generation"]
+        self.assertRegex(expected_generation, r"^[a-f0-9]{64}$")
         self.assertEqual(self.state(task_id)["continuation_calls"], 0)
         stream_url = self.base + f"/api/tasks/{task_id}/events/stream?after=0"
         with urlopen(stream_url, timeout=10) as response:
@@ -166,6 +168,8 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.api(f"/api/tasks/{task_id}/start", OPTIONS)
         before = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "held draft")
         self.assertEqual(before["status"], "running")
+        self.assertEqual(before["generation"], expected_generation)
+        self.assertEqual(before["queue"]["generation"], expected_generation)
         self.assertEqual(before["error_code"], "")
         self.assertFalse(before["awaiting_confirmation"])
         self.assertTrue(before["updated_at"])

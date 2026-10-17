@@ -337,42 +337,185 @@ test("each observation retains its actual network timeline even after the global
     assert(source.includes(`phase("${name}")`), name);
 });
 
-test("one-shot scroll diagnostics expose stale handles and replacement during the original two frames", async () => {
+test("one-shot scroll resolves the current node and exposes replacement during the original two frames", async () => {
   const vm = await import("node:vm");
-  for (const replacement of ["none", "before-scroll", "during-frames"]) {
+  for (const replacement of ["none", "before-scroll", "during-frames", "during-frames-offscreen"]) {
     let scrollTop = 0, scrollCalls = 0, clock = 0, frameCalls = 0;
-    const frames = [], reader = { dataset: { readerSource: "task:synthetic", readerRevision: "before" }, contains: node => node === current && node.isConnected };
+    const expected = { task_id: "synthetic", generation: "a".repeat(64) };
+    const frames = [], reader = { querySelectorAll: () => [current], dataset: { readerSource: "task:synthetic", readerRevision: "before" }, contains: node => node === current && node.isConnected };
     const rect = () => ({ top: 1327 - scrollTop, bottom: 1362 - scrollTop, left: 280, right: 1156, width: 876, height: 35 });
     const excerpt = { getBoundingClientRect: rect, innerText: "Reference lesson source statement at 0 seconds.", contains: () => true };
     const list = { tagName: "UL", querySelector: () => excerpt };
     const warning = { tagName: "BLOCKQUOTE", innerText: "不是 AI 主题总结", nextElementSibling: list };
-    const node = () => ({ isConnected: true, getBoundingClientRect: rect, nextElementSibling: warning, contains: () => true,
+    const node = () => ({ isConnected: true, innerText: "按时间段的阅读提纲", getBoundingClientRect: rect, nextElementSibling: warning, contains: () => true,
       scrollIntoView(options) { scrollCalls++; assert.deepEqual(JSON.parse(JSON.stringify(options)), { block: "start", behavior: "instant" }); if (this.isConnected) scrollTop = 1187; } });
     let current = node(); const original = current;
     const replace = () => { original.isConnected = false; current = node(); reader.dataset.readerRevision = "after"; };
-    const context = vm.createContext({ innerWidth: 1440, innerHeight: 1000, WeakMap,
+    const context = vm.createContext({ innerWidth: 1440, innerHeight: 1000, WeakMap, location: { hash: "#task/synthetic" },
+      referenceReadingMetadata: { event: { id: "synthetic", kind: "task", epoch: 1, control_generation: expected.generation } },
       performance: { now: () => ++clock }, requestAnimationFrame: callback => { frameCalls++; frames.push(callback); },
       document: { getElementById: () => reader, scrollingElement: { get scrollTop() { return scrollTop; } }, elementFromPoint: () => excerpt },
       getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }) });
     const observe = vm.runInContext(`(${fixture.scrollOutlineObserved.toString()})`, context);
     const measure = vm.runInContext(`(${fixture.outlineGeometry.toString()})`, context);
     if (replacement === "before-scroll") replace();
-    const waiting = observe(original);
-    if (replacement === "during-frames") replace();
+    const waiting = observe(expected);
+    if (replacement.startsWith("during-frames")) replace();
+    if (replacement === "during-frames-offscreen") scrollTop = 0;
     frames.shift()(); frames.shift()(); const observed = await waiting, geometry = measure(current);
     assert.equal(scrollCalls, 1); assert.equal(frameCalls, 2, "No additional wait, scroll or recovery loop");
     assert.equal(observed.before.node_id, observed.after_two_frames.node_id);
-    assert.equal(observed.after_two_frames.connected, replacement === "none");
-    assert.equal(observed.after_two_frames.in_reader, replacement === "none");
-    assert.equal(geometry.observation.node_id, replacement === "none" ? observed.before.node_id : null);
+    assert.equal(observed.after_two_frames.connected, !replacement.startsWith("during-frames"));
+    assert.equal(observed.after_two_frames.in_reader, !replacement.startsWith("during-frames"));
+    assert.equal(geometry.observation.node_id, !replacement.startsWith("during-frames") ? observed.before.node_id : null);
     assert.equal(geometry.observation.reader_revision, replacement === "none" ? "before" : "after");
-    assert.equal(readableGeometry(geometry), replacement !== "before-scroll", "Offscreen replacement is still a hard failure");
-    assert.equal(observed.after_scroll.scroll_top, replacement === "before-scroll" ? 0 : 1187);
+    assert.equal(readableGeometry(geometry), replacement !== "during-frames-offscreen", "Offscreen replacements still fail strictly");
+    assert.equal(observed.before.connected, true); assert.equal(observed.before.in_reader, true);
+    assert.equal(observed.after_scroll.scroll_top, 1187);
     assert(observed.before.browser_monotonic_ms < observed.after_two_frames.browser_monotonic_ms);
   }
   const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
   assert.match(source, /boundedRecord\(trace, "reader_observations", \{ scroll \}, 8\)/);
   assert.match(source, /boundedRecord\(trace, "reader_observations", \{ geometry \}, 8\)/);
+});
+
+
+test("actual readerGeometry resolves its sole scroll inside the browser after a stale locator handle", async () => {
+  let scrollTop = 46, scrollCalls = 0, frameCalls = 0;
+  const generation = "a".repeat(64);
+  const rect = () => ({ top: 1373 - scrollTop, bottom: 1408 - scrollTop, left: 280, right: 1156, width: 876, height: 35 });
+  const excerpt = { getBoundingClientRect: rect, innerText: "Reference lesson source statement at 0 seconds.", contains: () => true };
+  const list = { tagName: "UL", querySelector: () => excerpt };
+  const warning = { tagName: "BLOCKQUOTE", innerText: "不是 AI 主题总结", nextElementSibling: list };
+  const makeNode = () => ({ isConnected: true, innerText: "按时间段的阅读提纲（字幕摘录草稿）", getBoundingClientRect: rect,
+    nextElementSibling: warning, contains: () => true,
+    scrollIntoView() { scrollCalls++; if (this.isConnected) scrollTop = 1233; } });
+  const original = makeNode(), current = makeNode();
+  const reader = { dataset: { readerSource: "task:owned", readerRevision: "current" },
+    querySelectorAll: () => [current], contains: node => node === current && node.isConnected };
+  const browser = vm.createContext({ innerWidth: 1440, innerHeight: 1000, WeakMap, location: { hash: "#task/owned" },
+    referenceReadingMetadata: { event: { id: "owned", kind: "task", epoch: 1, control_generation: generation } },
+    performance: { now: () => 1 }, requestAnimationFrame: callback => { frameCalls++; queueMicrotask(callback); },
+    document: { getElementById: () => reader, scrollingElement: { get scrollTop() { return scrollTop; } }, elementFromPoint: () => excerpt },
+    getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }) });
+  const evaluate = (fn, value) => vm.runInContext(`(${fn.toString()})`, browser)(value);
+  const locator = { filter() { return this; }, async waitFor() { original.isConnected = false; },
+    evaluate(fn) { return evaluate(fn, fn.name === "scrollOutlineObserved" ? original : current); } };
+  const page = { locator: () => locator, evaluate };
+  // The final locator geometry resolves the current node; the old first-scroll
+  // locator resolves a previously bound handle just as in the retained failure.
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("  async function readerGeometry("), source.indexOf("  async function visible("));
+  const trace = {}, context = vm.createContext({ page, assert, trace, phase() {}, readableGeometry,
+    generations: new Map([["owned", generation]]),
+    scrollOutlineObserved: fixture.scrollOutlineObserved, outlineGeometry: fixture.outlineGeometry,
+    boundedRecord: (value, key, row) => (value[key] ||= []).push(row) });
+  const read = vm.runInContext(`${body}; readerGeometry`, context);
+  const geometry = await read("owned");
+  assert(readableGeometry(geometry)); assert.equal(scrollCalls, 1); assert.equal(frameCalls, 2);
+  assert.equal(trace.reader_observations[0].scroll.before.connected, true);
+  assert.equal(trace.reader_observations[0].scroll.before.in_reader, true);
+  assert.equal(trace.reader_observations[0].scroll.before.node_id, geometry.observation.node_id);
+});
+
+test("atomic scroll rejects missing or stale selected identity before touching the page", async () => {
+  const expected = { task_id: "owned", generation: "a".repeat(64) };
+  function harness() {
+    let scrolls = 0, frames = 0;
+    const listeners = new Map();
+    const node = { innerText: "按时间段的阅读提纲", isConnected: true,
+      getBoundingClientRect: () => ({ top: 140 }), scrollIntoView: () => { scrolls++; } };
+    const reader = { dataset: { readerSource: "task:owned", readerRevision: "edition" },
+      querySelectorAll: () => [node], contains: value => value === node };
+    const context = vm.createContext({ WeakMap, location: { hash: "#task/owned" }, performance: { now: () => 1 },
+      window: { addEventListener: (name, callback) => listeners.set(name, callback) },
+      requestAnimationFrame: callback => { frames++; queueMicrotask(callback); },
+      document: { getElementById: () => reader, scrollingElement: { scrollTop: 0 } } });
+    vm.runInContext(`(${fixture.observeReadingMetadata.toString()})()`, context);
+    const event = (name, detail) => listeners.get(name)({ detail });
+    const metadata = patch => event("learnnote:metadata", { id: "owned", kind: "task", epoch: 3, control_generation: expected.generation, ...patch });
+    return { context, reader, node, event, metadata, counts: () => [scrolls, frames],
+      scroll: identity => vm.runInContext(`(${fixture.scrollOutlineObserved.toString()})`, context)(identity || expected) };
+  }
+  for (const mutate of [h => {}, h => h.metadata({ control_generation: "b".repeat(64) }),
+    h => h.metadata({ id: "other" }), h => h.metadata({ epoch: -1 }),
+    h => h.event("learnnote:selection", { kind: "task", id: "owned", control_generation: "b".repeat(64) }),
+    h => { h.metadata(); h.metadata({ epoch: 2 }); },
+    h => { h.metadata(); h.event("learnnote:navigation"); },
+    h => { h.metadata(); h.event("learnnote:selection", { id: "owned", kind: "task" }); },
+    h => { h.metadata(); h.event("learnnote:metadata", { id: "material", kind: "material" }); },
+    h => { h.metadata(); h.reader.dataset.readerSource = "task:other"; },
+    h => { h.metadata(); h.context.location.hash = "#task/other"; },
+    h => { h.metadata(); h.reader.querySelectorAll = () => []; },
+    h => { h.metadata(); h.reader.querySelectorAll = () => [h.node, h.node]; },
+    h => { h.metadata(); h.node.isConnected = false; }]) {
+    const h = harness(); mutate(h); await assert.rejects(h.scroll()); assert.deepEqual(h.counts(), [0, 0]);
+  }
+  const h = harness();
+  // Actual openItem emits the selected item before loading its initial edition;
+  // no later metadata event is required for initial/restarted draft readiness.
+  h.event("learnnote:metadata", { kind: "material", id: "material" });
+  assert.equal(h.context.referenceReadingMetadata.error, null);
+  h.event("learnnote:navigation");
+  h.event("learnnote:selection", { kind: "task", id: "owned", control_generation: expected.generation });
+  const observed = await h.scroll(); assert.deepEqual(h.counts(), [1, 2]);
+  assert.equal(observed.selected_metadata.control_generation, expected.generation);
+  assert.equal(observed.selected_metadata.source_event, "selection"); assert.equal(observed.selected_metadata.epoch, null);
+  h.metadata(); assert.equal(h.context.referenceReadingMetadata.event.source_event, "metadata");
+  assert.equal(h.context.referenceReadingMetadata.event.epoch, 3);
+  const missing = harness(); missing.metadata(); await assert.rejects(missing.scroll({ task_id: "owned" }));
+  assert.deepEqual(missing.counts(), [0, 0]);
+});
+
+test("actual openItem supplies selected generation before initial edition without an adoption event", async () => {
+  const listeners = new Map(), events = [], nodes = new Map(), generation = "a".repeat(64);
+  const $ = id => { if (!nodes.has(id)) nodes.set(id, { dataset: {}, replaceChildren() {}, hidden: true }); return nodes.get(id); };
+  class Event { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } }
+  const state = { selected: { kind: "material", id: "previous" }, epoch: 4 };
+  const context = vm.createContext({ state, $, Event, CustomEvent: Event, JSON, Promise,
+    window: { addEventListener: (name, fn) => listeners.set(name, fn),
+      dispatchEvent: event => { events.push(event.type); listeners.get(event.type)?.(event); } },
+    invalidateSelectedReads() {}, api: async () => ({}), claimTimeline: { reset() {} }, personalAnchorPicker: { reset() {} },
+    closeSource() {}, drawList() {}, renderStatus() {}, loadAnnotations: async () => {},
+    history: { replaceState() {} }, selectedSnapshotCurrent: () => true, claimMapVersion: () => "same", localMediaSource: () => ({}),
+    loadEdition: async epoch => {
+      assert.equal(epoch, 5);
+      assert.equal(context.referenceReadingMetadata.event.id, "owned");
+      assert.equal(context.referenceReadingMetadata.event.control_generation, generation);
+      assert.equal(context.referenceReadingMetadata.event.source_event, "selection");
+      assert.equal(events.includes("learnnote:metadata"), false);
+    } });
+  const desk = fs.readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+  const open = desk.slice(desk.indexOf("async function openItem("), desk.indexOf("let editionRequest"));
+  const adopt = desk.slice(desk.indexOf("async function adoptSelectedSnapshot("), desk.indexOf("function refreshSelectedTask("));
+  vm.runInContext(`(${fixture.observeReadingMetadata.toString()})();` + open + adopt, context);
+  const selected = { kind: "task", id: "owned", title: "Owned", control_generation: generation };
+  await context.openItem(selected, { remember: false, check: false, openMedia: false });
+  assert.deepEqual(events, ["learnnote:navigation", "learnnote:selection"]);
+  await context.adoptSelectedSnapshot(selected, { id: "owned", kind: "task", epoch: 5 });
+  assert.equal(context.referenceReadingMetadata.event.source_event, "metadata");
+  assert.equal(context.referenceReadingMetadata.event.epoch, 5);
+});
+
+test("generation comes from existing payloads and metadata initialization precedes navigation", () => {
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  const create = source.indexOf('const result = await api("/api/tasks/from-current-page?defer=true"');
+  const capture = source.indexOf("generations.set(id, result.task.control_generation)");
+  assert(create < capture && capture < source.indexOf('await page.goto(base + "/#task/" + id)'));
+  const checkpoint = source.indexOf("report.current_task_id = id; if (record) record.task_id = id; save()");
+  assert(create < checkpoint && checkpoint < source.indexOf('"Missing deferred task generation"'));
+  const newPage = source.slice(source.indexOf("  async function newPage("), source.indexOf("  const api ="));
+  assert.match(newPage, /await page.addInitScript\(observeReadingMetadata\)/);
+  assert.match(source, /generations.set\(id, recovered.generation\)/);
+  const scroll = source.slice(source.indexOf("  async function readerGeometry("), source.indexOf("  async function visible("));
+  assert.match(scroll, /page.evaluate\(scrollOutlineObserved, \{ task_id: id, generation: generations.get\(id\) \}\)/);
+  assert.doesNotMatch(scroll, /snapshot\(|api\(|fetch\(|until\(/);
+  const desk = fs.readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+  const open = desk.slice(desk.indexOf("async function openItem("), desk.indexOf("let editionRequest"));
+  const selection = open.indexOf('new CustomEvent("learnnote:selection", { detail: item })');
+  assert(open.indexOf('new Event("learnnote:navigation")') < selection);
+  assert(selection < open.indexOf("loadEdition(epoch)"));
+  assert.match(desk, /control_generation: selected.control_generation/);
 });
 
 async function visibilityAdmissionHarness(states, options = {}) {
@@ -388,6 +531,7 @@ async function visibilityAdmissionHarness(states, options = {}) {
       section_count: 1, final_section_end: 300 }, stages: [], ...patch });
   const context = vm.createContext({ assert: Object.assign((...args) => assert(...args), assert, {
       deepEqual: (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected))) }),
+    generations: new Map([["owned", generation]]),
     performance: { now: () => clock }, phase: value => calls.push(value), report: { native_sse: [{ task_id: "owned", event: "draft_ready", id: "14" }] },
     readerGeometry: async () => { calls.push("geometry"); return geometry(); },
     page: { evaluate: async () => { calls.push("first-readable-clock"); return 1; } },

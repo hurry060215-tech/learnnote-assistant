@@ -35,9 +35,6 @@ on:
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
       - "scripts/install-visual-media-tools.ps1"
-      - "scripts/windows-media-stdin-probe.py"
-      - "scripts/tests/test_windows_media_stdin_probe.py"
-      - "docs/qa/windows-media-stdin-probe.md"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -101,9 +98,6 @@ on:
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
       - "scripts/install-visual-media-tools.ps1"
-      - "scripts/windows-media-stdin-probe.py"
-      - "scripts/tests/test_windows_media_stdin_probe.py"
-      - "docs/qa/windows-media-stdin-probe.md"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -504,13 +498,6 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/progressive-visual-ui
-      - name: Diagnose owned media child stdin with identical input
-        if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}
-        timeout-minutes: 4
-        shell: pwsh
-        run: |
-          python scripts/windows-media-stdin-probe.py build/media-stdin-probe
-          if ($LASTEXITCODE -ne 0) { throw "Media stdin diagnostic identity, control or cleanup failed" }
       - name: Join real visual batches to retained reader sections
         if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}
         timeout-minutes: 10
@@ -532,8 +519,6 @@ jobs:
             build/progressive-visual-ui/*.json
             build/progressive-visual-ui/*.log
             build/progressive-visual-ui/*.png
-            build/media-stdin-probe/*.json
-            build/media-stdin-probe/*.log
           if-no-files-found: warn
           retention-days: 14
 

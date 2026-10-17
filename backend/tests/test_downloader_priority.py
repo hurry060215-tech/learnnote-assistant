@@ -2019,6 +2019,7 @@ class DownloaderPriorityTests(unittest.TestCase):
         captured: dict = {}
 
         def fake_run(cmd, capture_output, text, **kwargs):
+            self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL)
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -2185,6 +2186,7 @@ class DownloaderPriorityTests(unittest.TestCase):
         captured: dict = {}
 
         def fake_run(cmd, capture_output, text, **kwargs):
+            self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL)
             captured["cmd"] = cmd
             output = Path(cmd[-1])
             output.parent.mkdir(parents=True, exist_ok=True)

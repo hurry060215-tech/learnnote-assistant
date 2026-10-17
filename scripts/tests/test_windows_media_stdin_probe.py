@@ -171,6 +171,14 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
             self.assertEqual(report["cases"], cases)
             self.assertFalse(report["diagnostic_complete"])
 
+    def test_explicit_arms_override_changed_production_child_defaults(self):
+        for previous in (None, subprocess.PIPE, subprocess.DEVNULL):
+            for mode, expected in (("inherited", None), ("devnull", subprocess.DEVNULL)):
+                options = {"stdin": previous, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+                probe.set_child_stdin(options, mode)
+                self.assertEqual(options, {"stdin": expected, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE})
+        with self.assertRaises(ValueError): probe.set_child_stdin({}, "unknown")
+
     def test_worker_deadline_and_control_order_are_fixed(self):
         source = (ROOT / "scripts/windows-media-stdin-probe.py").read_text()
         worker = source[source.index("def worker("):source.index("def stop_owned(")]
@@ -178,7 +186,7 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
         self.assertLess(worker.index("reader.start()"), worker.index("media.normalize_video"))
         self.assertEqual(probe.NORMALIZATION_DEADLINE, 15)
         self.assertEqual(probe.WORKER_DEADLINE, 25)
-        self.assertIn('if stdin_mode == "devnull": kwargs["stdin"] = subprocess.DEVNULL', worker)
+        self.assertIn("set_child_stdin(kwargs, stdin_mode)", worker)
         self.assertIn('"child_started"', worker)
         self.assertNotIn('"-nostdin"', worker)
 

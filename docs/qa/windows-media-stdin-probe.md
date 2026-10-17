@@ -1,6 +1,7 @@
 # Windows media child-stdin diagnostic
 
-Run after the existing pinned FFmpeg/FFprobe provisioning:
+This is a manual historical comparison, not a required automatic acceptance
+step. Run explicitly after the existing pinned FFmpeg/FFprobe provisioning:
 
 ```powershell
 python scripts/windows-media-stdin-probe.py build/media-stdin-probe
@@ -15,8 +16,9 @@ It then runs the actual `media.normalize_video` command twice, in fresh Python
 workers. Their explicitly resolved FFmpeg/FFprobe paths are passed through and
 checked against the actual child launch record. Both workers complete native imports before starting the same blocking
 stdin control reader used by the visual fixture. Only the FFmpeg child's stdin
-changes: first inherited from that worker's piped control input, then explicitly
-`DEVNULL`. The parent's and worker's control channels remain intact. No command
+changes: the inherited arm explicitly sets `stdin=None` on the child, while
+the other explicitly sets `stdin=DEVNULL`. Both arms override any production
+default so the comparison cannot silently become DEVNULL versus DEVNULL. The parent's and worker's control channels remain intact. No command
 flags, source bytes, tool version, or production media behavior are changed.
 
 The report retains both cases, exact normalized command arguments, input/output
@@ -55,3 +57,20 @@ python -m unittest scripts.tests.test_windows_media_stdin_probe -v
 ```
 
 Windows containment follows the [Microsoft Job Objects contract](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) and [assignment semantics](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject).
+
+## Retained Windows result
+
+The [d579b954 run](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39020270521)
+used identical owned input and FFmpeg 8.1 command/tool identity. The inherited
+arm did not return complete metrics within 25 seconds; the DEVNULL arm completed
+in 0.875 seconds. Cleanup and pipe readers drained in both cases. The original
+`diagnostic_complete: false` and nonzero result remain unchanged in artifact
+`12095594872`, with ZIP
+SHA-256 `51f15b9f20c0361a6172d8191e6ac8512e2605d342913f08ff70e0a97ae54b0a`.
+
+This one-off experiment is retained for explicit diagnosis. A deliberately
+historical inherited-input failure should not replace the required current
+production normalization, cancellation, process-reaping and joined visual gates.
+Removing it from automatic UI execution does not convert its failed result into
+a pass. The manual helper still exits nonzero on the same incomplete-result
+contract and retains both arms, including any timeout.

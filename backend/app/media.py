@@ -45,12 +45,13 @@ def media_cancellation(check):
 
 
 def _run(cmd: list[str], message: str) -> None:
+    # Owned media commands read files/URLs, never the desktop parent's stdin.
     check = _cancel_check.get()
     if check is None:
-        result = subprocess.run(cmd, capture_output=True, **text_subprocess_kwargs())
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, **text_subprocess_kwargs())
     else:
         check()
-        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **text_subprocess_kwargs()) as process:
+        with subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **text_subprocess_kwargs()) as process:
             try:
                 while True:
                     check()
@@ -87,7 +88,7 @@ def probe_duration(path: Path) -> float:
                 "json",
                 str(path),
             ],
-            capture_output=True,
+            stdin=subprocess.DEVNULL, capture_output=True,
             **text_subprocess_kwargs(),
         )
         if result.returncode == 0:
@@ -106,7 +107,7 @@ def probe_duration(path: Path) -> float:
             "-i",
             str(path),
         ],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
@@ -154,7 +155,7 @@ def _integrity_from_ffprobe(path: Path, probe: str) -> MediaIntegrity | None:
             "json",
             str(path),
         ],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     if result.returncode != 0:
@@ -192,7 +193,7 @@ def _integrity_from_ffprobe(path: Path, probe: str) -> MediaIntegrity | None:
 def _integrity_from_ffmpeg(path: Path, ffmpeg: str) -> MediaIntegrity:
     result = subprocess.run(
         [ffmpeg, "-hide_banner", "-i", str(path)],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     stderr = result.stderr or ""
@@ -413,7 +414,7 @@ def extract_embedded_subtitle(video_path: Path, output_path: Path) -> Path | Non
             "srt",
             str(output_path),
         ],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
@@ -562,7 +563,7 @@ def detect_scene_change_timestamps(
             "null",
             "-",
         ],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     values: set[int] = set()
@@ -700,7 +701,7 @@ def _extract_frame_batch(
             "3",
             str(output),
         ])
-    result = subprocess.run(command, capture_output=True, **text_subprocess_kwargs())
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, **text_subprocess_kwargs())
     return result.returncode == 0
 
 
@@ -726,7 +727,7 @@ def _extract_single_frame(ffmpeg: str, video_path: Path, timestamp: int, output:
             "3",
             str(output),
         ],
-        capture_output=True,
+        stdin=subprocess.DEVNULL, capture_output=True,
         **text_subprocess_kwargs(),
     )
     return result.returncode == 0 and _valid_frame_file(output)
