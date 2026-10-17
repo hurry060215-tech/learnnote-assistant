@@ -129,3 +129,36 @@ test("the last visible section remains anchored even with no later heading", () 
   renderEditionStable(element, scroller, "task:a", "2", () => { offset += 140; });
   assert.equal(scroller.scrollTop, 1240);
 });
+
+test("edition anchors use current scroll after eager or layout-triggered native compensation", () => {
+  for (const native of ["none", "eager", "layout"]) {
+    let scroll = 1000, y = 1140, pending = false;
+    const scroller = { ownerDocument: {}, get scrollTop() { return scroll; }, set scrollTop(value) { scroll = value; } };
+    scroller.ownerDocument.scrollingElement = scroller;
+    const heading = { tagName: "H2", textContent: "Reading outline", getBoundingClientRect() {
+      if (pending) { scroll += 1187; pending = false; }
+      return { top: y - scroll, bottom: y - scroll + 35 };
+    } };
+    const element = { dataset: { readerSource: "task:a", readerRevision: "before" }, querySelectorAll: () => [heading] };
+    renderEditionStable(element, scroller, "task:a", "after", () => {
+      y += 1187;
+      if (native === "eager") scroll += 1187;
+      if (native === "layout") pending = true;
+    });
+    assert.equal(heading.getBoundingClientRect().top, 140, native);
+    assert.equal(scroll, 2187, native);
+  }
+});
+
+test("superseded, hidden or detached render callbacks cannot stamp or scroll an obsolete reader", () => {
+  for (const invalidate of [element => { element.isConnected = false; }, element => { element.hidden = true; },
+    element => { element.dataset.readerSource = "material:new"; },
+    element => { element.dataset.readerRevision = "newer-same-source"; }]) {
+    const element = { isConnected: true, hidden: false,
+      dataset: { readerSource: "task:a", readerRevision: "before" }, querySelectorAll: () => [] };
+    const scroller = { scrollTop: 1000 };
+    renderEditionStable(element, scroller, "task:a", "after", () => { invalidate(element); scroller.scrollTop = 200; });
+    assert.equal(scroller.scrollTop, 200, "Preserve the newer view's scroll");
+    assert.notEqual(element.dataset.readerRevision, "after");
+  }
+});

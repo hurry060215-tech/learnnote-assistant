@@ -126,6 +126,22 @@ function readableGeometry(value) {
     && rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0
     && rect.bottom <= value.viewport.height && rect.right <= value.viewport.width));
 }
+async function scrollOutlineObserved(element) {
+  const nodes = globalThis.__sloReaderNodes ||= new WeakMap();
+  if (!nodes.has(element)) nodes.set(element, globalThis.__sloReaderNodeNext = (globalThis.__sloReaderNodeNext || 0) + 1);
+  function snapshot() {
+    const reader = document.getElementById("document"), rect = element.getBoundingClientRect();
+    return { node_id: nodes.get(element), connected: element.isConnected, in_reader: Boolean(reader?.contains(element)),
+      reader_source: (reader?.dataset.readerSource || "").slice(0, 160),
+      reader_revision: (reader?.dataset.readerRevision || "").slice(0, 240),
+      scroll_top: document.scrollingElement.scrollTop, heading_top: rect.top, browser_monotonic_ms: performance.now() };
+  }
+  const before = snapshot();
+  element.scrollIntoView({ block: "start", behavior: "instant" });
+  const after_scroll = snapshot();
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return { before, after_scroll, after_two_frames: snapshot() };
+}
 function outlineGeometry(element) {
   const siblings = []; for (let next = element.nextElementSibling; next && next.tagName !== "H2"; next = next.nextElementSibling) siblings.push(next);
   const excerpt = siblings.find(next => next.tagName === "UL")?.querySelector("li");
@@ -140,7 +156,12 @@ function outlineGeometry(element) {
     return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, width: rect.width, height: rect.height,
       visible, unobscured: Boolean(hit && (hit === node || node.contains(hit))) };
   }
+  const reader = document.getElementById?.("document");
   return { heading: geometry(element), excerpt: geometry(excerpt), viewport: { width: innerWidth, height: innerHeight },
+    observation: { node_id: globalThis.__sloReaderNodes?.get(element) ?? null, connected: element.isConnected,
+      in_reader: Boolean(reader?.contains(element)), scroll_top: document.scrollingElement?.scrollTop,
+      reader_source: (reader?.dataset.readerSource || "").slice(0, 160),
+      reader_revision: (reader?.dataset.readerRevision || "").slice(0, 240), browser_monotonic_ms: performance.now() },
     source_matches: Boolean(excerpt?.innerText.includes("Reference lesson source statement at 0 seconds.")),
     warning_present: siblings.some(next => next.tagName === "BLOCKQUOTE" && next.innerText.includes("不是 AI 主题总结")) };
 }
@@ -276,12 +297,11 @@ async function main(output = "build/progressive-slo-ui") {
   async function readerGeometry(id) {
     const heading = page.locator(`#document[data-reader-source="task:${id}"] h2`).filter({ hasText: "按时间段的阅读提纲" });
     await heading.waitFor({ state: "visible", timeout: 30000 }); phase("heading_locator_visible");
-    await heading.evaluate(async element => {
-      element.scrollIntoView({ block: "start", behavior: "instant" });
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    });
+    const scroll = await heading.evaluate(scrollOutlineObserved);
+    if (trace) boundedRecord(trace, "reader_observations", { scroll }, 8);
     phase("scroll_and_two_frames_complete");
     const geometry = await heading.evaluate(outlineGeometry); phase("geometry_returned");
+    if (trace) boundedRecord(trace, "reader_observations", { geometry }, 8);
     assert(readableGeometry(geometry), JSON.stringify(geometry));
     return geometry;
   }
@@ -400,5 +420,5 @@ async function main(output = "build/progressive-slo-ui") {
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

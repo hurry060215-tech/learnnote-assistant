@@ -21,7 +21,8 @@ export function preserveReaderPosition(element, scroller, key, render) {
 
 // Event-only progress must not rebuild an unchanged reader or reset its position.
 export function renderEditionStable(element, scroller, key, revision, render) {
-  const sameSource = element.dataset.readerSource === key;
+  const source = element.dataset.readerSource, previousRevision = element.dataset.readerRevision;
+  const sameSource = source === key;
   if (sameSource && element.dataset.readerRevision === revision) return false;
   const top = scroller?.scrollTop || 0;
   const viewport = viewportTop(scroller);
@@ -35,13 +36,20 @@ export function renderEditionStable(element, scroller, key, revision, render) {
     .filter(node => headings.filter(other => keyFor(other) === keyFor(node)).length === 1)
     .map(node => ({ key: keyFor(node), offset: node.getBoundingClientRect().top - viewport })) : [];
   render();
+  if (element.isConnected === false || element.hidden || element.dataset.readerSource !== source
+      || element.dataset.readerRevision !== previousRevision) return true;
   element.dataset.readerSource = key;
   element.dataset.readerRevision = revision;
   if (sameSource && scroller) {
     const nextHeadings = [...element.querySelectorAll("h1,h2,h3")];
     const match = candidates.map(candidate => ({ candidate, nodes: nextHeadings.filter(node => keyFor(node) === candidate.key) }))
       .find(item => item.nodes.length === 1);
-    scroller.scrollTop = top + (match ? match.nodes[0].getBoundingClientRect().top - viewport - match.candidate.offset : 0);
+    if (match) {
+      // Layout may already have applied native scroll anchoring. Correct only
+      // the remaining offset, reading current scrollTop after that layout.
+      const delta = match.nodes[0].getBoundingClientRect().top - viewport - match.candidate.offset;
+      if (delta) scroller.scrollTop += delta;
+    } else scroller.scrollTop = top;
   }
   return true;
 }

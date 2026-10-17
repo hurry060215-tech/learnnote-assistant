@@ -101,7 +101,7 @@ test("DOM measurement rejects invisible ancestors despite a visible child box an
     innerText: "Reference lesson source statement at 0 seconds.", contains: () => true };
   const list = { tagName: "UL", querySelector: () => excerpt }, warning = { tagName: "BLOCKQUOTE", innerText: "不是 AI 主题总结", nextElementSibling: list };
   const heading = { parentElement: parent, getBoundingClientRect: () => rect, nextElementSibling: warning, contains: () => true };
-  const context = vm.createContext({ innerWidth: 1440, innerHeight: 1000, document: { elementFromPoint: () => excerpt },
+  const context = vm.createContext({ performance, innerWidth: 1440, innerHeight: 1000, document: { elementFromPoint: () => excerpt },
     getComputedStyle: node => ({ display: "block", visibility: "visible", opacity: node.opacity || "1" }) });
   const measure = vm.runInContext(`(${fixture.outlineGeometry.toString()})`, context);
   assert.equal(readableGeometry(measure(heading)), false);
@@ -286,4 +286,42 @@ test("each observation retains its actual network timeline even after the global
   assert.match(source, /row\.trace = trace =/); assert.match(source, /report\.lifecycle_trace = trace =/);
   for (const name of ["preparation_started", "preparation_complete", "submission_driver_begin", "heading_locator_visible", "scroll_and_two_frames_complete", "geometry_returned", "readable_measurement_returned", "visible_ack_returned"])
     assert(source.includes(`phase("${name}")`), name);
+});
+
+test("one-shot scroll diagnostics expose stale handles and replacement during the original two frames", async () => {
+  const vm = await import("node:vm");
+  for (const replacement of ["none", "before-scroll", "during-frames"]) {
+    let scrollTop = 0, scrollCalls = 0, clock = 0, frameCalls = 0;
+    const frames = [], reader = { dataset: { readerSource: "task:synthetic", readerRevision: "before" }, contains: node => node === current && node.isConnected };
+    const rect = () => ({ top: 1327 - scrollTop, bottom: 1362 - scrollTop, left: 280, right: 1156, width: 876, height: 35 });
+    const excerpt = { getBoundingClientRect: rect, innerText: "Reference lesson source statement at 0 seconds.", contains: () => true };
+    const list = { tagName: "UL", querySelector: () => excerpt };
+    const warning = { tagName: "BLOCKQUOTE", innerText: "不是 AI 主题总结", nextElementSibling: list };
+    const node = () => ({ isConnected: true, getBoundingClientRect: rect, nextElementSibling: warning, contains: () => true,
+      scrollIntoView(options) { scrollCalls++; assert.deepEqual(JSON.parse(JSON.stringify(options)), { block: "start", behavior: "instant" }); if (this.isConnected) scrollTop = 1187; } });
+    let current = node(); const original = current;
+    const replace = () => { original.isConnected = false; current = node(); reader.dataset.readerRevision = "after"; };
+    const context = vm.createContext({ innerWidth: 1440, innerHeight: 1000, WeakMap,
+      performance: { now: () => ++clock }, requestAnimationFrame: callback => { frameCalls++; frames.push(callback); },
+      document: { getElementById: () => reader, scrollingElement: { get scrollTop() { return scrollTop; } }, elementFromPoint: () => excerpt },
+      getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }) });
+    const observe = vm.runInContext(`(${fixture.scrollOutlineObserved.toString()})`, context);
+    const measure = vm.runInContext(`(${fixture.outlineGeometry.toString()})`, context);
+    if (replacement === "before-scroll") replace();
+    const waiting = observe(original);
+    if (replacement === "during-frames") replace();
+    frames.shift()(); frames.shift()(); const observed = await waiting, geometry = measure(current);
+    assert.equal(scrollCalls, 1); assert.equal(frameCalls, 2, "No additional wait, scroll or recovery loop");
+    assert.equal(observed.before.node_id, observed.after_two_frames.node_id);
+    assert.equal(observed.after_two_frames.connected, replacement === "none");
+    assert.equal(observed.after_two_frames.in_reader, replacement === "none");
+    assert.equal(geometry.observation.node_id, replacement === "none" ? observed.before.node_id : null);
+    assert.equal(geometry.observation.reader_revision, replacement === "none" ? "before" : "after");
+    assert.equal(readableGeometry(geometry), replacement !== "before-scroll", "Offscreen replacement is still a hard failure");
+    assert.equal(observed.after_scroll.scroll_top, replacement === "before-scroll" ? 0 : 1187);
+    assert(observed.before.browser_monotonic_ms < observed.after_two_frames.browser_monotonic_ms);
+  }
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  assert.match(source, /boundedRecord\(trace, "reader_observations", \{ scroll \}, 8\)/);
+  assert.match(source, /boundedRecord\(trace, "reader_observations", \{ geometry \}, 8\)/);
 });

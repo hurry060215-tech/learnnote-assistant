@@ -1,7 +1,7 @@
 import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { collapseSourceReviews } from "/web/source-review.js";
-import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js";
+import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js?v=native-anchor-20261017";
 import { createSectionReader } from "/web/reader-sections.js";
 import {
   installConnections,

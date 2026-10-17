@@ -104,3 +104,17 @@ its snapshot overhead separately, without subtracting it from the gate metric.
 Safe bounded task error fields and the last 16 state events diagnose lifecycle
 failures; native SSE retains only validated timestamp/status/phase/error codes,
 never event messages or arbitrary payloads. Missing timing evidence stays unknown.
+
+Each one-shot reader observation also records the scrolled node's local identity,
+connection/reader membership, rendered source/revision, root scroll offset and
+heading top before scrolling, immediately afterwards and after the original two
+animation frames. Final geometry records the current node's identity and edition.
+These bounded diagnostics (eight records per sample or lifecycle trace) expose a detached
+locator handle, a replacement during frames, or a later scroll change. They do
+not retry scrolling, wait for an extra stable period, or make offscreen content
+readable. Browser timestamps stay separate from driver and server clocks.
+The three synchronous diagnostic geometry reads can force layout; their overhead
+remains inside the original timing window. A later passing run alone therefore
+cannot establish that native scroll compensation caused an earlier failure.
+A final node ID of null means the current heading is not the observed scroll
+handle; only handles used for the one-shot scroll receive an ID.
