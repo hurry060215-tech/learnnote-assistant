@@ -11,7 +11,8 @@ class TaskDiagnosticPreviewWorkflowTests(unittest.TestCase):
 
     def test_both_events_cover_fixture_and_contracts(self):
         events = self.source.split("permissions:", 1)[0]
-        for path in ("scripts/task-diagnostic-preview-*.cjs", "scripts/tests/test_task_diagnostic_preview*.py"):
+        for path in ("scripts/task-diagnostic-preview-*.cjs", "scripts/tests/test_task_diagnostic_preview*.py",
+                     "scripts/tests/task-diagnostic-window-binding.ps1"):
             self.assertEqual(events.count(f'"{path}"'), 2, path)
 
     def test_independent_gate_preserves_required_failure(self):

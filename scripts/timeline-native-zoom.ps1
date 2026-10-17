@@ -1,7 +1,9 @@
 param(
   [Parameter(Mandatory = $true)][int]$OwnedBrowserPid,
   [ValidateSet("reset", "90", "125", "150", "200", "prepare", "capture", "dismiss-translation")][string]$Zoom = "reset",
-  [string]$CapturePath
+  [string]$CapturePath,
+  [long]$ExpectedWindow = 0,
+  [string]$ExpectedProcessStart = ""
 )
 $ErrorActionPreference = "Stop"
 # Fixed markers only: no URLs, profile data, titles, or arbitrary exception text.
@@ -11,6 +13,23 @@ function Write-NativePhase([string]$phase) {
   [Console]::Error.WriteLine("LN_NATIVE_PHASE:" + $phase + "|" + $elapsed)
   [Console]::Error.Flush()
 }
+# Pure validation shared by initial binding checks and every bound native action.
+function Assert-PreparedWindowFacts($expected, $expectedStart, $actualStart, $pidValue, $fact, $others, $foreground) {
+  if ($expected -le 0 -or $expectedStart -notmatch '^[0-9]{1,19}$' -or $expectedStart -cne $actualStart) {
+    throw "Prepared Edge process identity changed; no native action performed."
+  }
+  if (-not $fact.Exists -or $fact.Hwnd -ne $expected -or $fact.Pid -ne $pidValue -or
+      $fact.Class -cne "Chrome_WidgetWin_1" -or -not $fact.Visible -or $fact.Owner -ne 0) {
+    throw "Prepared Edge root window changed; no native action performed."
+  }
+  foreach ($other in $others) {
+    if ($other.Hwnd -ne $expected -and ($other.Pid -ne $pidValue -or $other.Owner -ne $expected)) {
+      throw "Unrelated visible Edge window; no native action performed."
+    }
+  }
+  if ($foreground -ne $expected) { throw "Prepared Edge root is not foreground; no native action performed." }
+}
+# End pure prepared-window validation.
 Write-NativePhase "entered"
 # This helper accepts only the disposable browser process started by the test.
 # It never uses the arbitrary foreground window, changes permissions, or reads a
@@ -19,6 +38,9 @@ if ($OwnedBrowserPid -le 0) { throw "An owned Edge process ID is required." }
 Write-NativePhase "process-lookup"
 $process = Get-Process -Id $OwnedBrowserPid -ErrorAction Stop
 if ($process.ProcessName -ne "msedge") { throw "The owned process is not Edge." }
+$processStart = $process.StartTime.ToUniversalTime().Ticks.ToString()
+if ($ExpectedWindow -lt 0 -or (($ExpectedWindow -eq 0) -ne [string]::IsNullOrEmpty($ExpectedProcessStart)) -or
+    ($Zoom -eq "prepare" -and $ExpectedWindow -ne 0)) { throw "Invalid prepared window binding." }
 Write-NativePhase "forms-load"
 Add-Type -AssemblyName System.Windows.Forms
 Write-NativePhase "native-type-compile"
@@ -33,6 +55,7 @@ public static class TimelineZoomWindow {
   [DllImport("user32.dll")] public static extern bool EnumWindows(Callback callback, IntPtr parameter);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr window, uint command);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int length);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
@@ -43,6 +66,13 @@ public static class TimelineZoomWindow {
   [DllImport("user32.dll")] public static extern IntPtr GetThreadDpiAwarenessContext();
   [DllImport("user32.dll")] public static extern int GetAwarenessFromDpiAwarenessContext(IntPtr context);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out Rect rectangle, int size);
+  public class WindowFact { public long Hwnd, Owner; public uint Pid; public string Class; public bool Exists, Visible; }
+  public static WindowFact Fact(IntPtr window) {
+    uint pid; GetWindowThreadProcessId(window, out pid);
+    var name = new StringBuilder(256); GetClassName(window, name, name.Capacity);
+    return new WindowFact { Hwnd = window.ToInt64(), Owner = GetWindow(window, 4).ToInt64(), Pid = pid,
+      Class = name.ToString(), Exists = IsWindow(window), Visible = IsWindowVisible(window) };
+  }
   public static IntPtr[] OwnedWindows(uint process) {
     var windows = new List<IntPtr>();
     EnumWindows((window, _) => {
@@ -57,38 +87,55 @@ public static class TimelineZoomWindow {
 "@
 Write-NativePhase "owned-window-enumeration"
 $windows = @([TimelineZoomWindow]::OwnedWindows([uint32]$OwnedBrowserPid))
-if ($windows.Count -ne 1) {
-  try {
-    # Diagnostic facts only, before any foreground/input/capture action. No titles or URLs.
-    $foreground = [TimelineZoomWindow]::GetForegroundWindow()
-    [uint32]$foregroundPid = 0
-    [void][TimelineZoomWindow]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid)
-    $facts = @($windows | Select-Object -First 16 | ForEach-Object {
-      [uint32]$pidValue = 0
-      [void][TimelineZoomWindow]::GetWindowThreadProcessId($_, [ref]$pidValue)
-      $ownerWindow = [TimelineZoomWindow]::GetWindow($_, 4) # GW_OWNER; read-only relation
-      [uint32]$ownerPid = 0
-      if ($ownerWindow -ne [IntPtr]::Zero) { [void][TimelineZoomWindow]::GetWindowThreadProcessId($ownerWindow, [ref]$ownerPid) }
-      @{ hwnd = $_.ToInt64(); class = "Chrome_WidgetWin_1"; pid = $pidValue;
-         visible = [TimelineZoomWindow]::IsWindowVisible($_); foreground = ($_ -eq $foreground);
-         owner_hwnd = $ownerWindow.ToInt64(); owner_is_browser = ($ownerPid -eq $OwnedBrowserPid) }
-    })
-    $diagnostic = @{ state = $(if ($windows.Count -eq 0) { "zero" } else { "multiple" });
-      count_capped = [Math]::Min(17, $windows.Count); truncated = ($windows.Count -gt 16);
-      foreground_is_browser = ($foregroundPid -eq $OwnedBrowserPid); windows = $facts }
-    [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:" + ($diagnostic | ConvertTo-Json -Depth 4 -Compress))
-    [Console]::Error.Flush()
-  } catch {
-    # Evidence must not replace the original ownership failure, even if stderr fails.
-    try { [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:unavailable"); [Console]::Error.Flush() } catch {}
-  }
-  throw "Expected exactly one visible window owned by the disposable Edge process."
+function Assert-PreparedWindowLive {
+  $liveProcess = Get-Process -Id $OwnedBrowserPid -ErrorAction Stop
+  if ($liveProcess.ProcessName -ne "msedge") { throw "The prepared process is not Edge." }
+  $liveStart = $liveProcess.StartTime.ToUniversalTime().Ticks.ToString()
+  $fact = [TimelineZoomWindow]::Fact([IntPtr]$ExpectedWindow)
+  $others = @([TimelineZoomWindow]::OwnedWindows([uint32]$OwnedBrowserPid) | ForEach-Object { [TimelineZoomWindow]::Fact($_) })
+  Assert-PreparedWindowFacts $ExpectedWindow $ExpectedProcessStart $liveStart $OwnedBrowserPid $fact $others ([TimelineZoomWindow]::GetForegroundWindow().ToInt64())
 }
-$window = $windows[0]
+if ($ExpectedWindow -eq 0) {
+  if ($windows.Count -ne 1) {
+    try {
+      # Diagnostic facts only, before any foreground/input/capture action. No titles or URLs.
+      $foreground = [TimelineZoomWindow]::GetForegroundWindow()
+      [uint32]$foregroundPid = 0
+      [void][TimelineZoomWindow]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid)
+      $facts = @($windows | Select-Object -First 16 | ForEach-Object {
+        [uint32]$pidValue = 0
+        [void][TimelineZoomWindow]::GetWindowThreadProcessId($_, [ref]$pidValue)
+        $ownerWindow = [TimelineZoomWindow]::GetWindow($_, 4) # GW_OWNER; read-only relation
+        [uint32]$ownerPid = 0
+        if ($ownerWindow -ne [IntPtr]::Zero) { [void][TimelineZoomWindow]::GetWindowThreadProcessId($ownerWindow, [ref]$ownerPid) }
+        @{ hwnd = $_.ToInt64(); class = "Chrome_WidgetWin_1"; pid = $pidValue;
+           visible = [TimelineZoomWindow]::IsWindowVisible($_); foreground = ($_ -eq $foreground);
+           owner_hwnd = $ownerWindow.ToInt64(); owner_is_browser = ($ownerPid -eq $OwnedBrowserPid) }
+      })
+      $diagnostic = @{ state = $(if ($windows.Count -eq 0) { "zero" } else { "multiple" });
+        count_capped = [Math]::Min(17, $windows.Count); truncated = ($windows.Count -gt 16);
+        foreground_is_browser = ($foregroundPid -eq $OwnedBrowserPid); windows = $facts }
+      [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:" + ($diagnostic | ConvertTo-Json -Depth 4 -Compress))
+      [Console]::Error.Flush()
+    } catch {
+      # Evidence must not replace the original ownership failure, even if stderr fails.
+      try { [Console]::Error.WriteLine("LN_NATIVE_WINDOWS:unavailable"); [Console]::Error.Flush() } catch {}
+    }
+    throw "Expected exactly one visible window owned by the disposable Edge process."
+  }
+  $window = $windows[0]
+  if ($Zoom -eq "prepare" -and [TimelineZoomWindow]::GetWindow($window, 4) -ne [IntPtr]::Zero) {
+    throw "Preparation requires the unique owned root window."
+  }
+} else {
+  Assert-PreparedWindowLive
+  $window = [IntPtr]$ExpectedWindow
+}
 Write-NativePhase "foreground"
-[void][TimelineZoomWindow]::SetForegroundWindow($window)
+if ($ExpectedWindow -eq 0) { [void][TimelineZoomWindow]::SetForegroundWindow($window) }
 Start-Sleep -Milliseconds 200
 function Assert-OwnedForeground {
+  if ($ExpectedWindow -ne 0) { Assert-PreparedWindowLive }
   [uint32]$owner = 0
   [void][TimelineZoomWindow]::GetWindowThreadProcessId($window, [ref]$owner)
   if ($owner -ne $OwnedBrowserPid -or [TimelineZoomWindow]::GetForegroundWindow() -ne $window) {
@@ -235,7 +282,7 @@ if ($Zoom -in @("prepare", "capture")) {
   }
   if ($Zoom -eq "prepare") {
     Write-NativePhase "prepare-complete"
-    $payload = @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";
+    $payload = @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); process_start = $processStart; action = "prepare";
        method = "maximize-owned-window-before-baseline"; before = $initialGeometry;
        after = (Describe-Geometry $rect) }
     Write-NativePhase "payload-built"

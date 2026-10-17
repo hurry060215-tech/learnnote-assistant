@@ -52,9 +52,10 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
 (async () => {
   fs.mkdirSync(output, { recursive: true });
   const report = { passed: false, cases: [], screenshots: [], errors: [], requests: [], unexpected: [], cleanupErrors: [] };
-  let browser, server, ownedPid, currentPage, prepared = false, failure;
+  let browser, server, ownedPid, currentPage, binding, prepared = false, failure;
   const nativeKey = (zoom, capturePath) => JSON.parse(require('node:child_process').execFileSync('powershell.exe',
     ['-NoProfile', '-NonInteractive', '-File', path.join(__dirname, 'timeline-native-zoom.ps1'), '-OwnedBrowserPid', String(ownedPid), '-Zoom', zoom,
+      ...(zoom !== 'prepare' && binding ? ['-ExpectedWindow', String(binding.window), '-ExpectedProcessStart', binding.process_start] : []),
       ...(capturePath ? ['-CapturePath', capturePath] : [])], { encoding: 'utf8', timeout: zoom === 'prepare' ? 45000 : 15000 }));
   try {
     if (native) {
@@ -120,7 +121,11 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         visualScale: visualViewport.scale, overflow: document.documentElement.scrollWidth - innerWidth }));
       if (native) {
         report.currentCase.phase = 'native-prepare';
-        await page.bringToFront(); const preparation = nativeKey('prepare'); prepared = true;
+        await page.bringToFront(); const preparation = nativeKey('prepare');
+        assert.equal(preparation.owned_pid, ownedPid);
+        assert(Number.isSafeInteger(preparation.window) && preparation.window > 0);
+        assert.equal(typeof preparation.process_start, 'string'); assert(/^[0-9]{1,19}$/.test(preparation.process_start));
+        binding = { window: preparation.window, process_start: preparation.process_start }; prepared = true;
         const translation = nativeKey('dismiss-translation'); nativeKey('reset');
         await page.waitForFunction(() => Math.abs(devicePixelRatio - 1) < .01);
         const baseline = await metrics();
@@ -181,7 +186,7 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         report.currentCase.phase = 'native-restore';
         nativeKey('reset');
         zoomEvidence.restored = await require('./timeline-native-zoom-matrix.cjs').waitForNativePreset(page, metrics, zoomEvidence.baseline, 100);
-        prepared = false;
+        prepared = false; binding = null;
       }
       // Native zoom is restored before Back leaves the app's origin and live metrics.
       if (surface === 'classic') await page.locator('#resultMoreActions > summary').click();

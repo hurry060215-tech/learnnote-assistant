@@ -11,7 +11,7 @@ class NativeTimelineZoomContract(unittest.TestCase):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
         start = helper.index('if ($windows.Count -ne 1) {')
         end = helper.index('$window = $windows[0]', start)
-        diagnostic = helper[start:end]
+        diagnostic = '\n'.join(line[2:] if line.startswith('  ') else line for line in helper[start:end].splitlines())
         for text in ['Select-Object -First 16', '[Math]::Min(17, $windows.Count)',
                      'truncated = ($windows.Count -gt 16)', '"zero"', '"multiple"',
                      'foreground_is_browser = ($foregroundPid -eq $OwnedBrowserPid)',
@@ -30,6 +30,22 @@ class NativeTimelineZoomContract(unittest.TestCase):
         self.assertLess(diagnostic.index('LN_NATIVE_WINDOWS:unavailable'), diagnostic.index('throw "Expected exactly one'))
         self.assertIn('ConvertTo-Json -Depth 4 -Compress))\n    [Console]::Error.Flush()', diagnostic)
 
+
+    def test_prepared_binding_is_optional_and_revalidated_before_native_actions(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        self.assertIn('[long]$ExpectedWindow = 0', helper)
+        self.assertIn('$process.StartTime.ToUniversalTime().Ticks.ToString()', helper)
+        self.assertIn('if ($ExpectedWindow -eq 0) {\n  if ($windows.Count -ne 1)', helper)
+        self.assertIn('} else {\n  Assert-PreparedWindowLive\n  $window = [IntPtr]$ExpectedWindow', helper)
+        self.assertIn('function Assert-OwnedForeground {\n  if ($ExpectedWindow -ne 0) { Assert-PreparedWindowLive }', helper)
+        self.assertIn('if ($ExpectedWindow -eq 0) { [void][TimelineZoomWindow]::SetForegroundWindow($window) }', helper)
+        predicate = helper.split('function Assert-PreparedWindowFacts', 1)[1].split('# End pure prepared-window validation.', 1)[0]
+        for required in ['$expectedStart -cne $actualStart', '-not $fact.Exists', '$fact.Hwnd -ne $expected',
+                         '$fact.Pid -ne $pidValue', '$fact.Class -cne "Chrome_WidgetWin_1"', '-not $fact.Visible',
+                         '$fact.Owner -ne 0', '$other.Owner -ne $expected', '$foreground -ne $expected']:
+            self.assertIn(required, predicate)
+        for forbidden in ['SetForegroundWindow', 'SendWait', 'ShowWindow']:
+            self.assertNotIn(forbidden, predicate)
 
     def test_prepare_phase_markers_are_fixed_and_bounded(self):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
@@ -63,7 +79,7 @@ assert.deepEqual(timed.phases,[{phase:'payload-built',elapsed_ms:14000},{phase:'
     def test_prepare_payload_and_output_remain_equivalent(self):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
         payload = helper.split('$payload = ', 1)[1].split('\n    Write-NativePhase "payload-built"', 1)[0]
-        self.assertEqual(payload, '@{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";\n       method = "maximize-owned-window-before-baseline"; before = $initialGeometry;\n       after = (Describe-Geometry $rect) }')
+        self.assertEqual(payload, '@{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); process_start = $processStart; action = "prepare";\n       method = "maximize-owned-window-before-baseline"; before = $initialGeometry;\n       after = (Describe-Geometry $rect) }')
         self.assertIn('$json = $payload | ConvertTo-Json -Depth 5 -Compress', helper)
         self.assertIn('Write-NativePhase "json-serialized"\n    $json\n    Write-NativePhase "output-emitted"\n    exit 0', helper)
         self.assertIn('[Diagnostics.Stopwatch]::StartNew()', helper)

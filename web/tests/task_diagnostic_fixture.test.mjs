@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { Readable } from 'node:stream';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 const source = fs.readFileSync(new URL('../../scripts/task-diagnostic-preview-acceptance.cjs', import.meta.url), 'utf8');
 for (const scenario of ['launch', 'context', 'context+close+write', 'launch+write']) {
@@ -68,7 +70,7 @@ for (const captureFails of [false, true]) test(`native failure page capture ${ca
     if (name === "node:assert/strict") return assert;
     if (name === "node:path") return path;
     if (name === "node:fs") return { mkdirSync() {}, writeFileSync(_file, value) { report = JSON.parse(value); throw new Error("write failed"); } };
-    if (name === "node:child_process") return { execFileSync(_command, args) { const action = args[args.indexOf("-Zoom") + 1]; actions.push(action); if (action === "capture") throw primary; if (action === "reset" && actions.includes("capture")) throw new Error("reset failed"); return "{}"; } };
+    if (name === "node:child_process") return { execFileSync(_command, args) { const action = args[args.indexOf("-Zoom") + 1]; actions.push(action); if (action === "prepare") { assert(!args.includes("-ExpectedWindow")); return JSON.stringify({ owned_pid: 123, window: 456, process_start: "638000000000000000" }); } assert.equal(args[args.indexOf("-ExpectedWindow") + 1], "456"); assert.equal(args[args.indexOf("-ExpectedProcessStart") + 1], "638000000000000000"); if (action === "capture") throw primary; if (action === "reset" && actions.includes("capture")) throw new Error("reset failed"); return "{}"; } };
     if (name === "./classic-visual-study-fixture.cjs") return { TASK_ID: "synthetic", createStudyPlan() {} };
     if (name === "./timeline-native-zoom-matrix.cjs") return { assertZoomMetrics() {}, async waitForNativePreset() { return { dpr: 2 }; } };
     throw new Error(`Unexpected import ${name}`);
@@ -164,4 +166,8 @@ test('remote download null, oversized, truncated and changed bytes fail closed',
     await assert.rejects(check({ async createReadStream() { return stream; } }, expected), bytes.length > 3 ? /exceeds expected byte length/ : /deep-equal/);
     assert.equal(stream.destroyed, true);
   }
+});
+
+test('native prepared-window predicate rejects identity and window replacement faults', { skip: process.platform !== 'win32' }, () => {
+  execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('../../scripts/tests/task-diagnostic-window-binding.ps1', import.meta.url))], { timeout: 15000, stdio: 'pipe' });
 });

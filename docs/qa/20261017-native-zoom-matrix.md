@@ -74,3 +74,27 @@ keyboard checks, cleanup/restoration and the workflow job cap are unchanged.
 There is no retry or persistent helper. This is a setup-process budget, separate
 from the unchanged reference-reader p95 and per-sample ACK limits. Historical
 failures remain failures; the revised preparation budget requires hosted proof.
+
+## Diagnostic preview: prepared-window binding
+
+Diagnostic run `39050037299` (`e134` candidate) reached both exact-byte downloads
+and Cancel on classic, then failed restoration's strict unique-window discovery.
+Its bounded native evidence recorded two visible `Chrome_WidgetWin_1` windows in
+PID 1644: prepared root HWND 3276922 remained foreground with owner 0; HWND 1835476
+was nonforeground and directly owned by that root. The extra window's content and
+type are unknown; this is not evidence that it is a download or security popup.
+
+Only the diagnostic fixture now passes the prepared HWND and process StartTime
+UTC ticks (as an exact string) to later helper actions. Preparation still requires
+unique discovery. Every bound action revalidates process creation identity,
+HWND existence, class, PID, visibility, root ownership and foreground. Additional
+matching windows are allowed only when directly owned by the bound root; unrelated
+roots fail closed. Bound actions never select a replacement, change foreground,
+or dismiss an extra window. Other harnesses retain strict unique discovery.
+
+A dead/replaced HWND, recycled PID, changed root facts or lost foreground rejects
+input/capture. Win32 cannot distinguish the same numeric HWND reused within the
+same live process with identical observed facts without adding a persistent window
+property; no such mutation is introduced. Pure predicate fault tests and local
+contracts do not prove native behavior. Full hosted flow, restoration and owned
+capture review remain required; historical failed runs remain failures.
