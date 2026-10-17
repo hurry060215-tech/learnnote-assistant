@@ -43,7 +43,7 @@ function assertNativeLayout(state, zoomed, selector) {
     assert(box.left >= -2 && box.right <= state.width + 2, `${name}: source content fits the native viewport`);
   }
 }
-async function captureNativeViews(page, { out, zoomed, nativeCapture, reports }) {
+async function captureNativeViews(page, { out, zoomed, nativeCapture, reports, percent = 200 }) {
   for (const [name, selector] of [["claims", "#sourceClaims li"], ["cue", '#sourceContent .cue[data-cue-index="0"]']]) {
     const record = { view: name, selector }; reports.push(record);
     await page.locator(selector).first().evaluate(node => node.scrollIntoView({ block: "center", behavior: "instant" }));
@@ -51,7 +51,7 @@ async function captureNativeViews(page, { out, zoomed, nativeCapture, reports })
     await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
     record.before = await page.evaluate(readNativeLayout, selector);
     assertNativeLayout(record.before, zoomed, selector);
-    const ownedName = `native-200-${name}-owned-window.png`;
+    const ownedName = `native-${percent}-${name}-owned-window.png`;
     record.owned_window = { filename: ownedName, ...nativeCapture(path.join(out, ownedName)) };
     const ownedSize = pngSize(fs.readFileSync(path.join(out, ownedName)));
     assert.equal(ownedSize.width, record.owned_window.width); assert.equal(ownedSize.height, record.owned_window.height);
@@ -61,7 +61,7 @@ async function captureNativeViews(page, { out, zoomed, nativeCapture, reports })
     try {
       // Read the actual surface without the CSS-sized clip used by Playwright.
       const { data } = await session.send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
-      const bytes = Buffer.from(data, "base64"), filename = `native-200-${name}-cdp-surface.png`;
+      const bytes = Buffer.from(data, "base64"), filename = `native-${percent}-${name}-cdp-surface.png`;
       fs.writeFileSync(path.join(out, filename), bytes);
       record.cdp_surface_diagnostic = { filename, ...pngSize(bytes) };
     } catch (error) { captureFailure = error; throw error; }
@@ -69,7 +69,7 @@ async function captureNativeViews(page, { out, zoomed, nativeCapture, reports })
       try { await session.detach(); }
       catch (error) { record.detach_error = String(error); if (!captureFailure) throw error; }
     }
-    const filename = `native-200-${name}-playwright-viewport.png`;
+    const filename = `native-${percent}-${name}-playwright-viewport.png`;
     const bytes = await page.screenshot({ path: path.join(out, filename) });
     record.playwright_diagnostic = { filename, ...pngSize(bytes) };
     record.expected_content_pixels = { width: zoomed.width * zoomed.dpr, height: zoomed.height * zoomed.dpr };
@@ -80,7 +80,7 @@ async function captureNativeViews(page, { out, zoomed, nativeCapture, reports })
   const record = { view: "playwright-full-page-diagnostic" }; reports.push(record);
   const selector = '#sourceContent .cue[data-cue-index="0"]';
   record.before = await page.evaluate(readNativeLayout, selector);
-  const filename = "claim-timeline-native-200-percent.png";
+  const filename = `claim-timeline-native-${percent}-percent.png`;
   const bytes = await page.screenshot({ path: path.join(out, filename), fullPage: true });
   record.playwright_diagnostic = { filename, ...pngSize(bytes) };
   record.after = await page.evaluate(readNativeLayout, selector);

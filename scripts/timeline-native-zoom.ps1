@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][int]$OwnedBrowserPid,
-  [ValidateSet("reset", "200", "prepare", "capture")][string]$Zoom = "reset",
+  [ValidateSet("reset", "90", "125", "150", "200", "prepare", "capture")][string]$Zoom = "reset",
   [string]$CapturePath
 )
 $ErrorActionPreference = "Stop"
@@ -142,8 +142,10 @@ if ($Zoom -in @("prepare", "capture")) {
   exit 0
 }
 Send-OwnedZoomKey "^0"
-if ($Zoom -eq "200") {
+if ($Zoom -eq "90") { Send-OwnedZoomKey "^{SUBTRACT}" }
+$increments = @{ "125" = 2; "150" = 3; "200" = 5 }
+if ($increments.ContainsKey($Zoom)) {
   # Browser-native presets: 100, 110, 125, 150, 175, 200 percent.
-  1..5 | ForEach-Object { Send-OwnedZoomKey "^{ADD}" }
+  1..$increments[$Zoom] | ForEach-Object { Send-OwnedZoomKey "^{ADD}" }
 }
-@{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); requested_percent = $(if ($Zoom -eq "200") { 200 } else { 100 }) } | ConvertTo-Json -Compress
+@{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); requested_percent = $(if ($Zoom -eq "reset") { 100 } else { [int]$Zoom }) } | ConvertTo-Json -Compress

@@ -7,6 +7,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeTimelineZoomContract(unittest.TestCase):
+    def test_additional_presets_and_secondary_controls(self):
+        subprocess.run(["node", str(ROOT / "scripts/tests/timeline-native-zoom-matrix.cjs")], check=True, timeout=30)
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        self.assertIn('"90", "125", "150", "200"', helper)
+        self.assertIn('Send-OwnedZoomKey "^{SUBTRACT}"', helper)
+        self.assertIn('"125" = 2; "150" = 3; "200" = 5', helper)
+        source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertIn("report.baseline_restored = restored", source)
+        self.assertIn("additional_native_zoom_cases:zoomCases", source)
+
     def test_native_capture_diagnostics_and_hidden_overflow_fail_closed(self):
         subprocess.run(["node", str(ROOT / "scripts/tests/timeline-native-capture.cjs")], check=True, timeout=30)
 
