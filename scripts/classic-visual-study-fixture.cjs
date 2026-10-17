@@ -25,7 +25,23 @@ const transcript = { source: 'browser', segments: windows.map(window => ({
 })) };
 const grid = id => `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240"><rect width="720" height="240" fill="#edf2eb"/><g fill="none" stroke="#58635d"><rect x="12" y="12" width="216" height="216"/><rect x="252" y="12" width="216" height="216"/><rect x="492" y="12" width="216" height="216"/></g><g font-family="sans-serif" font-size="28" fill="#26332c"><text x="36" y="110">${id} / 1</text><text x="276" y="110">${id} / 2</text><text x="516" y="110">${id} / 3</text></g></svg>`;
 
-function fixtureResponse(pathname) {
+function createStudyPlan() {
+  return { schema_version: 4, plan_id: 'default', title: '本地学习计划', daily_target: 10,
+    paused: false, timezone: 'UTC', timezone_initialized: false,
+    created_at: '2026-10-17T00:00:00+00:00', updated_at: '2026-10-17T00:00:00+00:00' };
+}
+
+function fixtureResponse(pathname, { method = 'GET', postData = null, contentType = '', search = '', plan = null } = {}) {
+  if (pathname === '/api/study/plan/initialize') {
+    if (method !== 'POST' || search || contentType !== 'application/json' || !plan) return null;
+    let payload;
+    try { payload = JSON.parse(postData); } catch { return null; }
+    if (!payload || Array.isArray(payload) || Object.keys(payload).length !== 1 || payload.timezone !== 'UTC') return null;
+    plan.timezone_initialized = true;
+    return { json: { plan: { ...plan } } };
+  }
+  if (method !== 'GET') return null;
+  if (pathname === '/api/study/plan') return plan && !search ? { json: { plan: { ...plan } } } : null;
   if (pathname === '/health') return { json: { ffmpeg: true, extension_connected: false, llm_model_configured: false } };
   if (pathname === '/api/tasks') return { json: { tasks: [task, emptyTask] } };
   if (pathname === '/api/library/materials') return { json: { materials: [] } };
@@ -50,11 +66,12 @@ async function runClassicVisualStudy(browser, baseValue, output) {
   assert(base.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname));
   fs.mkdirSync(output, { recursive: true });
   const report = { passed: false, fixture: 'synthetic metadata, transcript and SVG grids', screenshots: [], viewports: [],
-    excluded: ['video playback', 'model/provider calls', 'dormant review-path/navigator renderers'], errors: [], blocked: [], captureErrors: [], cleanupErrors: [] };
+    excluded: ['video playback', 'model/provider calls', 'dormant review-path/navigator renderers'], studyPlanRequests: [], errors: [], blocked: [], captureErrors: [], cleanupErrors: [] };
   let primaryError;
   try {
     for (const [name, width, height] of [['desktop', 1440, 1000], ['mobile', 390, 844]]) {
-      const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', acceptDownloads: true, serviceWorkers: 'block' });
+      const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', acceptDownloads: true, serviceWorkers: 'block', timezoneId: 'UTC' });
+      const plan = createStudyPlan();
       let page, pageFailure;
       try {
         page = await context.newPage();
@@ -62,16 +79,22 @@ async function runClassicVisualStudy(browser, baseValue, output) {
         page.on('pageerror', error => report.errors.push(error.message));
         await context.route('**/*', route => {
           const request = route.request(), url = new URL(request.url());
-          if (url.origin !== base.origin || request.method() !== 'GET') {
+          if (url.origin !== base.origin) {
             report.blocked.push(`${request.method()} ${url.origin}${url.pathname}`);
             return route.abort();
           }
-          const response = fixtureResponse(url.pathname);
-          if (response) return route.fulfill(response);
-          if (url.pathname.startsWith('/web/') || url.pathname === '/favicon.ico') return route.continue();
+          const response = fixtureResponse(url.pathname, { method: request.method(), postData: request.postData(),
+            contentType: request.headers()['content-type'] || '', search: url.search, plan });
+          if (response) {
+            if (url.pathname.startsWith('/api/study/plan')) report.studyPlanRequests.push({ viewport: name,
+              method: request.method(), path: url.pathname, initialized: response.json.plan.timezone_initialized });
+            return route.fulfill(response);
+          }
+          if (request.method() === 'GET' && (url.pathname.startsWith('/web/') || url.pathname === '/favicon.ico')) return route.continue();
           report.blocked.push(`${request.method()} ${url.pathname}`);
           return route.abort();
         });
+        const studyPlanHydrated = () => page.waitForFunction(() => document.querySelector('#studyPlanTimezone')?.value === 'UTC');
         const target = id => new URL(`/web/classic.html?task=${id}&tab=note`, base).href;
         const capture = async suffix => {
           const filename = `${name}-${suffix}.png`;
@@ -90,6 +113,7 @@ async function runClassicVisualStudy(browser, baseValue, output) {
           await assertSource('slices');
         };
         await page.goto(target(TASK_ID), { waitUntil: 'load' });
+        await studyPlanHydrated();
         await page.locator('.markdown-note').getByText(new RegExp(TASK_ID)).waitFor();
         assert.equal(await page.locator('#onboardingOverlay').isVisible(), false, 'Explicit task routes skip first-run onboarding');
         await slices();
@@ -138,11 +162,13 @@ async function runClassicVisualStudy(browser, baseValue, output) {
         await slices();
         assert.equal(await page.locator('.visual-study-handout article').count(), 4, 'Repeated source entry must not duplicate windows');
         await page.goto(target(EMPTY_ID), { waitUntil: 'load' });
+        await studyPlanHydrated();
         await page.locator('.markdown-note').getByText(new RegExp(EMPTY_ID)).waitFor();
         await page.locator('.result-tabs [data-tab="slices"]').click();
         await page.getByText('画面切片尚未生成。', { exact: true }).waitFor();
         assert.equal(await page.locator('.visual-study-handout, .visual-study-deck').count(), 0);
         await page.goBack({ waitUntil: 'load' });
+        await studyPlanHydrated();
         await slices();
         assert.equal(await page.locator('.visual-study-handout article').count(), 4);
         report.viewports.push({ name, width, height, geometry, task_id: TASK_ID, focused_window: 'W002', export_verified: true,
@@ -166,6 +192,10 @@ async function runClassicVisualStudy(browser, baseValue, output) {
     }
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.blocked, []);
+    assert.deepEqual(report.studyPlanRequests, ['desktop', 'mobile'].flatMap(viewport => Array.from({ length: 3 }, () => [
+      { viewport, method: 'POST', path: '/api/study/plan/initialize', initialized: true },
+      { viewport, method: 'GET', path: '/api/study/plan', initialized: true }
+    ]).flat()));
     report.passed = true;
     return report;
   } catch (error) {
@@ -179,4 +209,4 @@ async function runClassicVisualStudy(browser, baseValue, output) {
     }
   }
 }
-module.exports = { runClassicVisualStudy, fixtureResponse, TASK_ID, EMPTY_ID };
+module.exports = { runClassicVisualStudy, fixtureResponse, createStudyPlan, TASK_ID, EMPTY_ID };

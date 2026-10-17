@@ -2,9 +2,39 @@ const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
 
-async function auditViewport(page, width, height, output) {
+function settingsGeometry() {
+  const rect = node => {
+    const r = node.getBoundingClientRect(), css = getComputedStyle(node);
+    return { left:r.left, top:r.top, right:r.right, bottom:r.bottom, width:r.width, height:r.height,
+      clientWidth:node.clientWidth, scrollWidth:node.scrollWidth, overflowX:css.overflowX,
+      overflowY:css.overflowY, display:css.display, position:css.position, widthCss:css.width,
+      marginLeft:css.marginLeft, marginRight:css.marginRight, gridColumn:css.gridColumn };
+  };
+  const selectors = ['.app-shell', '#mainNavigation', '#settingsView', '.settings-header',
+    '.settings-layout', '.settings-menu', '.settings-content', '#settingsCloseButton',
+    '#saveSettingsButton', '#settingLocale', '[data-setting="uiScale"]',
+    '.settings-pane:not([hidden]) input[type="checkbox"]'];
+  return { method:'fixed Playwright viewport and application uiScale setting; not native browser zoom',
+    viewport:{width:innerWidth,height:innerHeight}, dpr:devicePixelRatio,
+    cssZoom:getComputedStyle(document.body).zoom, documentZoom:getComputedStyle(document.documentElement).zoom,
+    visualScale:visualViewport?.scale, uiDensity:document.body.dataset.uiDensity,
+    elements:selectors.flatMap(selector => [...document.querySelectorAll(selector)].map((node,index) => {
+      const geometry=rect(node), clippingAncestors=[];
+      for(let parent=node.parentElement;parent;parent=parent.parentElement) {
+        const value=rect(parent);
+        if(['hidden','clip','auto','scroll'].includes(value.overflowX)||['hidden','clip','auto','scroll'].includes(value.overflowY))
+          clippingAncestors.push({tag:parent.tagName,id:parent.id,...value});
+      }
+      return {selector,index,...geometry, outsideViewportX:geometry.left < -1 || geometry.right > innerWidth+1,
+        clippingAncestors};
+    })) };
+}
+
+async function auditViewport(page, width, height, output, scale = 200) {
   await page.setViewportSize({ width, height });
   await page.waitForTimeout(250);
+  const geometry = await page.evaluate(settingsGeometry);
+  fs.writeFileSync(path.join(output, `settings-${width}x${height}-${scale}-geometry.json`), JSON.stringify(geometry, null, 2));
   const result = await page.evaluate(() => {
     const settings = document.querySelector("#settingsView");
     const menu = document.querySelector(".settings-menu");
@@ -29,7 +59,7 @@ async function auditViewport(page, width, height, output) {
   if (result.horizontalOverflow || result.menuScrollWidth > result.menuWidth + 1) {
     throw new Error(`Horizontal overflow at ${width}x${height}: ${JSON.stringify(result)}`);
   }
-  await page.screenshot({ path: path.join(output, `settings-${width}x${height}-200.png`), fullPage: true });
+  await page.screenshot({ path: path.join(output, `settings-${width}x${height}-${scale}.png`), fullPage: true });
   return result;
 }
 
@@ -81,6 +111,10 @@ async function main() {
     throw new Error(`English locale contract failed: ${JSON.stringify(english)}`);
   }
 
+  await page.locator('[data-setting="uiScale"] button[data-value="100"]').click();
+  const baseline = [];
+  for (const [width,height] of [[1440,900],[768,1024],[390,844]])
+    baseline.push(await auditViewport(page,width,height,output,100));
   await page.locator('[data-setting="uiScale"] button[data-value="200"]').click();
   await page.waitForTimeout(200);
   const wide = await auditViewport(page, 1440, 900, output);
@@ -111,7 +145,7 @@ async function main() {
   }
   await browser.close();
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, stylesheets, english, chinese, wide, tablet, mobile, keyboard }));
+  process.stdout.write(JSON.stringify({ ok: true, stylesheets, english, chinese, baseline, wide, tablet, mobile, keyboard }));
 }
 
 main().catch(error => {

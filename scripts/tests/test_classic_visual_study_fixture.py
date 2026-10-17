@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -25,3 +26,50 @@ class ClassicVisualStudyFixtureTests(unittest.TestCase):
         self.assertIn("learning-workflow-acceptance.cjs http://127.0.0.1:8765/web/classic.html build/learning-ui", workflow)
         self.assertIn("Learning interaction gate failed", workflow)
         self.assertIn("build/learning-ui", workflow[workflow.index("actions/upload-artifact@"):])
+
+    def test_fixture_matches_real_local_study_plan_api(self):
+        fixture = subprocess.check_output([
+            "node", "-e", "const f=require('./scripts/classic-visual-study-fixture.cjs'); "
+            "const plan=f.createStudyPlan(); console.log(JSON.stringify(f.fixtureResponse("
+            "'/api/study/plan/initialize', {method:'POST',postData:JSON.stringify({timezone:'UTC'}),"
+            "contentType:'application/json',plan}).json));"
+        ], cwd=ROOT, text=True)
+        # A fresh process keeps imported backend configuration isolated from other script tests.
+        code = r'''
+import json
+from pathlib import Path
+import sys
+import tempfile
+from unittest.mock import patch
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from app.models import StudyPlan, StudyPlanUpdateRequest
+from app.routers.knowledge_study import study_router
+
+fixture = json.load(sys.stdin)
+StudyPlan.model_validate(fixture["plan"])
+StudyPlanUpdateRequest.model_validate({"timezone": "UTC"})
+app = FastAPI()
+app.include_router(study_router)
+with tempfile.TemporaryDirectory(prefix="classic-plan-api-") as tmp, patch("app.study.DATA_DIR", Path(tmp)):
+    with TestClient(app) as client:
+        initialized = client.post("/api/study/plan/initialize", json={"timezone": "UTC"})
+        assert initialized.status_code == 200, initialized.text
+        fetched = client.get("/api/study/plan")
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json() == initialized.json()
+        actual = fetched.json()["plan"]
+        assert set(actual) == set(fixture["plan"])
+        for key in actual:
+            if key not in {"created_at", "updated_at"}:
+                assert actual[key] == fixture["plan"][key], (key, actual[key], fixture["plan"][key])
+        assert client.post("/api/study/plan/initialize", json={"timezone": "UTC"}).json() == fetched.json()
+        for payload in ({"timezone": "Invalid/Zone"}, {"timezone": "UTC", "extra": True}):
+            assert client.post("/api/study/plan/initialize", json=payload).status_code == 422
+        for method in ("GET", "PUT", "DELETE"):
+            assert client.request(method, "/api/study/plan/initialize").status_code == 405
+        assert client.get("/api/study/plan").json() == fetched.json()
+'''
+        env = {**os.environ, "PYTHONPATH": str(ROOT / "backend")}
+        subprocess.run([sys.executable, "-c", code], input=fixture, cwd=ROOT,
+                       env=env, text=True, check=True, timeout=30)

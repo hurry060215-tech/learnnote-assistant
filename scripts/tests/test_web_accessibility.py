@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import subprocess
 from pathlib import Path
 
 
@@ -8,6 +9,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WebAccessibilityContractTests(unittest.TestCase):
+    def test_settings_geometry_distinguishes_clipped_children_and_native_zoom(self):
+        subprocess.run(["node", str(ROOT / "scripts/tests/settings-geometry.cjs")], check=True, timeout=30)
+
     def test_primary_document_has_language_and_focus_contract(self) -> None:
         html = (ROOT / "web" / "classic.html").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")

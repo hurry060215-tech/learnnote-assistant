@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { runClassicVisualStudy, fixtureResponse, TASK_ID, EMPTY_ID } = require('../classic-visual-study-fixture.cjs');
+const { runClassicVisualStudy, fixtureResponse, createStudyPlan, TASK_ID, EMPTY_ID } = require('../classic-visual-study-fixture.cjs');
 
 test('synthetic task, transcript, grid and exported index have exact source identity', () => {
   const task = fixtureResponse(`/api/tasks/${TASK_ID}`).json.task;
@@ -34,6 +34,7 @@ test('routing is isolated, fails closed and retains a primary failure during cle
   const browser = { async newContext(options) {
     assert.equal(options.acceptDownloads, true);
     assert.equal(options.serviceWorkers, 'block');
+    assert.equal(options.timezoneId, 'UTC');
     return {
       async newPage() { return { setDefaultTimeout() {}, on() {}, async goto() { throw primary; },
         async screenshot(options) { assert.equal(options.timeout, 5000); assert.equal(options.fullPage, false); throw new Error('synthetic capture failure'); } }; },
@@ -48,15 +49,27 @@ test('routing is isolated, fails closed and retains a primary failure during cle
     assert.equal(report.passed, false); assert.equal(report.failure, primary.message);
     assert.deepEqual(report.cleanupErrors, ['synthetic close failure']);
     assert.deepEqual(report.captureErrors, ['synthetic capture failure']);
-    const dispatch = async (url, method = 'GET') => {
+    const dispatch = async (url, method = 'GET', postData = null, contentType = '') => {
       const calls = [];
-      await handler({ request: () => ({ url: () => url, method: () => method }),
+      await handler({ request: () => ({ url: () => url, method: () => method, postData: () => postData, headers: () => ({ 'content-type': contentType }) }),
         abort: () => calls.push('abort'), continue: () => calls.push('continue'), fulfill: response => calls.push(response) });
       return calls;
     };
     assert.deepEqual(await dispatch('https://example.test/api/tasks'), ['abort']);
     assert.deepEqual(await dispatch('http://127.0.0.1:8765/api/tasks', 'POST'), ['abort']);
     assert.deepEqual(await dispatch('http://127.0.0.1:8765/api/unexpected'), ['abort']);
+    for (const url of ['https://example.test/api/study/plan/initialize',
+      'http://127.0.0.1:8765/api/study/plan/initialize?extra=1', 'http://127.0.0.1:8765/web/app.js',
+      'http://127.0.0.1:8765/api/study/cards', 'http://127.0.0.1:8765/api/model/call']) {
+      assert.deepEqual(await dispatch(url, 'POST', '{"timezone":"UTC"}', 'application/json'), ['abort']);
+    }
+    const initialize = 'http://127.0.0.1:8765/api/study/plan/initialize';
+    assert.deepEqual(await dispatch(initialize, 'PUT', '{"timezone":"UTC"}', 'application/json'), ['abort']);
+    assert.deepEqual(await dispatch(initialize, 'POST', '{"timezone":"UTC","extra":true}', 'application/json'), ['abort']);
+    assert.deepEqual(await dispatch(initialize, 'POST', '{"timezone":"UTC"}', 'text/plain'), ['abort']);
+    const initialized = await dispatch(initialize, 'POST', '{"timezone":"UTC"}', 'application/json');
+    assert.deepEqual(initialized, [{ json: { plan: { ...createStudyPlan(), timezone_initialized: true } } }]);
+    assert.deepEqual(await dispatch('http://127.0.0.1:8765/api/study/plan'), initialized);
     assert.deepEqual(await dispatch('http://127.0.0.1:8765/web/app.js?v=fixture'), ['continue']);
     assert.deepEqual(await dispatch(`http://127.0.0.1:8765/api/tasks/${TASK_ID}`), [fixtureResponse(`/api/tasks/${TASK_ID}`)]);
   } finally { fs.rmSync(output, { recursive: true, force: true }); }
@@ -124,4 +137,70 @@ test('outer browser cleanup cannot replace the fixture failure', async () => {
     assert(stderr.includes(primary.stack));
     assert.deepEqual(cleanup, ['Could not close learning acceptance browser: synthetic browser close failure']);
   } finally { fs.rmSync(output, { recursive: true, force: true }); }
+});
+
+test('study initialization accepts only the pinned startup payload and keeps contexts separate', () => {
+  const plan = createStudyPlan(), other = createStudyPlan();
+  const initialize = options => fixtureResponse('/api/study/plan/initialize', {
+    method: 'POST', postData: '{"timezone":"UTC"}', contentType: 'application/json', plan, ...options
+  });
+  for (const postData of ['{', 'null', '[]', '"UTC"', '{}', '{"timezone":null}', '{"timezone":42}',
+    '{"timezone":""}', '{"timezone":"Invalid/Zone"}', '{"timezone":"Asia/Shanghai"}',
+    '{"timezone":"UTC","title":"unexpected"}', '{"timezone":"UTC","task_id":"real-task"}']) {
+    assert.equal(initialize({ postData }), null, postData);
+    assert.equal(plan.timezone_initialized, false);
+  }
+  for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) assert.equal(initialize({ method }), null, method);
+  assert.equal(initialize({ search: '?timezone=UTC' }), null);
+  assert.equal(initialize({ contentType: 'text/plain' }), null);
+  assert.equal(initialize({ plan: null }), null);
+  assert.deepEqual(fixtureResponse('/api/study/plan', { plan }).json.plan, createStudyPlan());
+  const response = initialize({});
+  assert.deepEqual(response.json.plan, { ...createStudyPlan(), timezone_initialized: true });
+  assert.deepEqual(initialize({}), response, 'Repeated startup is idempotent');
+  assert.deepEqual(fixtureResponse('/api/study/plan', { plan }), response);
+  assert.deepEqual(fixtureResponse('/api/study/plan', { plan: other }).json.plan, createStudyPlan());
+  response.json.plan.daily_target = 99;
+  assert.equal(plan.daily_target, 10, 'Response snapshots cannot mutate the fixture state');
+  for (const options of [{ method: 'POST', plan }, { method: 'PUT', plan }, { search: '?extra=1', plan }]) {
+    assert.equal(fixtureResponse('/api/study/plan', options), null);
+  }
+});
+
+test('actual classic startup hydrates the plan through POST then GET on each navigation', async () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(path.join(__dirname, '../../web/app.js'), 'utf8').replace(/\r\n/g, '\n');
+  const actualFunction = name => {
+    let start = source.indexOf(`function ${name}(`);
+    assert(start >= 0, name);
+    if (source.slice(start - 6, start) === 'async ') start -= 6;
+    const end = source.indexOf('\n}\n', start);
+    assert(end > start, name);
+    return source.slice(start, end + 3);
+  };
+  assert(source.includes('\nloadStudyPlan();\n'), 'The actual entrypoint initializes study state unconditionally');
+  for (const viewport of ['desktop', 'mobile']) {
+    const plan = createStudyPlan(), calls = [];
+    for (const navigation of ['initial task', 'empty task', 'browser Back']) {
+      const timezone = { value: '' }, els = { studyPlanTarget: { value: '' }, studyPlanPaused: { checked: true } };
+      const context = vm.createContext({ els, document: { querySelector(selector) {
+        assert.equal(selector, '#studyPlanTimezone'); return timezone;
+      } }, Intl: { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: 'UTC' }) }) },
+      apiUrl: value => value, async fetchJson(pathname, options = {}) {
+        const method = options.method || 'GET';
+        calls.push([method, pathname]);
+        const response = fixtureResponse(pathname, { method, postData: options.body || null,
+          contentType: options.headers?.['Content-Type'] || '', plan });
+        assert(response, `${viewport} ${navigation}: ${method} ${pathname}`);
+        return response.json;
+      } });
+      vm.runInContext(actualFunction('initializeLocalStudyTimezone') + actualFunction('loadStudyPlan'), context);
+      await context.loadStudyPlan();
+      assert.equal(els.studyPlanTarget.value, '10'); assert.equal(els.studyPlanPaused.checked, false);
+      assert.equal(timezone.value, 'UTC'); assert.equal(plan.timezone_initialized, true);
+    }
+    assert.deepEqual(calls, Array.from({ length: 3 }, () => [
+      ['POST', '/api/study/plan/initialize'], ['GET', '/api/study/plan']
+    ]).flat());
+  }
 });

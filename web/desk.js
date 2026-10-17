@@ -1691,6 +1691,7 @@ function readRoute() {
   }
 }
 async function applyRoute({ initial = false } = {}) {
+  const epoch = (state.routeEpoch = (state.routeEpoch || 0) + 1);
   const route = readRoute();
   if (!initial && !guard()) {
     history.replaceState(
@@ -1706,26 +1707,41 @@ async function applyRoute({ initial = false } = {}) {
     notice("链接格式无效，请从左侧重新选择笔记。");
     return;
   }
-  const epoch = (state.routeEpoch = (state.routeEpoch || 0) + 1);
-  let item =
-    route.id &&
-    state.items.find((i) => i.kind === route.kind && i.id === route.id);
+  let selectionEpoch = state.epoch, routeHash = location.hash;
+  const routeSearch = location.search;
+  const current = () => epoch === state.routeEpoch && selectionEpoch === state.epoch
+    && routeHash === location.hash && routeSearch === location.search;
+  const findItem = () => route.id && state.items.find((i) => i.kind === route.kind && i.id === route.id);
+  let item = findItem();
   if (route.id && !item && !initial) {
+    const joinedRefresh = Boolean(state.refreshPromise);
     await refresh();
-    item = state.items.find((i) => i.kind === route.kind && i.id === route.id);
+    if (!current()) return;
+    item = findItem();
+    // A joined request may predate creation of the explicitly requested item.
+    if (!item && joinedRefresh) {
+      await refresh();
+      if (!current()) return;
+      item = findItem();
+    }
   }
-  if (epoch !== state.routeEpoch) return;
+  if (!current()) return;
   if (
     item &&
     (state.selected?.id !== item.id || state.selected?.kind !== item.kind)
-  )
-    await openItem(item, { remember: !initial, check: false });
-  else if (route.id && !item) {
+  ) {
+    const opening = openItem(item, { remember: !initial, check: false });
+    selectionEpoch = state.epoch;
+    routeHash = location.hash;
+    await opening;
+  } else if (route.id && !item) {
     notice("这份内容不存在或已被删除，请从左侧重新选择。");
     return;
-  } else if (!route.id && !route.view && !initial)
+  } else if (!route.id && !route.view && !initial) {
     showHome({ remember: false, check: false });
-  if (epoch !== state.routeEpoch) return;
+    return;
+  }
+  if (!current()) return;
   if (route.view === "settings") {
     if (!$("settingsDialog").open) $("settings").click();
     else

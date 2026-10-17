@@ -137,9 +137,10 @@ expected HTML/record fixtures are unchanged by this test-harness correction.
 `scripts/classic-visual-study-fixture.cjs` reuses the existing hosted Edge process
 from `learning-workflow-acceptance.cjs`, with a fresh isolated context at 1440 x
 1000 and 390 x 844. It loads the shipped classic page and its actual script/style
-assets. Only task metadata, note text, timed subtitles, SVG grids and a download
-response are synthetic. Routing permits declared same-origin fixture GETs and
-static assets, rejecting unexpected API requests, writes and external origins.
+assets. Task metadata, note text, timed subtitles, SVG grids, the local study plan and
+a download response are synthetic. Routing permits declared same-origin fixture
+GETs, static assets and one precisely validated study-timezone initialization
+POST; unexpected API requests, writes and external origins remain rejected.
 No provider, playable media, renderer-global call or injected DOM is involved.
 
 The normal task URL and visible controls exercise overview, handout, correlation
@@ -221,3 +222,39 @@ checking no stale focus, late replacement or redundant request.
 Final exact caps are 8,769 for `app.js` and 10,136 for the aggregate; all other
 caps, extracted bodies and frozen outputs are unchanged. Material and empty
 selection paths retain their original loading behavior.
+
+
+## Hosted startup contract correction (2026-10-17)
+
+The first integrated Edge run on `ecbe6ca0b94f8523d2ec1dc75c0b1c382c57a56a`
+([run 39008637270](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39008637270))
+completed both viewport interaction sequences, all six screenshots and both
+exact-body export checks, then failed the final unexpected-request assertion.
+Its retained report contains six blocked `POST /api/study/plan/initialize`
+requests, with no page errors. The single downloaded artifact 12092405929 is
+30,051,229 bytes, SHA-256
+`ad0a68e3c3b31cdc15fe938861f17a4de9c88f5d231b6cd9cf998a27de0a3624`.
+The failed report, original PNGs and downloaded indices remain evidence of a
+failed gate; inspecting their pixels does not turn that run into a pass.
+
+This is existing task-independent startup behavior: `loadStudyPlan()` always
+calls `initializeLocalStudyTimezone()`, then `GET /api/study/plan`, then hydrates
+three controls without further requests. The backend initializes only the
+uninitialized local plan timezone and returns `{plan: StudyPlan}`. The fixture
+now pins each disposable browser context to UTC, accepts only same-origin
+`POST /api/study/plan/initialize` with JSON content type and the single field
+`{"timezone":"UTC"}`, and fulfills the existing GET with a schema-v4 synthetic
+plan. Both exact plan paths reject query parameters. The initialized state is
+independent per context, survives that context's document navigation, and is
+never forwarded to the real backend. Other writes, processing/model endpoints,
+external origins, wrong methods and malformed/extra-field bodies remain blocked.
+
+The real page must finish its plan-control hydration after initial task load,
+empty-task navigation and Back. Its report separately verifies the ordered
+POST/GET pairs for all three documents at both widths. Offline regressions run
+the actual two startup function bodies through the fixture and compare its
+response with the real backend model and isolated FastAPI routes. They cover
+idempotence, context separation, invalid timezone/extra fields/wrong methods,
+follow-on GET hydration and unchanged request guards. No product asset, cache
+key, renderer body, expected HTML or architecture cap changes. A fresh hosted
+Edge gate is still required for this fixture correction.

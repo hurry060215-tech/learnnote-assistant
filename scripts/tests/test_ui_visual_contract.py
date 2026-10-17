@@ -170,7 +170,7 @@ class UiVisualContractTests(unittest.TestCase):
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
         key = "update-coordination-20261017"
-        self.assertIn(f'src="/web/desk.js?v={key}"', html)
+        self.assertIn('src="/web/desk.js?v=reader-route-20261017"', html)
         self.assertIn('href="/web/desk.css?v=data-migration-20261017"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
@@ -180,7 +180,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=update-coordination-20261017", html)
+        self.assertIn("desk.js?v=reader-route-20261017", html)
         self.assertIn("desk-tools.js?v=course-timeline-20261016", entry)
         self.assertIn("model-data-consent.js?v=initial-focus-20261016", entry)
         self.assertIn("desk-product.js?v=first-run-20260923", entry)
