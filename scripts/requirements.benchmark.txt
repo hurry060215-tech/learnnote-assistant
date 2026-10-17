@@ -1,0 +1,3 @@
+# Optional fixture observer only; never included by application dependencies.
+# Official release: https://pypi.org/project/psutil/7.2.2/
+psutil==7.2.2

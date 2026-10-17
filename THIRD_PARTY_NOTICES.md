@@ -59,6 +59,13 @@ tested on Python 3.12. Distribution notices and model files must accompany
 redistribution; source installs may omit this lane. OCR is disabled by default
 and never uploads frames by itself.
 
+## Optional benchmark observer
+
+`scripts/requirements.benchmark.txt` pins psutil 7.2.2 for opt-in synthetic
+process-tree measurements only. It is not an application dependency or bundled
+runtime component. [Official release](https://pypi.org/project/psutil/7.2.2/),
+[upstream source and BSD-3-Clause license](https://github.com/giampaolo/psutil).
+
 ## Application runtime components
 
 | Component | Use in LearnNote | Upstream | License |

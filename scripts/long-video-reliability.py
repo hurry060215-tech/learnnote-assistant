@@ -100,6 +100,15 @@ def default_output_dir() -> Path:
     return ROOT / "data" / "test-runs" / "long-video-reliability"
 
 
+def finish_process_tree(monitor) -> dict:
+    try:
+        return monitor.stop()
+    except Exception:
+        # An observer must not replace the original media failure.
+        return {"status": "unavailable", "reason": "observer_stop_failed",
+                "budget_status": "not_established"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Exercise LearnNote's media probe, adaptive frame extraction, and grid pipeline without ASR or LLM calls."
@@ -127,6 +136,8 @@ def main() -> int:
     )
     parser.add_argument("--regenerate", action="store_true", help="Regenerate the cached synthetic media.")
     parser.add_argument("--keep-artifacts", action="store_true")
+    parser.add_argument("--sample-process-tree", action="store_true",
+                        help="Opt-in bounded fixture RSS/CPU sampling; requires scripts/requirements.benchmark.txt.")
     args = parser.parse_args()
 
     if args.duration_seconds < 5:
@@ -152,7 +163,15 @@ def main() -> int:
 
     started = time.monotonic()
     resource_monitor = ResourceMonitor(output_dir).start()
+    tree_monitor = None
+    tree_summary = {"status": "disabled", "budget_status": "not_established"}
+    media_completed = False
     try:
+        if args.sample_process_tree:
+            tree_summary = {"status": "unavailable", "reason": "setup_not_completed",
+                            "budget_status": "not_established"}
+            from owned_process_tree_sample import OwnedProcessTreeSampler
+            tree_monitor = OwnedProcessTreeSampler().start()
         if args.media:
             if not media_path.is_file():
                 raise RuntimeError(f"Media file does not exist: {media_path}")
@@ -213,7 +232,13 @@ def main() -> int:
         if not grids or any(not Path(grid.path).is_file() for grid in grids):
             raise RuntimeError("Frame grid generation did not produce valid grid files.")
 
+        media_completed = True
         resource_summary = resource_monitor.stop().as_dict()
+        if tree_monitor is not None:
+            tree_summary = finish_process_tree(tree_monitor)
+            tree_monitor = None
+            if tree_summary["status"] != "sampled":
+                raise RuntimeError("Owned process-tree measurement is " + tree_summary["status"] + ".")
         peak_rss = resource_summary.get("rss_peak_bytes")
         if args.memory_budget_mb and isinstance(peak_rss, int) and peak_rss > args.memory_budget_mb * 1024 * 1024:
             raise RuntimeError(
@@ -232,6 +257,8 @@ def main() -> int:
             "mode": "media-and-frames-only",
             "api_calls": 0,
             "transcription_attempted": False,
+            "media_pipeline_completed": media_completed,
+            "process_tree_measurement": tree_summary,
             "media": str(media_path),
             "generated": generated,
             "duration_seconds": integrity.duration,
@@ -257,11 +284,16 @@ def main() -> int:
         return 0
     except Exception as exc:
         resource_summary = resource_monitor.stop().as_dict()
+        if tree_monitor is not None:
+            tree_summary = finish_process_tree(tree_monitor)
+            tree_monitor = None
         failure = {
             "status": "fail",
             "mode": "media-and-frames-only",
             "api_calls": 0,
             "transcription_attempted": False,
+            "media_pipeline_completed": media_completed,
+            "process_tree_measurement": tree_summary,
             "error": str(exc),
             "resource_budget": {
                 "memory_budget_mb": args.memory_budget_mb or None,
@@ -274,6 +306,8 @@ def main() -> int:
         print(json.dumps(failure, ensure_ascii=False), file=sys.stderr)
         return 1
     finally:
+        if tree_monitor is not None:
+            finish_process_tree(tree_monitor)
         if not args.keep_artifacts:
             shutil.rmtree(frame_dir, ignore_errors=True)
             shutil.rmtree(grid_dir, ignore_errors=True)

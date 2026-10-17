@@ -9,6 +9,10 @@ on:
       - "scripts/progressive-slo.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
+      - "scripts/owned_process_tree_sample.py"
+      - "scripts/requirements.benchmark.txt"
+      - "scripts/tests/test_owned_process_tree_sample.py"
+      - "scripts/tests/test_visual_process_tree_workflow.py"
       - ".github/workflows/reliability.yml"
   push:
     branches: [main]
@@ -19,6 +23,10 @@ on:
       - "scripts/progressive-slo.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
+      - "scripts/owned_process_tree_sample.py"
+      - "scripts/requirements.benchmark.txt"
+      - "scripts/tests/test_owned_process_tree_sample.py"
+      - "scripts/tests/test_visual_process_tree_workflow.py"
       - ".github/workflows/reliability.yml"
   schedule:
     - cron: "23 18 * * 1"
@@ -37,9 +45,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.test.txt
+          cache-dependency-path: |
+            backend/requirements.test.txt
+            scripts/requirements.benchmark.txt
       - name: Install test dependencies
-        run: python -m pip install -r backend/requirements.windows-py312.lock.txt -r backend/requirements.test.txt
+        run: python -m pip install -r backend/requirements.windows-py312.lock.txt -r backend/requirements.test.txt -r scripts/requirements.benchmark.txt
       - name: Verify reliability checkout freshness
         shell: pwsh
         run: |
@@ -47,6 +57,8 @@ jobs:
           python scripts/reliability-freshness.py --commit "${{ github.sha }}" --require-current-ref --output build/reliability/freshness.json
       - name: Release hardening contracts
         run: python -m unittest discover scripts/tests -p "test_release_hardening.py"
+      - name: Owned process-tree measurement contracts
+        run: python -m unittest discover scripts/tests -p "test_*process_tree*.py"
       - name: Offline model-provider contract
         shell: pwsh
         run: |
@@ -66,6 +78,10 @@ jobs:
           foreach ($duration in $durations) {
             $target = "build/reliability/long-video-matrix/$duration-seconds"
             $interval = [Math]::Max(30, [Math]::Floor($duration / 40))
+            $processTreeArgs = @()
+            if ($duration -in @(1800, 3600, 10800)) {
+              $processTreeArgs = @("--sample-process-tree")
+            }
             python scripts/long-video-reliability.py `
               --duration-seconds $duration `
               --frame-interval $interval `
@@ -73,7 +89,7 @@ jobs:
               --memory-budget-mb 512 `
               --min-free-disk-mb 512 `
               --output-dir $target `
-              --keep-artifacts
+              --keep-artifacts @processTreeArgs
             if ($LASTEXITCODE -ne 0) { throw "Long-video matrix failed at ${duration}s" }
           }
       - name: Real local-task cancellation gate
