@@ -127,3 +127,50 @@ The outer command includes interpreter/offline-guard startup, report output and
 cleanup. Its Linux waited-family CPU is a separate counter with a wider interval
 than sampled CPU; do not subtract them to claim an exact missing-tail amount.
 These measurements do not calibrate Windows or establish a resource-budget pass.
+
+## Inspected Windows fixture result, 2026-10-17
+
+[Required Reliability run 39036694916](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39036694916)
+passed on exact source `a6c23651d8c9723b6c9ecafbfaea2f6d2e0221f0`.
+The offline job `117407888349` passed all 20 observer contracts and the existing
+media, recovery, range, cancellation and scheduler gates. Its freshness report
+confirms the clean source revision. Windows used CPython 3.12.10, four logical
+CPUs and psutil 7.2.2; the sampler source hash above is unchanged.
+
+The inspected offline artifact is `12102616487`, with ZIP SHA-256
+`1a4ac1af84d90f39c00958c432e62ca7e793b54bd8a2c88e9137f991d486729d`.
+Reports are under `long-video-matrix/{1800,3600,10800}-seconds/report.json`.
+These generated-input measurements include generation, probing, extraction and
+grids. Every case retained 40 frames, reported zero API calls and no
+transcription, and had `status=sampled`, zero sampler error counters and
+`budget_status=not_established`.
+
+| Media duration (s) | Same-pass RSS peak (bytes / MiB) | Observed own CPU (s) | Sampling CPU (s) | Samples / detail drops | Maximum gap / collection span (s) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1800 | 231755776 / 221.01953125 | 11.53125 | 1.046875 | 137 / 0 | 0.1409999999999627 / 0.07799999999997453 |
+| 3600 | 237531136 / 226.52734375 | 22.234375 | 1.90625 | 263 / 7 | 0.21800000000001774 / 0.1560000000000059 |
+| 10800 | 275341312 / 262.5859375 | 65.5625 | 5.578125 | 765 / 509 | 0.20299999999997453 / 0.1409999999999627 |
+
+Independent artifact recomputation verified that each inventory's sum of
+`last_cpu_s - baseline_cpu_s` exactly equals its own-CPU aggregate, and each
+peak pass's RSS components exactly sum to its reported peak. The 14/15/16
+inventoried PID-plus-creation-time identities are unique; all peak identities
+belong to those inventories. Zero-read identities were 3/0/1. Detail drops
+exactly equal sample counts minus the retained 137/256/256-entry rings.
+
+Observed exits were 13/14/15, disappearances during reads 3/0/0, ownership races
+2/1/0, and late samples 2/1/4. These retained coverage gaps do not become complete
+observations merely because the command passed. CPU remains a lower bound;
+sequential RSS sums can double-count shared pages and miss unsampled peaks.
+The 300-second matrix case and standalone 60-minute gate kept sampling disabled.
+These Windows results establish neither resource budgets nor cross-device
+performance or factual-quality acceptance.
+
+The earlier [8890f79 run 39035890138](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39035890138)
+remains failed: a same-tick test subtraction yielded `0.19999999999998863`
+against an assertion of `> 0.2`, before the matrix ran. The one-file test-only
+correction uses exact controlled timestamps for that positive-gap case and
+separately preserves the original same-tick value in a regression. Production
+sampler arithmetic, thresholds and workflow were unchanged; the successful run
+above supplies the subsequent Windows evidence rather than relabelling that
+historical failure.

@@ -82,6 +82,12 @@ def public_contract():
         schema["paths"].pop("/api/tasks/{task_id}/community-context/" + suffix)
     for name in ("CommunityPreviewRequest", "CommunitySaveRequest", "VisibleCommunityItem"):
         schema["components"]["schemas"].pop(name)
+    # Optional #158 opinion questions add one local preview and a nullable
+    # consent field; strict schema/stream-only admission is tested separately.
+    schema["paths"].pop("/api/tasks/{task_id}/qa/preview")
+    for name in ("SelectedOpinionPreviewRequest", "SelectedOpinionConsent"):
+        schema["components"]["schemas"].pop(name)
+    schema["components"]["schemas"]["TaskQuestionRequest"]["properties"].pop("selected_opinions")
     # #135/#146 add only per-request captured-page scopes and reviewed-start
     # parameters. Their strict defaults and stale-source enforcement have their
     # own contracts; every pre-existing field and /start operation stays frozen.

@@ -7,6 +7,7 @@ import { eventLogHtml, timelineHtml } from "/web/desk-progress.js";
 import { fullVideoSource, requestedRangeDuration } from "/web/range-source.js?v=decimal-range-20261016";
 import { localPlaybackPosition, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { canRedecodeMaterial, installMaterialEncoding } from "/web/desk-material-encoding.js";
+import { installCommunityQuestion } from "/web/community-question.js";
 import { installCourseQuestion } from "/web/course-question.js";
 import { installCourseSynthesis } from "/web/course-synthesis.js";
 import { installCourseRetry } from "/web/course-episode-retry.js";
@@ -48,6 +49,7 @@ export function installTools(ctx) {
   }
   function show(title, body) {
     courseEpisodeActions?.invalidate();
+    communityQuestion?.invalidate();
     generation++;
     backAction = state.selected ? more : null;
     dialog.innerHTML = `<header><button data-tool-back type="button" aria-label="返回">← 返回</button><h2>${esc(title)}</h2><button data-close-tool aria-label="关闭">×</button></header><div id="toolBody">${body}</div><p id="toolStatus" role="status"></p>`;
@@ -58,6 +60,7 @@ export function installTools(ctx) {
     const el = $("toolStatus");
     if (el) el.textContent = text;
   }
+  const communityQuestion = installCommunityQuestion({ state, dialog, generation: () => generation });
   const retryCourseEpisode = installCourseRetry({ state, dialog, status, generation: () => generation, options, guard, refresh, openCourse });
   courseEpisodeActions = installCourseEpisodes({ state, dialog, show, status, generation: () => generation, options, guard, refresh, openCourse: id => run(null, () => openCourse(id)), openItem, setCourseBack: id => { backAction = () => openCourse(id); } });
   const materialEncoding = installMaterialEncoding({ state, dialog, show, status, refresh, generation: () => generation });
@@ -818,12 +821,13 @@ export function installTools(ctx) {
     const s = current(),
       token = show("社区观点", '<p class="muted">正在读取…</p>');
     const r = await api(`/api/tasks/${s.id}/community-context`);
-    if (token !== generation) return;
+    if (token !== generation || state.selected?.id !== s.id || state.selected?.kind !== s.kind) return;
     dialog.dataset.sourceId = s.id;
     const category = (id) => (r.groups?.questions || []).includes(id) ? "观众问题"
       : (r.groups?.disagreements || []).includes(id) ? "可能存在分歧" : "观众观点";
     $("toolBody").innerHTML =
       `<p class="muted">评论与弹幕是独立观点，不作为课程事实或复习证据。分类仅按关键词提示，不代表事实判断。不会自动抓取网站内容；作者身份默认省略，明显联系方式与推广内容会过滤。</p><button data-action="toggle-community" data-enabled="${r.enabled}">${r.enabled ? "关闭观点层" : "启用观点层"}</button>${r.enabled ? '<form id="communityForm"><label for="communityText">粘贴要保留的观点 · 每行一条</label><textarea id="communityText" required maxlength="20000"></textarea><button>保存观点</button></form>' : ""}<div class="tool-actions">${links([["单独导出社区观点", `/api/tasks/${encodeURIComponent(s.id)}/community-context/export`]])}</div><div class="tool-list">${r.items.map((item) => `<blockquote><small>${category(item.item_id)} · ${item.kind === "danmaku" ? "弹幕" : "评论"}${item.timestamp_seconds === null ? "" : " · " + Number(item.timestamp_seconds) + " 秒"}</small><p>${esc(item.text)}</p><button data-action="delete-community-item" data-item-id="${esc(item.item_id)}">删除这条观点</button></blockquote>`).join("")}</div><button class="danger" data-action="clear-community">清空本任务观点</button>`;
+    await communityQuestion.mount($("toolBody"), s, r);
   }
 
   function relationshipGraph(result) { return snapshotRelationshipGraph(result); }
@@ -893,6 +897,7 @@ export function installTools(ctx) {
     "material-encoding": materialEncoding,
     community,
     "toggle-community": async (button) => {
+      communityQuestion.invalidate();
       await api("/api/study/community/settings", {
         method: "PUT",
         body: JSON.stringify({ enabled: button.dataset.enabled !== "true" }),
@@ -901,11 +906,13 @@ export function installTools(ctx) {
     },
     "delete-community-item": async (button) => {
       if (!confirm("删除这条社区观点？")) return;
+      communityQuestion.invalidate();
       await api(`/api/tasks/${encodeURIComponent(dialog.dataset.sourceId)}/community-context/${encodeURIComponent(button.dataset.itemId)}`, { method: "DELETE" });
       await community();
     },
     "clear-community": async () => {
       if (confirm("清空当前任务的社区观点？")) {
+        communityQuestion.invalidate();
         await api(
           `/api/tasks/${dialog.dataset.sourceId}/community-context?confirm=clear_community_context`,
           { method: "DELETE" },
@@ -1113,11 +1120,13 @@ export function installTools(ctx) {
       if (window.LearnNoteDialogs && !window.LearnNoteDialogs.canLeave(dialog))
         return;
       window.LearnNoteDialogs?.markSaved(dialog);
+      communityQuestion.invalidate();
       if (backAction) run(b, backAction);
       else dialog.close();
       return;
     }
     if (b.hasAttribute("data-close-tool")) {
+      communityQuestion.invalidate();
       generation++;
       dialog.close();
       return;
@@ -1211,6 +1220,7 @@ export function installTools(ctx) {
     const form = event.target;
     run(event.submitter, async (token) => {
       if (form.id === "communityForm") {
+        communityQuestion.invalidate();
         await api(`/api/tasks/${dialog.dataset.sourceId}/community-context`, {
           method: "POST",
           body: JSON.stringify({

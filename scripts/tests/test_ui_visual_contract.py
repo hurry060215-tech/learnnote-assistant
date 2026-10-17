@@ -185,7 +185,7 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertNotIn('from "/web/reader-progress.js"', entry)
         self.assertIn('from "/web/reader-sections.js?v=snapshot-conflict-20261017"', entry)
         self.assertNotIn('from "/web/reader-sections.js"', entry)
-        self.assertIn("desk-tools.js?v=course-timeline-20261016", entry)
+        self.assertIn("desk-tools.js?v=community-question-20261017", entry)
         self.assertIn("model-data-consent.js?v=initial-focus-20261016", entry)
         self.assertIn("desk-product.js?v=selected-refresh-20261017", entry)
 

@@ -239,12 +239,38 @@ class StorageCleanupRequest(BaseModel):
     dry_run: bool = True
 
 
+class SelectedOpinionSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    selected_item_ids: list[str] = Field(min_length=1, max_length=20)
+    base_url: str = Field(min_length=1, max_length=2048)
+    model: str = Field(min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def exact_selection(self):
+        import re
+        if (len(set(self.selected_item_ids)) != len(self.selected_item_ids)
+                or any(not re.fullmatch(r"[a-f0-9]{32}", value) for value in self.selected_item_ids)):
+            raise ValueError("opinion_selection_invalid")
+        return self
+
+
+class SelectedOpinionPreviewRequest(SelectedOpinionSelection):
+    question: str = Field(min_length=1, max_length=1000)
+
+
+class SelectedOpinionConsent(SelectedOpinionSelection):
+    preview_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    confirm_send: StrictBool
+
+
 class TaskQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     skill_id: Literal["note.qa", "note.summary", "study.quiz"] = "note.qa"
     question: str = Field(min_length=1, max_length=1000)
     options: TaskOptions | None = None
+    selected_opinions: SelectedOpinionConsent | None = None
 
 
 class MediaPreflightResult(BaseModel):

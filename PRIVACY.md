@@ -272,6 +272,38 @@ not undo a completed local write; inspect saved items and use existing Delete
 if needed. Neither collection nor saving includes community text in model
 requests, transcript evidence, course claims or ordinary Q&A citations.
 
+## Optional questions using selected community perspectives
+
+The community dialog can separately preview a question using explicitly selected
+saved perspectives and bounded excerpts from a completed task's owned original
+transcript. This remains off until community perspectives are enabled; enabling
+or saving perspectives never grants model-sharing consent. Every question needs
+a fresh unchecked approval of the displayed question, exact text, and saved
+model endpoint. Generated notes, page context, browser credentials and ordinary
+assistant history are excluded from that payload.
+
+The preview is local and makes no model request. Approval is single-use, kept
+only in bounded process memory for up to five minutes, and bound to the actual
+shown text, task/source, selected records and model connection. A new preview
+supersedes the prior one for that task. Closing discards the browser review; it
+does not promise immediate erasure of an unused server token. Deleted or changed
+selected records, disable/clear, changed task/source/model/credentials or data
+roots invalidate dispatch or acceptance. Existing stream cancellation stops
+local waiting but cannot recall transmitted data or prevent remote charges.
+
+This optional mode only uses the cancellable streaming route; the ordinary
+nonstream route rejects selected-opinion fields without consuming approval.
+A single logical answer can involve the existing stream-options compatibility
+retry. Both attempts are revalidated, with SDK retries remaining disabled under
+the existing streaming policy. Ordinary QA retry behavior is unchanged. Costs
+are unknown. The entire opinion-assisted answer is unverified, released only after
+scope revalidation, and stays in the current dialog. It never enters ordinary
+QA/global history, assistant runs/operations, source evidence, notes, claims,
+study records or normal exports. Existing token-usage metadata may still be
+recorded, without prompts or answers. Saved perspective exports remain separate.
+Manual entries with no source URL are labelled as having unverified origin.
+A saved matching source URL does not establish how an older entry was collected.
+
 ## Local activation checklist and support summary
 
 LearnNote keeps a bounded local checklist for 30 days: service started,

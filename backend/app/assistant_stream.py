@@ -60,8 +60,10 @@ class StreamControl:
                 close()
 
 
-def completion_text(client, *, emit=None, control=None, **kwargs):
+def completion_text(client, *, emit=None, control=None, before_dispatch=None, **kwargs):
     """Keep the existing nonstream API; use genuine provider deltas when requested."""
+    if before_dispatch is not None:
+        before_dispatch()
     if emit is None:
         response = tracked_completion(client, purpose="assistant", **kwargs)
         return response.choices[0].message.content or ""
@@ -76,6 +78,8 @@ def completion_text(client, *, emit=None, control=None, **kwargs):
             # Some compatible providers reject this optional field before starting.
             if getattr(exc, "status_code", None) not in {400, 422} or "stream_options" not in str(exc):
                 raise
+            if before_dispatch is not None:
+                before_dispatch()
             stream = client.chat.completions.create(stream=True, **kwargs)
         control.track(stream.close)
         parts, count, finished = [], 0, False
@@ -115,6 +119,18 @@ def completion_text(client, *, emit=None, control=None, **kwargs):
                 stream.close()
             control.untrack(stream.close)
         control.untrack(client.close)
+
+
+def qa_completion(*, api_key, base_url, timeout, max_retries, emit=None, control=None, before_dispatch=None, **kwargs):
+    """The task-QA client lifecycle, shared without changing its retry policy."""
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=max_retries)
+    try:
+        return completion_text(client, emit=emit, control=control, before_dispatch=before_dispatch, **kwargs)
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
 
 _workers = threading.BoundedSemaphore(4)

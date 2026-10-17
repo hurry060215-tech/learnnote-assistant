@@ -105,7 +105,7 @@ function harness(sourceText = source) {
     h.context.esc = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
     const requestAndShow = tools.slice(tools.indexOf("  async function api(path, options)"), tools.indexOf("  function status(text)"));
     const courseEntry = tools.slice(tools.indexOf("  async function listCourses()"), tools.indexOf("  function courseEditor()"));
-    vm.runInContext(`let courseEpisodeActions = null, generation = 0, backAction = null, courses = []; const state = { selected: null }; const $ = id => document.getElementById(id); ${requestAndShow} ${courseEntry}`, h.context);
+    vm.runInContext(`let courseEpisodeActions = null, communityQuestion = null, generation = 0, backAction = null, courses = []; const state = { selected: null }; const $ = id => document.getElementById(id); ${requestAndShow} ${courseEntry}`, h.context);
   };
   h.status = () => h.nodes('[role="status"]').map(node => node.textContent).join("\n");
   return h;

@@ -10,7 +10,7 @@ from javascript_graph import javascript_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery", "model_data_consent", "deferred_task_consent", "task_projection_evidence"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery", "model_data_consent", "deferred_task_consent", "task_projection_evidence", "selected_opinion_sources", "selected_opinion_qa"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -19,7 +19,10 @@ ROUTER_MODULES = {
 STATE_MODULES = {"downloader_policy", "processor_state"}
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
-    "backend/app/community.py": 465,
+    "backend/app/community.py": 480,
+    "backend/app/selected_opinion_sources.py": 190,
+    "backend/app/selected_opinion_qa.py": 230,
+    "backend/app/routers/selected_opinion_qa.py": 75,
     "backend/app/community_capture.py": 230,
     "backend/app/routers/community_capture.py": 80,
     "extension/community-source.js": 30,

@@ -21,7 +21,7 @@ import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSour
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
 import { installProductWorkspace } from "/web/desk-product.js?v=selected-refresh-20261017";
-import { installTools } from "/web/desk-tools.js?v=course-timeline-20261016";
+import { installTools } from "/web/desk-tools.js?v=community-question-20261017";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";

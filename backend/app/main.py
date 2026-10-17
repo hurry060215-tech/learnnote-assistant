@@ -69,6 +69,7 @@ from .runtime import ffmpeg_bin, ffprobe_bin
 from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, upload_policy_snapshot, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
 from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, task_state_transaction, update_task, write_json
+from .routers.selected_opinion_qa import router as selected_opinion_router, error as selected_opinion_error
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
 from .model_connections import connected_api_key, resolve_model_options, selected_connection_status
 from .routers.connections import connection_router
@@ -108,6 +109,7 @@ app.add_middleware(UploadBudgetMiddleware)
 app.include_router(knowledge_router)
 app.include_router(study_router)
 app.include_router(task_study_router)
+app.include_router(selected_opinion_router)
 app.include_router(system_router)
 app.include_router(connection_router)
 app.include_router(library_router)
@@ -157,7 +159,7 @@ async def enforce_structured_write_budget(request: Request, call_next):
         or path == "/api/knowledge/evidence"
         or path.endswith("/community-context")
         or path.endswith(("/community-context/preview", "/community-context/save"))
-        or (path.startswith("/api/tasks/") and path.endswith(("/section-review/preview", "/section-review/confirm")))
+        or (path.startswith("/api/tasks/") and path.endswith(("/section-review/preview", "/section-review/confirm", "/qa/preview")))
     )
     if bounded and request.method.upper() in WRITE_METHODS:
         try:
@@ -2530,49 +2532,40 @@ def _answer_task_question(task: TaskRecord, request: TaskQuestionRequest, *, emi
     model = options.llm_model or LLM_MODEL
     if api_key:
         try:
-            from openai import OpenAI
-
-            from .assistant_stream import completion_text
-            client = OpenAI(
-                api_key=api_key,
-                base_url=base_url,
+            from .assistant_stream import qa_completion
+            answer = qa_completion(
+                api_key=api_key, base_url=base_url,
                 timeout=30 if emit is not None else LLM_REQUEST_TIMEOUT_SECONDS,
                 max_retries=0 if emit is not None else LLM_MAX_RETRIES,
+                emit=emit, control=control,
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是 LearnNote 的课程问答助手。只能依据当前消息中列出的 E 编号证据回答；"
+                            "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
+                            "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
+                            "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
+                            "分析操作演示时要区分当前设置与假设示例：‘这里设为/达到/我们认为/我们设置的是 X’表示演示采用 X，"
+                            "‘可以改成/比方说 X’仅表示替代示例；应综合相邻时间窗，不要因为 ASR 错写参数名而忽略明确的数值和含义。"
+                            "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
+                            "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
+                        ),
+                    },
+                    *_qa_history_messages(history),
+                    {
+                        "role": "user",
+                        "content": (
+                            f"任务：{task.title}\n"
+                            f"问题：{request.question}\n\n"
+                            "可用证据：\n"
+                            f"{evidence_prompt or '（没有检索到相关证据）'}"
+                        ),
+                    },
+                ],
+                **chat_completion_provider_kwargs(base_url),
             )
-            try:
-                answer = completion_text(client, emit=emit, control=control,
-                    model=model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "你是 LearnNote 的课程问答助手。只能依据当前消息中列出的 E 编号证据回答；"
-                                "历史对话仅用于理解追问指代，不是事实证据。禁止补充常识、猜测或虚构内容。"
-                                "不得编造证据中不存在的时间窗、W 编号、页码、步骤或原文引语；"
-                                "只有证据逐字包含的内容才能使用引号。证据不足时直接说“现有证据不足”，"
-                                "分析操作演示时要区分当前设置与假设示例：‘这里设为/达到/我们认为/我们设置的是 X’表示演示采用 X，"
-                                "‘可以改成/比方说 X’仅表示替代示例；应综合相邻时间窗，不要因为 ASR 错写参数名而忽略明确的数值和含义。"
-                                "不要假装知道，也不要推荐不存在的回看位置。默认用中文简洁直接回答，"
-                                "通常 1-3 个短段落或不超过 5 个要点，不复述问题，不描述你的工作过程。"
-                            ),
-                        },
-                        *_qa_history_messages(history),
-                        {
-                            "role": "user",
-                            "content": (
-                                f"任务：{task.title}\n"
-                                f"问题：{request.question}\n\n"
-                                "可用证据：\n"
-                                f"{evidence_prompt or '（没有检索到相关证据）'}"
-                            ),
-                        },
-                    ],
-                    **chat_completion_provider_kwargs(base_url),
-                )
-            finally:
-                close = getattr(client, "close", None)
-                if callable(close):
-                    close()
             if answer.strip():
                 return {
                     "answer": answer.strip(),
@@ -3668,6 +3661,8 @@ def api_note(task_id: str) -> str:
 
 @app.post("/api/tasks/{task_id}/qa")
 def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
+    if request.selected_opinions is not None:
+        raise selected_opinion_error(ValueError("opinion_stream_required"))
     try:
         task = get_task(task_id)
     except FileNotFoundError as exc:
@@ -3676,6 +3671,17 @@ def api_task_question(task_id: str, request: TaskQuestionRequest) -> dict:
 
 
 def _execute_task_qa(task: TaskRecord, request: TaskQuestionRequest, *, emit=None, control=None) -> dict:
+    if request.selected_opinions is not None:
+        from . import selected_opinion_qa
+        from .assistant_stream import StreamCancelled, StreamFailure
+        try:
+            return selected_opinion_qa.answer(task.id, request, emit=emit, control=control)
+        except (StreamCancelled, StreamFailure):
+            raise
+        except (ValueError, OSError, TypeError) as exc:
+            raise selected_opinion_error(exc) from None
+        except Exception:
+            raise selected_opinion_error(ValueError("opinion_model_failed")) from None
     instructions = {"note.summary": "总结当前内容的重点，保留来源。", "study.quiz": "根据当前来源给出三道自测题、参考答案与出处。"}
     prefix = instructions.get(request.skill_id, "")
     effective = request.model_copy(update={"question": f"{prefix} 用户要求：{request.question}"}) if prefix else request
@@ -3700,6 +3706,8 @@ def api_task_question_stream(task_id: str, request: TaskQuestionRequest):
         try:
             return _execute_task_qa(task, request, emit=emit, control=control)
         except HTTPException as exc:
+            if request.selected_opinions is not None:
+                raise StreamFailure(exc.detail["code"], exc.detail["message"]) from None
             raise StreamFailure("task_context_missing", "当前资料还没有可用于回答的内容，请先完成提取。") from exc
 
     return assistant_stream_response(work)

@@ -260,6 +260,25 @@ def existing_community_fingerprints(task_id: str, fingerprints: list[str]) -> se
             connection.close()
 
 
+def selected_community_items(task_id: str, item_ids: list[str]) -> list[dict]:
+    """Read exact saved IDs only, without schema writes or whole-list expansion."""
+    with _lock:
+        if not community_settings()["enabled"]:
+            raise ValueError("community_context_disabled")
+        connection = sqlite3.connect(_db_path().resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+        connection.row_factory = sqlite3.Row
+        try:
+            placeholders = ",".join("?" for _ in item_ids)
+            rows = connection.execute(f"SELECT * FROM community_context_items WHERE task_id=? AND item_id IN ({placeholders})",
+                                      (task_id, *item_ids)).fetchall()
+        finally:
+            connection.close()
+        by_id = {row["item_id"]: dict(row) for row in rows}
+        if len(set(item_ids)) != len(item_ids) or set(by_id) != set(item_ids):
+            raise ValueError("opinion_selection_changed")
+        return [by_id[item_id] for item_id in item_ids]
+
+
 def add_community_context(task_id: str, raw_items: list[dict]) -> dict[str, object]:
     settings = community_settings()
     if not settings["enabled"]:
@@ -425,7 +444,9 @@ def sample_community_context(task_id: str, limit: int = 20, seed: str = "") -> d
 
 
 def delete_community_item(task_id: str, item_id: str) -> bool:
+    global _preview_generation
     with _lock:
+        _preview_generation += 1
         connection = _connect()
         try:
             cursor = connection.execute(

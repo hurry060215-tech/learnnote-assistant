@@ -19,6 +19,10 @@ on:
       - "scripts/tests/classic-visual-study-fixture.test.cjs"
       - "scripts/tests/test_classic_visual_study_fixture.py"
       - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/community-question-api-acceptance.cjs"
+      - "scripts/selected-opinion-qa-fixture.py"
+      - "scripts/tests/test_community_question_workflow.py"
+      - "scripts/tests/*community*question*"
       - "scripts/community-timestamp-fixture.cjs"
       - "scripts/tests/community-timestamp-fixture.test.cjs"
       - "scripts/tests/sidepanel-assets.test.cjs"
@@ -85,6 +89,10 @@ on:
       - "scripts/tests/classic-visual-study-fixture.test.cjs"
       - "scripts/tests/test_classic_visual_study_fixture.py"
       - "scripts/community-capture-visual-acceptance.cjs"
+      - "scripts/community-question-api-acceptance.cjs"
+      - "scripts/selected-opinion-qa-fixture.py"
+      - "scripts/tests/test_community_question_workflow.py"
+      - "scripts/tests/*community*question*"
       - "scripts/community-timestamp-fixture.cjs"
       - "scripts/tests/community-timestamp-fixture.test.cjs"
       - "scripts/tests/sidepanel-assets.test.cjs"
@@ -191,6 +199,12 @@ jobs:
         run: |
           node scripts/community-capture-visual-acceptance.cjs build/community-capture-ui
           if ($LASTEXITCODE -ne 0) { throw "Visible community preview and scope gate failed" }
+      - name: Selected opinion consent with actual Edge and isolated API
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/community-question-api-acceptance.cjs build/community-question-ui
+          if ($LASTEXITCODE -ne 0) { throw "Selected opinion consent API/Edge gate failed" }
       - name: Start isolated local backend
         if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
         shell: pwsh
@@ -394,6 +408,9 @@ jobs:
             build/task-stream-reconnect-ui
             build/extension-locales
             build/community-capture-ui
+            build/community-question-ui/*.json
+            build/community-question-ui/*.log
+            build/community-question-ui/*.png
             build/study-product-ui
             build/local-player-ui
             build/evidence-source-ui
