@@ -46,6 +46,7 @@ def configure_fixture(root, data, stack, *, resume=False):
     from fastapi import HTTPException
     from app import main, processor, storage, update_service
     import openai
+    from app.model_data_consent import model_source_text
     from app.observability import read_task_events
     from app.queue_journal import read_queue_job
     from app.task_artifacts import task_artifact_path
@@ -185,9 +186,18 @@ def configure_fixture(root, data, stack, *, resume=False):
         if sections_path.is_file():
             sections = json.loads(sections_path.read_bytes())["sections"]
             source_coverage.update(section_count=len(sections), final_section_end=sections[-1]["end"] if sections else None)
-        events = [event for event in read_task_events(task_id) if event.get("event") in
+        history = read_task_events(task_id)
+        events = [event for event in history if event.get("event") in
                   {"stage_timing", "draft_ready", "pipeline_attempt_started"}]
+        state_events = [{key: model_source_text(str(event.get(key, "")))[:500]
+                         for key in ("timestamp", "event", "phase", "status", "error_code", "message")}
+                        for event in history if event.get("event") in {"task_created", "task_updated"}][-16:]
         return {"task_id": task_id, "status": task.status, "phase": task.phase,
+            "created_at": task.created_at, "updated_at": task.updated_at,
+            "awaiting_confirmation": task.awaiting_confirmation,
+            "error_code": model_source_text(task.error_code)[:120],
+            "error_detail": model_source_text(task.error_detail)[:500],
+            "message": model_source_text(task.message)[:500], "state_events": state_events,
             "generation": task_generation(task), "hashes": hashes, "source_coverage": source_coverage,
             "continuation_calls": record["continuation_calls"], "waiting": record["waiting"],
             "admissions": record["admissions"], "queue": read_queue_job(data, task_id), "stages": events}
@@ -206,8 +216,11 @@ def configure_fixture(root, data, stack, *, resume=False):
         record = register(task_id)
         if not record["waiting"] or record["transcript_recorded"] is None:
             raise HTTPException(409, "Visible acknowledgement requires the held transcript draft")
-        return {**snapshot(task_id), "after_transcript_visible_ack_seconds":
-                time.monotonic() - record["transcript_recorded"]}
+        received = time.monotonic()
+        state = snapshot(task_id)
+        completed = time.monotonic()
+        return {**state, "after_transcript_visible_ack_seconds": completed - record["transcript_recorded"],
+                "visible_ack_snapshot_seconds": completed - received}
 
     @main.app.post("/_fixture/tasks/{task_id}/release")
     def release(task_id: str):

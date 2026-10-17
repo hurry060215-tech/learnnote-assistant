@@ -30,6 +30,26 @@ function settingsGeometry() {
     })) };
 }
 
+function assertSettingsContainment(geometry) {
+  const required = ['#settingsCloseButton', '#saveSettingsButton', '#settingLocale', '[data-setting="uiScale"]'];
+  for (const selector of required) {
+    if (!geometry.elements.some(element => element.selector === selector && element.width > 0 && element.height > 0)) {
+      throw new Error(`Missing visible settings control: ${selector}`);
+    }
+  }
+  const controls = geometry.elements.filter(element =>
+    (required.includes(element.selector) || element.selector.includes('input[type="checkbox"]')) &&
+    element.width > 0 && element.height > 0);
+  for (const element of controls) {
+    const clipped = element.clippingAncestors.some(parent =>
+      ['hidden', 'clip', 'auto', 'scroll'].includes(parent.overflowX) &&
+      (element.left < parent.left - 1 || element.right > parent.right + 1));
+    if (element.outsideViewportX || clipped) {
+      throw new Error(`Settings control horizontally clipped: ${element.selector} at app scale ${geometry.uiDensity}: ${JSON.stringify(element)}`);
+    }
+  }
+}
+
 async function auditViewport(page, width, height, output, scale = 200) {
   await page.setViewportSize({ width, height });
   await page.waitForTimeout(250);
@@ -59,6 +79,7 @@ async function auditViewport(page, width, height, output, scale = 200) {
   if (result.horizontalOverflow || result.menuScrollWidth > result.menuWidth + 1) {
     throw new Error(`Horizontal overflow at ${width}x${height}: ${JSON.stringify(result)}`);
   }
+  assertSettingsContainment(geometry);
   await page.screenshot({ path: path.join(output, `settings-${width}x${height}-${scale}.png`), fullPage: true });
   return result;
 }
@@ -121,6 +142,13 @@ async function main() {
   const tablet = await auditViewport(page, 768, 1024, output);
   const mobile = await auditViewport(page, 390, 844, output);
 
+  const tabletBoundaries = [];
+  for (const scale of [100, 200]) {
+    await page.locator(`[data-setting="uiScale"] button[data-value="${scale}"]`).click();
+    for (const width of [681, 900]) tabletBoundaries.push(await auditViewport(page, width, 1024, output, scale));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+
   const keyboard = [];
   await page.locator("body").click({ position: { x: 6, y: 6 } });
   for (let i = 0; i < 12; i += 1) {
@@ -145,7 +173,7 @@ async function main() {
   }
   await browser.close();
   if (consoleErrors.length) throw new Error(`Browser console errors: ${consoleErrors.join(" | ")}`);
-  process.stdout.write(JSON.stringify({ ok: true, stylesheets, english, chinese, baseline, wide, tablet, mobile, keyboard }));
+  process.stdout.write(JSON.stringify({ ok: true, stylesheets, english, chinese, baseline, wide, tablet, mobile, tabletBoundaries, keyboard }));
 }
 
 main().catch(error => {

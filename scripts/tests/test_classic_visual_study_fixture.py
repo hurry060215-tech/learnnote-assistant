@@ -33,7 +33,9 @@ class ClassicVisualStudyFixtureTests(unittest.TestCase):
             "const plan=f.createStudyPlan(); console.log(JSON.stringify(f.fixtureResponse("
             "'/api/study/plan/initialize', {method:'POST',postData:JSON.stringify({timezone:'UTC'}),"
             "contentType:'application/json',plan}).json));"
-        ], cwd=ROOT, text=True)
+        ], cwd=ROOT)
+        # Node emits UTF-8: retain those bytes across the parent locale boundary.
+        self.assertIn("本地学习计划".encode("utf-8"), fixture)
         # A fresh process keeps imported backend configuration isolated from other script tests.
         code = r'''
 import json
@@ -46,7 +48,7 @@ from fastapi.testclient import TestClient
 from app.models import StudyPlan, StudyPlanUpdateRequest
 from app.routers.knowledge_study import study_router
 
-fixture = json.load(sys.stdin)
+fixture = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 StudyPlan.model_validate(fixture["plan"])
 StudyPlanUpdateRequest.model_validate({"timezone": "UTC"})
 app = FastAPI()
@@ -70,6 +72,9 @@ with tempfile.TemporaryDirectory(prefix="classic-plan-api-") as tmp, patch("app.
             assert client.request(method, "/api/study/plan/initialize").status_code == 405
         assert client.get("/api/study/plan").json() == fetched.json()
 '''
-        env = {**os.environ, "PYTHONPATH": str(ROOT / "backend")}
-        subprocess.run([sys.executable, "-c", code], input=fixture, cwd=ROOT,
-                       env=env, text=True, check=True, timeout=30)
+        for stdio_encoding in ("utf-8", "cp1252", "ascii"):
+            with self.subTest(stdio_encoding=stdio_encoding):
+                env = {**os.environ, "PYTHONPATH": str(ROOT / "backend"),
+                       "PYTHONIOENCODING": stdio_encoding}
+                subprocess.run([sys.executable, "-c", code], input=fixture, cwd=ROOT,
+                               env=env, check=True, timeout=30)

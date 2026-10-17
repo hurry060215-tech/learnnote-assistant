@@ -90,3 +90,17 @@ Failures remain nonzero, including cleanup failures. Report-write failures canno
 skip browser/backend cleanup or replace the original assertion. A successful local
 API contract run is not a browser SLO result; only the hosted report establishes
 that result.
+
+Diagnostic timelines retain up to 256 network entries and 64 observation phase
+entries per sample (and separately for the untimed lifecycle case), with explicit
+dropped counts. CDP timestamps use the browser's monotonic clock; callback and
+observation phase receipts use the Node driver's monotonic clock. Server event
+wall timestamps are labeled separately. Do not subtract values from different
+clock domains. Phase boundaries distinguish preparation, submission, heading
+locator visibility, scroll/two-frame completion, geometry and acknowledgement.
+They include driver transport/polling overhead and do not replace the original
+browser latency or backend acknowledgement metrics. The acknowledgement reports
+its snapshot overhead separately, without subtracting it from the gate metric.
+Safe bounded task error fields and the last 16 state events diagnose lifecycle
+failures; native SSE retains only validated timestamp/status/phase/error codes,
+never event messages or arbitrary payloads. Missing timing evidence stays unknown.

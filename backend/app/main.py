@@ -66,7 +66,7 @@ from .reliability import current_page_source_identity, local_source_identity
 from .runtime import ffmpeg_bin, ffprobe_bin
 from .upload_limits import MAX_CONCURRENT_UPLOAD_BYTES, MAX_VIDEO_BYTES, MIN_FREE_BYTES, UploadBudgetMiddleware, UploadBudgetExceeded, upload_policy_snapshot, write_video_upload
 from .source_input import SourceInputError, clean_task_title, normalize_source_input
-from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, update_task, write_json
+from .storage import cleanup_tasks, create_task, delete_all_tasks, delete_task, get_task, list_tasks, read_json, request_task_cancel, storage_summary, task_dir, task_state_transaction, update_task, write_json
 from .routers.knowledge_study import knowledge_router, study_router, task_study_router
 from .model_connections import connected_api_key, resolve_model_options, selected_connection_status
 from .routers.connections import connection_router
@@ -2963,15 +2963,23 @@ def start_deferred_current_page_task(
 
 
 def expire_deferred_handoff(task_id: str):
-    return update_task(
-        task_id,
-        awaiting_confirmation=False,
-        status="failed",
-        phase="failed",
-        message="Browser handoff expired; send the current page again",
-        error_code="handoff_expired",
-        error_detail="The backend restarted before confirmation. Return to the video page and send it again.",
-    )
+    # Admission/capture take the handoff lock before task state; retain that order.
+    with _deferred_handoffs_lock, task_state_transaction():
+        try:
+            current = get_task(task_id)
+        except FileNotFoundError:
+            return None  # A concurrent deletion must not recreate an old snapshot.
+        if not current.awaiting_confirmation or current.status != "queued" or task_id in _deferred_handoffs:
+            return current
+        return update_task(
+            task_id,
+            awaiting_confirmation=False,
+            status="failed",
+            phase="failed",
+            message="Browser handoff expired; send the current page again",
+            error_code="handoff_expired",
+            error_detail="The backend restarted before confirmation. Return to the video page and send it again.",
+        )
 
 
 @app.post("/api/media/preflight")
@@ -3340,16 +3348,9 @@ def resume_task_from_checkpoint(
 
 @app.get("/api/tasks")
 def api_list_tasks() -> dict:
-    records = list_tasks()
-    with _deferred_handoffs_lock:
-        live_handoffs = set(_deferred_handoffs)
-    records = [
-        expire_deferred_handoff(task.id)
-        if task.awaiting_confirmation and task.id not in live_handoffs
-        else task
-        for task in records
-    ]
-    return {"tasks": [task_payload(task) for task in records]}
+    records = [expire_deferred_handoff(task.id) if task.awaiting_confirmation else task
+               for task in list_tasks()]
+    return {"tasks": [task_payload(task) for task in records if task is not None]}
 
 
 @app.get("/api/storage")

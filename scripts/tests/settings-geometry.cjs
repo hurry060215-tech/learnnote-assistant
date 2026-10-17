@@ -13,3 +13,30 @@ assert(source.indexOf('geometry.json`')<source.indexOf('if (!result.settingsVisi
 assert(source.includes('result.horizontalOverflow || result.menuScrollWidth > result.menuWidth + 1'));
 assert(source.includes('output,100)'));assert(source.includes('scale = 200'));
 console.log('Settings diagnostics retain app-scale/viewport distinction and expose descendant clipping despite root-width equality');
+
+vm.runInNewContext('module.exports=assertSettingsContainment;',context);
+const assertContained=context.module.exports;
+const required=['#settingsCloseButton','#saveSettingsButton','#settingLocale','[data-setting="uiScale"]'];
+const fixture=(width,scale)=>({viewport:{width,height:1024},uiDensity:String(scale),elements:required.map(selector=>({selector,width:100,height:40,left:100,right:200,outsideViewportX:false,clippingAncestors:[]}))});
+for (const width of [390,681,768,900,1440]) for (const scale of [100,200]) {
+  const clean=fixture(width,scale);assert.doesNotThrow(()=>assertContained(clean));
+  const overflow=fixture(width,scale);overflow.elements[0].outsideViewportX=true;
+  assert.throws(()=>assertContained(overflow),/horizontally clipped/);
+  const hidden=fixture(width,scale);hidden.elements[1].clippingAncestors=[{left:0,right:180,overflowX:'hidden'}];
+  assert.throws(()=>assertContained(hidden),/horizontally clipped/);
+}
+const missing=fixture(768,200);missing.elements.pop();assert.throws(()=>assertContained(missing),/Missing visible/);
+const hiddenCheckbox=fixture(768,200);hiddenCheckbox.elements.push({selector:'.settings-pane:not([hidden]) input[type="checkbox"]',width:0,height:0,outsideViewportX:true});assert.doesNotThrow(()=>assertContained(hiddenCheckbox));
+const visibleCheckbox=fixture(768,200);visibleCheckbox.elements.push({selector:'.settings-pane:not([hidden]) input[type="checkbox"]',width:46,height:25,outsideViewportX:true,clippingAncestors:[]});assert.throws(()=>assertContained(visibleCheckbox),/horizontally clipped/);
+assert(source.indexOf('geometry.json`')<source.indexOf('assertSettingsContainment(geometry);'));
+assert(source.includes('for (const width of [681, 900])'));
+const css=fs.readFileSync(path.join(__dirname,'../../web/experience.css'),'utf8');
+const correction='body[data-app-view="settings"]:not(.reading-mode):not(.assistant-open) .settings-view {\n    width: calc(100% - var(--mature-nav));\n  }';
+for (const represented of [css, css.replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')]) {
+  const normalized=represented.replace(/\r\n/g,'\n');
+  const tablet=normalized.slice(normalized.lastIndexOf('@media (min-width: 681px) and (max-width: 900px)'));
+  assert(tablet.includes(correction));assert(tablet.indexOf(correction)>tablet.indexOf('width: 100%;'));
+}
+const mature=fs.readFileSync(path.join(__dirname,'../../web/mature.css'),'utf8');assert(mature.includes('margin-left: var(--mature-nav);'));
+assert(fs.readFileSync(path.join(__dirname,'../../web/classic.html'),'utf8').includes('experience.css?v=20261017-settings-containment'));
+console.log('Settings control bounds reject viewport and hidden-ancestor clipping at both scales; tablet width correction retains the fixed rail and exact breakpoint scope');

@@ -1736,6 +1736,11 @@ body.theme-dark .source-dialog, body.theme-dark .material-reader.markdown-note {
     min-width: 0;
   }
 
+  /* The tablet settings view retains mature.css's fixed-rail offset. */
+  body[data-app-view="settings"]:not(.reading-mode):not(.assistant-open) .settings-view {
+    width: calc(100% - var(--mature-nav));
+  }
+
   body[data-app-view="notes"]:not(.assistant-open):not(.reading-mode) .material-reader.markdown-note {
     width: min(78ch, 100%);
     margin-inline: auto;

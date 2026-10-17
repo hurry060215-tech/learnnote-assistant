@@ -132,6 +132,10 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.api(f"/api/tasks/{task_id}/start", OPTIONS)
         before = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "held draft")
         self.assertEqual(before["status"], "running")
+        self.assertEqual(before["error_code"], "")
+        self.assertFalse(before["awaiting_confirmation"])
+        self.assertTrue(before["updated_at"])
+        self.assertEqual(before["state_events"][-1]["status"], "running")
         self.assertEqual(set(before["hashes"]), {"transcript_path", "subtitle_path", "draft.md"})
         self.assertEqual(before["source_coverage"], {"duration": 300, "cue_count": 10,
             "first_start": 0, "last_end": 300, "reference_cues_complete": True,
@@ -155,6 +159,8 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.assertTrue(any(line.startswith("id: ") and int(line[4:]) > 0 for line in frames))
         visible = self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
         self.assertGreaterEqual(visible["after_transcript_visible_ack_seconds"], 0)
+        self.assertGreaterEqual(visible["visible_ack_snapshot_seconds"], 0)
+        self.assertLessEqual(visible["visible_ack_snapshot_seconds"], visible["after_transcript_visible_ack_seconds"])
         self.api(f"/api/tasks/{task_id}/cancel", method="POST")
         cancelled = self.wait(lambda: (state if (state := self.state(task_id))["status"] == "cancelled"
             and not state["waiting"] and state["queue"]["callback_finished"] else None), "cancel callback drain")
@@ -204,6 +210,11 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         task_id = created["task_id"]
         self.api(f"/api/tasks/{task_id}/start", OPTIONS)
         self.wait(lambda: self.state(task_id)["status"] == "failed", "forbidden download rejected")
+        failed = self.state(task_id)
+        self.assertEqual(failed["error_code"], "processing_failed")
+        self.assertIn("Forbidden fixture operation: download", failed["error_detail"])
+        self.assertEqual(failed["state_events"][-1]["error_code"], failed["error_code"])
+        self.assertLessEqual(len(failed["state_events"]), 16)
         before = self.api("/_fixture/state")["forbidden_attempts"]
         self.assertIn("download", before)
         self.stop()

@@ -217,7 +217,7 @@ test("network diagnostics omit query values and credentials and bound retained r
   assert.equal(report.network.length, 256); assert.equal(report.network_dropped, 44);
   assert.equal(report.network[0].request_id, "44"); assert.doesNotMatch(JSON.stringify(report), /secret|token/); stop();
   const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
-  assert.match(source, /boundedRecord\(report, "native_sse", nativeSseRecord\(event, requests\), 8192\)/);
+  assert.match(source, /\.\.\.nativeSseRecord\(event, requests\), \.\.\.traceStamp\(event\) }, 8192\)/);
   assert.match(source, /page\.once\("close", stopObserving\)/);
   assert(source.indexOf("stopObserving?.();") < source.indexOf("page = await context.newPage()"));
 });
@@ -246,4 +246,44 @@ test("accepted identity is checkpointed before preparation can fail and failure 
   assert.match(source, /path: path\.join\(out, "failure\.png"\), animations: "disabled", timeout: 5000/);
   assert.doesNotMatch(source, /fullPage:\s*true/);
   assert.match(source, /normal settings startup response/); assert.match(source, /state\.update_preferences\.auto_check, false/);
+});
+
+test("diagnostic stamps and native state retain safe timing fields without event content", async () => {
+  const stamp = fixture.traceStamp({ timestamp: 123.5 });
+  assert.equal(stamp.cdp_monotonic_seconds, 123.5);
+  assert(Number.isFinite(stamp.received_host_monotonic_ms));
+  for (const timestamp of [undefined, NaN, Infinity, -1, "123"])
+    assert.equal(Object.hasOwn(fixture.traceStamp({ timestamp }), "cdp_monotonic_seconds"), false);
+  const bindings = new Map([["request", { task_id: "task", origin: "http://127.0.0.1:9", path: "/api/tasks/task/events/stream" }]]);
+  const event = { requestId: "request", eventId: "16", eventName: "task_updated", data: JSON.stringify({
+    timestamp: "2026-10-17T06:29:02.618951+00:00", phase: "failed", status: "failed", error_code: "handoff_expired",
+    message: "private text", details: { token: "private" }, url: "https://private.test/?token=private" }) };
+  const record = fixture.nativeSseRecord(event, bindings);
+  assert.equal(record.server_timestamp, "2026-10-17T06:29:02.618951+00:00");
+  assert.equal(record.error_code, "handoff_expired"); assert.equal(record.status, "failed");
+  assert.doesNotMatch(JSON.stringify(record), /private|message|details|token/);
+  const malformed = fixture.nativeSseRecord({ ...event, data: JSON.stringify({ timestamp: "secret", phase: "secret value", status: {}, error_code: "x".repeat(121) }) }, bindings);
+  assert.equal(Object.hasOwn(malformed, "server_timestamp"), false); assert.equal(Object.hasOwn(malformed, "status"), false);
+  assert.equal(Object.hasOwn(malformed, "phase"), false); assert.equal(Object.hasOwn(malformed, "error_code"), false);
+});
+
+test("each observation retains its actual network timeline even after the global ring rolls over", async () => {
+  const { EventEmitter } = await import("node:events"), cdp = new EventEmitter(), report = {}, samples = [[], []];
+  let active = 0;
+  const stop = fixture.observeNativeSse(cdp, report, "http://127.0.0.1:9", event => samples[active].push(event));
+  cdp.emit("Network.requestWillBeSent", { timestamp: 5, requestId: "measured", type: "Fetch", request: { method: "GET", url: "http://127.0.0.1:9/api/tasks?token=private" } });
+  cdp.emit("Network.responseReceived", { timestamp: 6, requestId: "measured", response: { url: "http://127.0.0.1:9/api/tasks", status: 200, mimeType: "application/json" } });
+  cdp.emit("Network.loadingFinished", { timestamp: 7, requestId: "measured" });
+  active = 1;
+  for (let index = 0; index < 300; index++) cdp.emit("Network.loadingFinished", { timestamp: index + 8, requestId: String(index) });
+  assert.deepEqual(samples[0].map(row => row.cdp_monotonic_seconds), [5, 6, 7]);
+  assert.deepEqual(samples[0].map(row => row.event), ["request", "response", "finished"]);
+  assert(samples[0].every(row => Number.isFinite(row.received_host_monotonic_ms)));
+  assert.equal(report.network.length, 256); assert.equal(report.network_dropped, 47);
+  assert.doesNotMatch(JSON.stringify(samples), /private|token/); stop();
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  assert.match(source, /if \(trace\) boundedRecord\(trace, "network", event\)/);
+  assert.match(source, /row\.trace = trace =/); assert.match(source, /report\.lifecycle_trace = trace =/);
+  for (const name of ["preparation_started", "preparation_complete", "submission_driver_begin", "heading_locator_visible", "scroll_and_two_frames_complete", "geometry_returned", "readable_measurement_returned", "visible_ack_returned"])
+    assert(source.includes(`phase("${name}")`), name);
 });

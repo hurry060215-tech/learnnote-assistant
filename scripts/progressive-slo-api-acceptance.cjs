@@ -44,15 +44,24 @@ function nativeSseRecord(event, requests) {
   if (Object.hasOwn(payload, "task_id")) assert(payload.task_id === source.task_id, "Conflicting native SSE task identity");
   if (Object.hasOwn(payload, "event_id")) assert(payload.event_id === id, "Conflicting native SSE event ID");
   if (Object.hasOwn(payload, "event")) assert(payload.event === event.eventName, "Conflicting native SSE event name");
-  return { ...source, request_id: event.requestId, event: event.eventName, id: event.eventId };
+  const state = {};
+  for (const key of ["phase", "status", "error_code"])
+    if (typeof payload[key] === "string" && /^[A-Za-z0-9_-]{0,120}$/.test(payload[key])) state[key] = payload[key];
+  if (typeof payload.timestamp === "string" && /^\d{4}-\d{2}-\d{2}T[0-9:.+-]+Z?$/.test(payload.timestamp) && Number.isFinite(Date.parse(payload.timestamp))) state.server_timestamp = payload.timestamp;
+  return { ...source, request_id: event.requestId, event: event.eventName, id: event.eventId, ...state };
 }
 function boundedRecord(report, key, value, limit = 256) {
   const rows = report[key] ||= [];
   if (rows.length === limit) { rows.shift(); report[key + "_dropped"] = (report[key + "_dropped"] || 0) + 1; }
   rows.push(value);
 }
-function observeNativeSse(cdp, report, origin) {
+function traceStamp(event) {
+  return { received_host_monotonic_ms: performance.now(),
+    ...(Number.isFinite(event.timestamp) && event.timestamp >= 0 ? { cdp_monotonic_seconds: event.timestamp } : {}) };
+}
+function observeNativeSse(cdp, report, origin, sampleNetwork = () => {}) {
   const requests = new Map(), listeners = [];
+  function network(value) { boundedRecord(report, "network", value); sampleNetwork(value); }
   function on(name, callback) {
     const guarded = event => { try { callback(event); } catch (error) { boundedRecord(report, "errors", error.message, 64); } };
     cdp.on(name, guarded); listeners.push([name, guarded]);
@@ -62,22 +71,26 @@ function observeNativeSse(cdp, report, origin) {
     const source = streamIdentity(event.request.url, origin);
     if (source) requests.set(event.requestId, source);
     const location = networkLocation(event.request.url);
-    if (location.origin === origin && location.path.startsWith("/api/")) boundedRecord(report, "network", {
+    if (location.origin === origin && location.path.startsWith("/api/")) network({ ...traceStamp(event),
       event: "request", request_id: event.requestId, method: event.request.method, resource_type: event.type, ...location });
   });
   on("Network.responseReceived", event => {
     const location = networkLocation(event.response.url);
-    if (location.origin === origin && location.path.startsWith("/api/")) boundedRecord(report, "network", {
+    if (location.origin === origin && location.path.startsWith("/api/")) network({ ...traceStamp(event),
       event: "response", request_id: event.requestId, status: event.response.status, mime_type: event.response.mimeType, ...location });
   });
-  on("Network.eventSourceMessageReceived", event => boundedRecord(report, "native_sse", nativeSseRecord(event, requests), 8192));
+  on("Network.eventSourceMessageReceived", event => boundedRecord(report, "native_sse", {
+    ...nativeSseRecord(event, requests), ...traceStamp(event) }, 8192));
   on("Network.loadingFailed", event => {
     const source = requests.get(event.requestId);
-    if (source) boundedRecord(report, "network", { event: "stream_failed", request_id: event.requestId, ...source,
+    if (source) network({ ...traceStamp(event), event: "stream_failed", request_id: event.requestId, ...source,
       canceled: Boolean(event.canceled), error: /^[A-Za-z0-9_:]+$/.test(event.errorText) ? event.errorText : "unclassified_failure" });
     requests.delete(event.requestId);
   });
-  on("Network.loadingFinished", event => requests.delete(event.requestId));
+  on("Network.loadingFinished", event => {
+    requests.delete(event.requestId);
+    network({ ...traceStamp(event), event: "finished", request_id: event.requestId });
+  });
   function stop() { requests.clear(); for (const [name, listener] of listeners) cdp.off(name, listener); }
   on("close", stop);
   return stop;
@@ -181,7 +194,8 @@ async function main(output = "build/progressive-slo-ui") {
       post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including local ACK transport",
       excluded: ["automatic release checks (fixture update preferences disabled)", "application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
       warmth: "Fresh task/artifacts each sample; same initialized backend/browser context. OS/HTTP caches not forced cold; first task identified separately." } };
-  let backend, browser, context, page, base, fixture, primaryError, stopObserving, logBytes = 0;
+  let backend, browser, context, page, base, fixture, primaryError, stopObserving, trace, logBytes = 0;
+  const phase = name => { if (trace) boundedRecord(trace, "phases", { name, received_host_monotonic_ms: performance.now() }, 64); };
   const save = () => { report.summary = summarize(report.samples); fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); };
   async function stopBackend() {
     if (!backend || backend.exitCode !== null || backend.signalCode !== null) return;
@@ -220,7 +234,7 @@ async function main(output = "build/progressive-slo-ui") {
     stopObserving?.();
     page = await context.newPage(); page.on("pageerror", error => boundedRecord(report, "errors", error.message, 64));
     const cdp = await context.newCDPSession(page);
-    stopObserving = observeNativeSse(cdp, report, base);
+    stopObserving = observeNativeSse(cdp, report, base, event => { if (trace) boundedRecord(trace, "network", event); });
     page.once("close", stopObserving);
     await cdp.send("Network.enable");
   }
@@ -231,9 +245,9 @@ async function main(output = "build/progressive-slo-ui") {
   const snapshot = id => api(`/_fixture/tasks/${id}`);
   async function capture(name) { await page.screenshot({ path: path.join(out, name), animations: "disabled" }); report.screenshots.push(name); }
   async function prepare(minutes, serial, record) {
-    report.current_task_id = null;
+    phase("preparation_started"); report.current_task_id = null;
     const result = await api("/api/tasks/from-current-page?defer=true", { method: "POST", data: captionRequest(minutes, serial) });
-    const id = result.task_id;
+    const id = result.task_id; phase("deferred_created");
     report.current_task_id = id; if (record) record.task_id = id; save();
     await page.goto(base + "/#task/" + id);
     await page.locator(`#document[data-reader-source="task:${id}"]`).waitFor({ state: "visible" });
@@ -247,9 +261,10 @@ async function main(output = "build/progressive-slo-ui") {
       assert.deepEqual(state.forbidden_attempts, []);
       report.settings_startup = { response, update_preferences: state.update_preferences, forbidden_attempts: state.forbidden_attempts };
     }
-    return id;
+    phase("preparation_complete"); return id;
   }
   async function submit(id, suffix = "start") {
+    phase("submission_driver_begin");
     await page.evaluate(({ id, suffix, options }) => {
       window.sloStart = performance.now(); window.sloSubmission = { pending: true };
       // Do not await background-response completion before measuring the draft.
@@ -260,26 +275,28 @@ async function main(output = "build/progressive-slo-ui") {
   }
   async function readerGeometry(id) {
     const heading = page.locator(`#document[data-reader-source="task:${id}"] h2`).filter({ hasText: "按时间段的阅读提纲" });
-    await heading.waitFor({ state: "visible", timeout: 30000 });
+    await heading.waitFor({ state: "visible", timeout: 30000 }); phase("heading_locator_visible");
     await heading.evaluate(async element => {
       element.scrollIntoView({ block: "start", behavior: "instant" });
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     });
-    const geometry = await heading.evaluate(outlineGeometry);
+    phase("scroll_and_two_frames_complete");
+    const geometry = await heading.evaluate(outlineGeometry); phase("geometry_returned");
     assert(readableGeometry(geometry), JSON.stringify(geometry));
     return geometry;
   }
   async function visible(id, minutes = 5) {
     const geometry = await readerGeometry(id);
     const measured = { geometry, first_outline_seconds: await page.evaluate(() => (performance.now() - window.sloStart) / 1000) };
-    const state = await api(`/_fixture/tasks/${id}/visible`, { method: "POST" });
+    phase("readable_measurement_returned");
+    const state = await api(`/_fixture/tasks/${id}/visible`, { method: "POST" }); phase("visible_ack_returned");
     const nativeDraft = await until(() => report.native_sse.find(event => event.task_id === id && event.event === "draft_ready" && Number(event.id) > 0), "actual native draft_ready SSE");
     assert.equal(state.status, "running"); assert.equal(state.waiting, true);
     assert.equal(Object.keys(state.hashes).length, 3);
     assert.deepEqual(state.source_coverage, { duration: minutes * 60, cue_count: minutes * 2,
       first_start: 0, last_end: minutes * 60, reference_cues_complete: true,
       section_count: minutes / 5, final_section_end: minutes * 60 });
-    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, phases: state.stages, source_coverage: state.source_coverage, native_draft_event: nativeDraft, state };
+    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, visible_ack_snapshot_seconds: state.visible_ack_snapshot_seconds, phases: state.stages, source_coverage: state.source_coverage, native_draft_event: nativeDraft, state };
   }
   async function release(id, checkResponse = true) {
     await api(`/_fixture/tasks/${id}/release`, { method: "POST" });
@@ -307,6 +324,7 @@ async function main(output = "build/progressive-slo-ui") {
       ...await page.evaluate(() => ({ user_agent: navigator.userAgent, brands: navigator.userAgentData?.brands || [] })) };
     for (const minutes of DURATIONS) for (let repetition = 1; repetition <= REPETITIONS; repetition++) {
       const row = { minutes, repetition, index: report.samples.length + 1, first_task_in_initialized_runtime: report.samples.length === 0, status: "pending" };
+      row.trace = trace = { phases: [], network: [] };
       report.samples.push(row); save(); const started = performance.now(); let sampleError;
       try {
         row.task_id = await prepare(minutes, repetition, row); await submit(row.task_id);
@@ -325,6 +343,7 @@ async function main(output = "build/progressive-slo-ui") {
       } catch (error) { sampleError = error; row.status = "fail"; row.error = error.message; row.observation_elapsed_seconds = (performance.now() - started) / 1000; throw error; }
       finally { saveCheckpoint(save, sampleError); }
     }
+    report.lifecycle_trace = trace = { phases: [], network: [] };
     const id = await prepare(5, "lifecycle"); await submit(id);
     const before = (await visible(id)).state; await capture("draft-before-cancel.png");
     const cancelStart = performance.now(); await api(`/api/tasks/${id}/cancel`, { method: "POST" });
@@ -381,5 +400,5 @@ async function main(output = "build/progressive-slo-ui") {
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, observeNativeSse, recordFailureDiagnostics };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });
