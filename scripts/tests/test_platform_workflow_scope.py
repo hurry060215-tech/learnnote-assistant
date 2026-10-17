@@ -35,7 +35,7 @@ class PlatformWorkflowScopeTests(unittest.TestCase):
         matrix = yaml.safe_load((ROOT / ".github/workflows/platform-contracts.yml").read_text(encoding="utf-8"))
         events = matrix.get("on", matrix.get(True))
         self.assertIn("desktop/**", events["push"]["paths"])
-        command = "python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration"
+        command = "python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration desktop.tests.test_macos_lifecycle"
         native = next(step for step in matrix["jobs"]["python-local-contract"]["steps"] if command in step.get("run", ""))
         self.assertEqual(native["env"]["PYTHONPATH"], "backend")
         self.assertNotIn("continue-on-error", native)

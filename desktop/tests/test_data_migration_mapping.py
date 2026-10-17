@@ -1,6 +1,8 @@
 """Synthetic, offline tests of the explicitly approved migration mapper."""
 from __future__ import annotations
 
+from contextlib import closing
+
 import ast
 import hashlib
 import json
@@ -418,7 +420,7 @@ class MappingTests(unittest.TestCase):
         plan = self.plan()
         self.assertEqual(plan["catalog_proof"]["nonpath_before"], plan["catalog_proof"]["nonpath_after"])
         apply_reference_changes(self.stage, plan)
-        with sqlite3.connect(self.stage / "library.sqlite3") as changed:
+        with closing(sqlite3.connect(self.stage / "library.sqlite3")) as changed, changed:
             row = changed.execute("SELECT * FROM library_tasks").fetchone()
             self.assertEqual(row[:9], original[:9])
             self.assertEqual(row[11:], original[11:])
@@ -444,7 +446,7 @@ class MappingTests(unittest.TestCase):
         plan = self.plan()
         self.assertEqual(len(plan["changes"]), 2)
         apply_reference_changes(self.stage, plan)
-        with sqlite3.connect(self.stage / "library.sqlite3") as changed:
+        with closing(sqlite3.connect(self.stage / "library.sqlite3")) as changed, changed:
             result = changed.execute("SELECT * FROM library_materials").fetchone()
         self.assertEqual(result[:14], row[:14])
         self.assertEqual(result[16:], row[16:])
@@ -480,7 +482,7 @@ class MappingTests(unittest.TestCase):
         apply_reference_changes(self.stage, plan)
         self.assertFalse((self.stage / "library.sqlite3-wal").exists())
         self.assertFalse((self.stage / "library.sqlite3-shm").exists())
-        with sqlite3.connect(self.stage / "library.sqlite3") as changed:
+        with closing(sqlite3.connect(self.stage / "library.sqlite3")) as changed, changed:
             self.assertEqual(changed.execute("SELECT note_path FROM library_tasks").fetchone()[0], str(self.destination / "tasks/task-a/note.md"))
             self.assertEqual(changed.execute("PRAGMA integrity_check").fetchone()[0], "ok")
         self.assertEqual(hashes(self.source), self.original_hashes)

@@ -34,5 +34,7 @@ assert.match(script, /\[1280, 1440, 768, 390\]/); assert.match(script, /await pa
 assert.match(script, /#menu/); assert.match(script, /#settings/); assert.match(script, /reducedMotion: "reduce"/);
 assert.match(script, /mobile-last-migration-/);
 assert.match(workflow, /node scripts\/data-migration-visual-acceptance.cjs build\/data-migration-ui/);
-assert.match(workflow, /            build\/data-migration-ui\n/); assert.match(workflow, /retention-days: 14/);
+for (const checkout of [workflow.replace(/\r\n/g, "\n"), workflow.replace(/\r?\n/g, "\r\n")]) {
+  assert.match(checkout, /            build\/data-migration-ui\r?\n/);
+} assert.match(workflow, /retention-days: 14/);
 console.log("Migration hosted fixture contract: isolated bridge, held requests, conflicts, shipped menu, Edge matrix and artifact retention passed (browser execution not claimed)");

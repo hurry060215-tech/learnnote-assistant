@@ -106,7 +106,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Script tests failed" }
           python -m unittest desktop.tests.test_desktop_launcher
           if ($LASTEXITCODE -ne 0) { throw "Desktop tests failed" }
-          python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration
+          python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration desktop.tests.test_macos_lifecycle
           if ($LASTEXITCODE -ne 0) { throw "Desktop migration tests failed" }
       - name: Release packaging smoke
         shell: pwsh

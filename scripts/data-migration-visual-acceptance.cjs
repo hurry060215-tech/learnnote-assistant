@@ -53,6 +53,27 @@ function syntheticResponse(pathname) {
     "/api/support/activation": { enabled: false }, "/api/courses": { courses: [] },
   }[pathname];
 }
+// A viewport resize can land before the app's resize listener updates ARIA.
+// Wait for that real state to settle before deciding whether a menu click opens
+// or closes the current layout. Do not force classes, handlers, or visibility.
+function migrationSidebarReady() {
+  const sidebar = document.querySelector("#sidebar"), menu = document.querySelector("#menu");
+  if (!sidebar || typeof menu?.onclick !== "function") return false;
+  const expanded = matchMedia("(max-width: 760px)").matches
+    ? document.body.classList.contains("menu-open") : !document.body.classList.contains("sidebar-collapsed");
+  return menu.getAttribute("aria-expanded") === String(expanded) && sidebar.inert === !expanded;
+}
+async function openMigrationSettings(page) {
+  await page.waitForFunction(() => Boolean(window.LearnNoteSettings) && Boolean(document.querySelector("#homeUrlForm")) && !document.querySelector("#welcome").hidden);
+  await page.waitForFunction(migrationSidebarReady);
+  if (await page.evaluate(() => document.body.classList.contains("focus-reading") || document.querySelector("#menu").getAttribute("aria-expanded") !== "true")) await page.locator("#menu").click();
+  await page.waitForFunction(() => {
+    const settings = document.querySelector("#settings"), bounds = settings?.getBoundingClientRect();
+    return !document.querySelector("#sidebar").inert && document.querySelector("#menu").getAttribute("aria-expanded") === "true" &&
+      bounds?.width > 0 && bounds.left >= 0 && bounds.right <= innerWidth + 1;
+  });
+  await page.locator("#settings").click(); await page.locator('[data-settings-section="storage"]').click();
+}
 async function main() {
   const out = path.resolve(process.argv[2] || "build/data-migration-ui"); fs.mkdirSync(out, { recursive: true });
   const report = { passed: false, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), browser: "Microsoft Edge",
@@ -89,12 +110,7 @@ async function main() {
     const calls = () => page.evaluate(() => window.__migrationFixture.calls);
     const count = async method => (await calls()).filter(call => call.method === method).length;
     const phase = value => page.waitForFunction(value => document.querySelector("#dataMigrationDialog")?.dataset.phase === value, value);
-    async function openSettings() {
-      await page.waitForFunction(() => Boolean(window.LearnNoteSettings) && Boolean(document.querySelector("#homeUrlForm")) && !document.querySelector("#welcome").hidden);
-      if (await page.locator("#menu").getAttribute("aria-expanded") !== "true") await page.locator("#menu").click();
-      await page.waitForFunction(() => !document.querySelector("#sidebar").inert && document.querySelector("#menu").getAttribute("aria-expanded") === "true");
-      await page.locator("#settings").click(); await page.locator('[data-settings-section="storage"]').click();
-    }
+    const openSettings = () => openMigrationSettings(page);
     async function openPreview() { await page.locator("#changeSettingsFolder").click(); await phase("preview"); }
     async function snapshot(name, target = "#dataMigrationHeading") {
       if (target === "#dataMigrationHeading") await page.locator("#dataMigrationDialog").evaluate(el => { el.scrollTop = 0; });
@@ -183,6 +199,12 @@ async function main() {
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpected_requests, []); report.passed = true;
   } catch (error) {
     report.errors.push(error.stack || error.message);
+    if (page) {
+      report.bridge_calls = await page.evaluate(() => window.__migrationFixture?.calls || []).catch(() => []);
+      report.sidebar_at_failure = await page.evaluate(() => ({ width: innerWidth,
+        compact: matchMedia("(max-width: 760px)").matches, classes: document.body.className,
+        expanded: document.querySelector("#menu")?.getAttribute("aria-expanded"), inert: document.querySelector("#sidebar")?.inert })).catch(() => null);
+    }
     if (page) await page.screenshot({ path: path.join(out, "failure.png"), animations: "disabled" }).then(() => report.screenshots.push("failure.png")).catch(() => {});
     throw error;
   } finally {
@@ -191,4 +213,4 @@ async function main() {
   console.log(`PASS: migration preview/cancel/confirm/conflict, exact disclosures, mobile menu and accessibility; ${report.screenshots.length} screenshots at ${out}`);
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { PLAN, installBridge, syntheticResponse };
+module.exports = { PLAN, installBridge, syntheticResponse, migrationSidebarReady, openMigrationSettings };

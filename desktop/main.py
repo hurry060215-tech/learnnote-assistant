@@ -22,6 +22,7 @@ import requests
 import uvicorn
 
 from desktop.credentials import delete_secret, read_secret, write_secret
+from desktop.macos_lifecycle import native_quit_lifecycle
 from desktop.startup import DesktopSession, backend_ready, focus_running_desktop, protocol_port, wait_for_process_exit
 
 MODEL_PROVIDER_KEY_URLS = {
@@ -1391,11 +1392,12 @@ def run_session(args, root: Path, session: DesktopSession) -> int:
 
         app.state.desktop_focus = focus_desktop
         window.events.loaded += lambda: window.set_title("LearnNote - Video Learning Notes")
-        webview.start(
-            debug=args.debug,
-            private_mode=False,
-            storage_path=str(webview_storage_path(data_dir)),
-        )
+        with native_quit_lifecycle(window):
+            webview.start(
+                debug=args.debug,
+                private_mode=False,
+                storage_path=str(webview_storage_path(data_dir)),
+            )
     finally:
         server.should_exit = True
         thread.join(timeout=8)

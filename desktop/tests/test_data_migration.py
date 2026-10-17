@@ -1,6 +1,8 @@
 """Synthetic transaction, interruption and no-source-write regression tests."""
 from __future__ import annotations
 
+from contextlib import closing
+
 import hashlib
 import json
 import os
@@ -228,16 +230,16 @@ class MigrationTests(unittest.TestCase):
 
     def test_other_database_preserves_every_row_and_unknown_schema_blocks(self):
         path = self.source / "token-usage.sqlite3"
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("CREATE TABLE usage (at TEXT,model TEXT,host TEXT,purpose TEXT,status TEXT,input_tokens INTEGER,output_tokens INTEGER,total_tokens INTEGER,elapsed_ms INTEGER)")
             db.execute("INSERT INTO usage VALUES ('date','model','host','purpose','ok',1,2,3,4)")
         self.prepare()
         self.apply()
         self.assert_source()
-        with sqlite3.connect(self.target / path.name) as db:
+        with closing(sqlite3.connect(self.target / path.name)) as db, db:
             self.assertEqual(db.execute("SELECT * FROM usage").fetchall(), [('date','model','host','purpose','ok',1,2,3,4)])
         unknown = self.source / "activation.sqlite3"
-        with sqlite3.connect(unknown) as db:
+        with closing(sqlite3.connect(unknown)) as db, db:
             db.execute("CREATE TABLE mystery (path TEXT)")
         fresh = self.base / "new-target"
         fresh.mkdir()
@@ -247,7 +249,7 @@ class MigrationTests(unittest.TestCase):
     def test_pending_queue_is_rejected_on_snapshot_without_source_database_open(self):
         path = self.source / "task-queue.sqlite3"
         initialize_producer_database(path.name, path)
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("INSERT INTO jobs(task_id,kind,requires_context,state,updated_at) VALUES (?, 'summary', 0, 'queued', 1)", (self.task_id,))
         before = fingerprint(path)
         original = sqlite3.connect
@@ -307,7 +309,7 @@ class MigrationTests(unittest.TestCase):
         self.apply()
         self.assert_source()
         self.assertFalse((self.target / (path.name + "-wal")).exists())
-        with sqlite3.connect(self.target / path.name) as db:
+        with closing(sqlite3.connect(self.target / path.name)) as db, db:
             self.assertEqual(db.execute("SELECT * FROM facts").fetchall(), [("synthetic", 1.5)])
 
     def test_real_catalog_schema_survives_persisted_request_and_moved_api_reads(self):
@@ -318,13 +320,13 @@ class MigrationTests(unittest.TestCase):
             created_at="2026-10-17", updated_at="2026-10-17", note_path=self.task["note_path"], transcript_path=self.task["transcript_path"])
         self.task = record.model_dump(mode="json")
         self.save_task()
-        with sqlite3.connect(self.source / "library.sqlite3") as db:
+        with closing(sqlite3.connect(self.source / "library.sqlite3")) as db, db:
             library._ensure_schema(db)
             db.execute("INSERT INTO library_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (self.task_id,"Synthetic lesson","","local","video","success","","2026-10-17","2026-10-17",self.task["note_path"],"","","synthetic search text"))
         self.prepare()
         self.apply()
         self.assert_source()
-        with sqlite3.connect(self.target / "library.sqlite3") as db:
+        with closing(sqlite3.connect(self.target / "library.sqlite3")) as db, db:
             self.assertEqual(db.execute("SELECT note_path,content FROM library_tasks").fetchone(), (str(self.target / "tasks" / self.task_id / "note.md"), "synthetic search text"))
         script = "from fastapi.testclient import TestClient; from app.main import app; import sys; client=TestClient(app,raise_server_exceptions=False); paths=['note','transcript','exports/markdown','exports/bundle']; results=[client.get('/api/tasks/'+sys.argv[1]+'/'+p) for p in paths]; assert all(r.status_code==200 for r in results),[(p,r.status_code,r.text[:300]) for p,r in zip(paths,results)]; assert '合成笔记' in results[0].text"
         env = {**os.environ, "LEARNNOTE_DATA_DIR": str(self.target), "PYTHONPATH": str(ROOT / "backend")}
