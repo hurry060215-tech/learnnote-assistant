@@ -26,7 +26,10 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   let ownedPid, browser, context, page, preparation, translationOffer, before, after, zoomCommand, report, failure;
   const unexpected = [], errors = [], captures = [], zoomCases = [], nativeFailures = [];
   const nativeKey = (zoom, capturePath) => {
-    try { return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout: 15000 })); }
+    // Preparation includes managed type compilation before any baseline metrics.
+    // Actual zoom, capture, dismissal and restoration retain their action budget.
+    const timeout = zoom === "prepare" ? 45000 : 15000;
+    try { return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout })); }
     catch (error) { if (nativeFailures.length < 16) nativeFailures.push(nativeFailureEvidence(zoom, error)); throw error; }
   };
   const metrics = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio,

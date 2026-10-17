@@ -52,3 +52,25 @@ It does not translate, change preferences, send Escape or dismiss security UI.
 Absence is reported rather than claimed as a dismissal. Actual Windows UI
 Automation behavior and unobscured replacement images still require a new hosted
 run and manual visual inspection; local contract/fault tests are not that proof.
+
+## Preparation process budget (2026-10-17 follow-on)
+
+Run [39033279705](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39033279705)
+on `3ce0daf36cb1f7ba7cd55c42326692970773d257` remained failed: the native
+`prepare` process exceeded its original 15-second deadline. Its last marker was
+`native-type-compile` at 2,362 ms; enumeration was not reached. This bounds that
+occurrence to the managed `Add-Type` compilation boundary, without identifying
+why compilation was slow. The earlier successful
+[39029327055](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39029327055)
+spent 5,734 ms between payload construction and JSON serialization. The payload
+contains primitive scalar values in plain maps (518 compact JSON bytes), not
+nested .NET geometry objects. Earlier post-preparation timeouts remain unresolved.
+
+The fixture now gives **only `prepare` 45 seconds** for its synchronous PowerShell
+process, before baseline metrics or native zoom measurements. Every `reset`,
+`90`, `125`, `150`, `200`, `capture` and `dismiss-translation` invocation retains
+15 seconds. Browser readiness, owned-process/window checks, geometry assertions,
+keyboard checks, cleanup/restoration and the workflow job cap are unchanged.
+There is no retry or persistent helper. This is a setup-process budget, separate
+from the unchanged reference-reader p95 and per-sample ACK limits. Historical
+failures remain failures; the revised preparation budget requires hosted proof.

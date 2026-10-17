@@ -52,11 +52,11 @@ async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=fa
   const browser={newContext:async()=>context,version:()=> 'fixture',close:close('browser')};
   const server={process:()=>({pid:12345}),wsEndpoint:()=> 'owned',close:close('server')};
   const sandbox={module:{exports:{}},process:{platform:'win32'},URL,__dirname:'/not-executed',console:{error:()=>{}},require:name=>{
-    if(name==='./timeline-native-zoom-matrix.cjs')return {runNativeZoomMatrix:async()=>{if(matrixFailure)throw primary;},waitForNativePreset:require('../timeline-native-zoom-matrix.cjs').waitForNativePreset};
-    if(name==='./timeline-native-capture.cjs')return {captureNativeViews:async()=>{}};
+    if(name==='./timeline-native-zoom-matrix.cjs')return {runNativeZoomMatrix:async({nativeKey})=>{if(matrixFailure)throw primary;for(const action of ['90','125','150'])nativeKey(action);},waitForNativePreset:require('../timeline-native-zoom-matrix.cjs').waitForNativePreset};
+    if(name==='./timeline-native-capture.cjs')return {captureNativeViews:async(_page,{nativeCapture})=>{nativeCapture('synthetic.png');}};
     if(name==='playwright')return {chromium:{launchServer:async()=>server,connect:async()=>browser}};
     if(name==='node:fs')return {writeFileSync:(_path,data)=>writes.push(JSON.parse(data))};
-    if(name==='node:child_process')return {execFileSync:(_exe,args)=>{const action=args[args.indexOf('-Zoom')+1];calls.push(action);if(action==='prepare'&&prepareFailure)throw primary;if(action==='dismiss-translation'&&translationFailure)throw primary;if(action==='reset'){resets++;if(resets>1&&resetFailure)throw resetError;zoom=100;}if(action==='200')zoom=200;return '{}';}};
+    if(name==='node:child_process')return {execFileSync:(_exe,args,options)=>{const action=args[args.indexOf('-Zoom')+1];assert.equal(options.timeout,action==='prepare'?45000:15000);calls.push(action);if(action==='prepare'&&prepareFailure)throw primary;if(action==='dismiss-translation'&&translationFailure)throw primary;if(action==='reset'){resets++;if(resets>1&&resetFailure)throw resetError;zoom=100;}if(action==='200')zoom=200;return '{}';}};
     return require(name);
   }};
   vm.runInNewContext(source,sandbox);
@@ -64,6 +64,8 @@ async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=fa
   if(matrixFailure||translationFailure||prepareFailure)await assert.rejects(promise,e=>e===primary);
   else if(resetFailure||closeFailure)await assert.rejects(promise,/RESET_FAILED|CLOSE_/);
   else {const result=await promise;assert.deepEqual(JSON.parse(JSON.stringify(result)),writes.at(-1));assert.equal(result.baseline_restored.dpr,1);assert.equal(result.baseline_restored.width,1000);}
+  assert.equal(calls.filter(action=>action==='prepare').length,1,'Preparation is never retried');
+  if(!matrixFailure&&!translationFailure&&!prepareFailure)for(const action of ['90','125','150','200','capture'])assert(calls.includes(action));
   assert.equal(resets,(translationFailure||prepareFailure)?1:2,'Final reset attempted after both successful and failed matrix');
   if(prepareFailure){
     assert(!calls.includes('dismiss-translation'));

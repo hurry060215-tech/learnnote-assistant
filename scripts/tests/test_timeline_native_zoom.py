@@ -17,8 +17,10 @@ class NativeTimelineZoomContract(unittest.TestCase):
         self.assertEqual(offsets, sorted(offsets))
         self.assertIn('[Console]::Error.Flush()', helper)
         source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")
-        self.assertIn('timeout: 15000', source)
+        self.assertIn('const timeout = zoom === "prepare" ? 45000 : 15000;', source)
         self.assertIn('throw error;', source)
+        self.assertLess(source.index('preparation = nativeKey("prepare")'), source.index('before = await metrics()'))
+        self.assertIn('context.setDefaultTimeout(15000)', source)
         subprocess.run(["node", "-e", r"""
 const assert = require('node:assert/strict');
 const {nativeFailureEvidence} = require('./scripts/timeline-native-zoom-acceptance.cjs');
