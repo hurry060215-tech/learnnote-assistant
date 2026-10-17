@@ -495,7 +495,7 @@ jobs:
         shell: pwsh
         run: |
           $env:LEARNNOTE_ACCEPTANCE_PYTHON = (Get-Command python).Source
-          node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui --contention-diagnostics
+          node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui
           if ($LASTEXITCODE -ne 0) { throw "Reference caption-to-readable-draft acceptance failed" }
       - name: Provision pinned visual media tools
         id: visual_media_tools

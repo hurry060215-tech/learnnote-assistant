@@ -319,3 +319,18 @@ proof of zero observer cost. Earlier 5.9–21.4% list observations remain eviden
 These direct-call Linux experiments cannot calibrate Windows diagnostic overhead.
 The next enabled run remains diagnostic; after diagnosis and a reviewed fix,
 remove the flag and pass the complete original observer-disabled gate.
+
+## Return to the observer-disabled gate
+
+The inspected 5e2bdbc run completed all 80 samples and the joined visual gate
+with the observer enabled. Its maximum task hold was 2.287203 s; two same-thread
+catalog connection lifetimes accounted for 2.209040 s. Catalog acquisition waits
+peaked at 72.079 ms. This did not reproduce or explain the older 13.807872 s
+hold, and it does not establish an SQL, commit or disk cause.
+
+The required workflow now omits the diagnostic flag again. The optional local
+diagnostic invocation remains available. All 80 retained tasks, full captions,
+clocks, 10-second p95 and 5-second per-sample ACK limits remain unchanged. The
+previous observer-disabled 8.422/10.343-second ACK failures remain historical
+failures; a new clean result is pending, not inferred from the diagnostic pass.
+No production index or lock optimization was made from this evidence.

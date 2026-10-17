@@ -182,9 +182,10 @@ def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics
         draft = storage.task_dir(task_id) / "draft.md"
         if draft.is_file():
             hashes["draft.md"] = hashlib.sha256(draft.read_bytes()).hexdigest()
-        sections_path = storage.task_dir(task_id) / "draft_sections.json"
-        if sections_path.is_file():
-            sections = json.loads(sections_path.read_bytes())["sections"]
+        missing_sections = object()
+        sections_document = storage.read_json(task_id, "draft_sections.json", missing_sections)
+        if sections_document is not missing_sections:
+            sections = sections_document["sections"]
             source_coverage.update(section_count=len(sections), final_section_end=sections[-1]["end"] if sections else None)
         history = read_task_events(task_id)
         events = [event for event in history if event.get("event") in

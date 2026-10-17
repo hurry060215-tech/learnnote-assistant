@@ -58,8 +58,8 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         self.assertIn("Get-Command ffprobe -ErrorAction Stop", visual["run"])
         self.assertEqual(visual["run"].count("node scripts/progressive-visual-api-acceptance.cjs"), 1)
         self.assertEqual(commands[1]["run"].count("node scripts/progressive-slo-api-acceptance.cjs"), 1)
-        self.assertIn("node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui --contention-diagnostics\n", commands[1]["run"])
-        self.assertEqual(commands[1]["run"].count("--contention-diagnostics"), 1)
+        self.assertIn("node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui\n", commands[1]["run"])
+        self.assertNotIn("--contention-diagnostics", commands[1]["run"])
         for step in commands:
             lines = step["run"].splitlines()
             for index, line in enumerate(lines):
