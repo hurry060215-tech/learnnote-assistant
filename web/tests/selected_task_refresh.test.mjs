@@ -24,7 +24,7 @@ function harness({ holdEdition = false, reading = {}, ignoreAbort = false } = {}
     return nodes.get(id);
   };
   $("document").dataset.readerSource = "task:selected";
-  $("document").dataset.readerRevision = "same:transcript-draft:";
+  $("document").dataset.readerRevision = "same::";
   $("sourcePanel").hidden = true; $("sourcePanel").dataset.sourceTaskId = old.id;
   const state = { selected: old, items: [old], epoch: 1, text: currentEdition.text, revision: "same", editing: false,
     lastHealthAt: Date.now(), reading, model: {}, health: {} };

@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { observe, captureFailure, runWithEvidence } = require("./chat-stream-diagnostics.cjs");
 const http = require("node:http"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 (async () => {
   const base = process.argv[2] || "http://127.0.0.1:18940", out = process.argv[3] || path.join(os.tmpdir(), "learnnote-stream-ui");
@@ -36,9 +37,12 @@ const http = require("node:http"), assert = require("node:assert/strict"), fs = 
     req.pipe(proxy);
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const browser = await chromium.launch({ channel: "msedge", headless: true });
-  try {
-    const p = await browser.newPage({ viewport: { width: 1440, height: 960 } }), errors = [];
+  let browser, p, evidence;
+  await runWithEvidence(async () => {
+    browser = await chromium.launch({ channel: "msedge", headless: true });
+    p = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+    evidence = observe(p);
+    const errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
     await p.goto("http://127.0.0.1:" + server.address().port);
     await p.locator("#aiAssistant").click();
@@ -85,10 +89,12 @@ const http = require("node:http"), assert = require("node:assert/strict"), fs = 
     await p.waitForFunction(() => !document.querySelector('#assistantHistory').textContent.includes('旧来源的未完成回答'));
     assert.deepEqual(errors, []);
     console.log("Thinking, incremental delivery, stop, clean start and draft continuity passed");
-  } finally {
-    releaseHistory?.();
-    for (const response of responses) response.destroy();
-    await browser.close();
-    await new Promise((r) => server.close(r));
-  }
+  }, async error => {
+    await captureFailure(p, evidence || {}, error, out);
+  }, [
+    () => releaseHistory?.(),
+    () => { for (const response of responses) response.destroy(); },
+    () => browser?.close(),
+    () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
+  ]);
 })().catch((e) => { console.error(e); process.exit(1); });

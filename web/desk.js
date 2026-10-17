@@ -558,8 +558,10 @@ async function loadEdition(epoch) {
     return;
   }
   if ($("document").querySelector("[data-progressive-reader]")) delete $("document").dataset.readerRevision;
+  // These task metadata states render identical Markdown; keep the current body and selection.
+  const bodySource = selected.kind === "task" && selected.summary_source === "transcript-draft" ? "" : selected.summary_source || "";
   const rendered = renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
-    `${edition.revision}:${selected.summary_source || ""}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
+    `${edition.revision}:${bodySource}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
   if (!rendered) { loadClaimTimeline(); state.personalReview?.load(); }
 }
 function renderNote() {

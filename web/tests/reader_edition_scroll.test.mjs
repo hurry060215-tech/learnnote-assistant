@@ -15,7 +15,7 @@ function harness() {
     scrollIntoView() { if (this.isConnected) scroll = y - 140; } });
   let heading = node();
   const reader = { isConnected: true, hidden: false,
-    dataset: { readerSource: "task:a", readerRevision: "before:transcript-draft:", sourceRevision: "before" },
+    dataset: { readerSource: "task:a", readerRevision: "before::", sourceRevision: "before" },
     querySelector: () => null, querySelectorAll: () => [heading] };
   const task = { kind: "task", id: "a", status: "running", summary_source: "transcript-draft", updated_at: "one", options: {} };
   const state = { epoch: 1, selected: task, editing: false }, pending = [];
@@ -44,7 +44,7 @@ test("a delayed production edition response preserves the user's current passage
   oldNode.scrollIntoView();
   assert.equal(h.scroller.scrollTop, 2387, "A detached handle cannot establish scrolling of the current reader");
   assert.equal(h.reader.dataset.readerSource, "task:a");
-  assert.equal(h.reader.dataset.readerRevision, "after:transcript-draft:");
+  assert.equal(h.reader.dataset.readerRevision, "after::");
 });
 
 test("late edition responses cannot render after newer navigation, task generation or editing", async () => {

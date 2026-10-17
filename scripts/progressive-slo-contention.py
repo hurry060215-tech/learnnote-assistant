@@ -46,12 +46,22 @@ class Collector:
             raise ValueError("diagnostic bounds must be integers between 1 and 512")
         self.limits = dict(operations=max_operations, recent_events=max_events,
                           slow_events=max_slow_events, active=max_active, metrics=MAX_METRICS)
+        # Reserve the same total budget by kind: long list/projection boundaries
+        # must not displace every lock owner/waiter. Largest remainders keep even
+        # tiny test budgets deterministic without exceeding the configured cap.
+        weights = dict(lock_wait=2, lock_hold=2, lease_wait=1, boundary=3)
+        quotas = {kind: max_slow_events * weight // 8 for kind, weight in weights.items()}
+        order = sorted(weights, key=lambda kind: -(max_slow_events * weights[kind] % 8))
+        for kind in order[:max_slow_events - sum(quotas.values())]:
+            quotas[kind] += 1
+        self.limits["slow_events_by_kind"] = quotas
         self.mutex = threading.RLock()  # Collector metadata only; never obtains a product lock.
         self.operations = deque(maxlen=max_operations)
         self.events = deque(maxlen=max_events)
-        self.slow = []
+        self.slow = {kind: [] for kind in weights}
         self.active = {}
         self.dropped = dict(operations=0, recent_events=0, slow_events=0, active=0, metrics=0)
+        self.dropped["slow_events_by_kind"] = dict.fromkeys(weights, 0)
         self.serial = itertools.count(1)
         self.epoch_wall, self.epoch_monotonic = time.time(), time.perf_counter()
         self.lock = None
@@ -122,6 +132,8 @@ class Collector:
                 value["max_wall_s"] = max(value["max_wall_s"], wall)
 
     def event(self, kind, name, start, end, **values):
+        if kind not in self.slow:
+            raise ValueError("invalid diagnostic event kind")
         # Retain only slow boundaries; every call still contributes to the aggregates.
         wall = end[0] - start[0]
         if wall < SLOW_SECONDS:
@@ -135,13 +147,15 @@ class Collector:
                 self.dropped["recent_events"] += 1
             self.events.append(row)
             entry = (wall, next(self.serial), row)
-            if len(self.slow) < self.limits["slow_events"]:
-                heapq.heappush(self.slow, entry)
-            elif wall > self.slow[0][0]:
-                heapq.heapreplace(self.slow, entry)
-                self.dropped["slow_events"] += 1
+            heap = self.slow[kind]
+            limit = self.limits["slow_events_by_kind"][kind]
+            if len(heap) < limit:
+                heapq.heappush(heap, entry)
             else:
                 self.dropped["slow_events"] += 1
+                self.dropped["slow_events_by_kind"][kind] += 1
+                if limit and wall > heap[0][0]:
+                    heapq.heapreplace(heap, entry)
 
     @contextmanager
     def span(self, name):
@@ -169,7 +183,8 @@ class Collector:
                 scope="synthetic fixture; I/O-bearing boundaries include decoding and validation; nested spans are inclusive",
                 bounds=self.limits, dropped=self.dropped, totals=self.totals,
                 operations=list(self.operations), recent_events=list(self.events),
-                slow_events=[entry[2] for entry in sorted(self.slow, reverse=True)],
+                slow_events=[entry[2] for entry in sorted(
+                    (entry for heap in self.slow.values() for entry in heap), reverse=True)],
                 active=list(self.active.values()), lock_owner=self.lock.owner if self.lock else None)
             return copy.deepcopy(result)
 

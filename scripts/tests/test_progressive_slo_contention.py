@@ -244,14 +244,17 @@ class ProgressiveSloContentionTests(unittest.TestCase):
                 count = (batch + 1) * 100
                 self.assertEqual(len(report["operations"]), 3)
                 self.assertEqual(len(report["recent_events"]), 4)
-                self.assertEqual(len(report["slow_events"]), 2)
+                # The other slot is reserved for lock waits; boundaries cannot
+                # borrow it and crowd those events out later.
+                self.assertEqual(len(report["slow_events"]), 1)
                 self.assertEqual(report["dropped"]["operations"], count - 3)
                 self.assertEqual(report["dropped"]["recent_events"], count - 4)
-                self.assertEqual(report["dropped"]["slow_events"], count - 2)
+                self.assertEqual(report["dropped"]["slow_events"], count - 1)
+                self.assertEqual(report["dropped"]["slow_events_by_kind"]["boundary"], count - 1)
                 self.assertEqual(report["totals"]["manifest_read_validate"]["count"], count)
                 self.assertEqual(len(collector.operations), 3)
                 self.assertEqual(len(collector.events), 4)
-                self.assertEqual(len(collector.slow), 2)
+                self.assertEqual(sum(len(heap) for heap in collector.slow.values()), 1)
                 self.assertEqual(collector.active, {})
         self.assertEqual(report["bounds"]["operations"], 3)
         self.assertEqual(report["bounds"]["recent_events"], 4)
@@ -374,7 +377,9 @@ class ProgressiveSloContentionTests(unittest.TestCase):
         self.assertEqual(after["dropped"]["operations"], 0)
 
     def test_slowest_events_keep_largest_intervals_while_recent_events_roll(self):
-        collector = self.module.Collector(max_operations=2, max_events=2, max_slow_events=2, max_active=2)
+        # Five total slots allocate two to boundaries, preserving this test's
+        # same-kind eviction contract while other kinds have reserved slots.
+        collector = self.module.Collector(max_operations=2, max_events=2, max_slow_events=5, max_active=2)
         with patch.object(self.module, "SLOW_SECONDS", 0):
             for duration in (1, 5, 3, 2, 4, 1):
                 collector.event("boundary", "manifest_read_validate", (0., 0.), (float(duration), 0.))
@@ -383,6 +388,122 @@ class ProgressiveSloContentionTests(unittest.TestCase):
         self.assertEqual([row["wall_s"] for row in report["slow_events"]], [5, 4])
         self.assertEqual(report["dropped"]["recent_events"], 4)
         self.assertEqual(report["dropped"]["slow_events"], 4)
+        self.assertEqual(report["dropped"]["slow_events_by_kind"],
+                         dict(lock_wait=0, lock_hold=0, lease_wait=0, boundary=4))
+
+    def test_long_boundaries_cannot_evict_wait_and_hold_owner_evidence(self):
+        collector = self.module.Collector()
+        quotas = dict(lock_wait=16, lock_hold=16, lease_wait=8, boundary=24)
+        with collector.operation("update_task", task_id="a" * 12, phase="summarizing"):
+            owner = dict(hold_id=123, thread_id=threading.get_ident(),
+                         operation=collector.identity(), section="atomic_file_write",
+                         critical="update_task", start_s=0.)
+            collector.event("lock_hold", "task_lock", (0., 0.), (1.31, .0625), owner=owner)
+        with collector.operation("selected_handler", task_id="b" * 12):
+            collector.event("lock_wait", "task_lock", (0., .25), (1.3, .5),
+                            owner_at_entry=owner, acquired=True)
+        originals = {row["kind"]: row for row in collector.snapshot()["recent_events"]}
+
+        for kind in ("lock_wait", "lock_hold", "lease_wait"):
+            for index in range(quotas[kind] - (kind in originals)):
+                collector.event(kind, "task_lock", (0., 0.), (.05 + index * .01, .001))
+        # More than both the old global heap and the recent buffer can hold;
+        # every boundary is longer than the known lock wait and hold.
+        for index in range(400):
+            collector.event("boundary", "list_tasks", (0., 0.), (2. + index, .01))
+
+        report = collector.snapshot()
+        self.assertEqual(report["bounds"]["slow_events"], 64)
+        self.assertEqual(report["bounds"]["slow_events_by_kind"], quotas)
+        self.assertEqual(report["bounds"]["operations"], 256)
+        self.assertEqual(report["bounds"]["recent_events"], 256)
+        self.assertEqual(len(report["slow_events"]), 64)
+        self.assertEqual(len(report["recent_events"]), 256)
+        self.assertEqual({row["kind"] for row in report["recent_events"]}, {"boundary"})
+        for kind, limit in quotas.items():
+            self.assertEqual(sum(row["kind"] == kind for row in report["slow_events"]), limit)
+            self.assertEqual(len(collector.slow[kind]), limit)
+        for kind, original in originals.items():
+            retained = [row for row in report["slow_events"]
+                        if row["kind"] == kind and row["wall_s"] == original["wall_s"]]
+            self.assertEqual(retained, [original])
+        self.assertEqual(originals["lock_wait"]["wall_s"], 1.3)
+        self.assertEqual(originals["lock_wait"]["thread_cpu_s"], .25)
+        self.assertEqual(originals["lock_wait"]["owner_at_entry"], owner)
+        self.assertEqual(originals["lock_wait"]["operation"]["task_id"], "b" * 12)
+        self.assertTrue(originals["lock_wait"]["acquired"])
+        self.assertEqual(originals["lock_hold"]["wall_s"], 1.31)
+        self.assertEqual(originals["lock_hold"]["thread_cpu_s"], .0625)
+        self.assertEqual(originals["lock_hold"]["owner"], owner)
+        self.assertEqual(report["dropped"]["slow_events_by_kind"],
+                         dict(lock_wait=0, lock_hold=0, lease_wait=0, boundary=376))
+        self.assertEqual(report["dropped"]["slow_events"], 376)
+        self.assertEqual(report["dropped"]["recent_events"], 440 - 256)
+        durations = [row["wall_s"] for row in report["slow_events"]]
+        self.assertEqual(durations, sorted(durations, reverse=True))
+
+    def test_slow_kind_quotas_are_deterministic_for_every_supported_capacity(self):
+        kinds = ("lock_wait", "lock_hold", "lease_wait", "boundary")
+        # Explicit allocations for the remainder after full eight-slot groups
+        # exercise the documented tie order without repeating the allocator.
+        remainder_quotas = ((0, 0, 0, 0), (0, 0, 0, 1), (1, 0, 0, 1),
+                            (1, 1, 0, 1), (1, 1, 1, 1), (1, 1, 1, 2),
+                            (2, 1, 1, 2), (2, 2, 1, 2))
+        for capacity in range(1, 513):
+            with self.subTest(capacity=capacity):
+                groups, remainder = divmod(capacity, 8)
+                expected = dict(zip(kinds, (groups * weight + extra for weight, extra
+                                           in zip((2, 2, 1, 3), remainder_quotas[remainder]))))
+                collector = self.module.Collector(max_slow_events=capacity)
+                report = collector.snapshot()
+                self.assertEqual(report["bounds"]["slow_events"], capacity)
+                self.assertEqual(report["bounds"]["slow_events_by_kind"], expected)
+                self.assertEqual(sum(report["bounds"]["slow_events_by_kind"].values()), capacity)
+                self.assertEqual(set(collector.slow), set(kinds))
+                self.assertEqual(report["dropped"]["slow_events_by_kind"], dict.fromkeys(kinds, 0))
+
+    def test_each_slow_kind_heap_is_bounded_with_zero_quotas_and_overflow(self):
+        kinds = ("lock_wait", "lock_hold", "lease_wait", "boundary")
+        for capacity in (1, 2, 3, 4, 5, 6, 7, 8, 31, 64, 511, 512):
+            with self.subTest(capacity=capacity):
+                collector = self.module.Collector(max_events=4, max_slow_events=capacity)
+                quotas = collector.snapshot()["bounds"]["slow_events_by_kind"]
+                candidates = 0
+                for kind in kinds:
+                    # Ascending intervals evict retained rows; descending ones
+                    # reject candidates. Both must increment the same counters.
+                    durations = list(range(1, quotas[kind] + 3)) + [1, 1]
+                    for duration in durations:
+                        collector.event(kind, "task_lock", (0., 0.), (float(duration), 0.))
+                        candidates += 1
+                        self.assertLessEqual(len(collector.slow[kind]), quotas[kind])
+                        self.assertLessEqual(sum(len(heap) for heap in collector.slow.values()), capacity)
+                    retained = [entry[2]["wall_s"] for entry in collector.slow[kind]]
+                    self.assertEqual(sorted(retained, reverse=True),
+                                     sorted(durations, reverse=True)[:quotas[kind]])
+                report = collector.snapshot()
+                self.assertEqual(len(report["slow_events"]), capacity)
+                self.assertEqual(len(report["recent_events"]), 4)
+                self.assertEqual(set(collector.slow), set(kinds))
+                self.assertEqual(report["dropped"]["slow_events_by_kind"], dict.fromkeys(kinds, 4))
+                self.assertEqual(report["dropped"]["slow_events"], candidates - capacity)
+                self.assertEqual(report["dropped"]["slow_events"], 16)
+                self.assertEqual(report["dropped"]["recent_events"], candidates - 4)
+
+    def test_unknown_event_kinds_cannot_add_heaps_or_change_retained_state(self):
+        collector = self.module.Collector(max_slow_events=1)
+        collector.event("boundary", "list_tasks", (0., 0.), (1., .25))
+        before = collector.snapshot()
+        for index in range(100):
+            for duration in (0., 100.):
+                with self.subTest(index=index, duration=duration):
+                    with self.assertRaises(ValueError):
+                        collector.event(f"unknown_kind_{index}", "list_tasks", (0., 0.), (duration, 0.))
+        after = collector.snapshot()
+        for field in ("bounds", "dropped", "operations", "recent_events", "slow_events", "active", "totals"):
+            self.assertEqual(after[field], before[field])
+        self.assertEqual(set(collector.slow), {"lock_wait", "lock_hold", "lease_wait", "boundary"})
+        self.assertEqual(sum(len(heap) for heap in collector.slow.values()), 1)
 
     def test_invalid_limits_cannot_disable_collection_bounds(self):
         for field in ("max_operations", "max_events", "max_slow_events", "max_active"):
@@ -407,12 +528,16 @@ class ProgressiveSloContentionTests(unittest.TestCase):
         first["operations"][0]["name"] = "changed"
         first["operations"][0]["metrics"].clear()
         first["bounds"]["operations"] = 10000
+        first["bounds"]["slow_events_by_kind"]["lock_wait"] = 10000
         first["dropped"]["operations"] = 10000
+        first["dropped"]["slow_events_by_kind"]["lock_wait"] = 10000
         second = self.collector.snapshot()
         self.assertEqual(second["operations"][0]["name"], "get_task")
         self.assertIn("manifest_read_validate", second["operations"][0]["metrics"])
         self.assertEqual(second["bounds"]["operations"], 256)
+        self.assertEqual(second["bounds"]["slow_events_by_kind"]["lock_wait"], 16)
         self.assertEqual(second["dropped"]["operations"], 0)
+        self.assertEqual(second["dropped"]["slow_events_by_kind"]["lock_wait"], 0)
 
 
 class ProgressiveSloContentionFixtureTests(unittest.TestCase):

@@ -33,7 +33,7 @@ restores its changes. No cache, lock policy or product behavior is changed.
 The collector retains at most:
 
 - 256 recent completed operations and 128 active operations
-- 256 recent slow events and the 64 longest slow events
+- 256 recent slow events and 64 longest slow events reserved by kind (see follow-on below)
 - 32 metric keys per aggregate
 
 Overflow counts are included. Source text, paths, configuration values and stack
@@ -65,7 +65,7 @@ fixture roots; the original 80 file inventories remained unchanged. A separate
 
 On Linux/Python 3.12.14, median list wall/thread CPU was 0.639/0.639 seconds disabled
 versus 0.739/0.739 enabled in the first experiment, and 0.679/0.679 versus
-0.719/0.719 in the final experiment. The observed list difference was **5.9–15.6%**
+0.719/0.719 in the second experiment. The observed list difference was **5.9–15.6%**
 (about 40–100 ms). These noisy local experiments do not establish Windows overhead
 or a product speedup. The hosted report explicitly marks enabled timings as
 including diagnostic overhead, not clean production latency.
@@ -85,7 +85,36 @@ It introduces no product lock or global synchronization change.
 Focused contracts cover ownership/waiter correlation, native lock behavior,
 bounds, privacy, restoration, opt-in isolation, real HTTP reader freshness and
 primary-failure preservation. Original admission/SSE/cancel/retry/restart tests
-also pass. Hosted Windows owner/I/O evidence is still pending.
+also pass. The first hosted Windows owner/I/O evidence is described below.
+
+## Fixed-kind retention follow-on
+
+[Run 39024419361](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39024419361)
+at `2215f8e79912d29c09679555e5bb43b899bc0bdf` captured Windows evidence with the
+original global 64-event retention policy. Its 64 longest events were all
+handler/list/projection boundaries above 1.331655 seconds, so the longest
+1.304-second lock wait and 1.301-second hold lost their individual owner records.
+Their operation aggregates survived. Sample 72 separately retained a direct
+195.806 ms overlap between a selected-reader wait and an update-owned task-lock
+hold containing library indexing. This does not explain the earlier ten-second
+stall. The run stopped on sample 72's detached-heading assertion before completing
+the 80-sample matrix or reference lifecycle.
+
+Collector follow-on `68f1cbbdee929766a37edddbd23b710738d5c5f6` keeps the same total
+64-event cap, partitioned into 16 lock waits, 16 lock holds, 8 lease entries and
+24 other boundaries. Per-kind limits and dropped counts are explicit; the
+existing cumulative drop count remains. The smaller supported test capacities
+use deterministic proportional allocation without exceeding their total cap.
+This protects each kind's longest events but does not guarantee every successive
+owner, paired event or I/O span survives.
+
+A fourth six-pair Linux experiment on these collector bytes measured list median
+wall time 0.586945 seconds disabled versus 0.696528 enabled, **18.67% overhead**;
+thread CPU was 0.586761 versus 0.696478 seconds, **18.70%**. Selected GET medians
+were 8.55 and 8.79 ms. Full response equality and original 80 file preservation
+passed. All earlier overhead results remain evidence; this experiment does not
+establish an improvement or Windows overhead. All 25 focused contracts and all
+394 scripts tests pass (3 skipped). Instrumented hosted timings remain diagnostic.
 
 ## Exit criterion
 
