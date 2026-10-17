@@ -3,6 +3,8 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), os = requ
 const { spawn, execFile } = require("node:child_process");
 const { edgeLaunchOptions, createStartupParser, observeNativeSse, networkLocation,
   recordFailureDiagnostics, finishAcceptance } = require("./progressive-slo-api-acceptance.cjs");
+const visualProse = "Reference paragraph 1: This deterministic response describes the supplied synthetic image and caption window. It is an unverified draft, retained only for this bounded continuation test.";
+const captionText = "Synthetic source: the first window shows a generated test pattern.";
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check, label, timeout = 30000) {
   const end = performance.now() + timeout;
@@ -66,17 +68,45 @@ function retainedViewport(value) {
     && Math.abs(value.top - value.before_top) <= 2 && value.top >= 0 && value.bottom <= value.viewport.height
     && value.left >= 0 && value.right <= value.viewport.width && value.right > value.left && value.bottom > value.top);
 }
-function rememberVisibleBatch(element) {
-  const paragraph = element.querySelector("div p");
-  if (!paragraph) throw new Error("Expected readable visual prose");
+function rememberVisibleBatch(element, expected) {
+  const reader = document.getElementById("document"), chapter = element.closest("[data-reader-section]");
+  if (location.hash !== `#task/${expected.task_id}` || reader.dataset.readerSource !== `task:${expected.task_id}`
+      || !element.isConnected || !reader.contains(element) || !chapter?.isConnected
+      || element.dataset.readerBatch !== expected.batch_id) throw new Error("Wrong visual reading source or batch");
+  const matches = [...element.querySelectorAll(":scope > div > p")].filter(node => node.innerText === expected.text);
+  if (matches.length !== 1) throw new Error("Expected one exact deterministic body paragraph");
+  const paragraph = matches[0];
   paragraph.scrollIntoView({ block: "center", behavior: "instant" });
   const selection = document.getSelection(), range = document.createRange();
   range.selectNodeContents(paragraph); selection.removeAllRanges(); selection.addRange(range);
-  globalThis.visualReadingAnchor = { batch: element, paragraph, chapter: element.closest("[data-reader-section]"),
-    source: document.getElementById("document").dataset.readerSource, prose: paragraph.innerText,
+  globalThis.visualReadingAnchor = { batch: element, body: paragraph.parentElement, paragraph, chapter,
+    source: reader.dataset.readerSource, route: location.hash, prose: expected.text,
     selection: selection.toString(), anchor_node: selection.anchorNode, focus_node: selection.focusNode,
     anchor_offset: selection.anchorOffset, focus_offset: selection.focusOffset, top: paragraph.getBoundingClientRect().top };
   return true;
+}
+function captureReadableCaption(expected) {
+  const reader = document.getElementById("document");
+  if (location.hash !== `#task/${expected.task_id}` || reader?.dataset.readerSource !== `task:${expected.task_id}`
+      || !/^[a-z0-9-]+$/.test(expected.section_id)) throw new Error("Wrong caption reading source");
+  const section = reader.querySelector(`[data-reader-section="${expected.section_id}"]`);
+  const textOf = node => [...node.childNodes].filter(child => child.nodeType === 3).map(child => child.textContent).join("").trim();
+  const matches = [...(section?.querySelectorAll(":scope > ul > li") || [])].filter(node => textOf(node) === expected.text);
+  if (matches.length !== 1 || !matches[0].isConnected || !reader.contains(section)) throw new Error("Expected one exact source caption excerpt");
+  const node = matches[0]; node.scrollIntoView({ block: "center", behavior: "instant" });
+  const rect = node.getBoundingClientRect();
+  for (let item = node; item; item = item.parentElement) {
+    const style = getComputedStyle(item);
+    if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0) throw new Error("Caption excerpt is hidden");
+  }
+  const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+  if (![rect.top, rect.bottom, rect.left, rect.right, innerWidth, innerHeight].every(Number.isFinite)
+      || rect.top < 0 || rect.bottom > innerHeight || rect.left < 0 || rect.right > innerWidth
+      || rect.bottom <= rect.top || rect.right <= rect.left || !(hit && (hit === node || node.contains(hit))))
+    throw new Error("Caption excerpt is not readable in the viewport");
+  return { reader_source: reader.dataset.readerSource, reader_revision: reader.dataset.readerRevision,
+    section_id: section.dataset.readerSection, text: textOf(node), rendered_text: node.innerText,
+    top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, viewport: { width: innerWidth, height: innerHeight } };
 }
 function inspectVisibleBatch() {
   const anchor = globalThis.visualReadingAnchor, node = anchor.paragraph, rect = node.getBoundingClientRect();
@@ -87,14 +117,15 @@ function inspectVisibleBatch() {
     if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0) visible = false;
   }
   const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
-  return { same_task: reader.dataset.readerSource === anchor.source, same_chapter: anchor.chapter.isConnected && reader.contains(anchor.chapter),
-    same_batch: anchor.batch.isConnected && anchor.chapter.contains(anchor.batch), same_prose: node.innerText === anchor.prose,
+  return { same_task: reader.dataset.readerSource === anchor.source && location.hash === anchor.route, same_chapter: anchor.chapter.isConnected && reader.contains(anchor.chapter),
+    same_batch: anchor.batch.isConnected && anchor.chapter.contains(anchor.batch), same_prose: node.innerText === anchor.prose && node.parentElement === anchor.body && anchor.body.parentElement === anchor.batch
+      && [...anchor.batch.querySelectorAll(":scope > div > p")].includes(node),
     same_selection: selected.toString() === anchor.selection && selected.anchorNode === anchor.anchor_node && selected.focusNode === anchor.focus_node
       && selected.anchorOffset === anchor.anchor_offset && selected.focusOffset === anchor.focus_offset && node.contains(selected.anchorNode), connected: node.isConnected,
     visible, unobscured: Boolean(hit && (node === hit || node.contains(hit))), before_top: anchor.top,
     top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
     viewport: { width: innerWidth, height: innerHeight }, reader_source: reader.dataset.readerSource,
-    reader_revision: reader.dataset.readerRevision, batch_id: anchor.batch.dataset.readerBatch };
+    reader_revision: reader.dataset.readerRevision, prose: node.innerText.slice(0, 400), batch_id: anchor.batch.dataset.readerBatch };
 }
 async function main(output = "build/progressive-visual-ui") {
   const { chromium } = require("playwright"), out = path.resolve(output);
@@ -146,6 +177,12 @@ async function main(output = "build/progressive-visual-ui") {
     await page.locator(`#document[data-reader-source="task:${id}"] [data-reader-batch="${event.section_id}"]`).waitFor({ state: "visible" });
     return { projection, persisted, native_event: event };
   }
+  async function captionGeometry(id, projection, text) {
+    assert.equal(projection.task_id, id); assert.equal(projection.verified, false);
+    const section = projection.sections.find(section => section.kind === "temporal_outline" && section.excerpts.some(excerpt => excerpt.text === text));
+    assert(section, "Expected owned caption text in actual projection");
+    return page.evaluate(captureReadableCaption, { task_id: id, section_id: section.id, text });
+  }
   async function cancel(id) {
     const started = performance.now(); await api(`/api/tasks/${id}/cancel`, { method: "POST" });
     const value = await until(async () => { const current = await state(id);
@@ -195,11 +232,12 @@ async function main(output = "build/progressive-visual-ui") {
     await until(() => report.native_sse.some(event => event.task_id === id && event.event === "draft_ready"), "real caption draft SSE");
     assert.equal(await page.locator("[data-reader-batch]").count(), 0);
     report.caption_projection = await api(`/api/tasks/${id}/partial-note`);
+    report.caption_geometry = await captionGeometry(id, report.caption_projection, captionText);
     await capture("caption-draft.png");
     await api(`/_fixture/tasks/${id}/release/2`, { method: "POST" }); report.second = await projectionAfter(id, 1);
     await held(id, 3);
     const second = page.locator("[data-reader-batch]").filter({ hasText: "Synthetic visual batch 2" });
-    await second.evaluate(rememberVisibleBatch);
+    await second.evaluate(rememberVisibleBatch, { task_id: id, batch_id: report.second.native_event.section_id, text: visualProse });
     report.before_insertion = await page.evaluate(inspectVisibleBatch);
     assert(retainedViewport(report.before_insertion), JSON.stringify(report.before_insertion)); await capture("batch-2-readable.png");
     await api(`/_fixture/tasks/${id}/release/1`, { method: "POST" }); report.joined = await projectionAfter(id, 2);
@@ -245,7 +283,7 @@ async function main(output = "build/progressive-visual-ui") {
     assert(new URL(report.source_grid.src, base).pathname.startsWith(`/api/tasks/${id}/assets/`));
     await capture("retained-source-grid.png"); await figures.locator("summary").click();
     await page.setViewportSize({ width: 390, height: 844 });
-    await second.evaluate(rememberVisibleBatch);
+    await second.evaluate(rememberVisibleBatch, { task_id: id, batch_id: report.second.native_event.section_id, text: visualProse });
     report.mobile_geometry = await page.evaluate(inspectVisibleBatch);
     assert(retainedViewport(report.mobile_geometry), JSON.stringify(report.mobile_geometry));
     await capture("cancelled-retained-visual-mobile.png");
@@ -275,6 +313,7 @@ async function main(output = "build/progressive-visual-ui") {
     assert.equal(await page.locator("[data-reader-batch]").count(), 0);
     assert.match(await page.locator("#document").innerText(), /Changed source:/);
     report.delayed_old_response = { task_id: delayed.task_id, attempt_id: delayed.attempt_id, source_revision: delayed.source_revision, revision: delayed.revision };
+    report.changed_caption_geometry = await captionGeometry(other, report.changed_projection, "Changed source: " + captionText);
     await capture("changed-source-rejects-delayed-old-draft.png");
     report.changed_cancelled = await cancel(other);
     const original = await state(id); assert.deepEqual(original.hashes, report.cancelled.state.hashes); assert.deepEqual(original.assets, report.cancelled.state.assets);
@@ -293,5 +332,5 @@ async function main(output = "build/progressive-visual-ui") {
   } finally { releaseDelayed?.(); await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError); }
   if (primaryError) throw primaryError;
 }
-module.exports = { boundedDiagnostic, visibleStageStates, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
+module.exports = { visualProse, captionText, captureReadableCaption, boundedDiagnostic, visibleStageStates, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

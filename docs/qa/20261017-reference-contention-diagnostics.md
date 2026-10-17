@@ -1,0 +1,96 @@
+# Reference-fixture contention diagnostics
+
+Date: 2026-10-17. Collector implementation: `b67f8c5d76a0ea888fa4863539018030409f9212`.
+Snapshot consistency follow-on: `0b8c62404d1f487ff18ef9caad46777c85fbc63a`.
+
+## Open question
+
+In [run 39021819029](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39021819029)
+at `ab796ab241718d8dc4236bc4a8cda3ff33b2304a`, reference sample 74
+(180 minutes, repetition 14, task `9d7e4e59db4a`) had a 9.887-second selected-task
+GET while a full-list GET overlapped it. Backend events separated draft readiness
+from the summarizing update by 10.458 seconds. The complete artifact is
+[12097341904](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39021819029/artifacts/12097341904).
+
+This local investigation did **not** establish the Windows lock owner or reproduce
+the approximately ten-second stall. Linux state-lease entries and a cold duration
+history scan were only milliseconds. That does not rule them out on Windows.
+The mixed-generation transcript artifact race remains a separate open issue.
+
+## Opt-in scope and bounds
+
+Only the owned synthetic reference fixture loads the observer, after validating
+its data marker and receiving the explicit `--contention-diagnostics` flag.
+Production startup never imports it. There are no global Path, open, JSON,
+SQLite or threading patches.
+
+Explicit, restored wrappers observe the existing task RLock and its four aliases,
+state-lease entry, HTTP/handler/update boundaries, task projection, history reads,
+atomic writes and library indexing. They preserve the underlying lock, acquisition
+arguments/timeouts, reentrancy, results and exceptions. Partial installation also
+restores its changes. No cache, lock policy or product behavior is changed.
+
+The collector retains at most:
+
+- 256 recent completed operations and 128 active operations
+- 256 recent slow events and the 64 longest slow events
+- 32 metric keys per aggregate
+
+Overflow counts are included. Source text, paths, configuration values and stack
+dumps are excluded. Snapshot JSON is captured before the owned backend restart
+and during final cleanup, outside the sample timing windows. Existing artifact
+upload rules include these top-level JSON files. Optional diagnostic capture
+failure does not replace the original acceptance failure.
+
+## Reading the measurements
+
+- `owner_at_entry` is a point-in-time snapshot, not complete attribution across
+  successive owners. Slow-hold intervals provide only bounded correlation.
+- Hold time ends immediately before the underlying release call; that call and
+  post-release observer recording are excluded.
+- Nested spans are inclusive and must not be added as disjoint costs.
+- I/O-bearing function boundaries include decoding and validation. They are not
+  pure OS I/O measurements. Synchronous wall and thread CPU are separate; HTTP
+  envelope CPU is omitted.
+- No current consumer uses Condition's private release/restore methods on this
+  task lock. The queue's Condition owns a separate RLock.
+
+## Local overhead and preservation checks
+
+Two six-pair alternating disabled/enabled experiments retained all original 80
+completed tasks: 20 each at 5, 30, 60 and 180 minutes, with full captions. Complete
+response equality passed after normalizing only observation clocks and relocated
+fixture roots; the original 80 file inventories remained unchanged. A separate
+81st task exercised real running/update/cancel behavior without dropping a task.
+
+On Linux/Python 3.12.14, median list wall/thread CPU was 0.639/0.639 seconds disabled
+versus 0.739/0.739 enabled in the first experiment, and 0.679/0.679 versus
+0.719/0.719 in the final experiment. The observed list difference was **5.9–15.6%**
+(about 40–100 ms). These noisy local experiments do not establish Windows overhead
+or a product speedup. The hosted report explicitly marks enabled timings as
+including diagnostic overhead, not clean production latency.
+
+After the snapshot consistency fix, a third six-pair experiment measured
+0.575/0.575 seconds disabled versus 0.698/0.698 enabled: approximately 123 ms,
+**21.4%**. The earlier 5.9–15.6% range therefore describes the first two experiments,
+not an upper bound on observer overhead. All three results are retained; no
+claim about the small fix causing the variation is established. Selected GET
+medians in the third experiment were 8.75 ms disabled and 8.99 ms enabled.
+
+The follow-on serializes active-row finalization with the collector's existing
+metadata mutex. A deterministic regression reproduces the original concurrent
+snapshot dictionary-resize failure and verifies coherent snapshots after the fix.
+It introduces no product lock or global synchronization change.
+
+Focused contracts cover ownership/waiter correlation, native lock behavior,
+bounds, privacy, restoration, opt-in isolation, real HTTP reader freshness and
+primary-failure preservation. Original admission/SSE/cancel/retry/restart tests
+also pass. Hosted Windows owner/I/O evidence is still pending.
+
+## Exit criterion
+
+Keep all 80 samples, original timing clocks, thresholds and failure predicates
+unchanged during diagnosis. Once Windows owner/I/O evidence resolves the cause,
+remove `--contention-diagnostics` from the workflow invocation and rerun the
+original complete gate with the observer disabled. An instrumented diagnostic
+run alone is not a clean performance acceptance result.

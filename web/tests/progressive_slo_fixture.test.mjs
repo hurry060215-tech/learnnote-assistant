@@ -593,3 +593,36 @@ test("unavailable hold or failed ACK cannot erase readability or become a passin
     assert.equal(summarize([h.row])[0].passed, false);
   }
 });
+
+test("contention capture is explicit, bounded to two top-level snapshots and cannot replace failure", async () => {
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  assert(source.includes('process.argv.includes("--contention-diagnostics")'));
+  assert(source.includes('...(contentionDiagnostics ? ["--contention-diagnostics"] : [])'));
+  assert(source.includes('Observer enabled; latency includes diagnostic overhead, not clean production latency'));
+  const begin = source.indexOf("  async function captureContention(label) {");
+  const end = source.indexOf("  async function newPage() {", begin);
+  assert(begin > 0 && end > begin);
+  const helper = source.slice(begin, end);
+  const writes = [];
+  let reads = 0;
+  const report = {};
+  const primaryError = new Error("original acceptance failure");
+  const context = vm.createContext({ contentionDiagnostics: true, base: "http://127.0.0.1:1", backend: { exitCode: null, signalCode: null },
+    report, primaryError, assert, out: "synthetic-output", path: { join: (...parts) => parts.join("/") },
+    fs: { writeFileSync: (...args) => writes.push(args) }, AbortSignal: { timeout: value => { assert.equal(value, 5000); return {}; } },
+    fetch: async () => { reads += 1; throw new Error("unavailable synthetic observer"); } });
+  vm.runInContext(`${helper}; globalThis.capture = captureContention;`, context);
+  await context.capture("final");
+  assert.equal(reads, 1); assert.equal(writes.length, 0);
+  assert.equal(context.primaryError, primaryError);
+  assert.equal(report.contention_diagnostics.errors[0].label, "final");
+  context.fetch = async () => ({ ok: true, json: async () => ({ schema_version: 1, operations: [] }) });
+  await context.capture("before-restart");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][0], "synthetic-output/contention-before-restart.json");
+  assert.equal(JSON.parse(writes[0][1]).schema_version, 1);
+  assert.equal((source.match(/await captureContention\(/g) || []).length, 2);
+  context.contentionDiagnostics = false;
+  await context.capture("final");
+  assert.equal(writes.length, 1);
+});

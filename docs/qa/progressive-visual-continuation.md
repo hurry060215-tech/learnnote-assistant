@@ -30,13 +30,18 @@ or remove a Draft label.
 ## Joined observations
 
 1. Real captions become a source-bound temporal draft while actual visual
-   completions 1 and 2 are held.
+   completions 1 and 2 are held. Resolve the exact first literal caption excerpt
+   inside its source-bound temporal section, scroll it once, and require visible,
+   unobscured bounds before the caption screenshot.
 2. Release batch 2 first. Match its native SSE request/task/event ID and bounded
    section identity to the persisted document revision, current combined
    `/partial-note` revision, attempt, source, generation, and rendered batch ID.
-3. Select visible prose in batch 2. Release batch 1 while later real batches remain
-   held. The existing chapter, batch, paragraph, selection anchor/focus nodes and
-   offsets must survive insertion. The paragraph stays visible and unobscured,
+3. Select the exact first deterministic paragraph directly inside batch 2's
+   Markdown body. The warning badge and source buttons are not prose anchors.
+   Release batch 1 while later real batches remain held. The existing chapter, batch, paragraph, selection anchor/focus nodes and
+   offsets and direct body membership must survive insertion. The report retains
+   the actual bounded paragraph text before and after insertion. The paragraph
+   stays visible and unobscured,
    within 2 CSS pixels of its original viewport position. No corrective reading
    scroll is performed during that comparison.
 4. Cancel while later completion workers are held. Require both the real queue
@@ -50,7 +55,10 @@ or remove a Draft label.
 6. Upload the changed source. Hold a genuinely fetched old-source partial response,
    navigate to the new task, and then deliver the unchanged old response. It must
    not replace the current reader or introduce old batches. Original artifact
-   hashes stay unchanged. Cancel and drain the changed-source task too.
+   hashes stay unchanged. Separately resolve and show the exact changed caption
+   after delivering that old response, retaining current task and section identity
+   in its viewport evidence and screenshot. Cancel and drain the changed-source
+   task too.
 
 The delayed response is an actual production HTTP response, not fabricated JSON.
 The native SSE observer retains its strict same-origin task-stream/request-ID
@@ -93,7 +101,12 @@ The Python contracts run actual FFmpeg preparation and real HTTP/queue lifecycle
 including an actual SSE frame through the JavaScript identity join. Browser-free
 Node contracts reject wrong identities, hidden or replaced prose, changed
 selection, offscreen geometry, false terminal stage states, and unrelated cleanup
-targets. Hosted native Edge and screenshot inspection remain required before
+targets. The regression includes an outer-div warning-badge decoy and missing,
+duplicated,
+wrong-source, moved-body, obscured and offscreen content. Caption placement occurs
+before the retained-prose comparison or after changed-source response delivery;
+it does not re-scroll during insertion or alter the separate 80-row SLO clocks.
+Hosted native Edge and screenshot inspection remain required before
 claiming this browser scenario passed.
 
 ## Artifacts and cleanup

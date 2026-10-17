@@ -279,11 +279,13 @@ async function finishAcceptance({ closeBrowser, stopBackend, save }, report, pri
   if (primaryError) { if (errors.length) primaryError.cleanupErrors = errors; return; }
   if (errors.length) throw new AggregateError(errors, "Acceptance cleanup failed");
 }
-async function main(output = "build/progressive-slo-ui") {
+async function main(output = "build/progressive-slo-ui", contentionDiagnostics = false) {
   const { chromium } = require("playwright");
   const out = path.resolve(output); fs.mkdirSync(out, { recursive: true });
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-progressive-slo-"));
   const report = { passed: false, planned_samples: 80, samples: [], summary: [], screenshots: [], errors: [], external_requests: [], native_sse: [],
+    contention_diagnostics: { enabled: contentionDiagnostics, snapshots: [], errors: [],
+      timing_scope: contentionDiagnostics ? "Observer enabled; latency includes diagnostic overhead, not clean production latency" : "Observer disabled" },
     scope: { complete_reference_captions: true, final_summary: "deterministic adapter held until browser observation",
       measure: "Explicit /start submission through actual reader outline heading and source excerpt in viewport, including harness scroll and two animation frames",
       post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including held-adapter coordination and local ACK transport",
@@ -308,7 +310,7 @@ async function main(output = "build/progressive-slo-ui") {
     for (const [key, value] of Object.entries(process.env))
       if (/^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|TEMP|TMP|LANG|LC_ALL)$/i.test(key)) env[key] = value;
     Object.assign(env, { PYTHONUTF8: "1", PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" });
-    backend = spawn(process.env.LEARNNOTE_ACCEPTANCE_PYTHON || "python", [path.join(__dirname, "progressive-slo-fixture.py"), "--data-dir", data, ...(resume ? ["--resume"] : [])],
+    backend = spawn(process.env.LEARNNOTE_ACCEPTANCE_PYTHON || "python", [path.join(__dirname, "progressive-slo-fixture.py"), "--data-dir", data, ...(resume ? ["--resume"] : []), ...(contentionDiagnostics ? ["--contention-diagnostics"] : [])],
       { cwd: path.resolve(__dirname, ".."), env, stdio: ["ignore", "pipe", "pipe"] });
     backend.on("error", error => { failure = error; });
     backend.on("exit", code => { failure = new Error(`Fixture exited ${code}`); });
@@ -325,6 +327,21 @@ async function main(output = "build/progressive-slo-ui") {
       try { return (await fetch(fixture.fixture_origin + "/health")).ok; } catch { return false; }
     }, "isolated fixture startup", 60000);
     assert.equal(fixture.offline_network, true); base = fixture.fixture_origin;
+  }
+  async function captureContention(label) {
+    if (!contentionDiagnostics || !base || !backend || backend.exitCode !== null || backend.signalCode !== null) return;
+    report.contention_diagnostics ||= { enabled: true, snapshots: [], errors: [] };
+    try {
+      const response = await fetch(base + "/_fixture/contention", { signal: AbortSignal.timeout(5000) });
+      assert(response.ok, "Contention snapshot unavailable");
+      const value = await response.json();
+      const filename = `contention-${label}.json`;
+      fs.writeFileSync(path.join(out, filename), JSON.stringify(value, null, 2));
+      report.contention_diagnostics.snapshots.push(filename);
+    } catch (error) {
+      // Optional diagnosis must never mask the original acceptance failure.
+      report.contention_diagnostics.errors.push({ label, error: error.name || "Error" });
+    }
   }
   async function newPage() {
     stopObserving?.();
@@ -489,6 +506,7 @@ async function main(output = "build/progressive-slo-ui") {
     assert.deepEqual(retry.hashes, before.hashes); assert.notEqual(retry.generation, before.generation);
     report.before_restart_fixture_state = await api("/_fixture/state");
     assert.deepEqual(report.before_restart_fixture_state.forbidden_attempts, []);
+    await captureContention("before-restart");
     const previousPid = fixture.worker_pid; await page.close(); await stopBackend(); await startBackend(true); await newPage();
     await page.goto(base + "/#task/" + id);
     const recovered = await until(async () => { const state = await snapshot(id); return state.waiting ? state : null; }, "fresh process recovered held summary");
@@ -526,9 +544,10 @@ async function main(output = "build/progressive-slo-ui") {
     });
   }
   finally {
+    await captureContention("final");
     await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError);
   }
   if (primaryError) throw primaryError;
 }
 module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, observeReadingMetadata, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics, observeCancelledMetadata, cancelledUiObservation, cancelledUiReady };
-if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });
+if (require.main === module) main(process.argv[2], process.argv.includes("--contention-diagnostics")).catch(error => { console.error(error); process.exitCode = 1; });

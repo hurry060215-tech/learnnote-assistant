@@ -22,7 +22,7 @@ from unittest.mock import patch
 MARKER = {"schema_version": 1, "fixture": "progressive-slo-complete-captions"}
 
 
-def configure_fixture(root, data, stack, *, resume=False):
+def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics=False):
     if data.is_symlink() or not data.is_dir():
         raise ValueError("Fixture data must be an existing non-symlink directory")
     marker = data / "progressive-slo-fixture.json"
@@ -230,16 +230,34 @@ def configure_fixture(root, data, stack, *, resume=False):
         record["gate"].set()
         return {"released": True}
 
-    return main.app, {"offline_network": True, "resume": resume, "worker_pid": os.getpid()}
+    metadata = {"offline_network": True, "resume": resume, "worker_pid": os.getpid()}
+    if contention_diagnostics:
+        # Reached only after the synthetic fixture ownership marker was validated.
+        # Production startup never imports this optional observer.
+        spec = importlib.util.spec_from_file_location("reference_contention", root / "scripts/progressive-slo-contention.py")
+        diagnostics = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(diagnostics)
+        collector = diagnostics.install(main.app, stack)
+
+        @main.app.get("/_fixture/contention")
+        def contention_snapshot():
+            return collector.snapshot()
+
+        diagnostic_route = main.app.routes[-1]
+        stack.callback(lambda: main.app.routes.remove(diagnostic_route))
+        metadata["contention_diagnostics"] = True
+    return main.app, metadata
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--contention-diagnostics", action="store_true")
     args = parser.parse_args()
     with ExitStack() as stack:
-        app, fixture = configure_fixture(Path(__file__).resolve().parents[1], args.data_dir.absolute(), stack, resume=args.resume)
+        app, fixture = configure_fixture(Path(__file__).resolve().parents[1], args.data_dir.absolute(), stack, resume=args.resume,
+            contention_diagnostics=args.contention_diagnostics)
         import uvicorn
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
             listener.bind(("127.0.0.1", 0))
