@@ -189,17 +189,34 @@ class AccountingTests(unittest.TestCase):
         self.assertEqual(sampler.stop()["status"], "unavailable")
 
     def test_counter_reset_is_incomplete_and_sampling_skew_is_retained(self):
-        api, sampler = self.fixture()
-        api.rows[1]["cpu"] = 2
-        sampler._sample()
-        sampler._last_start -= .2
-        api.rows[1]["cpu"] = 1
-        report = sampler.stop()
+        with patch.object(module.time, "monotonic", return_value=128.0) as clock:
+            api, sampler = self.fixture()
+            api.rows[1]["cpu"] = 2
+            sampler._sample()
+            api.rows[1]["cpu"] = 1
+            # Exact binary timestamps, independent of OS clock tick resolution.
+            clock.side_effect = [128.25, 128.3125, 128.3125]
+            report = sampler.stop()
         self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["errors"]["invalid_counter"], 1)
+        self.assertEqual(report["maximum_gap_seconds"], .25)
         self.assertGreater(report["maximum_gap_seconds"], .2)
         self.assertEqual(report["sampling_gaps"]["late_samples"], 1)
-        self.assertGreaterEqual(report["maximum_collection_span_seconds"], 0)
+        self.assertEqual(report["maximum_collection_span_seconds"], .0625)
         json.dumps(report, allow_nan=False)
+
+    def test_same_tick_decimal_gap_preserves_observed_representation(self):
+        with patch.object(module.time, "monotonic", return_value=256.0):
+            _, sampler = self.fixture()
+            sampler._sample()
+            sampler._last_start -= .2
+            report = sampler.stop()
+        expected_gap = 256.0 - (256.0 - .2)
+        self.assertLess(expected_gap, .2)  # Original Windows failure representation.
+        self.assertEqual(report["maximum_gap_seconds"], expected_gap)
+        self.assertEqual(report["sampling_gaps"]["late_samples"], 1)
+        self.assertEqual(report["maximum_collection_span_seconds"], 0)
+        self.assertEqual(report["status"], "sampled")
 
     def test_stuck_observer_has_static_unavailable_report_and_one_bounded_join(self):
         _, sampler = self.fixture()
