@@ -212,7 +212,7 @@ async function main(output = "build/progressive-slo-ui") {
   const report = { passed: false, planned_samples: 80, samples: [], summary: [], screenshots: [], errors: [], external_requests: [], native_sse: [],
     scope: { complete_reference_captions: true, final_summary: "deterministic adapter held until browser observation",
       measure: "Explicit /start submission through actual reader outline heading and source excerpt in viewport, including harness scroll and two animation frames",
-      post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including local ACK transport",
+      post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including held-adapter coordination and local ACK transport",
       excluded: ["automatic release checks (fixture update preferences disabled)", "application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
       warmth: "Fresh task/artifacts each sample; same initialized backend/browser context. OS/HTTP caches not forced cold; first task identified separately." } };
   let backend, browser, context, page, base, fixture, primaryError, stopObserving, trace, logBytes = 0;
@@ -305,12 +305,30 @@ async function main(output = "build/progressive-slo-ui") {
     assert(readableGeometry(geometry), JSON.stringify(geometry));
     return geometry;
   }
-  async function visible(id, minutes = 5) {
+  async function visible(id, minutes = 5, record) {
     const geometry = await readerGeometry(id);
     const measured = { geometry, first_outline_seconds: await page.evaluate(() => (performance.now() - window.sloStart) / 1000) };
     phase("readable_measurement_returned");
+    if (record) { Object.assign(record, measured); save(); }
+    // Draft publication precedes adapter entry. Keep the first-readable clock,
+    // but include this coordination in the unchanged transcript-to-ACK bound.
+    let generation;
+    phase("held_continuation_wait_started");
+    const held = await until(async () => {
+      const current = await snapshot(id);
+      assert.equal(current.task_id, id); assert.equal(current.status, "running");
+      assert(/^[a-f0-9]{64}$/.test(current.generation), "Missing accepted task generation");
+      if (generation === undefined) generation = current.generation;
+      assert.equal(current.generation, generation); assert.equal(current.queue?.generation, generation);
+      assert.equal(current.queue?.task_id, id);
+      assert.equal(current.queue?.state, "running"); assert.equal(current.queue?.callback_finished, 0);
+      return current.waiting === true ? current : null;
+    }, "same-generation running continuation held before visibility ACK");
+    phase("held_continuation_confirmed");
     const state = await api(`/_fixture/tasks/${id}/visible`, { method: "POST" }); phase("visible_ack_returned");
     const nativeDraft = await until(() => report.native_sse.find(event => event.task_id === id && event.event === "draft_ready" && Number(event.id) > 0), "actual native draft_ready SSE");
+    assert.equal(state.task_id, id); assert.equal(state.generation, held.generation);
+    assert.deepEqual(state.hashes, held.hashes);
     assert.equal(state.status, "running"); assert.equal(state.waiting, true);
     assert.equal(Object.keys(state.hashes).length, 3);
     assert.deepEqual(state.source_coverage, { duration: minutes * 60, cue_count: minutes * 2,
@@ -348,7 +366,7 @@ async function main(output = "build/progressive-slo-ui") {
       report.samples.push(row); save(); const started = performance.now(); let sampleError;
       try {
         row.task_id = await prepare(minutes, repetition, row); await submit(row.task_id);
-        const result = await visible(row.task_id, minutes); delete result.state; Object.assign(row, result);
+        const result = await visible(row.task_id, minutes, row); delete result.state; Object.assign(row, result);
         if (repetition === 1) await capture(`outline-${minutes}m.png`);
         if (row.index === 1) {
           const documentNode = page.locator("#document"), previous = await documentNode.evaluate(node => node.style.opacity);

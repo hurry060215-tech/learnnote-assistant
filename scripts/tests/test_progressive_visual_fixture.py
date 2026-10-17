@@ -41,12 +41,19 @@ class ProgressiveVisualFixtureTests(unittest.TestCase):
         self.client.close()
         self.temp.cleanup()
 
-    def launch(self):
+    def launch(self, bootstrap=None):
         env = {key: value for key, value in os.environ.items() if key.upper() in
                {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "LANG", "LC_ALL"}}
         env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
-        self.child = subprocess.Popen([sys.executable, str(ROOT / "scripts/progressive-visual-fixture.py"),
-            "--data-dir", str(self.data)], cwd=ROOT, env=env, start_new_session=os.name != "nt", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        script = ROOT / "scripts/progressive-visual-fixture.py"
+        command = [sys.executable, str(script)]
+        if bootstrap:
+            source = ("import importlib.util, pathlib, sys, time\n"
+                f"spec=importlib.util.spec_from_file_location('fixture', {str(script)!r})\n"
+                "fixture=importlib.util.module_from_spec(spec); spec.loader.exec_module(fixture)\n"
+                + bootstrap + "\nfixture.main()\n")
+            command = [sys.executable, "-c", source]
+        self.child = subprocess.Popen([*command, "--data-dir", str(self.data)], cwd=ROOT, env=env, start_new_session=os.name != "nt", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8")
         lines = queue.Queue()
         def read():
@@ -54,13 +61,16 @@ class ProgressiveVisualFixtureTests(unittest.TestCase):
                 self.logs.append(line)
                 if line.startswith('{"fixture_origin":'): lines.put(json.loads(line))
         self.reader = threading.Thread(target=read, daemon=True); self.reader.start()
-        deadline = time.monotonic() + 45
+        started = time.monotonic()
+        deadline = started + 45
         while True:
             try:
                 self.fixture = lines.get(timeout=.1); break
             except queue.Empty:
                 if self.child.poll() is not None or time.monotonic() >= deadline:
-                    self.fail("Visual fixture startup failed: " + "".join(self.logs))
+                    if self.child.poll() is not None: self.reader.join(1)
+                    self.fail(f"Visual fixture startup failed after {time.monotonic()-started:.3f}s "
+                              f"(exit={self.child.poll()}): " + "".join(self.logs))
         self.base = self.fixture["fixture_origin"]
         self.wait(lambda: self.client.get(self.base + "/health").is_success, "health")
 
@@ -178,6 +188,39 @@ let input='';process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end'
         state = self.api("/_fixture/state")
         self.assertIn("external_network_blocked", state["forbidden_attempts"])
         self.assertGreater(state["forbidden_attempt_count"], 0)
+
+    def test_missing_ffprobe_reports_the_actual_failed_startup_phase(self):
+        bootstrap = f"sys.path.insert(0, {str(ROOT / 'backend')!r})\n" + """
+from app import runtime
+runtime.ffprobe_bin = lambda: None
+"""
+        with self.assertRaisesRegex(AssertionError, "Installed FFmpeg and FFprobe are required"):
+            self.launch(bootstrap)
+        self.assertNotEqual(self.child.returncode, 0)
+        phases = [json.loads(line)["fixture_startup_phase"] for line in self.logs
+                  if line.startswith('{"fixture_startup_phase":')]
+        self.assertEqual(phases[-1], "media_a_tool_check")
+        self.assertNotIn("media_a_generation", phases)
+        self.assertNotIn("server_ready", phases)
+
+    def test_blocked_startup_retains_one_stack_dump_before_failure(self):
+        bootstrap = """
+dump = fixture.faulthandler.dump_traceback_later
+fixture.faulthandler.dump_traceback_later = lambda *a, **kw: dump(.1, repeat=False)
+def blocked_startup(*args):
+    fixture.startup_phase('test_blocked_import')
+    time.sleep(.4)
+    raise RuntimeError('Owned startup block finished')
+fixture.configure_fixture = blocked_startup
+"""
+        with self.assertRaisesRegex(AssertionError, "Owned startup block finished"):
+            self.launch(bootstrap)
+        log = "".join(self.logs)
+        self.assertEqual(log.count("Timeout ("), 1)
+        self.assertIn("test_blocked_import", log)
+        self.assertIn("in blocked_startup", log)
+        self.assertIn("in control", log)
+        self.assertNotIn('"server_ready"', log)
 
 
 

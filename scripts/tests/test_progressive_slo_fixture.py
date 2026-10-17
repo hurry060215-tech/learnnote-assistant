@@ -46,12 +46,46 @@ class ProgressiveSloFixtureTests(unittest.TestCase):
             self.child.stdout.close()
             self.child = None
 
-    def launch(self, *, resume=False):
+    def launch(self, *, resume=False, pause_before_summary=False):
         env = {key: value for key, value in os.environ.items() if key.upper() in
                {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "LANG", "LC_ALL"}}
         env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
-        self.child = subprocess.Popen([sys.executable, str(ROOT / "scripts/progressive-slo-fixture.py"),
-            "--data-dir", str(self.data), *(["--resume"] if resume else [])], cwd=ROOT,
+        command = [sys.executable, str(ROOT / "scripts/progressive-slo-fixture.py"),
+            "--data-dir", str(self.data), *(["--resume"] if resume else [])]
+        if pause_before_summary:
+            # Pause the actual product call immediately after its draft publication,
+            # before the fixture's summary adapter can set its waiting marker.
+            bootstrap = """
+import importlib.util, pathlib, sys, time
+from unittest.mock import patch
+path = pathlib.Path('scripts/progressive-slo-fixture.py').resolve()
+spec = importlib.util.spec_from_file_location('paused_reference', path)
+fixture = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixture)
+original = fixture.configure_fixture
+
+def configure(root, data, stack, **kwargs):
+    app, metadata = original(root, data, stack, **kwargs)
+    from app import subtitle_notes
+    update = subtitle_notes.update_task
+    def pause(task_id, **fields):
+        if fields.get('phase') == 'summarizing':
+            (data / 'before-summary-entered').write_text(task_id)
+            deadline = time.monotonic() + 15
+            while not (data / 'before-summary-release').exists():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('Test summary admission was not released')
+                time.sleep(.01)
+        return update(task_id, **fields)
+    stack.enter_context(patch.object(subtitle_notes, 'update_task', pause))
+    return app, metadata
+
+fixture.configure_fixture = configure
+sys.argv = [str(path), '--data-dir', sys.argv[1]]
+fixture.main()
+"""
+            command = [sys.executable, "-c", bootstrap, str(self.data)]
+        self.child = subprocess.Popen(command, cwd=ROOT,
             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
         lines = queue.Queue()
         def read():
@@ -191,6 +225,39 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
             and state["queue"]["callback_finished"] else None), "recovered completion")
         self.assertEqual(completed["hashes"], before["hashes"])
         self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
+
+    def test_persisted_readable_draft_precedes_held_summary_adapter(self):
+        self.launch(pause_before_summary=True)
+        task_id = self.api("/api/tasks/from-current-page?defer=true", reference_request(5, "early-readable"))["task_id"]
+        self.api(f"/api/tasks/{task_id}/start", OPTIONS)
+        self.wait(lambda: (self.data / "before-summary-entered").exists(), "actual post-draft pre-summary boundary")
+        before = self.state(task_id)
+        self.assertEqual(before["status"], "running")
+        self.assertFalse(before["waiting"])
+        self.assertEqual(before["continuation_calls"], 0)
+        self.assertTrue(any(event["event"] == "draft_ready" for event in before["stages"]))
+        edition = self.api(f"/api/tasks/editions/task/{task_id}")
+        self.assertIn("按时间段的阅读提纲", edition["text"])
+        self.assertIn("Reference lesson source statement at 0 seconds.", edition["text"])
+        with urlopen(self.base + f"/api/tasks/{task_id}/events/stream?after=0", timeout=10) as response:
+            frames = []
+            for _ in range(300):
+                line = response.readline().decode()
+                frames.append(line)
+                if line == "\n" and "event: draft_ready\n" in frames:
+                    break
+        self.assertIn("event: draft_ready\n", frames)
+        with self.assertRaises(HTTPError) as rejected:
+            self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+        self.assertEqual(rejected.exception.code, 409)
+        (self.data / "before-summary-release").write_text("release this test boundary")
+        held = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "real summary adapter entry")
+        self.assertEqual(held["hashes"], before["hashes"])
+        self.assertEqual(held["generation"], before["generation"])
+        self.assertEqual(held["continuation_calls"], 1)
+        self.assertEqual(self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")["status"], "running")
+        self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
+        self.wait(lambda: self.state(task_id)["status"] == "success" and self.state(task_id)["queue"]["callback_finished"], "test continuation drains")
 
     def test_fresh_and_resume_directory_guards_preserve_existing_files(self):
         original = self.data / "unrelated.txt"

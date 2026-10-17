@@ -325,3 +325,78 @@ test("one-shot scroll diagnostics expose stale handles and replacement during th
   assert.match(source, /boundedRecord\(trace, "reader_observations", \{ scroll \}, 8\)/);
   assert.match(source, /boundedRecord\(trace, "reader_observations", \{ geometry \}, 8\)/);
 });
+
+async function visibilityAdmissionHarness(states, options = {}) {
+  const vm = await import("node:vm");
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("  async function visible("), source.indexOf("  async function release("));
+  const generation = "a".repeat(64), calls = [], row = { minutes: 5, repetition: 1, status: "pending" };
+  let reads = 0, clock = 1000, current;
+  const state = patch => ({ task_id: "owned", status: "running", waiting: false, generation,
+    queue: { task_id: "owned", state: "running", generation, callback_finished: 0 },
+    hashes: { transcript_path: "t", subtitle_path: "s", "draft.md": "d" },
+    source_coverage: { duration: 300, cue_count: 10, first_start: 0, last_end: 300, reference_cues_complete: true,
+      section_count: 1, final_section_end: 300 }, stages: [], ...patch });
+  const context = vm.createContext({ assert: Object.assign((...args) => assert(...args), assert, {
+      deepEqual: (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected))) }),
+    performance: { now: () => clock }, phase: value => calls.push(value), report: { native_sse: [{ task_id: "owned", event: "draft_ready", id: "14" }] },
+    readerGeometry: async () => { calls.push("geometry"); return geometry(); },
+    page: { evaluate: async () => { calls.push("first-readable-clock"); return 1; } },
+    save: () => { calls.push("checkpoint"); assert.equal(row.first_outline_seconds, 1); },
+    snapshot: async id => {
+      assert.equal(id, "owned"); calls.push("snapshot"); clock += 100;
+      const patch = states[Math.min(reads++, states.length - 1)];
+      if (patch instanceof Error) throw patch;
+      current = state(patch); return current;
+    },
+    until: async check => { for (let i = 0; i < 3; i++) { const value = await check(); if (value) return value; } throw new Error("held continuation timed out"); },
+    api: async () => {
+      calls.push("ACK");
+      if (!current?.waiting) throw new Error("strict ACK 409 before held adapter");
+      if (options.ackFailure) throw new Error("actual ACK failed");
+      return { ...current, ...options.ackPatch, after_transcript_visible_ack_seconds: clock / 1000, visible_ack_snapshot_seconds: .01 };
+    },
+  });
+  const visible = vm.runInContext(`${body}; visible`, context);
+  return { row, calls, run: () => visible("owned", 5, row), reads: () => reads };
+}
+
+test("actual visible flow records first readability once before waiting and strict ACK", async () => {
+  const h = await visibilityAdmissionHarness([{ waiting: false }, { waiting: true }]);
+  const result = await h.run();
+  assert.equal(h.row.first_outline_seconds, 1);
+  assert.equal(result.first_outline_seconds, 1);
+  assert.equal(result.after_transcript_visible_ack_seconds, 1.2, "Coordination stays inside the backend ACK upper bound");
+  assert.equal(h.calls.filter(call => call === "geometry").length, 1);
+  assert.equal(h.calls.filter(call => call === "first-readable-clock").length, 1);
+  assert(h.calls.indexOf("checkpoint") < h.calls.indexOf("snapshot"));
+  assert(h.calls.lastIndexOf("snapshot") < h.calls.indexOf("ACK"));
+});
+
+test("actual visible flow rejects terminal or changed identity and retains the measured row", async () => {
+  for (const states of [
+    [{ status: "failed" }], [{ status: "cancelled" }], [{ status: "success" }], [{ task_id: "wrong" }],
+    [{ generation: "bad" }], [{ queue: { task_id: "wrong", generation: "a".repeat(64), state: "running", callback_finished: 0 } }], [{ queue: { generation: "b".repeat(64), state: "running", callback_finished: 0 } }],
+    [{ queue: { generation: "a".repeat(64), state: "running", callback_finished: 1 } }],
+    [{ waiting: false }, { waiting: true, generation: "b".repeat(64) }], [new Error("snapshot unavailable")],
+  ]) {
+    const h = await visibilityAdmissionHarness(states);
+    await assert.rejects(h.run());
+    assert.equal(h.row.first_outline_seconds, 1); assert(h.row.geometry);
+    assert.equal(h.calls.filter(call => call === "geometry").length, 1);
+    assert.equal(h.calls.includes("ACK"), false);
+  }
+});
+
+test("unavailable hold or failed ACK cannot erase readability or become a passing cohort", async () => {
+  for (const options of [{}, { ackFailure: true }, ...[{ generation: "b".repeat(64) }, { task_id: "wrong" },
+    { status: "failed" }, { waiting: false }, { hashes: {} }].map(ackPatch => ({ ackPatch }))]) {
+    const h = await visibilityAdmissionHarness([{ waiting: Boolean(options.ackFailure || options.ackPatch) }], options);
+    await assert.rejects(h.run());
+    h.row.status = "fail";
+    assert.equal(h.row.first_outline_seconds, 1); assert(h.row.geometry);
+    assert.equal(h.calls.filter(call => call === "geometry").length, 1);
+    assert.equal(summarize([h.row])[0].first_outline_p95_seconds, null);
+    assert.equal(summarize([h.row])[0].passed, false);
+  }
+});

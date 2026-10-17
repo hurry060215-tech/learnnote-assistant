@@ -6,6 +6,7 @@ remain production code. Never run against an existing user data directory.
 """
 import argparse
 from contextlib import ExitStack
+import faulthandler
 import hashlib
 import importlib.util
 import json
@@ -30,6 +31,12 @@ CAPTIONS = ["Synthetic source: the first window shows a generated test pattern."
             "Synthetic source: the final window remains available for human review."]
 
 
+def startup_phase(phase):
+    # Owned fixture diagnostics only: no environment, requests or source paths.
+    print(json.dumps({"fixture_startup_phase": phase, "worker_pid": os.getpid(),
+                      "monotonic_seconds": time.monotonic()}), file=sys.stderr, flush=True)
+
+
 def run_owned_command(command, shutdown):
     from app.media import media_cancellation, _run
     deadline = time.monotonic() + 60
@@ -41,6 +48,7 @@ def run_owned_command(command, shutdown):
 
 
 def generate_media(directory, shutdown, variant="a"):
+    startup_phase(f"media_{variant}_tool_check")
     from app.runtime import ffmpeg_bin, ffprobe_bin
     if not ffmpeg_bin() or not ffprobe_bin():
         raise RuntimeError("Installed FFmpeg and FFprobe are required; no download is performed")
@@ -48,6 +56,7 @@ def generate_media(directory, shutdown, variant="a"):
     subtitle.write_text("\n\n".join(f"{i+1}\n00:00:{i*12:02d},000 --> 00:00:{(i+1)*12:02d},000\n{text}"
                                     for i, text in enumerate(CAPTIONS if variant == "a" else ["Changed source: " + value for value in CAPTIONS])) + "\n", encoding="utf-8")
     media = directory / f"reference-{variant}.mp4"
+    startup_phase(f"media_{variant}_generation")
     run_owned_command([ffmpeg_bin(), "-y", "-hide_banner", "-loglevel", "error",
         "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=2",
         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=16000", "-i", str(subtitle),
@@ -55,10 +64,12 @@ def generate_media(directory, shutdown, variant="a"):
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "35", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "32k", "-c:s", "mov_text", "-movflags", "+faststart", str(media)],
         shutdown)
+    startup_phase(f"media_{variant}_ready")
     return media
 
 
 def configure_fixture(root, data, stack, shutdown):
+    startup_phase("owned_data_setup")
     if data.is_symlink() or not data.is_dir() or any(data.iterdir()):
         raise ValueError("Visual fixture requires a fresh empty non-symlink directory")
     (data / "visual-fixture.json").write_text(json.dumps(MARKER), encoding="utf-8")
@@ -70,7 +81,9 @@ def configure_fixture(root, data, stack, shutdown):
     sys.path[:0] = [str(root), str(root / "backend")]
     spec = importlib.util.spec_from_file_location("visual_offline", root / "scripts/test-backend-offline.py")
     offline = importlib.util.module_from_spec(spec); spec.loader.exec_module(offline)
+    startup_phase("offline_guard_imports")
     stack.enter_context(offline.offline_network())
+    startup_phase("application_imports")
     from fastapi import HTTPException
     from fastapi.responses import FileResponse
     from app import main, processor, storage, update_service
@@ -81,6 +94,7 @@ def configure_fixture(root, data, stack, shutdown):
     from app.partial_note_projection import partial_revision
     from openai.resources.chat.completions import Completions
     import httpx2 as httpx
+    startup_phase("application_ready")
     update_service.save_preferences({"auto_check": False, "auto_download": False})
     inputs = data / "fixture-inputs"; inputs.mkdir()
     media = {variant: generate_media(inputs, shutdown, variant) for variant in ("a", "b")}
@@ -248,19 +262,26 @@ def main():
         for line in sys.stdin:
             if line.strip() == "shutdown":
                 shutdown.set(); return
-    threading.Thread(target=control, daemon=True).start()
+    # One bounded stack dump precedes both callers' existing startup deadlines.
+    faulthandler.dump_traceback_later(20, repeat=False)
     with ExitStack() as stack:
+        stack.callback(faulthandler.cancel_dump_traceback_later)
+        startup_phase("control_start")
+        threading.Thread(target=control, daemon=True).start()
         app, fixture = configure_fixture(Path(__file__).resolve().parents[1], args.data_dir.absolute(), stack, shutdown)
+        startup_phase("server_setup")
         import uvicorn
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
             listener.bind(("127.0.0.1", 0)); listener.listen(128)
             origin = f"http://127.0.0.1:{listener.getsockname()[1]}"
             os.environ["LEARNNOTE_BACKEND_ORIGIN"] = origin
-            print(json.dumps({"fixture_origin": origin, **fixture}), flush=True)
             server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
             def stop_server():
                 shutdown.wait(); server.should_exit = True
             threading.Thread(target=stop_server, daemon=True).start()
+            startup_phase("server_ready")
+            faulthandler.cancel_dump_traceback_later()
+            print(json.dumps({"fixture_origin": origin, **fixture}), flush=True)
             server.run(sockets=[listener])
 
 

@@ -60,7 +60,16 @@ binding. The helper does not reload the page to hide navigation failures.
 
 Prerequisites: the repository's constrained backend test dependencies, Node and
 Playwright, an installed native Microsoft Edge executable, and installed FFmpeg
-and FFprobe on PATH. No browser, model, media, or FFmpeg download is performed.
+and FFprobe on PATH. The acceptance helper performs no browser, model, media, or FFmpeg download.
+The hosted workflow separately provisions Chocolatey `ffmpeg` version `8.1.0`,
+checks both FFmpeg and FFprobe version output, and retains `media-tools.json`.
+This pinned package uses Gyan static essentials builds, a Windows build source
+linked by [FFmpeg's official download page](https://ffmpeg.org/download.html).
+The [package's published verification](https://community.chocolatey.org/packages/ffmpeg/8.1.0)
+records the included archive SHA256
+`9B299A21FC1CA36AC22E4911F8958404C228E4059583C4651743122A8D0A7E56`.
+Package installation failure or either missing/wrong-version binary fails the
+required gate; no alternate binary source or checksum bypass is used.
 Set `LEARNNOTE_ACCEPTANCE_PYTHON` to the prepared Python interpreter, then run:
 
 ```sh
@@ -98,6 +107,15 @@ Errors and external-request records retain at most 64 entries with dropped
 counts; native SSE and network records reuse the existing bounded observer.
 Each fixture task snapshot retains at most 256 stored events. Forbidden attempts
 retain the first 64 entries and an exact total count.
+
+Startup emits a fixed sequence of phase names to stderr, with the owned PID and
+monotonic timestamp. A one-shot all-thread stack dump at 20 seconds helps locate
+an import or preparation stall before the existing 45-second API-test and
+60-second browser startup deadlines. It is cancelled when server setup is ready
+or fails. These diagnostics contain code locations, not environment variables,
+request payloads or model credentials. The Windows startup timeout observed in
+run 39014763339 had no phase/stack evidence, so its blocking cause remains
+unresolved; missing FFprobe is a separately confirmed provisioning gap.
 
 The fixture owns a fresh temporary data directory and all launched processes.
 Cleanup first sends an explicit stdin shutdown request. During media generation,

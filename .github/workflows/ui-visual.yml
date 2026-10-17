@@ -34,6 +34,7 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
+      - "scripts/install-visual-media-tools.ps1"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -96,6 +97,7 @@ on:
       - "scripts/progressive-sections-acceptance.cjs"
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
+      - "scripts/install-visual-media-tools.ps1"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -450,8 +452,15 @@ jobs:
           $env:LEARNNOTE_ACCEPTANCE_PYTHON = (Get-Command python).Source
           node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui
           if ($LASTEXITCODE -ne 0) { throw "Reference caption-to-readable-draft acceptance failed" }
-      - name: Join real visual batches to retained reader sections
+      - name: Provision pinned visual media tools
+        id: visual_media_tools
         if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' }}
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/progressive-visual-ui
+      - name: Join real visual batches to retained reader sections
+        if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}
         timeout-minutes: 10
         shell: pwsh
         run: |

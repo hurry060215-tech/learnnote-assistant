@@ -42,12 +42,24 @@ the final cue and section. Ancestor opacity and missing/hidden source text canno
 pass readability.
 
 The transcript-to-visible acknowledgement is a conservative upper bound measured
-on one backend monotonic clock, including browser observation and local ACK
-transport. It must be at most five seconds for every measured attempt. The
+on one backend monotonic clock, including browser observation, held-adapter
+coordination, report checkpointing and local ACK transport. It must be at most five seconds for every measured attempt. The
 submission-to-readable p95 uses nearest rank and must be at most ten seconds for
 each duration. All 20 attempts are required; slow values are retained, failed or
 invalid rows cannot be filtered into a passing cohort, and unrun cohorts remain
 explicitly incomplete after an infrastructure/assertion failure.
+
+Draft publication can precede entry into the held summary adapter. The helper
+captures the actual first-readable geometry/time exactly once and checkpoints
+those fields immediately, then waits for the same task and accepted queue
+generation to be running with its continuation held. It rejects terminal,
+changed-generation and mismatched task/queue states. Only then does it send the
+unchanged strict visibility ACK. This bounded coordination does not remeasure,
+rescroll, reload, retry a sample, or remove its elapsed time from the five-second
+ACK upper bound. A failed or unavailable held state retains the measured row but
+cannot make its incomplete cohort pass. An actual API/queue regression pauses
+the pipeline after publishing its real draft and native event, proving the early
+ACK rejection and same-generation success after adapter entry.
 
 Application startup, capture and deferred confirmation finish before the timed
 submission. Each sample has new task/artifact state, but shares an initialized

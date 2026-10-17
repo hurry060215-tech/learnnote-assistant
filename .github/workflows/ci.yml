@@ -98,6 +98,10 @@ jobs:
           }
           Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension test failed: $($_.Name)" } }
           Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web test failed: $($_.Name)" } }
+      - name: Provision pinned media tools for real fixture contracts
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/visual-media-tools
       - name: Desktop and release checks
         env:
           PYTHONPATH: backend
