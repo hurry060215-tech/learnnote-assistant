@@ -158,6 +158,58 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         self.assertTrue(any("pure-module boundary" in error for error in errors))
         self.assertTrue(any("missing local script web/task-format.js" in error for error in errors))
 
+    def visual_study_repository(self):
+        return self.repository({
+            "web/task-format.js": "globalThis.LearnNoteTaskFormat = {};",
+            "web/task-display.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteTaskDisplay = {};",
+            "web/task-list.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteTaskDisplay; globalThis.LearnNoteTaskList = {};",
+            "web/visual-window-evidence.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteVisualWindowEvidence = {};",
+            "web/visual-study.js": "globalThis.LearnNoteTaskFormat; globalThis.LearnNoteTaskList; globalThis.LearnNoteVisualWindowEvidence; globalThis.LearnNoteVisualStudy = {};",
+            "web/app.js": "globalThis.LearnNoteVisualStudy;",
+        })
+
+    def test_visual_study_requires_all_providers_before_app(self):
+        root = self.visual_study_repository()
+        order = ["task-format.js", "task-display.js", "task-list.js", "visual-window-evidence.js", "visual-study.js", "app.js"]
+        html = root / "web/classic.html"
+
+        def write_order(names):
+            html.write_text("".join(f'<script src="/web/{name}?v=fixture"></script>' for name in names), encoding="utf-8")
+
+        write_order(order)
+        self.assertEqual(javascript_violations(root), [])
+        for omitted in order[:-1]:
+            with self.subTest(omitted=omitted):
+                write_order([name for name in order if name != omitted])
+                errors = javascript_violations(root)
+                self.assertTrue(any("before its classic script is loaded" in error for error in errors), errors)
+        write_order(order[:-2] + order[-2:][::-1])
+        self.assertTrue(any("before its classic script is loaded" in error for error in javascript_violations(root)))
+
+    def test_visual_study_rejects_reverse_edges_and_cycles(self):
+        for source, target in (
+            ("visual-study.js", "app.js"),
+            ("visual-window-evidence.js", "visual-study.js"),
+            ("task-list.js", "visual-study.js"),
+            ("task-format.js", "visual-study.js"),
+        ):
+            with self.subTest(source=source, target=target):
+                root = self.visual_study_repository()
+                path = root / "web" / source
+                path.write_text(path.read_text(encoding="utf-8") + f'\nimport "./{target}";', encoding="utf-8")
+                errors = javascript_violations(root)
+                self.assertTrue(any("pure-module boundary" in error for error in errors), errors)
+                self.assertTrue(any("dependency cycle" in error for error in errors), errors)
+
+    def test_visual_study_and_transitive_providers_cannot_escape_budget(self):
+        root = self.visual_study_repository()
+        names = tuple(path.name for path in (root / "web").glob("*.js"))
+        self.assertEqual(javascript_violations(root, classic_task_scripts=names), [])
+        for omitted in names:
+            with self.subTest(omitted=omitted):
+                errors = javascript_violations(root, classic_task_scripts=tuple(name for name in names if name != omitted))
+                self.assertTrue(any(f"Classic task budget omits dependency web/{omitted}" in error for error in errors), errors)
+
     def test_classic_task_dependency_cannot_escape_combined_budget(self):
         root = self.repository({
             "web/app.js": "globalThis.LearnNoteTaskList;",

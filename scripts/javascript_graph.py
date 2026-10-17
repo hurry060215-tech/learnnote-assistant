@@ -174,6 +174,7 @@ CLASSIC_PROVIDERS = {
     "LearnNoteContentMediaHints": "extension/content-media-hints.js",
     # Chapter-only API in PR #241 retains this filename and namespace.
     "LearnNoteStudyEvidence": "extension/content-study-evidence.js",
+    "LearnNoteVisualStudy": "web/visual-study.js",
     "LearnNoteVisualWindowEvidence": "web/visual-window-evidence.js",
     "LearnNotePlatformSignals": "web/platform-signals.js",
     "LearnNoteTaskFormat": "web/task-format.js",
@@ -192,6 +193,7 @@ PURE_ALLOWED = {
     "extension/backend-transport.js": set(),
     "extension/content-media-hints.js": {"extension/capture-classification.js"},
     "extension/content-study-evidence.js": set(),
+    "web/visual-study.js": {"web/task-format.js", "web/task-list.js", "web/visual-window-evidence.js"},
     "web/visual-window-evidence.js": {"web/task-format.js"},
     "web/platform-signals.js": {"web/task-format.js"},
     "web/task-format.js": set(),

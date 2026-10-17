@@ -34,8 +34,8 @@ async function probe({ failureAt = "newPage", reportFails = false, closeFails = 
   console.log("Native zoom failure preservation: 20 mocked cases passed; no native commands executed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
-async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=false}) {
-  const primary=new Error('PRIMARY_MATRIX'),resetError=new Error('RESET_FAILED'),calls=[],writes=[];
+async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=false,translationFailure=false}) {
+  const primary=new Error(translationFailure?'PRIMARY_TRANSLATION':'PRIMARY_MATRIX'),resetError=new Error('RESET_FAILED'),calls=[],writes=[];
   let zoom=100,lastKey='',resets=0;
   const baseline={width:1000,height:600,dpr:1,cssZoom:'1',documentZoom:'1',visualScale:1,overflow:0};
   const close=key=>async()=>{calls.push(key);if(closeFailure)throw new Error('CLOSE_'+key);};
@@ -55,16 +55,20 @@ async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=fa
     if(name==='./timeline-native-capture.cjs')return {captureNativeViews:async()=>{}};
     if(name==='playwright')return {chromium:{launchServer:async()=>server,connect:async()=>browser}};
     if(name==='node:fs')return {writeFileSync:(_path,data)=>writes.push(JSON.parse(data))};
-    if(name==='node:child_process')return {execFileSync:(_exe,args)=>{const action=args[args.indexOf('-Zoom')+1];calls.push(action);if(action==='reset'){resets++;if(resets>1&&resetFailure)throw resetError;zoom=100;}if(action==='200')zoom=200;return '{}';}};
+    if(name==='node:child_process')return {execFileSync:(_exe,args)=>{const action=args[args.indexOf('-Zoom')+1];calls.push(action);if(action==='dismiss-translation'&&translationFailure)throw primary;if(action==='reset'){resets++;if(resets>1&&resetFailure)throw resetError;zoom=100;}if(action==='200')zoom=200;return '{}';}};
     return require(name);
   }};
   vm.runInNewContext(source,sandbox);
   const promise=sandbox.module.exports.assertNativeTimelineZoom({base:'http://127.0.0.1:8765',taskId:'fixture',claimId:'fixture',out:'/not-written'});
-  if(matrixFailure)await assert.rejects(promise,e=>e===primary);
+  if(matrixFailure||translationFailure)await assert.rejects(promise,e=>e===primary);
   else if(resetFailure||closeFailure)await assert.rejects(promise,/RESET_FAILED|CLOSE_/);
   else {const result=await promise;assert.deepEqual(JSON.parse(JSON.stringify(result)),writes.at(-1));assert.equal(result.baseline_restored.dpr,1);assert.equal(result.baseline_restored.width,1000);}
-  assert.equal(resets,2,'Final reset attempted after both successful and failed matrix');
+  assert.equal(resets,translationFailure?1:2,'Final reset attempted after both successful and failed matrix');
+  assert(calls.indexOf('prepare') < calls.indexOf('dismiss-translation'));
+  assert(calls.indexOf('dismiss-translation') < calls.indexOf('reset'));
   assert.deepEqual(calls.slice(-3),['context','browser','server']);
   if(resetFailure||closeFailure)assert.equal(writes.at(-1).passed,false);
 }
 (async()=>{for(const matrixFailure of [false,true])for(const resetFailure of [false,true])for(const closeFailure of [false,true])await lateProbe({matrixFailure,resetFailure,closeFailure});console.log('Eight late matrix/reset/cleanup cases preserve primary errors and returned/report restoration parity');})().catch(e=>{console.error(e);process.exitCode=1;});
+
+(async()=>{for(const closeFailure of [false,true])await lateProbe({translationFailure:true,closeFailure});console.log("Translation-offer failure preserves primary and closes all owned resources");})().catch(e=>{console.error(e);process.exitCode=1;});

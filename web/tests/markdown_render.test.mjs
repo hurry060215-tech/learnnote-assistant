@@ -203,6 +203,7 @@ vm.runInContext(await readFile(new URL("../visual-window-evidence.js", import.me
 vm.runInContext(await readFile(new URL("../platform-signals.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-list.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../visual-study.js", import.meta.url), "utf8"), context);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 

@@ -157,7 +157,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertEqual(["_internal/web/material-ocr.js"], result["missing_bundled"])
 
     def test_classic_modules_remain_excluded_from_release(self):
-        for name in ("classic-workbench.css", "classic-workbench-overrides.css", "classic-interactions.css", "classic-study.css", "task-list.js", "platform-signals.js", "visual-window-evidence.js"):
+        for name in ("classic-workbench.css", "classic-workbench-overrides.css", "classic-interactions.css", "classic-study.css", "task-list.js", "platform-signals.js", "visual-window-evidence.js", "visual-study.js"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
                 self.populate_extension(root)
@@ -169,7 +169,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
                 self.assertEqual([str(Path("_internal/web") / name)], result["legacy_ui"])
 
     def test_both_desktop_specs_exclude_classic_task_modules(self):
-        classic_files = {"classic.html", "app.js", "task-format.js", "task-display.js", "task-list.js"}
+        classic_files = {"classic.html", "app.js", "task-format.js", "task-display.js", "task-list.js", "visual-study.js"}
         for filename in ("LearnNote.spec", "LearnNote.macos.spec"):
             tree = ast.parse((ROOT / filename).read_text(encoding="utf-8"))
             web_tree = next(node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Tree" and ast.literal_eval(node.args[0]) == "web")

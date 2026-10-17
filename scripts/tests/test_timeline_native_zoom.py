@@ -7,6 +7,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeTimelineZoomContract(unittest.TestCase):
+    def test_translation_dismissal_is_exact_owned_and_before_keyboard_baseline(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        action = helper.split('if ($Zoom -eq "dismiss-translation") {', 1)[1].split('if ($Zoom -in', 1)[0]
+        for required in ('FromHandle($window)', '"Not now"', '"Translate"',
+                         'Translate page from Chinese (Simplified)?', '$candidates.Count -ne 1',
+                         'Compare($ancestor, $root)', '$ancestor.Current.ControlType -eq $documentType',
+                         '$depth -lt 32', 'if (-not $reachedRoot)',
+                         '$offer.Current.ProcessId -ne $OwnedBrowserPid',
+                         '$button.Current.ProcessId -ne $OwnedBrowserPid', '$button.Current.IsOffscreen',
+                         '$rootBounds.Contains($offerBounds)', 'Assert-OwnedForeground',
+                         'TryGetCurrentPattern', ').Invoke()', '$remaining.Count -ne 0'):
+            self.assertIn(required, action)
+        for forbidden in ('SendWait', 'Send-OwnedZoomKey', 'WM_CLOSE', 'SetPreference'):
+            self.assertNotIn(forbidden, action)
+        self.assertLess(action.index('$ancestor.Current.ControlType -eq $documentType'), action.index('foreach ($ancestor in $ancestors)'))
+        self.assertLess(action.index('if (-not $reachedRoot)'), action.index('foreach ($ancestor in $ancestors)'))
+        ancestry = action.split('$ancestors =', 1)[1].split('foreach ($ancestor in $ancestors)', 1)[0]
+        self.assertNotIn('$heading', ancestry, 'Matching a nested web-dialog heading must not short-circuit the Document ancestry rejection')
+        source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertLess(source.index('nativeKey("prepare")'), source.index('nativeKey("dismiss-translation")'))
+        self.assertLess(source.index('nativeKey("dismiss-translation")'), source.index('nativeKey("reset"); before'))
+        self.assertIn('translation_offer:translationOffer', source)
+
     def test_additional_presets_and_secondary_controls(self):
         subprocess.run(["node", str(ROOT / "scripts/tests/timeline-native-zoom-matrix.cjs")], check=True, timeout=30)
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")

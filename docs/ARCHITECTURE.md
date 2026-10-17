@@ -226,3 +226,18 @@ both native specs exclude it with the rest of the classic-only UI. app.js drops
 group remains under its unchanged 10,100-line limit. This extraction is
 independently reversible and requires the existing hosted classic UI gate on
 the integrated commit before claiming visual acceptance.
+
+### Classic visual-study renderer (2026-10-17)
+
+`visual-study.js` separates evidence-state/review-priority projection and the six
+classic visual-study renderers from app orchestration. A frozen factory receives
+four app-owned URL/diagnostic/export callbacks; pure formatting, task/window and
+subtitle-review helpers are one-way dependencies. All eight original bodies,
+HTML output and app lifecycle remain unchanged. app.js shrinks 9,116→8,757 lines;
+the new module is capped at 387. The specifically approved aggregate cap change
+10,100→10,124 covers exactly 28 readable interface lines against the prior actual
+10,096 lines; no other cap changes. Frozen original snapshots, runtime-adapter
+contracts, native exclusions, dependency/load-order and budget-mutation tests
+are documented in [the migration record](ISSUE_ARCHITECTURE_VISUAL_STUDY_20261017.md).
+Combined-tree hosted classic screenshots remain pending; this stage does not
+close the larger #143 acceptance.

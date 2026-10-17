@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][int]$OwnedBrowserPid,
-  [ValidateSet("reset", "90", "125", "150", "200", "prepare", "capture")][string]$Zoom = "reset",
+  [ValidateSet("reset", "90", "125", "150", "200", "prepare", "capture", "dismiss-translation")][string]$Zoom = "reset",
   [string]$CapturePath
 )
 $ErrorActionPreference = "Stop"
@@ -59,6 +59,83 @@ function Send-OwnedZoomKey([string]$keys) {
   Assert-OwnedForeground
   [System.Windows.Forms.SendKeys]::SendWait($keys)
   Start-Sleep -Milliseconds 150
+}
+if ($Zoom -eq "dismiss-translation") {
+  # Only this verified, non-security browser offer is eligible. Never send Escape,
+  # invoke a generic Close button, alter language preferences, or touch web content.
+  Add-Type -AssemblyName UIAutomationClient
+  Add-Type -AssemblyName UIAutomationTypes
+  Assert-OwnedForeground
+  $root = [System.Windows.Automation.AutomationElement]::FromHandle($window)
+  $scope = [System.Windows.Automation.TreeScope]::Descendants
+  $allCondition = [System.Windows.Automation.Condition]::TrueCondition
+  $buttonType = [System.Windows.Automation.ControlType]::Button
+  $documentType = [System.Windows.Automation.ControlType]::Document
+  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+  $candidates = @($root.FindAll($scope, $allCondition) | Where-Object {
+    $_.Current.ControlType -eq $buttonType -and $_.Current.Name -ceq "Not now"
+  })
+  if ($candidates.Count -eq 0) {
+    @{ action = "dismiss-translation"; owned_pid = $OwnedBrowserPid; window = $window.ToInt64();
+       dismissed = $false; reason = "exact-not-now-button-absent" } | ConvertTo-Json -Compress
+    exit 0
+  }
+  if ($candidates.Count -ne 1) { throw "Ambiguous Not now controls; no native offer action performed." }
+  $button = $candidates[0]
+  # Prove the entire ancestry before matching text. A webpage dialog can have
+  # identical labels and may be exposed by the browser's UIA provider process.
+  $ancestors = [System.Collections.Generic.List[object]]::new()
+  $ancestor = $walker.GetParent($button)
+  $reachedRoot = $false
+  for ($depth = 0; $depth -lt 32 -and $ancestor; $depth++) {
+    if ([System.Windows.Automation.Automation]::Compare($ancestor, $root)) { $reachedRoot = $true; break }
+    if ($ancestor.Current.ControlType -eq $documentType) {
+      throw "Not now belongs to web content; no browser chrome action performed."
+    }
+    [void]$ancestors.Add($ancestor)
+    $ancestor = $walker.GetParent($ancestor)
+  }
+  if (-not $reachedRoot) { throw "Translation candidate ancestry did not reach the owned root." }
+  $offer = $null
+  foreach ($ancestor in $ancestors) {
+    $children = @($ancestor) + @($ancestor.FindAll($scope, $allCondition))
+    $heading = @($children | Where-Object {
+      ($_.Current.Name -replace "\s+", " ") -ceq "Translate page from Chinese (Simplified)?"
+    })
+    $translate = @($children | Where-Object {
+      $_.Current.ControlType -eq $buttonType -and $_.Current.Name -ceq "Translate"
+    })
+    if ($heading.Count -eq 1 -and $translate.Count -eq 1) { $offer = $ancestor; break }
+  }
+  if (-not $offer) { throw "Not now is not inside the exact Chinese translation offer; no action performed." }
+  if ($offer.Current.ProcessId -ne $OwnedBrowserPid -or $button.Current.ProcessId -ne $OwnedBrowserPid -or
+      -not $button.Current.IsEnabled -or $button.Current.IsOffscreen) {
+    throw "Translation offer ownership or visibility is invalid; no action performed."
+  }
+  $offerBounds = $offer.Current.BoundingRectangle
+  $rootBounds = $root.Current.BoundingRectangle
+  if ($offerBounds.IsEmpty -or $offerBounds.Width -le 0 -or $offerBounds.Height -le 0 -or
+      -not $rootBounds.Contains($offerBounds)) { throw "Translation offer lies outside the owned window." }
+  $pattern = $null
+  if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+    throw "Exact translation Not now button has no InvokePattern."
+  }
+  Assert-OwnedForeground
+  ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
+  $deadline = [DateTime]::UtcNow.AddSeconds(3)
+  do {
+    Assert-OwnedForeground
+    $remaining = @($root.FindAll($scope, $allCondition) | Where-Object {
+      $_.Current.ControlType -eq $buttonType -and $_.Current.Name -ceq "Not now"
+    })
+    if ($remaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 50
+  } while ([DateTime]::UtcNow -lt $deadline)
+  if ($remaining.Count -ne 0) { throw "Translation offer did not disappear after exact Not now invocation." }
+  @{ action = "dismiss-translation"; owned_pid = $OwnedBrowserPid; window = $window.ToInt64();
+     dismissed = $true; heading = "Translate page from Chinese (Simplified)?"; invoked = "Not now";
+     preferences_changed = $false } | ConvertTo-Json -Compress
+  exit 0
 }
 if ($Zoom -in @("prepare", "capture")) {
   if ($Zoom -eq "capture" -and (-not $CapturePath -or [IO.Path]::GetExtension($CapturePath) -ne ".png")) { throw "An owned PNG output path is required." }

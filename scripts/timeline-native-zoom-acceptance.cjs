@@ -9,7 +9,7 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   const { chromium } = require("playwright");
   const origin = new URL(base).origin;
   const server = await chromium.launchServer({ channel: "msedge", headless: false, args: ["--window-size=1440,1000"] });
-  let ownedPid, browser, context, page, preparation, before, after, zoomCommand, report, failure;
+  let ownedPid, browser, context, page, preparation, translationOffer, before, after, zoomCommand, report, failure;
   const unexpected = [], errors = [], captures = [], zoomCases = [];
   const nativeKey = (zoom, capturePath) => JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout: 15000 }));
   const metrics = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
@@ -36,6 +36,7 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
     const marker = page.locator(`.note-claim-marker[data-claim-id="${claimId}"]`);
     await marker.click(); await page.waitForFunction(() => document.querySelector("#player").readyState >= 1);
     await page.bringToFront(); preparation = nativeKey("prepare");
+    translationOffer = nativeKey("dismiss-translation");
     nativeKey("reset"); before = await metrics();
     assert.equal(before.dpr, 1, "Owned-window capture currently requires the hosted display at 100% OS scale");
     await runNativeZoomMatrix({ page, marker, nativeKey, metrics, baseline: before, out, cases: zoomCases });
@@ -63,13 +64,13 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
     assert.equal(await page.evaluate(() => document.activeElement?.dataset.cueIndex), "0");
     await captureNativeViews(page, { out, zoomed: after, nativeCapture: filename => nativeKey("capture", filename), reports: captures });
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
-    report = {passed:true,browser:browser.version(),method:"Owned Edge window Ctrl+0 then five Ctrl+Add keys",fresh_profile:true,extensions_loaded:false,viewport_emulation:false,preparation,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,keyboard_marker_seek:true,keyboard_virtual_cues:true,captures,visual_review_required:true,unexpected_requests:unexpected,page_errors:errors};
+    report = {passed:true,browser:browser.version(),method:"Owned Edge window Ctrl+0 then five Ctrl+Add keys",fresh_profile:true,extensions_loaded:false,viewport_emulation:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,keyboard_marker_seek:true,keyboard_virtual_cues:true,captures,visual_review_required:true,unexpected_requests:unexpected,page_errors:errors};
     writeReport();
     return report;
   } catch (error) {
     failure = error;
     await page?.screenshot({path:path.join(out,"native-zoom-failure.png")}).catch(()=>{});
-    report = {passed:false,preparation,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,captures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
+    report = {passed:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,captures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
     writeFailureReport();
     throw error;
   } finally {
