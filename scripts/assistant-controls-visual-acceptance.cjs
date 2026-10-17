@@ -24,7 +24,7 @@ async function until(check,label,timeout=15000){const end=Date.now()+timeout;whi
   await new Promise(resolve=>model.listen(0,'127.0.0.1',resolve));const modelBase=`http://127.0.0.1:${model.address().port}/v1`;
   const env={};for(const[key,value]of Object.entries(process.env))if(/^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|TEMP|TMP|LANG|LC_ALL)$/i.test(key))env[key]=value;
   Object.assign(env,{PYTHONUTF8:'1',PYTHONUNBUFFERED:'1',PYTHONDONTWRITEBYTECODE:'1'});
-  backend=spawn(process.env.LEARNNOTE_ACCEPTANCE_PYTHON||'python',[path.join(__dirname,'assistant-runs-fixture.py'),'--data-dir',data,'--model-base',modelBase,'--controls'],{cwd:path.resolve(__dirname,'..'),env,stdio:['ignore','pipe','pipe']});
+  backend=spawn(process.env.LEARNNOTE_ACCEPTANCE_PYTHON||'python',[path.join(__dirname,'assistant-runs-fixture.py'),'--data-dir',data,'--model-base',modelBase,'--controls','--startup-report',path.join(out,'controls-startup.json')],{cwd:path.resolve(__dirname,'..'),env,stdio:['ignore','pipe','pipe']});
   backend.on('error',error=>backendFailure=error);backend.on('exit',code=>backendFailure=Error(`Fixture exited ${code}`));
   for(const stream of[backend.stdout,backend.stderr])stream.on('data',chunk=>{fs.appendFileSync(path.join(out,'backend.log'),chunk);buffer+=chunk.toString();for(const line of buffer.split(/\r?\n/)){if(line.startsWith('{"fixture_origin":'))fixture=JSON.parse(line);}});
   await until(async()=>{if(backendFailure)throw backendFailure;if(!fixture)return false;try{return(await fetch(fixture.fixture_origin+'/health')).ok;}catch{return false;}},'fixture health',60000);

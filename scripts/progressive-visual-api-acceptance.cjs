@@ -284,6 +284,7 @@ async function main(output = "build/progressive-visual-ui") {
   } catch (error) {
     primaryError = error; report.failure = error.stack || error.message;
     if (page && base) await recordFailureDiagnostics(report, {
+      fixture_threads: () => api("/_fixture/diagnostics"),
       screenshot: async () => { await page.screenshot({ path: path.join(out, "failure.png"), timeout: 3000 }); return "failure.png"; },
       page: () => page.evaluate(() => ({ hash: location.hash, reader_source: document.getElementById("document")?.dataset.readerSource,
         reader_revision: document.getElementById("document")?.dataset.readerRevision, status: document.getElementById("taskStatus")?.dataset.status })),

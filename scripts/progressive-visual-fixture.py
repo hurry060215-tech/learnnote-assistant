@@ -37,6 +37,27 @@ def startup_phase(phase):
                       "monotonic_seconds": time.monotonic()}), file=sys.stderr, flush=True)
 
 
+def thread_locations(root):
+    """Failure-only code locations, never frame locals, source lines or arguments."""
+    current = sys._current_frames()
+    threads = []
+    for identity, frame in sorted(current.items())[:32]:
+        locations = []
+        while frame is not None and len(locations) < 32:
+            file = Path(frame.f_code.co_filename)
+            try:
+                label = str(file.relative_to(root)).replace("\\", "/")
+            except ValueError:
+                label = file.name
+            locations.append({"file": re.sub(r"[^a-zA-Z0-9_./<>-]", "_", label)[-200:],
+                              "function": re.sub(r"[^a-zA-Z0-9_.<>-]", "_", frame.f_code.co_name)[:100],
+                              "line": frame.f_lineno})
+            frame = frame.f_back
+        threads.append({"thread_id": identity, "locations": locations, "frames_truncated": frame is not None})
+    return {"worker_pid": os.getpid(), "threads": threads, "thread_count": len(current),
+            "threads_truncated": len(current) > 32, "thread_limit": 32, "frame_limit": 32}
+
+
 def run_owned_command(command, shutdown):
     from app.media import media_cancellation, _run
     deadline = time.monotonic() + 60
@@ -68,7 +89,7 @@ def generate_media(directory, shutdown, variant="a"):
     return media
 
 
-def configure_fixture(root, data, stack, shutdown):
+def configure_fixture(root, data, stack, shutdown, start_control):
     startup_phase("owned_data_setup")
     if data.is_symlink() or not data.is_dir() or any(data.iterdir()):
         raise ValueError("Visual fixture requires a fresh empty non-symlink directory")
@@ -95,6 +116,9 @@ def configure_fixture(root, data, stack, shutdown):
     from openai.resources.chat.completions import Completions
     import httpx2 as httpx
     startup_phase("application_ready")
+    # Windows native imports can block while another thread reads piped stdin.
+    # Finish them first; control must still be live before cancellable generation.
+    start_control()
     update_service.save_preferences({"auto_check": False, "auto_download": False})
     inputs = data / "fixture-inputs"; inputs.mkdir()
     media = {variant: generate_media(inputs, shutdown, variant) for variant in ("a", "b")}
@@ -240,6 +264,10 @@ def configure_fixture(root, data, stack, shutdown):
     def task_state(task_id: str):
         return snapshot(task_id)
 
+    @main.app.get("/_fixture/diagnostics")
+    def diagnostics():
+        return thread_locations(root)
+
     @main.app.post("/_fixture/tasks/{task_id}/release/{number}")
     def release(task_id: str, number: int):
         task, record = task_record(task_id)
@@ -262,13 +290,14 @@ def main():
         for line in sys.stdin:
             if line.strip() == "shutdown":
                 shutdown.set(); return
+    def start_control():
+        startup_phase("control_start")
+        threading.Thread(target=control, name="visual-fixture-control", daemon=True).start()
     # One bounded stack dump precedes both callers' existing startup deadlines.
     faulthandler.dump_traceback_later(20, repeat=False)
     with ExitStack() as stack:
         stack.callback(faulthandler.cancel_dump_traceback_later)
-        startup_phase("control_start")
-        threading.Thread(target=control, daemon=True).start()
-        app, fixture = configure_fixture(Path(__file__).resolve().parents[1], args.data_dir.absolute(), stack, shutdown)
+        app, fixture = configure_fixture(Path(__file__).resolve().parents[1], args.data_dir.absolute(), stack, shutdown, start_control)
         startup_phase("server_setup")
         import uvicorn
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:

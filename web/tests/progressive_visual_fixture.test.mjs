@@ -96,6 +96,17 @@ test("owned process cleanup rejects unrelated launch identities before any signa
   assert.equal(written, false);
 });
 
+test("worker locations are collected only after failure and before owned cleanup", () => {
+  const script = readFileSync(new URL("../../scripts/progressive-visual-api-acceptance.cjs", import.meta.url), "utf8");
+  const start = script.indexOf("primaryError = error; report.failure");
+  const end = script.indexOf("} finally { releaseDelayed?.();", start);
+  const operation = 'fixture_threads: () => api("/_fixture/diagnostics")';
+  assert(start >= 0 && end > start);
+  assert.equal(script.split(operation).length - 1, 1);
+  assert(script.slice(start, end).includes(operation));
+  assert.match(script.slice(start, end), /await recordFailureDiagnostics/);
+});
+
 test("cooperative shutdown and bounded fallback both stop a real owned descendant", async () => {
   const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path"), { spawn } = await import("node:child_process");
   for (const cooperative of [true, false]) {

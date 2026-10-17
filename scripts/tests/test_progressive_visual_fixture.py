@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -137,6 +138,12 @@ let input='';process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end'
         self.assertEqual(first["transcript"]["source"], "embedded-subtitle")
         self.assertEqual([(cue["start"], cue["end"]) for cue in first["transcript"]["segments"]], [(0,12),(12,24),(24,36)])
         self.assertEqual(sorted(call["batch"] for call in first["calls"]), [1,2])
+        diagnostics = self.api("/_fixture/diagnostics")
+        self.assertEqual(diagnostics["worker_pid"], self.fixture["worker_pid"])
+        self.assertTrue(any(location["function"] == "completion"
+            and location["file"] == "scripts/progressive-visual-fixture.py"
+            for thread in diagnostics["threads"] for location in thread["locations"]))
+        self.assertLessEqual(len(diagnostics["threads"]), diagnostics["thread_limit"])
         initial = self.api(f"/api/tasks/{task_id}/partial-note")
         self.assertFalse(initial["verified"])
         self.assertEqual([s["kind"] for s in initial["sections"]], ["temporal_outline"])
@@ -181,7 +188,22 @@ let input='';process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end'
         self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
 
     def test_forced_release_check_is_denied_and_recorded(self):
-        self.launch()
+        self.launch("""
+phase = fixture.startup_phase
+def assert_startup_order(value):
+    controls = [thread for thread in fixture.threading.enumerate()
+                if thread.name == 'visual-fixture-control']
+    if value in {'offline_guard_imports', 'application_imports', 'application_ready'}:
+        assert not controls, 'Native/application imports must precede the stdin reader'
+    if value in {'media_a_tool_check', 'media_a_generation', 'media_b_generation'}:
+        assert len(controls) == 1 and controls[0].is_alive(), 'Control must be live before generation'
+    phase(value)
+fixture.startup_phase = assert_startup_order
+""")
+        phases = [json.loads(line)["fixture_startup_phase"] for line in self.logs
+                  if line.startswith('{"fixture_startup_phase":')]
+        self.assertLess(phases.index("application_ready"), phases.index("control_start"))
+        self.assertLess(phases.index("control_start"), phases.index("media_a_generation"))
         self.api("/api/update/status")
         self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
         self.client.post(self.base + "/api/update/check")
@@ -219,12 +241,83 @@ fixture.configure_fixture = blocked_startup
         self.assertEqual(log.count("Timeout ("), 1)
         self.assertIn("test_blocked_import", log)
         self.assertIn("in blocked_startup", log)
-        self.assertIn("in control", log)
+        self.assertNotIn("in control", log, "No stdin reader may block optional native imports")
         self.assertNotIn('"server_ready"', log)
+
+    def test_control_reader_stops_and_reaps_generation_after_imports(self):
+        bootstrap = """
+def held_generation(directory, shutdown, variant):
+    from app import media
+    processes = []
+    original = media.subprocess.Popen
+    def spawn(*args, **kwargs):
+        process = original(*args, **kwargs)
+        processes.append(process)
+        return process
+    marker = directory / 'owned-generation.pid'
+    command = [sys.executable, '-c',
+        'import os, pathlib, sys, time; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)',
+        str(marker)]
+    try:
+        with fixture.patch.object(media.subprocess, 'Popen', side_effect=spawn):
+            fixture.run_owned_command(command, shutdown)
+    finally:
+        assert len(processes) == 1 and processes[0].poll() is not None, 'Owned child must be reaped'
+        fixture.startup_phase('test_generation_reaped')
+fixture.generate_media = held_generation
+"""
+        errors = []
+        def request_shutdown():
+            deadline = time.monotonic() + 15
+            marker = self.data / "fixture-inputs/owned-generation.pid"
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            if not marker.exists():
+                errors.append("Owned child did not start")
+                return
+            self.child.stdin.write("shutdown\n"); self.child.stdin.flush()
+        stopper = threading.Thread(target=request_shutdown)
+        stopper.start()
+        try:
+            with self.assertRaisesRegex(AssertionError, "Owned fixture generation was stopped"):
+                self.launch(bootstrap)
+        finally:
+            stopper.join(16)
+        self.assertFalse(stopper.is_alive())
+        self.assertEqual(errors, [])
+        self.assertNotEqual(self.child.returncode, 0)
+        self.assertIn('"fixture_startup_phase": "test_generation_reaped"', "".join(self.logs))
+        self.assertNotIn('"fixture_startup_phase": "server_ready"', "".join(self.logs))
 
 
 
 class OwnedGenerationCleanupTests(unittest.TestCase):
+    def test_thread_diagnostics_are_bounded_locations_without_locals_or_source(self):
+        spec = importlib.util.spec_from_file_location("visual_fixture_diagnostics", ROOT / "scripts/progressive-visual-fixture.py")
+        fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixture)
+        secret = "must-not-appear-in-diagnostic-locals"
+        frame = sys._getframe()
+        with patch.object(fixture.sys, "_current_frames", return_value={i: frame for i in range(40)}):
+            result = fixture.thread_locations(ROOT)
+        self.assertEqual(result["thread_count"], 40)
+        self.assertTrue(result["threads_truncated"])
+        self.assertEqual(len(result["threads"]), 32)
+        for thread in result["threads"]:
+            self.assertLessEqual(len(thread["locations"]), 32)
+            for location in thread["locations"]:
+                self.assertEqual(set(location), {"file", "function", "line"})
+                self.assertFalse(Path(location["file"]).is_absolute())
+        self.assertNotIn(secret, json.dumps(result))
+        chain = None
+        for _ in range(40):
+            chain = SimpleNamespace(f_code=SimpleNamespace(co_filename=str(ROOT / "backend/app/media.py"),
+                co_name="_run"), f_lineno=61, f_back=chain)
+        with patch.object(fixture.sys, "_current_frames", return_value={1: chain}):
+            capped = fixture.thread_locations(ROOT)
+        self.assertEqual(len(capped["threads"][0]["locations"]), 32)
+        self.assertTrue(capped["threads"][0]["frames_truncated"])
+
     def test_generation_shutdown_reaps_the_actual_owned_child(self):
         spec = importlib.util.spec_from_file_location("visual_fixture_cleanup", ROOT / "scripts/progressive-visual-fixture.py")
         fixture = importlib.util.module_from_spec(spec)

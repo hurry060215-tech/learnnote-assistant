@@ -107,6 +107,14 @@ Errors and external-request records retain at most 64 entries with dropped
 counts; native SSE and network records reuse the existing bounded observer.
 Each fixture task snapshot retains at most 256 stored events. Forbidden attempts
 retain the first 64 entries and an exact total count.
+After a browser failure, the owned fixture also returns at most 32 current Python
+thread stacks with 32 code locations each and explicit truncation indicators.
+Only repository-relative filenames (otherwise basenames), function names and
+line numbers are retained; no frame locals, source lines, arguments or environment
+values are read. This is a failure-only observation before cleanup, outside the
+successful reading/cancellation measurements. It can distinguish a worker waiting
+inside normalization, transcript preparation or a completion; it does not by
+itself identify a native FFmpeg child wait or prove a suspected pipe interaction.
 
 Startup emits a fixed sequence of phase names to stderr, with the owned PID and
 monotonic timestamp. A one-shot all-thread stack dump at 20 seconds helps locate
@@ -116,6 +124,17 @@ or fails. These diagnostics contain code locations, not environment variables,
 request payloads or model credentials. The Windows startup timeout observed in
 run 39014763339 had no phase/stack evidence, so its blocking cause remains
 unresolved; missing FFprobe is a separately confirmed provisioning gap.
+
+Run 39016337309 subsequently captured the main thread importing NumPy through
+the optional ONNX Runtime offline-guard initialization while the control thread
+was reading piped stdin. This matches the Windows subprocess/reader/import
+pattern and stack in [NumPy issue 24290](https://github.com/numpy/numpy/issues/24290);
+it is a stack match, not a local reproduction of the Windows native deadlock.
+The fixture now completes offline-guard and application imports before starting
+its stdin reader, and starts that reader before any media generation. Tests
+check the actual named reader thread at those boundaries and send a real stdin
+shutdown during generation, requiring the owned child to be reaped. The hosted
+Windows rerun remains necessary to establish that this resolves its startup.
 
 The fixture owns a fresh temporary data directory and all launched processes.
 Cleanup first sends an explicit stdin shutdown request. During media generation,
