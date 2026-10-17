@@ -19,6 +19,21 @@ function fixtureTransportAllowed(method, url) {
   if (name === '/api/model/route') return query === '?transcriber=faster-whisper&whisper_model=small&visual_understanding=true';
   return !query;
 }
+// Remote Playwright connections expose download bytes through a stream, not path().
+async function assertDownloadedBytes(download, expected) {
+  const stream = await download.createReadStream();
+  assert(stream, 'Successful diagnostic download must provide a readable stream');
+  const chunks = []; let length = 0;
+  try {
+    for await (const chunk of stream) {
+      assert(Buffer.isBuffer(chunk), 'Diagnostic download stream must contain bytes');
+      length += chunk.length;
+      assert(length <= expected.length, 'Diagnostic download exceeds expected byte length');
+      chunks.push(chunk);
+    }
+    assert.deepEqual(Buffer.concat(chunks, length), expected);
+  } finally { stream.destroy(); }
+}
 async function openDiagnosticEntry(page, surface) {
   if (surface === 'desk') {
     const processing = page.locator('#toolsDialog[open]');
@@ -141,7 +156,7 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         }
         const event = page.waitForEvent('download'); await dialog.getByRole('button', { name: '保存已预览报告' }).click();
         const download = await event; assert.equal(download.suggestedFilename(), `learnnote-diagnostics.${format}`);
-        assert.deepEqual(fs.readFileSync(await download.path()), Buffer.from(bytes));
+        await assertDownloadedBytes(download, Buffer.from(bytes));
         await dialog.getByRole('button', { name: '保存已预览报告' }).evaluate(node => node.click());
       }
       assert.equal(downloads, 2); assert.equal(diagnosticGets, 2);

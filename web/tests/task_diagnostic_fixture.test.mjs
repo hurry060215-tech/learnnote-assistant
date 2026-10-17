@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { Readable } from 'node:stream';
 import test from 'node:test';
 const source = fs.readFileSync(new URL('../../scripts/task-diagnostic-preview-acceptance.cjs', import.meta.url), 'utf8');
 for (const scenario of ['launch', 'context', 'context+close+write', 'launch+write']) {
@@ -129,4 +130,34 @@ test("whole-page browser Back is explicit and follows verified native zoom resto
   assert.match(source.slice(back), /assert.equal\(page.url\(\), 'about:blank#diagnostic-history-start'\)/);
   assert.match(source.slice(back), /await dialog.waitFor\(\{ state: 'detached' \}\); assert.equal\(downloads, 2\)/);
   assert.match(source.slice(back), /wholePageBrowserBack: true/);
+});
+
+function downloadAssertion() {
+  const context = { assert, Buffer }; vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf('async function assertDownloadedBytes('), source.indexOf('async function openDiagnosticEntry(')), context);
+  assert.match(source, /await assertDownloadedBytes\(download, Buffer.from\(bytes\)\)/);
+  assert.doesNotMatch(source, /download\.(?:path|saveAs)\(/);
+  return context.assertDownloadedBytes;
+}
+test('remote download stream preserves exact multibyte, BOM and CRLF bytes across chunks', async () => {
+  const expected = Buffer.from('\ufeff报告\r\n<img src=x>'), stream = Readable.from([expected.subarray(0, 4), expected.subarray(4)]);
+  let reads = 0;
+  await downloadAssertion()({ async createReadStream() { reads++; return stream; } }, expected);
+  assert.equal(reads, 1); assert.equal(stream.destroyed, true);
+});
+test('remote download creation and midstream failures retain the original error', async () => {
+  const primary = new Error('synthetic stream failure'), check = downloadAssertion();
+  await assert.rejects(check({ async createReadStream() { throw primary; } }, Buffer.from('abc')), error => error === primary);
+  const stream = Readable.from((async function* () { yield Buffer.from('a'); throw primary; })());
+  await assert.rejects(check({ async createReadStream() { return stream; } }, Buffer.from('abc')), error => error === primary);
+  assert.equal(stream.destroyed, true);
+});
+test('remote download null, oversized, truncated and changed bytes fail closed', async () => {
+  const check = downloadAssertion(), expected = Buffer.from('abc');
+  await assert.rejects(check({ async createReadStream() { return null; } }, expected), /must provide a readable stream/);
+  for (const bytes of ['abcd', 'ab', 'abd']) {
+    const stream = Readable.from([Buffer.from(bytes)]);
+    await assert.rejects(check({ async createReadStream() { return stream; } }, expected), bytes.length > 3 ? /exceeds expected byte length/ : /deep-equal/);
+    assert.equal(stream.destroyed, true);
+  }
 });
