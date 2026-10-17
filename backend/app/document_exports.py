@@ -258,20 +258,10 @@ def evidence_review_notice(task) -> str:
 
 
 def _diagnostic_summary_markdown(task) -> str:
-    """Opt-in machine-status summary; never export raw provider text or paths."""
-    lines = ["## 诊断摘要", ""]
-    for label, key in (("任务状态", "status"), ("处理阶段", "phase"), ("总结路线", "summary_source"), ("错误代码", "error_code")):
-        value = str(getattr(task, key, "") or "")
-        if re.fullmatch(r"[A-Za-z0-9_-]{1,120}", value):
-            lines.append(f"- {label}：{value}")
-    diagnostics = getattr(task, "summary_diagnostics", {})
-    quality = diagnostics.get("note_quality", {}) if isinstance(diagnostics, dict) else {}
-    if isinstance(quality, dict):
-        codes = [str(item.get("code") or "") for item in quality.get("issues", []) if isinstance(item, dict)]
-        codes = [value for value in codes if re.fullmatch(r"[a-z][a-z0-9_]{0,79}", value)]
-        if codes: lines.append("- 结构检查：" + "、".join(codes[:20]))
-    if len(lines) == 2: lines.append("当前资料没有可导出的诊断摘要。")
-    return "\n".join(lines)
+    """Only this opt-in section is content-free; selected note content is unchanged."""
+    from .diagnostic_fields import render_summary
+    return render_summary(task)
+
 
 def build_structured_export(
     task,

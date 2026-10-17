@@ -1,0 +1,6 @@
+/* Shared local report preview; each host retains its existing dialog tokens. */
+.task-diagnostic-export { width: min(760px, calc(100vw - 28px)); max-height: 90dvh; overflow: auto; text-align: left; }
+.task-diagnostic-export header, .task-diagnostic-export .tool-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.task-diagnostic-export h2 { flex: 1; }
+.task-diagnostic-export pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 42dvh; overflow: auto; text-align: left; }
+.task-diagnostic-export button, .task-diagnostic-export select { min-height: 44px; }

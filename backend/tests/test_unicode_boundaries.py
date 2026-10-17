@@ -319,10 +319,12 @@ class SummaryDiagnosticPrivacyTests(unittest.TestCase):
                 body = archive.read(name).decode("utf-8")
                 for marker in ("SOURCE_TOKEN_SYNTHETIC", "ERROR_COOKIE_SYNTHETIC", "MEDIA_TOKEN_SYNTHETIC", "EVENT_TOKEN_SYNTHETIC", "SensitiveBodySynthetic", "DETAIL_SECRET_SYNTHETIC"):
                     self.assertNotIn(marker, body, name)
-            self.assertIn("https://source.example/lesson?v=public", archive.read("diagnostics.md").decode())
-            rows = json.loads(archive.read("events.json"))
-            self.assertEqual(rows[0]["event"], "synthetic_failure")
-            self.assertEqual(rows[0]["details"]["progress"], 40)
+            self.assertNotIn("https://source.example/lesson?v=public", archive.read("diagnostics.md").decode())
+            self.assertNotIn("source.example", archive.read("audit.md").decode())
+            self.assertEqual(json.loads(archive.read("events.json")), [])
+            manifest = json.loads(archive.read("manifest.json"))
+            self.assertEqual(manifest["event_scope"], "retained_summary_diagnostics")
+            self.assertNotIn("task_id", manifest)
         self.assertEqual(events.read_bytes(), original_events)
         self.assertEqual((task_dir(task.id) / "task.json").read_bytes(), original_task)
 

@@ -120,7 +120,7 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.assertEqual(["_internal/web/personal-anchors.js"], result["missing_bundled"])
 
     def test_missing_course_graph_modules_fail(self):
-        for filename in ("course-concepts.js", "course-graph-snapshot.js"):
+        for filename in ("course-concepts.js", "course-graph-snapshot.js", "task-diagnostic-export.js", "task-diagnostic-export.css"):
             with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
                 self.populate_extension(root)

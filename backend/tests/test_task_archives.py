@@ -97,6 +97,10 @@ def public_contract():
     additions = {"allow_model_page_context", "allow_page_text_fallback", "review_fingerprint"}
     operation["parameters"] = [parameter for parameter in operation["parameters"]
         if not (parameter["in"] == "query" and parameter["name"] in additions)]
+    # Diagnostic exports retain their Markdown default and add one independently
+    # tested JSON format query. All prior routes and schemas remain frozen.
+    operation = schema["paths"]["/api/tasks/{task_id}/exports/diagnostics"]["get"]
+    operation["parameters"] = [p for p in operation["parameters"] if p["name"] != "format"]
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),
@@ -184,6 +188,10 @@ class TaskArchiveContracts(unittest.TestCase):
                     frozen["headers"]["content-length"] = change["content_length"]
                     member = next(item for item in frozen["members"] if item["name"] == "claim_evidence_map.json")
                     member["text"] = change["claim_map_text"]
+                if case[0] == "support-package":
+                    # Intentional privacy migration only: same four members,
+                    # strict contents and generic filename, frozen separately.
+                    frozen = json.loads((FIXTURE.parent / "task_archives_diagnostic_report_v1.json").read_text(encoding="utf-8"))
                 self.assertEqual(snapshot, frozen)
 
     def test_old_direct_export_is_downgraded_without_mutating_raw_maps_or_personal_bytes(self):

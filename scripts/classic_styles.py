@@ -19,7 +19,7 @@ CLASSIC_STYLE_LIMITS = {
     "classic-study.css": 91,
 }
 CLASSIC_STYLE_BUDGET = 12920
-CLASSIC_STYLE_ORDER = (*CLASSIC_STYLE_LIMITS, "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css")
+CLASSIC_STYLE_ORDER = (*CLASSIC_STYLE_LIMITS, "workspace.css", "product.css", "mature.css", "editorial.css", "experience.css", "task-diagnostic-export.css")
 STRING = r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' '''.strip()
 IDENT = r"(?:[\w-]|\\(?:[0-9a-fA-F]{1,6}\s?|[^\n\r]))+"
 TOKENS = re.compile(rf"/\*.*?\*/|{STRING}|(?P<ident>@?{IDENT})|(?P<brace>[{{}}])", re.S)

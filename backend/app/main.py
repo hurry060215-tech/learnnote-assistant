@@ -1753,297 +1753,8 @@ def task_artifact_status(task: TaskRecord) -> dict[str, object]:
 
 
 def render_diagnostics_markdown(task: TaskRecord) -> str:
-    task = public_summary_task(task)
-    selected = task.selected_resource
-    resource_inventory = read_resource_inventory(task)
-    page_preflight = read_page_preflight_report(task)
-    chaoxing_profile = chaoxing_evidence_profile(task)
-    lines = [
-        "# LearnNote 任务诊断报告",
-        "",
-        f"- 任务：{task.title}",
-        f"- ID：{task.id}",
-        f"- 状态：{task.status} / {task.phase} / {task.progress}%",
-        f"- 来源：{task.source_type}",
-        f"- 模式：{task.mode}",
-        f"- 页面：{task.page_url or '-'}",
-        f"- 消息：{task.error_detail or task.message or '-'}",
-        f"- 错误码：{task.error_code or '-'}",
-        "",
-        "## 已选资源",
-    ]
-    if selected:
-        lines.extend([
-            f"- 类型：{selected.kind or '-'}",
-            f"- 来源：{selected.source or '-'}",
-            f"- URL：{selected.url or '-'}",
-            f"- 最终 URL：{selected.resolved_url or '-'}",
-            f"- 播放匹配：{selected.playback_match or '-'}",
-            f"- Blob：{selected.blob_url or '-'}",
-            f"- Frame：{selected.frame_url or selected.frame_id or '-'}",
-            f"- HTTP：{selected.status_code or '-'}",
-            f"- MIME：{selected.mime or '-'}",
-            f"- 大小：{_format_bytes(selected.content_length)}",
-            f"- Content-Disposition：{selected.headers.get('content-disposition') or '-'}",
-            f"- 可复用请求头名：{_safe_header_names(selected.request_headers)}",
-        ])
-        append_evidence = mse_append_evidence(selected)
-        if append_evidence:
-            lines.extend([
-                "",
-                "### MSE Append Evidence",
-                f"- Append count: {append_evidence.get('append_count', '-')}",
-                f"- Last append bytes: {_format_bytes(append_evidence.get('append_bytes'))}",
-                f"- Total append bytes: {_format_bytes(append_evidence.get('append_total_bytes'))}",
-                f"- Magic: {append_evidence.get('append_magic', '-')}",
-                f"- Append MIME: {append_evidence.get('append_mime', '-')}",
-                f"- Detected kind: {append_evidence.get('append_detected_kind', '-')}",
-                f"- Blob URL: {append_evidence.get('blob_url', '-')}",
-            ])
-    else:
-        lines.append("- 未选择直接媒体资源，可能使用页面解析或 yt-dlp fallback。")
-
-    if resource_inventory:
-        candidates = resource_inventory.get("candidates") or []
-        if not isinstance(candidates, list):
-            candidates = []
-        lines.extend([
-            "",
-            "## Resource Inventory",
-            f"- Candidate count: {resource_inventory.get('candidate_count', len(candidates))}",
-            f"- Downloadable candidates: {resource_inventory.get('downloadable_candidate_count', 0)}",
-            f"- Replayable candidates: {resource_inventory.get('replayable_candidate_count', 0)}",
-            f"- Kind counts: {resource_inventory.get('kind_counts', {})}",
-            f"- Source counts: {resource_inventory.get('source_counts', {})}",
-        ])
-        for index, candidate in enumerate(candidates[:5], start=1):
-            headers = candidate.get("request_headers") or {}
-            header_names = sorted(headers.keys()) if isinstance(headers, dict) else []
-            lines.extend([
-                f"### Candidate {index}",
-                f"- URL: {candidate.get('url') or '-'}",
-                f"- Kind/source: {candidate.get('kind') or '-'} / {candidate.get('source') or '-'}",
-                f"- Score: {candidate.get('score', '-')}",
-                f"- Playback match: {candidate.get('playback_match') or '-'}",
-                f"- MIME: {candidate.get('mime') or '-'}",
-                f"- Safe request header names: {', '.join(_safe_request_header_names(header_names)) if header_names else '-'}",
-            ])
-        if len(candidates) > 5:
-            lines.append(f"- Omitted candidates in Markdown: {len(candidates) - 5}; see resource_inventory.json.")
-
-    if page_preflight:
-        page_scan = page_preflight.get("page_scan") or {}
-        candidates = page_preflight.get("candidates") or []
-        if not isinstance(candidates, list):
-            candidates = []
-        lines.extend([
-            "",
-            "## Page Preflight Report",
-            f"- Ready: {'yes' if page_preflight.get('ready') else 'no'}",
-            f"- Code: {page_preflight.get('code') or '-'}",
-            f"- Selected URL: {page_preflight.get('selected_url') or '-'}",
-            f"- Candidates/probed/downloadable: {page_preflight.get('candidate_count', 0)} / {page_preflight.get('probed_count', 0)} / {page_preflight.get('downloadable_count', 0)}",
-            f"- Page scan attempted: {'yes' if page_scan.get('attempted') else 'no'}",
-            f"- Page scan discoveries: {page_scan.get('discovered_count', 0)}",
-        ])
-        for item in candidates[:5]:
-            resource = item.get("resource") or {}
-            preflight = item.get("preflight") or {}
-            lines.append(
-                f"- Rank {item.get('rank', '-')}: {resource.get('kind') or '-'} / {resource.get('source') or '-'} / "
-                f"{preflight.get('code') or preflight.get('strategy') or '-'} / {resource.get('url') or '-'}"
-            )
-        if len(candidates) > 5:
-            lines.append(f"- Omitted preflight candidates in Markdown: {len(candidates) - 5}; see page_preflight_report.json.")
-
-    if chaoxing_profile.get("detected"):
-        lines.extend([
-            "",
-            "## Chaoxing Profile",
-            f"- Detected: yes",
-            f"- Likely issue: {chaoxing_profile.get('likely_issue') or '-'}",
-            f"- ananas/playurl/objectid/dtoken: {'yes' if chaoxing_profile.get('has_ananas_candidate') else 'no'} / {'yes' if chaoxing_profile.get('has_playurl') else 'no'} / {'yes' if chaoxing_profile.get('has_objectid') else 'no'} / {'yes' if chaoxing_profile.get('has_dtoken') else 'no'}",
-            f"- Replay body: {'yes' if chaoxing_profile.get('has_replay_body') else 'no'} ({chaoxing_profile.get('replay_body_count', 0)})",
-            f"- Referer/Origin/X-Requested-With: {'yes' if chaoxing_profile.get('has_referer') else 'no'} / {'yes' if chaoxing_profile.get('has_origin') else 'no'} / {'yes' if chaoxing_profile.get('has_x_requested_with') else 'no'}",
-            f"- iframe/player context: {'yes' if chaoxing_profile.get('has_iframe_context') else 'no'} ({chaoxing_profile.get('iframe_context_count', 0)})",
-            f"- Cookie domains/count: {chaoxing_profile.get('cookie_domain_count', 0)} / {chaoxing_profile.get('cookie_count', 0)}",
-            f"- Partitioned cookies: {chaoxing_profile.get('partitioned_cookie_count', 0)} / {chaoxing_profile.get('partition_key_count', 0)} partition keys",
-            f"- Safe request header names: {', '.join(chaoxing_profile.get('safe_request_header_names') or []) or '-'}",
-            f"- Candidate kinds: {', '.join(chaoxing_profile.get('candidate_kinds') or []) or '-'}",
-            "- Boundary: direct downloadable resources only; no recording, no progress forgery, no auto-answering.",
-        ])
-
-    lines.extend(["", "## Cookie 同步"])
-    lines.extend(_format_cookie_summary(task.cookie_summary))
-
-    lines.extend(["", "## 下载尝试"])
-    if task.download_attempts:
-        for index, attempt in enumerate(task.download_attempts, start=1):
-            lines.extend([
-                f"### {index}. {attempt.strategy} · {attempt.status}",
-                f"- URL：{attempt.url or '-'}",
-                f"- 最终 URL：{attempt.resolved_url or '-'}",
-                f"- 类型：{attempt.kind or '-'}",
-                f"- 来源：{attempt.source or '-'}",
-                f"- 错误码：{attempt.code or '-'}",
-                f"- HTTP：{attempt.status_code or '-'}",
-                f"- MIME：{attempt.mime or '-'}",
-                f"- 大小：{_format_bytes(attempt.bytes_downloaded or attempt.content_length)}",
-                f"- 请求头名：{', '.join(_safe_request_header_names(attempt.request_header_names)) if attempt.request_header_names else '-'}",
-                f"- 伴随音频：{attempt.companion_audio_url or '-'}"
-                f"{f' ({attempt.companion_audio_mime})' if attempt.companion_audio_mime else ''}",
-                f"- 输出：{attempt.output_path or '-'}",
-                f"- 信息：{attempt.message or '-'}",
-                "",
-            ])
-    else:
-        lines.append("- 暂无下载尝试记录。")
-
-    recovery = diagnostic_recovery_profile(task)
-    latest_attempt = recovery.get("latest_attempt") or {}
-    lines.extend([
-        "",
-        "## 恢复档案",
-        f"- 归类：{recovery.get('code') or '-'}",
-        f"- 判断：{recovery.get('diagnosis') or '-'}",
-        f"- 严重度：{recovery.get('severity') or '-'}",
-        f"- 置信度：{recovery.get('confidence') or '-'}",
-        f"- 推荐动作：{recovery.get('next_action') or '-'}",
-        f"- 学习通/超星：{'yes' if recovery.get('is_chaoxing') else 'no'}",
-        f"- 已选候选：{recovery.get('selected_kind') or '-'} / {recovery.get('selected_source') or '-'}",
-        f"- 尝试次数：{recovery.get('attempt_count') or 0}",
-    ])
-    if latest_attempt:
-        lines.append(
-            "- 最近尝试："
-            f"{latest_attempt.get('strategy') or '-'} / "
-            f"{latest_attempt.get('code') or '-'} / "
-            f"{latest_attempt.get('status') or '-'} / "
-            f"HTTP {latest_attempt.get('status_code') or '-'}"
-        )
-    lines.append("- 边界说明：")
-    lines.extend(f"  - {note}" for note in recovery.get("boundary_notes", []))
-
-    lines.extend(["", "## 下一步建议"])
-    lines.extend(f"- {step}" for step in recovery.get("steps", []))
-
-    direct = direct_extraction_evidence(task)
-    selected_direct = direct.get("selected_candidate") or {}
-    browser_context = direct.get("browser_context") or {}
-    lines.append(f"- Platform subtitle probe: {(task.subtitle_probe.status if task.subtitle_probe else 'not_recorded')} / extension {task.extension_version or 'not_recorded'}")
-    download_direct = direct.get("download") or {}
-    processing_direct = direct.get("processing") or {}
-    playback_direct = playback_evidence(task)
-    active_playback = playback_direct.get("active_video") or {}
-    selected_playback = playback_direct.get("selected_resource") or {}
-    safe_headers = selected_direct.get("safe_request_header_names") or []
-    lines.extend([
-        "",
-        "## Direct Extraction Evidence",
-        f"- No tab recording: {'yes' if direct.get('no_tab_recording') else 'no'}",
-        f"- No DRM bypass: {'yes' if direct.get('no_drm_bypass') else 'no'}",
-        f"- Route: {direct.get('route') or '-'}",
-        f"- Boundary: {direct.get('boundary') or '-'}",
-        f"- Media landed: {'yes' if direct.get('media_landed') else 'no'}",
-        f"- Candidate: {selected_direct.get('kind') or '-'} / {selected_direct.get('source') or '-'} / {selected_direct.get('playback_match') or '-'}"
-        f" / user selected {'yes' if selected_direct.get('user_selected') else 'no'}",
-        f"- Safe request headers: {', '.join(safe_headers) if safe_headers else '-'}",
-        f"- Browser context: {browser_context.get('active_source_type') or '-'} / subtitles {browser_context.get('browser_subtitle_count') or 0}"
-        f" / cookie domains {browser_context.get('cookie_domain_count') or 0} / cookies {browser_context.get('cookie_count') or 0}",
-        f"- Active playback: {active_playback.get('source_type') or '-'} / {_format_timestamp(active_playback.get('current_time'))}"
-        f" / {_format_timestamp(active_playback.get('duration'))} / paused {'yes' if active_playback.get('paused') else 'no'}"
-        f" / frame {active_playback.get('frame_id') if active_playback.get('frame_id') is not None else '-'}"
-        f" / {active_playback.get('width') or 0}x{active_playback.get('height') or 0}",
-        f"- Selected playback match: {'yes' if playback_direct.get('matched_current_playback') else 'no'}"
-        f" / {selected_playback.get('playback_match') or '-'}"
-        f" / {_format_timestamp(selected_playback.get('current_time'))}"
-        f" / {_format_timestamp(selected_playback.get('duration'))}",
-        f"- Download attempts: {download_direct.get('successful_attempt_count') or 0} success / {download_direct.get('failed_attempt_count') or 0} failed / {', '.join(download_direct.get('strategy_order') or []) or '-'}",
-        f"- Processing: transcript {'yes' if processing_direct.get('transcript_ready') else 'no'} / grids {processing_direct.get('frame_grid_count') or 0} / windows {processing_direct.get('visual_window_count') or 0} / note {'yes' if processing_direct.get('note_ready') else 'no'}",
-    ])
-
-    audit = task_audit_summary(task)
-    lines.extend([
-        "",
-        "## Stage Audit Gates",
-        f"- Released: {audit['released_count']}/{audit['gate_count']}",
-        f"- Blocked gate: {audit['blocked_gate'] or '-'}",
-    ])
-    for gate in audit["gates"]:
-        lines.append(f"- {gate['key']}: {gate['state']} / {gate['value']} / {gate['detail']}")
-
-    reuse = task_reuse_evidence(task)
-    lines.extend([
-        "",
-        "## Reuse Evidence",
-        f"- Media available: {'yes' if reuse['media_available'] else 'no'}",
-        f"- Source task: {reuse.get('source_task_id') or '-'}",
-        f"- Source media: {reuse.get('source_media_path') or '-'}",
-        f"- Saved subtitles: {'yes' if reuse['subtitle_available'] else 'no'} / {reuse.get('subtitle_path_recorded') or '-'}",
-        f"- Reusable transcript: {'yes' if reuse['transcript_ready'] else 'no'} / {reuse.get('transcript_source') or '-'}",
-        f"- Browser subtitles: {reuse['browser_subtitle_count']} cues / {reuse['browser_subtitle_span_seconds']}s",
-        f"- Visual slices: {reuse['frame_grid_count']} frame grids / {reuse['visual_window_count']} windows",
-        f"- Rerun from media ready: {'yes' if reuse['rerun_from_media_ready'] else 'no'}",
-        f"- Suggested next step: {reuse['suggested_next_step']}",
-    ])
-
-    lines.extend([
-        "",
-        "## 处理产物",
-        f"- 媒体：{task.media_path or '-'}",
-        f"- 音频：{task.audio_path or '-'}",
-        f"- 转写引擎：{_asr_option_text(task)}",
-        f"- 转写来源：{_task_transcript_source_text(task)}",
-        f"- 字幕：{task.subtitle_path or '-'}",
-        f"- 转写：{task.transcript_path or '-'}",
-        f"- 视觉索引：{task.visual_index_path or '-'}",
-        f"- 笔记：{task.note_path or '-'}",
-        f"- 画面网格：{len(task.frame_grids)}",
-        f"- 视觉窗口：{len(task.visual_windows)}",
-        "",
-        "## 图文总结",
-        f"- 来源：{task.summary_source or '-'}",
-        f"- 提示：{task.summary_warning or '-'}",
-    ])
-    if task.summary_diagnostics:
-        lines.extend([
-            f"- 视觉窗口数：{task.summary_diagnostics.get('visual_window_count', '-')}",
-            f"- LLM Provider：{task.summary_diagnostics.get('llm_provider', '-')}",
-            f"- LLM Base：{task.summary_diagnostics.get('llm_base_host', '-')}",
-            f"- LLM Model：{task.summary_diagnostics.get('llm_model', '-')}",
-            f"- LLM Failure：{task.summary_diagnostics.get('llm_failure_stage', '-')}"
-            f" / {task.summary_diagnostics.get('llm_failure_code', '-')}"
-            f" / {task.summary_diagnostics.get('llm_failure_reason', '-')}",
-            f"- LLM Events：{task.summary_diagnostics.get('llm_event_count', 0)}",
-            f"- LLM Last Failure：{task.summary_diagnostics.get('llm_last_failure', {})}",
-            f"- 送入视觉图片：{task.summary_diagnostics.get('vision_image_count', '-')}/{task.summary_diagnostics.get('vision_grid_count', '-')}",
-            f"- 视觉调用状态：{task.summary_diagnostics.get('vision_call_status', '-')}",
-            f"- 视觉失败批次：{task.summary_diagnostics.get('vision_failed_batch_count', 0)}",
-            f"- 视觉图片输入被拒：{'yes' if task.summary_diagnostics.get('vision_model_rejected_image') else 'no'}",
-            f"- 视觉批次计划：{task.summary_diagnostics.get('vision_expected_batch_count', '-')}"
-            f" 批，每批最多 {task.summary_diagnostics.get('vision_batch_size', '-')} 张网格",
-            f"- 省略网格：{task.summary_diagnostics.get('omitted_frame_grid_count', '-')}",
-            f"- 已送入视觉窗口：{_format_id_list(task.summary_diagnostics.get('vision_image_window_ids'))}",
-            f"- 缺少图片窗口：{_format_id_list(task.summary_diagnostics.get('missing_vision_image_window_ids'))}",
-            f"- 超限省略窗口：{_format_id_list(task.summary_diagnostics.get('omitted_vision_window_ids'))}",
-        ])
-        if task.summary_diagnostics.get("used_page_text_fallback"):
-            lines.extend([
-                f"- 页面文本字符：{task.summary_diagnostics.get('page_text_char_count', '-')}",
-                f"- 浏览器字幕条数：{task.summary_diagnostics.get('browser_subtitle_count', '-')}",
-                f"- 合并文本字符：{task.summary_diagnostics.get('combined_text_char_count', '-')}",
-                "- 页面文本兜底：是",
-            ])
-
-    lines.extend([
-        "",
-        "## 边界说明",
-        "- 本报告不会包含 Cookie 或 Authorization 值。",
-        "- 如果结果是 `drm_or_encrypted`、未映射 `blob:`、孤立分片，当前版本不会录制、破解或绕过 DRM。",
-        "- `media.mp4` 通过单独的“导出本地视频”接口下载，资料包默认不内嵌大视频文件。",
-        "",
-    ])
-    return sanitize_export_text("\n".join(lines))
+    from .diagnostic_report import build_report, render_markdown
+    return render_markdown(build_report(task))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -3928,12 +3639,10 @@ def api_export_support_package(task_id: str) -> Response:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    events = support_event_projection(read_task_events(task_id))
-    manifest = redacted_support_manifest(task_id, events)
-    diagnostics = sanitize_export_text(render_diagnostics_markdown(task))
-    audit = sanitize_export_text(render_task_audit_markdown(task))
+    from .diagnostic_report import build_report, support_members
+    manifest, events, diagnostics, audit = support_members(build_report(task))
     content = build_support_archive(manifest, events, diagnostics, audit)
-    filename = f"learnnote-{task.id}-support-package.zip"
+    filename = "learnnote-support-package.zip"
     return Response(
         content,
         media_type="application/zip",
@@ -3960,22 +3669,21 @@ def api_export_notion_payload(task_id: str) -> Response:
 
 
 @app.get("/api/tasks/{task_id}/exports/diagnostics")
-def api_export_diagnostics(task_id: str) -> PlainTextResponse:
+def api_export_diagnostics(task_id: str, format: str = "markdown") -> Response:
+    from .diagnostic_report import build_report, render_markdown
+    if format not in {"markdown", "json"}:
+        raise HTTPException(status_code=422, detail="Unsupported diagnostic format")
     try:
         task = get_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
-    report = render_diagnostics_markdown(task)
-    if not report.strip():
-        raise HTTPException(status_code=404, detail="Diagnostics not found")
-    filename = diagnostics_filename(task.id, task.title)
-    headers = {
-        "Content-Disposition": (
-            f'attachment; filename="learnnote-{task.id}-diagnostics.md"; '
-            f"filename*=UTF-8''{quote(filename)}"
-        )
-    }
-    return PlainTextResponse(report, media_type="text/markdown; charset=utf-8", headers=headers)
+    report = build_report(task)
+    suffix = "json" if format == "json" else "md"
+    headers = {"Content-Disposition": f'attachment; filename="learnnote-diagnostics.{suffix}"', "Cache-Control": "no-store"}
+    if format == "json":
+        return Response(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+                        media_type="application/json; charset=utf-8", headers=headers)
+    return PlainTextResponse(render_markdown(report), media_type="text/markdown; charset=utf-8", headers=headers)
 
 
 @app.get("/api/tasks/{task_id}/exports/resource-inventory")

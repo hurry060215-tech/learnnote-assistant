@@ -174,6 +174,7 @@ CLASSIC_PROVIDERS = {
     "LearnNoteContentMediaHints": "extension/content-media-hints.js",
     # Chapter-only API in PR #241 retains this filename and namespace.
     "LearnNoteStudyEvidence": "extension/content-study-evidence.js",
+    "LearnNoteDiagnosticExport": "web/task-diagnostic-export.js",
     "LearnNoteVisualStudy": "web/visual-study.js",
     "LearnNoteVisualWindowEvidence": "web/visual-window-evidence.js",
     "LearnNotePlatformSignals": "web/platform-signals.js",

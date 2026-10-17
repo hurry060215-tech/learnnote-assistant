@@ -950,6 +950,7 @@ function showSettingsPane(name = "general") {
 }
 
 function showAppView(view = "workspace") {
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   const requestedView = view === "history" ? "notes" : view;
   const settingsMode = requestedView === "settings";
   const wasSettingsMode = document.body?.classList?.contains("settings-mode");
@@ -1439,6 +1440,7 @@ async function deleteAllTasksFromClient() {
   }
   try {
     const result = await fetchJson(apiUrl("/api/tasks?confirm=delete_all_tasks"), { method: "DELETE" });
+    globalThis.LearnNoteDiagnosticExport?.invalidate();
     selectedTaskId = null;
     lastDetailFingerprint = "__unrendered__";
     clearTaskCaches();
@@ -1618,6 +1620,7 @@ function syncSelectedTaskUrl(taskId) {
 function selectTask(taskId, { clearCaches = true, syncUrl = true } = {}) {
   if (!taskId) return;
   const changed = selectedTaskId !== taskId;
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   selectedTaskId = taskId;
   selectedMaterialId = "";
   document.body.classList.remove("reading-material");
@@ -2042,7 +2045,7 @@ function browserRouteActions(task) {
     actions.push(`<a href="${escapeHtml(taskExportUrl(task, "audit"))}">下载审计</a>`);
   }
   if (hasTaskDiagnostics(task)) {
-    actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">下载诊断</a>`);
+    actions.push(`<button type="button" data-diagnostic-export="${escapeHtml(task.id)}">下载诊断</button>`);
   }
   if (!task?.id) {
     actions.push(`<button type="button" class="primary" data-browser-route-action="open-extension">去扩展侧栏开始</button>`);
@@ -3044,7 +3047,7 @@ function recoveryActionButtonHtml(action, task) {
     return task.note_path ? `<a href="${escapeHtml(taskExportUrl(task, "markdown"))}"${title}>${label}</a>` : "";
   }
   if (intent === "export_diagnostics") {
-    return hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}"${title}>${label}</a>` : "";
+    return hasTaskDiagnostics(task) ? `<button type="button" data-diagnostic-export="${escapeHtml(task.id)}"${title}>${label}</button>` : "";
   }
   if (intent === "export_audit" || intent === "inspect_audit") {
     return hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}"${title}>${label}</a>` : "";
@@ -3068,7 +3071,7 @@ function recoveryActionsHtml(task, skipKeys = new Set()) {
     `<button type="button" data-recovery-source="local">上传本地视频</button>`,
     `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>`
   ];
-  if (hasTaskDiagnostics(task)) actions.push(`<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>`);
+  if (hasTaskDiagnostics(task)) actions.push(`<button type="button" data-diagnostic-export="${escapeHtml(task.id)}">导出诊断</button>`);
   if (hasTaskAudit(task)) actions.push(`<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>`);
   if (canContinueFromDownloadedMedia(task)) actions.push(`<button type="button" data-rerun-from-media="${escapeHtml(task.id)}">继续切片总结</button>`);
   if (task.note_path) actions.push(`<a href="${escapeHtml(taskExportUrl(task, "markdown"))}">导出 Markdown</a>`);
@@ -4272,6 +4275,7 @@ async function openLibraryMaterial(materialId) {
   if (!materialId) return;
   selectedMaterialId = materialId;
   document.body.classList.add("reading-material");
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   selectedTaskId = null;
   clearTaskCaches();
   showAppView("notes");
@@ -4342,7 +4346,7 @@ async function loadTasksOnce() {
   handleTaskStatusTransitions(nextTasks);
   tasks = nextTasks;
   syncTaskEventStreams(tasks);
-  if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) selectedTaskId = null;
+  if (selectedTaskId && !tasks.some(task => task.id === selectedTaskId)) { globalThis.LearnNoteDiagnosticExport?.invalidate(); selectedTaskId = null; }
   if (!selectedTaskId && !selectedMaterialId) {
     const initialTask = preferredInitialTask(tasks);
     if (initialTask) selectTask(initialTask.id, { clearCaches: false });
@@ -4745,7 +4749,7 @@ async function runTaskAction(taskId, action) {
       await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cancel`), { method: "POST" });
     }
     await fetchJson(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}`), { method: "DELETE" });
-    if (selectedTaskId === taskId) selectedTaskId = null;
+    if (selectedTaskId === taskId) { globalThis.LearnNoteDiagnosticExport?.invalidate(); selectedTaskId = null; }
   }
   await loadTasks();
 }
@@ -7191,7 +7195,7 @@ function noteReviewWorkbench(markdown, task) {
   ].filter(Boolean);
   const advanced = [
     hasDiagnostics ? `<button type="button" data-switch-result-tab="diagnostics">查看诊断</button>` : "",
-    hasDiagnostics ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">导出诊断</a>` : "",
+    hasDiagnostics ? `<button type="button" data-diagnostic-export="${escapeHtml(task.id)}">导出诊断</button>` : "",
     hasAudit ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">导出审计</a>` : "",
     task.resource_inventory_path ? `<a href="${escapeHtml(taskExportUrl(task, "resource-inventory"))}">候选证据</a>` : "",
     task.page_preflight_report_path ? `<a href="${escapeHtml(taskExportUrl(task, "page-preflight-report"))}">预检报告</a>` : "",
@@ -7300,7 +7304,7 @@ function noteExportCtaBar(task) {
   const secondary = [
     hasExportableSubtitle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "subtitles"))}">字幕</a>` : "",
     hasMedia ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
-    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
+    hasTaskDiagnostics(task) ? `<button type="button" data-diagnostic-export="${escapeHtml(task.id)}">诊断</button>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : ""
   ].filter(Boolean);
@@ -7405,7 +7409,7 @@ function readingArtifactsRail(task) {
     hasExportableMedia(task) ? `<a href="${escapeHtml(taskExportUrl(task, "media"))}">${escapeHtml(mediaName)}</a>` : "",
     hasVisualWindowExport(task) ? `<a href="${escapeHtml(taskExportUrl(task, "visual-windows"))}">切片索引</a>` : "",
     hasTaskAudit(task) ? `<a href="${escapeHtml(taskExportUrl(task, "audit"))}">审计</a>` : "",
-    hasTaskDiagnostics(task) ? `<a href="${escapeHtml(taskExportUrl(task, "diagnostics"))}">诊断</a>` : "",
+    hasTaskDiagnostics(task) ? `<button type="button" data-diagnostic-export="${escapeHtml(task.id)}">诊断</button>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "manifest"))}">清单</a>` : "",
     hasTaskBundle(task) ? `<a href="${escapeHtml(taskExportUrl(task, "bundle"))}">资料包</a>` : ""
   ].filter(Boolean);
@@ -8371,9 +8375,9 @@ document.addEventListener?.("click", event => {
   closeResultMenus(activeMenu);
 });
 els.copyBackendButton.onclick = () => copyBackendUrl(els.copyBackendButton);
-els.browserRefreshButton.onclick = () => loadTasks();
+els.browserRefreshButton.onclick = () => { globalThis.LearnNoteDiagnosticExport?.invalidate(); return loadTasks(); };
 els.uploadButton.onclick = uploadSelectedFile;
-els.refreshButton.onclick = () => loadTasks();
+els.refreshButton.onclick = () => { globalThis.LearnNoteDiagnosticExport?.invalidate(); return loadTasks(); };
 els.taskSearch.oninput = () => {
   taskQuery = els.taskSearch.value;
   historyVisibleLimit = HISTORY_PAGE_SIZE;
@@ -8388,6 +8392,8 @@ els.copyButton.onclick = async () => navigator.clipboard.writeText(await noteFor
 if (els.continueFromMediaButton) els.continueFromMediaButton.onclick = () => rerunTaskFromMedia(selectedTaskId);
 async function exportTaskArtifact(taskId, exportType, button = null) {
   if (!taskId) return;
+  const selectionAtOpen = selectedTaskId;
+  if (["diagnostics", "support-package"].includes(exportType)) return globalThis.LearnNoteDiagnosticExport.open({ taskId, apiUrl, isCurrent: () => selectedTaskId === selectionAtOpen });
   const api = desktopApi();
   if (els.exportStatus) els.exportStatus.textContent = "正在导出…";
   if (button) button.disabled = true;
@@ -8472,16 +8478,7 @@ els.mediaButton.onclick = () => exportSelectedTask("media", els.mediaButton);
 els.downloadButton.onclick = () => exportSelectedTask("markdown", els.downloadButton);
 els.openExportFolderButton?.addEventListener?.("click", () => desktopApi()?.open_export_folder?.());
 
-document.addEventListener?.("click", event => {
-  if (!desktopApi()?.export_task) return;
-  const link = event.target?.closest?.('a[href*="/exports/"]');
-  if (!link) return;
-  const href = String(link.getAttribute?.("href") || "");
-  const match = href.match(/\/api\/tasks\/([^/]+)\/exports\/(.+)$/);
-  if (!match) return;
-  event.preventDefault?.();
-  exportTaskArtifact(decodeURIComponent(match[1]), decodeURIComponent(match[2]), link);
-});
+globalThis.LearnNoteDiagnosticExport.bindClassic({ desktopApi, exportTaskArtifact });
 
 els.dropzone.addEventListener("dragover", event => {
   event.preventDefault();

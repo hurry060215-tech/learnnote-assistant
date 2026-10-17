@@ -51,6 +51,10 @@ API routers (routers/*.py)
 - `downloader_policy.py` 只保存下载错误分类、重试优先级和 yt-dlp 进程策略；它不发起网络请求，便于独立测试和复用。
 - `processor_state.py` 只负责取消、失败收口、checkpoint、证据门禁和资源报告；`processor.py` 负责阶段编排，不把状态持久化细节重新复制回流水线。
 - `summary_diagnostics.py` 只负责总结/视觉调用的脱敏诊断计划和失败分类；`processor.py` 只负责把诊断结果接回任务阶段，不直接维护诊断规则。
+- `diagnostic_report.py` 只读已有任务及其自有、非符号链接的有界元数据，生成版本 1 内容无关诊断快照；Markdown、JSON 和支持 ZIP 的四个成员共享明确字段白名单，不导出标题、原文、路径、地址、凭据、标识或任意错误文本。缺失、损坏或归属不明的产物保持未知，不创建目录或改写旧任务。
+- `diagnostic_fields.py` 不导入任何模块，只保存纯字段投影与摘要渲染，供诊断报告和 `document_exports.py` 复用，避免文档导出反向依赖任务产物读取。普通笔记及学习 ZIP 仍包含用户选择的学习内容，不能视为匿名支持报告。
+- 当前运行版本不证明历史任务版本；历史构建、实际模型用量与费用未记录时为未知。阶段耗时按保留尝试分别展示，不累加重叠区间，不以估算补齐；来源检查不代表语义核验。导出只供用户预览后本地保存，不自动上传。
+- 两个诊断模块当前分别为 217 / 56 行，上限固定为 220 / 60；既有模块与合计预算保持不变。离线测试覆盖白名单、四个 ZIP 成员、历史未知值、路径归属与文件字节/修改时间不变；纯字段层另有无导入检查。
 - `routers/knowledge_study.py` owns knowledge and study routes; `routers/library.py`
   owns index/search/backup/restore routes; `routers/system.py` owns integration,
   desktop-focus, and preference routes. They import domain services directly and
@@ -241,3 +245,18 @@ contracts, native exclusions, dependency/load-order and budget-mutation tests
 are documented in [the migration record](ISSUE_ARCHITECTURE_VISUAL_STUDY_20261017.md).
 Combined-tree hosted classic screenshots remain pending; this stage does not
 close the larger #143 acceptance.
+
+## Safe diagnostic preview boundary
+
+`web/task-diagnostic-export.js` owns one `LearnNoteDiagnosticExport` namespace,
+loaded explicitly before classic `app.js` and the installed `desk.js` entry.
+The shared dialog fetches the safe Markdown/JSON report once per format selection,
+renders decoded UTF-8 only with `textContent`, and saves the exact cached bytes
+under a generic name after explicit review. It never calls desktop export or
+upload APIs. Close, cancel, Back, supersession, navigation and explicit refresh
+clear pending requests and cached bytes; background polling preserves review.
+The six-line shared stylesheet adds only bounded wrapping/scrolling and 44px
+controls using each host's existing styles. Runtime CSS budget: 2402 (+6);
+classic task aggregate: 10238 (+102 net), including the 105-line shared controller.
+Existing per-module size budgets are unchanged. Release-tree checks require both shared assets;
+classic remains excluded from installed builds.

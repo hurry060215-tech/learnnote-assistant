@@ -103,6 +103,7 @@ const resultTabs = ["note", "transcript", "slices", "frames", "qa", "diagnostics
   });
 
 const documentStub = {
+  addEventListener() {},
   body: makeElement(),
   createElement() {
     return makeElement();
@@ -204,6 +205,7 @@ vm.runInContext(await readFile(new URL("../platform-signals.js", import.meta.url
 vm.runInContext(await readFile(new URL("../task-display.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../task-list.js", import.meta.url), "utf8"), context);
 vm.runInContext(await readFile(new URL("../visual-study.js", import.meta.url), "utf8"), context);
+vm.runInContext(await readFile(new URL("../task-diagnostic-export.js", import.meta.url), "utf8"), context);
 vm.runInContext(webCode, context);
 vm.runInContext(editorialCode, context);
 
@@ -992,7 +994,7 @@ assert.match(routeSummaryHtml, /data-rerun-browser-task="task-route-summary"/);
 assert.match(routeSummaryHtml, /data-browser-route-action="refresh"/);
 assert.match(routeSummaryHtml, /data-browser-route-action="copy-backend"/);
 assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/media/);
-assert.match(routeSummaryHtml, /\/api\/tasks\/task-route-summary\/exports\/diagnostics/);
+assert.match(routeSummaryHtml, /data-diagnostic-export="task-route-summary"/);
 assert.match(routeSummaryHtml, /class="browser-bridge-gate"/);
 assert.match(routeSummaryHtml, /扩展侧栏交接门/);
 assert.match(routeSummaryHtml, /读取当前播放页只能从 Chrome\/Edge 扩展发起/);
@@ -1941,7 +1943,7 @@ assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/markdown/);
 assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/visual-windows/);
 assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/bundle/);
 assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/media/);
-assert.match(exportCtaHtml, /\/api\/tasks\/task-study-map\/exports\/diagnostics/);
+assert.match(exportCtaHtml, /data-diagnostic-export="task-study-map"/);
 assert.match(stylesCss, /\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(260px, 1fr\) minmax\(280px, auto\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.export-cta-bar[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
 
@@ -2050,7 +2052,7 @@ assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/visual-windows/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/media/);
 assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/bundle/);
-assert.match(reviewWorkbenchHtml, /\/api\/tasks\/task-review-workbench\/exports\/diagnostics/);
+assert.match(reviewWorkbenchHtml, /data-diagnostic-export="task-review-workbench"/);
 assert.match(stylesCss, /\.review-command-grid[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.review-command-grid[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(stylesCss, /@container \(max-width: 960px\)[\s\S]*\.learning-path-steps[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
@@ -2441,7 +2443,7 @@ assert.match(diagnosticRecoveryHtml, /Cookie/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /secret=bad/);
 assert.match(diagnosticRecoveryHtml, /继续切片总结/);
 assert.match(diagnosticRecoveryHtml, /data-rerun-from-media="task-recovery"/);
-assert.doesNotMatch(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/diagnostics/);
+assert.doesNotMatch(diagnosticRecoveryHtml, /data-diagnostic-export="task-recovery"/);
 assert.doesNotMatch(diagnosticRecoveryHtml, /\/api\/tasks\/task-recovery\/exports\/audit/);
 assert.match(diagnosticRecoveryHtml, /data-recovery-source="local"/);
 assertNoExecutableElements(diagnosticRecoveryHtml);

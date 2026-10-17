@@ -1767,11 +1767,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertNotIn("set-cookie", report_resource["headers"])
 
             diagnostics = render_diagnostics_markdown(record)
-            self.assertIn("Resource Inventory", diagnostics)
-            self.assertIn("Candidate count: 3", diagnostics)
-            self.assertIn("Page Preflight Report", diagnostics)
-            self.assertIn("Page scan attempted: yes", diagnostics)
-            self.assertIn("Safe request header names: Referer", diagnostics)
+            self.assertIn("failure_code：download_forbidden", diagnostics)
+            self.assertIn("## 已记录阶段耗时", diagnostics)
+            self.assertNotIn("https://", diagnostics)
+            self.assertNotIn("Referer", diagnostics)
             self.assertNotIn("topsecret", diagnostics)
             self.assertNotIn("secret-token", diagnostics)
 
@@ -1900,7 +1899,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(transcript["source"], "openai-compatible-asr")
             self.assertEqual(transcript["segments"][0]["text"], "remote transcript")
             report = render_diagnostics_markdown(record)
-            self.assertIn("转写引擎：OpenAI-compatible ASR · whisper-1", report)
+            self.assertIn("保存配置中的转写方式：openai-compatible", report)
+            self.assertIn("保存配置中的转写模型：whisper-1", report)
+            self.assertIn("记录的字幕来源：openai-compatible-asr", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -1938,11 +1939,12 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(transcript["source"], "embedded-subtitle")
             self.assertEqual(transcript["segments"][0]["text"], "embedded cue")
             report = render_diagnostics_markdown(record)
-            self.assertIn("转写来源：视频内嵌字幕", report)
+            self.assertIn("记录的字幕来源：embedded-subtitle", report)
+            self.assertNotIn("embedded cue", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
-    def test_diagnostics_report_lists_header_names_without_sensitive_values(self) -> None:
+    def test_diagnostics_report_omits_header_metadata_and_sensitive_values(self) -> None:
         task = create_task("current_page", "Diagnostics redaction", "https://course.example.com/lesson")
         try:
             record = get_task(task.id)
@@ -1975,25 +1977,21 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
             report = render_diagnostics_markdown(record)
 
-            self.assertIn("Referer", report)
-            self.assertIn("Content-Disposition", report)
-            self.assertIn("lesson%20download.mp4", report)
-            self.assertIn("direct-file", report)
-            self.assertIn("download_forbidden", report)
-            self.assertIn("Range 只作为浏览器播放证据", report)
-            self.assertIn("## 下一步建议", report)
-            self.assertIn("媒体服务器拒绝下载", report)
-            self.assertIn("Range, Referer", report)
-            self.assertIn("请求头名：Range, Referer", report)
-            self.assertIn("伴随音频：https://cdn.example.com/lesson-audio.m4a (audio/mp4)", report)
+            self.assertIn("status：queued", report)
+            self.assertIn("failure_code：未知", report)
+            self.assertEqual(record.download_attempts[0].code, "download_forbidden")
+            self.assertNotIn("Referer", report)
+            self.assertNotIn("Content-Disposition", report)
+            self.assertNotIn("lesson%20download.mp4", report)
+            self.assertNotIn("https://", report)
             self.assertNotIn("SESSION=secret", report)
             self.assertNotIn("Bearer secret", report)
-            self.assertNotIn("Cookie", report.split("可复用请求头名：", 1)[1].splitlines()[0])
-            self.assertNotIn("Authorization", report.split("可复用请求头名：", 1)[1].splitlines()[0])
+            self.assertNotIn("Cookie", report)
+            self.assertNotIn("Authorization", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
-    def test_diagnostics_report_lists_cookie_domains_without_values(self) -> None:
+    def test_diagnostics_report_omits_cookie_domains_and_values(self) -> None:
         task = create_task("current_page", "Cookie diagnostics", "https://course.example.com/lesson")
         try:
             record = get_task(task.id)
@@ -2011,10 +2009,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
 
             report = render_diagnostics_markdown(record)
 
-            self.assertIn(".course.example.com (1)", report)
-            self.assertIn(".cdn.example.com (1)", report)
-            self.assertIn("2", report)
-            self.assertIn("Partitioned：1", report)
+            self.assertNotIn(".course.example.com", report)
+            self.assertNotIn(".cdn.example.com", report)
+            self.assertIn("source_type：current_page", report)
+            self.assertIn("请求总数：未知", report)
             self.assertEqual(record.cookie_summary["partitioned_count"], 1)
             self.assertEqual(record.cookie_summary["partition_key_count"], 1)
             self.assertNotIn("secret-session", report)
@@ -2076,8 +2074,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertEqual(gates["source"]["state"], "pass")
             self.assertEqual(gates["media"]["state"], "fail")
             self.assertEqual(audit["blocked_gate"], "media")
-            self.assertIn("## Stage Audit Gates", report)
-            self.assertIn("- media: fail", report)
+            self.assertIn("failure_code：download_forbidden", report)
+            self.assertIn("status：failed", report)
+            self.assertNotIn("https://", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -2535,10 +2534,10 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("直取视频不可用时", note)
             self.assertNotIn("哪些步骤只靠文本还不够", note)
             report = render_diagnostics_markdown(record)
-            self.assertIn("页面文本字符", report)
-            self.assertIn("浏览器字幕条数：2", report)
-            self.assertIn("合并文本字符", report)
-            self.assertIn("页面文本兜底：是", report)
+            self.assertIn("记录的字幕来源：browser-subtitle", report)
+            self.assertIn("summary_source：local-template", report)
+            self.assertNotIn("老师讲到参数传递", report)
+            self.assertNotIn("https://", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 
@@ -2601,9 +2600,9 @@ class ProcessorBoundaryTests(unittest.TestCase):
             self.assertIn("## 兜底学习笔记", note)
             self.assertIn("回看目标：直取视频不可用时", note)
             report = render_diagnostics_markdown(record)
-            self.assertIn("页面文本字符", report)
-            self.assertIn("浏览器字幕条数：1", report)
-            self.assertIn("页面文本兜底：是", report)
+            self.assertIn("记录的字幕来源：browser-subtitle", report)
+            self.assertIn("failure_code：download_forbidden", report)
+            self.assertNotIn("老师解释 if else 分支", report)
             transcript = read_transcript(task.id)
             self.assertEqual(transcript["source"], "browser-subtitle")
             self.assertEqual(transcript["segments"][0]["text"], "老师解释 if else 分支")
@@ -4257,13 +4256,11 @@ class SummaryFallbackTests(unittest.TestCase):
             record = get_task(task.id)
             record.summary_diagnostics = diagnostics
             report = render_diagnostics_markdown(record)
-            self.assertIn("vision_llm_used", report)
-            self.assertIn("LLM Provider", report)
-            self.assertIn("api.openai.com", report)
-            self.assertIn("20", report)
-            self.assertIn("已送入视觉窗口", report)
-            self.assertIn("缺少图片窗口：W001", report)
-            self.assertIn("超限省略窗口：W015, W042, W069", report)
+            self.assertIn("记录的模型服务类别：openai", report)
+            self.assertIn("记录的模型名称：未知", report)  # Custom names are not exported.
+            self.assertIn("请求总数：未知", report)
+            self.assertNotIn("api.openai.com", report)
+            self.assertNotIn("vision-model", report)
         finally:
             shutil.rmtree(task_dir(task.id), ignore_errors=True)
 

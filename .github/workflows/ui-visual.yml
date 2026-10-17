@@ -20,6 +20,8 @@ on:
       - "scripts/tests/test_classic_visual_study_fixture.py"
       - "scripts/community-capture-visual-acceptance.cjs"
       - "scripts/community-question-api-acceptance.cjs"
+      - "scripts/task-diagnostic-preview-*.cjs"
+      - "scripts/tests/test_task_diagnostic_preview*.py"
       - "scripts/selected-opinion-qa-fixture.py"
       - "scripts/tests/test_community_question_workflow.py"
       - "scripts/tests/*community*question*"
@@ -90,6 +92,8 @@ on:
       - "scripts/tests/test_classic_visual_study_fixture.py"
       - "scripts/community-capture-visual-acceptance.cjs"
       - "scripts/community-question-api-acceptance.cjs"
+      - "scripts/task-diagnostic-preview-*.cjs"
+      - "scripts/tests/test_task_diagnostic_preview*.py"
       - "scripts/selected-opinion-qa-fixture.py"
       - "scripts/tests/test_community_question_workflow.py"
       - "scripts/tests/*community*question*"
@@ -205,6 +209,18 @@ jobs:
         run: |
           node scripts/community-question-api-acceptance.cjs build/community-question-ui
           if ($LASTEXITCODE -ne 0) { throw "Selected opinion consent API/Edge gate failed" }
+      - name: Safe diagnostic preview with actual Edge and synthetic API
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/task-diagnostic-preview-acceptance.cjs build/task-diagnostic-preview
+          if ($LASTEXITCODE -ne 0) { throw "Safe diagnostic preview and exact download gate failed" }
+      - name: Safe diagnostic preview with owned native Edge zoom
+        if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          node scripts/task-diagnostic-preview-acceptance.cjs build/task-diagnostic-preview-native --native
+          if ($LASTEXITCODE -ne 0) { throw "Safe diagnostic native zoom and exact download gate failed" }
       - name: Start isolated local backend
         if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
         shell: pwsh
@@ -411,6 +427,12 @@ jobs:
             build/community-question-ui/*.json
             build/community-question-ui/*.log
             build/community-question-ui/*.png
+            build/task-diagnostic-preview/*.json
+            build/task-diagnostic-preview/*.log
+            build/task-diagnostic-preview/*.png
+            build/task-diagnostic-preview-native/*.json
+            build/task-diagnostic-preview-native/*.log
+            build/task-diagnostic-preview-native/*.png
             build/study-product-ui
             build/local-player-ui
             build/evidence-source-ui

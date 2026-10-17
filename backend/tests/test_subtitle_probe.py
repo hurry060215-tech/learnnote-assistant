@@ -70,7 +70,8 @@ class SubtitleProbeTests(unittest.TestCase):
                 evidence = main.direct_extraction_evidence(task)
                 self.assertEqual(evidence["browser_context"]["subtitle_probe"]["status"], "not_found")
                 self.assertEqual(evidence["browser_context"]["extension_version"], "0.2.14")
-                self.assertIn("Platform subtitle probe: not_found / extension 0.2.14", main.render_diagnostics_markdown(task))
+                self.assertIn("记录的扩展版本：0.2.14", main.render_diagnostics_markdown(task))
+                self.assertIn("任务运行版本：未知", main.render_diagnostics_markdown(task))
                 schedule.assert_not_called()
             finally:
                 main._deferred_handoffs.pop(task_id, None)

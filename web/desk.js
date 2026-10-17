@@ -136,6 +136,7 @@ syncStatus.textContent = "同步中断 · 重试";
 syncStatus.title = "已显示内容和正在编辑的文字会保留，点击重新连接本机服务";
 document.querySelector(".toolbar").append(syncStatus);
 syncStatus.onclick = async () => {
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   syncStatus.disabled = true;
   state.lastHealthAt = 0;
   try {
@@ -251,6 +252,7 @@ function showHome({ remember = true, check = true } = {}) {
   if (remember && state.selected)
     state.navigation.push({ kind: state.selected.kind, id: state.selected.id });
   state.selected = null;
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   state.epoch++;
   state.editing = false;
   $("annotationText").value = "";
@@ -496,6 +498,7 @@ async function openItem(item, { remember = true, check = true, openMedia = true 
   window.dispatchEvent(
     new CustomEvent("learnnote:selection", { detail: item }),
   );
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   const epoch = ++state.epoch;
   $("welcome").hidden = true;
   $("reading").hidden = false;
@@ -1183,6 +1186,7 @@ $("notes").onclick = (e) => {
 };
 $("search").oninput = drawList;
 $("refresh").onclick = () => {
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   state.lastHealthAt = 0;
   refresh().catch(failure);
 };
@@ -1801,6 +1805,7 @@ function readRoute() {
   }
 }
 async function applyRoute({ initial = false } = {}) {
+  globalThis.LearnNoteDiagnosticExport?.invalidate();
   const epoch = (state.routeEpoch = (state.routeEpoch || 0) + 1);
   const route = readRoute();
   if (!initial && !guard()) {

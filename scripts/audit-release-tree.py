@@ -53,6 +53,8 @@ REQUIRED_BUNDLED_FILES = {
     Path("_internal/web/desk-api.js"),
     Path("_internal/web/personal-anchors.js"),
     Path("_internal/web/desk-tools.js"),
+    Path("_internal/web/task-diagnostic-export.js"),
+    Path("_internal/web/task-diagnostic-export.css"),
     Path("_internal/web/course-question.js"),
     Path("_internal/web/course-synthesis.js"),
     Path("_internal/web/course-episodes.js"),

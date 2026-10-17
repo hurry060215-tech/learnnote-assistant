@@ -17,8 +17,11 @@ ROUTER_MODULES = {
     if path.stem != "__init__"
 }
 STATE_MODULES = {"downloader_policy", "processor_state"}
+BOUNDARY_MODULES.add("diagnostic_report")
 FORBIDDEN_FROM_BOUNDARY = {"main", "processor", "downloader"}
 MODULE_SIZE_LIMITS = {
+    "backend/app/diagnostic_report.py": 220,  # Read-only content-free report projection.
+    "backend/app/diagnostic_fields.py": 60,  # Import-free shared document/report fields.
     "backend/app/community.py": 480,
     "backend/app/selected_opinion_sources.py": 190,
     "backend/app/selected_opinion_qa.py": 230,
@@ -49,6 +52,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,
     "web/app.js": 8769,
+    "web/task-diagnostic-export.js": 105,  # Shared exact-byte preview; classic and installed desk.
     "web/visual-study.js": 387,
     "web/visual-window-evidence.js": 164,
     "web/styles.css": 12262,
@@ -115,6 +119,7 @@ LEGACY_DEFERRED_EDGES = {
     ("app.task_queue", "app.range_learning"): "Dispatch a recovered range intent",
 }
 PURE_MODULE_DEPENDENCIES = {
+    "diagnostic_fields": set(),
     "model_data_consent": {"models", "document_exports", "summary_outcome"},
     "concept_relations": {"concept_identity", "course_comparison", "graph_snapshot"},
     "course_comparison": {"concept_identity", "text_indices"},
@@ -177,8 +182,8 @@ EXTENSION_CAPTURE_SCRIPTS = ("background.js", "content.js", "content-study-evide
 # Sidepanel code is loaded when its UI opens, separate from worker/content capture.
 EXTENSION_COMMUNITY_UI_SCRIPTS = ("sidepanel-community.js",)
 EXTENSION_COMMUNITY_UI_BUDGET_BYTES = 7500
-CLASSIC_TASK_SCRIPT_BUDGET = 10136  # +28 interface and +12 guarded source-focus/navigation lines; see architecture record.
-CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js", "visual-study.js")
+CLASSIC_TASK_SCRIPT_BUDGET = 10238  # +28 interface and +12 guarded source-focus/navigation lines; see architecture record.
+CLASSIC_TASK_SCRIPTS = ("app.js", "task-format.js", "task-display.js", "task-list.js", "platform-signals.js", "visual-window-evidence.js", "visual-study.js", "task-diagnostic-export.js")
 
 
 def aggregate_size_violations() -> list[str]:
@@ -219,9 +224,10 @@ def module_size_violations() -> list[str]:
     # reading insets/tokens, wrapped touch targets and responsive alignment.
     # +64 bounded lines for the reader utility disclosure, compact personal-review
     # summary, unified empty assistant suggestions and responsive/focus states.
-    # No second runtime stylesheet or separate token system is introduced.
+    # Existing reader controls retain one token system.
     # +5 migration-only lines for wrapped paths and 44px native-dialog controls.
-    runtime_budget = 2310 + 17 + 64 + 5
+    # +6 scoped shared diagnostic-preview wrapping/scroll/touch rules; no new tokens.
+    runtime_budget = 2310 + 17 + 64 + 5 + 6
     if runtime_lines > runtime_budget:
         violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is {runtime_budget}")
     if legacy_lines > 23000:

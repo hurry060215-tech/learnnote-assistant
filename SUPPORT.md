@@ -49,6 +49,39 @@ Never post:
 - copyrighted videos, paid course files, or complete task directories you are
   not allowed to redistribute.
 
+## Previewing a task diagnostic report
+
+The current source implementation opens a local preview from the task's
+Diagnostics or Support package action. Choose Markdown or JSON, inspect the
+complete report, then explicitly save that same preview. Changing format fetches
+a new snapshot; saving does not fetch it again. Nothing is automatically uploaded
+or sent to an issue tracker. These changes do not replace existing release assets.
+
+The report keeps known categories and bounded numbers: recorded stage durations,
+configured transcription versus observed subtitle source, model outcomes, source
+check issue codes and repair outcomes, and whether saved subtitles can support a
+summary retry. It excludes titles, task identifiers, URLs, endpoints, paths,
+credentials, raw errors, prompts, subtitles and note bodies. The compatibility
+support ZIP uses the same boundary for all four members.
+
+Read unknown values literally. Current app version is not the historical task-run
+version; an old task may not have a recorded run version or build revision. Stage
+durations are per recorded attempt and may overlap; do not add them into a total.
+Task-linked model request totals, token use and cost are unknown when no linked
+ledger exists. A source-check rejection is an automated check result, not semantic
+verification or a determination that the subtitles are accurate.
+
+Exporting diagnostics does not rerun transcription or summarization and does not
+rewrite the old task. When reporting a failed long input, inspect this report
+first rather than repeating the entire processing job. A saved-transcript retry
+may avoid download/transcription, but its mode, media requirements and model
+readiness still apply.
+
+Ordinary note, transcript, document and study-bundle exports intentionally contain
+learning content. A content-free diagnostic section does not make those complete
+exports anonymous. Review screenshots and any additional files separately before
+choosing to share them.
+
 ## Product boundaries
 
 LearnNote attempts to reuse media resources that the current authorized browser

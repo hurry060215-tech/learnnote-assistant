@@ -48,6 +48,7 @@ export function installTools(ctx) {
     return result;
   }
   function show(title, body) {
+    globalThis.LearnNoteDiagnosticExport?.invalidate();
     courseEpisodeActions?.invalidate();
     communityQuestion?.invalidate();
     generation++;
@@ -729,23 +730,17 @@ export function installTools(ctx) {
     };
   }
   async function diagnostics() {
-    const s = current();
+    const s = current(), epoch = state.epoch;
     const token = show("这份笔记的处理记录", '<p class="muted">正在读取…</p>');
     const [result, eventResult] = await Promise.all([
       api(`/api/tasks/${s.id}`),
       api(`/api/tasks/${s.id}/events?limit=500`),
     ]);
-    if (token !== generation) return;
+    if (token !== generation || epoch !== state.epoch || state.selected?.id !== s.id || state.selected?.kind !== s.kind || !dialog.open) return;
     const t = result.task;
     $("toolBody").innerHTML =
-      `<p><strong>${esc(t.title)}</strong></p>${timelineHtml(t, eventResult.events || [])}${eventLogHtml(eventResult.events || [])}<details><summary>诊断详情与日志下载</summary><p class="muted">当前阶段：${esc(t.phase)} · 错误代码：${esc(t.error_code || "无")}</p>${links(
-        [
-          ["逐步日志 JSON", `/api/tasks/${s.id}/events?limit=2000`],
-          ["脱敏支持包", `/api/tasks/${s.id}/exports/support-package`],
-          ["诊断报告", `/api/tasks/${s.id}/exports/diagnostics`],
-          ["资源用量", `/api/tasks/${s.id}/exports/resource-usage`],
-        ],
-      )}<p class="muted">公开分享前检查标题、截图和学习内容。诊断包不等于匿名数据。</p></details>`;
+      `<p><strong>${esc(t.title)}</strong></p>${timelineHtml(t, eventResult.events || [])}${eventLogHtml(eventResult.events || [])}<details><summary>诊断详情与安全报告</summary><p class="muted">当前阶段：${esc(t.phase)} · 错误代码：${esc(t.error_code || "无")}</p><button data-safe-diagnostic-report type="button">预览安全诊断报告</button><p class="muted">报告不包含学习正文；普通笔记与资料导出仍包含所选内容。分享由你决定。</p></details>`;
+    $("toolBody").querySelector("[data-safe-diagnostic-report]").onclick = () => globalThis.LearnNoteDiagnosticExport.open({ taskId: s.id, parent: dialog, isCurrent: () => token === generation && epoch === state.epoch && state.selected?.id === s.id && state.selected?.kind === s.kind });
   }
   function more() {
     const s = current();

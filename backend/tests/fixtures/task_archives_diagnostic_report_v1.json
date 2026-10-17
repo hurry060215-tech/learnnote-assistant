@@ -1,0 +1,30 @@
+{
+  "status": 200,
+  "headers": {
+    "content-disposition": "attachment; filename=\"learnnote-support-package.zip\"",
+    "content-length": "2847",
+    "content-type": "application/zip"
+  },
+  "members": [
+    {
+      "name": "manifest.json",
+      "text": "{\n  \"schema_version\": 1,\n  \"bundle_type\": \"support-package\",\n  \"event_count\": 0,\n  \"event_scope\": \"retained_summary_diagnostics\",\n  \"privacy\": {\n    \"cookies\": false,\n    \"authorization\": false,\n    \"request_bodies\": false,\n    \"signed_urls\": false,\n    \"course_content\": false,\n    \"source_paths\": false,\n    \"identifiers\": false\n  }\n}",
+      "compression": 8
+    },
+    {
+      "name": "events.json",
+      "text": "[]",
+      "compression": 8
+    },
+    {
+      "name": "diagnostics.md",
+      "text": "# LearnNote 任务诊断报告\n\n仅包含已记录的类别与数值。保存前请检查；是否分享由你决定。\n\n## 版本\n\n- 当前运行版本：0.2.15\n- 任务运行版本：未知（未记录或已省略）\n- 构建修订：未知（未记录或已省略）\n- 记录的扩展版本：未知（未记录或已省略）\n\n## 任务结果\n\n- status：未知（未记录或已省略）\n- phase：未知（未记录或已省略）\n- summary_source：未知（未记录或已省略）\n- failure_code：未知（未记录或已省略）\n- structure_issue_codes：未记录\n- mode：未知（未记录或已省略）\n- source_type：local\n\n## 转写方式\n\n- 保存配置中的转写方式：未知（未记录或已省略）\n- 保存配置中的转写模型：未知（未记录或已省略）\n- 记录的字幕来源：未知（未记录或已省略）\n- 实际转写模型：未知（未记录或已省略）\n\n## 模型请求结果\n\n- 记录的模型服务类别：未知（未记录或已省略）\n- 记录的模型名称：未知（未记录或已省略）\n- failure_stage：未知（未记录或已省略）\n- failure_code：未知（未记录或已省略）\n- failure_category：未知（未记录或已省略）\n### events\n\n```json\n[]\n```\n\n- last_failure：未知（未记录或已省略）\n- 请求总数：未知（未记录或已省略）\n- 输入用量：未知（未记录或已省略）\n- 输出用量：未知（未记录或已省略）\n- 总用量：未知（未记录或已省略）\n- 实际费用：未知（未记录或已省略）\n\n## 来源检查\n\n### events\n\n```json\n[]\n```\n\n- semantic_verification：not_established\n\n## 已记录阶段耗时\n\n- availability：not_recorded\n### attempts\n\n```json\n[]\n```\n\n\n## 复用已保存字幕\n\n- transcript_record：not_recorded\n- saved_transcript_usable：未知（未记录或已省略）\n- text_retry_supported：未知（未记录或已省略）\n- task_active：未知（未记录或已省略）\n- requires_text_mode：未知（未记录或已省略）\n- requires_media_validation：未知（未记录或已省略）\n- model_readiness：not_checked\n\n## 使用边界\n\n- 未记录或无法确认的数据为 null（未知），不代表零、成功或未发生。\n- 当前运行版本不代表历史任务运行版本；未记录构建修订，不能据此确认是否包含某次修复。\n- 阶段时长是已记录的单次墙钟区间，可能重叠；不相加，不用预计耗时补齐。\n- 模型事件最多保留 20 条；阶段尝试最多保留最近 20 次已记录尝试，position 仅为本报告内顺序，不是原始尝试编号或重试总数。诊断不是完整请求台账，任务请求总数、用量和费用未知。\n- 配置的转写方式与模型来自保存的任务选项，不证明当时实际执行；未保存的默认值不补作历史事实。\n- 来源检查不是语义核验或事实正确性证明；保存字幕可供核对，不保证字幕准确。\n- 已省略标题、原文、笔记、提示词、错误原文、网址、端点、路径、凭据及账户或设备标识；自定义名称也不导出。\n- 仅供用户预览后保存到本地，不会自动上传或发送。\n",
+      "compression": 8
+    },
+    {
+      "name": "audit.md",
+      "text": "# LearnNote 任务审计摘要\n\n{\n  \"task\": {\n    \"status\": null,\n    \"phase\": null,\n    \"summary_source\": null,\n    \"failure_code\": null,\n    \"structure_issue_codes\": [],\n    \"mode\": null,\n    \"source_type\": \"local\"\n  },\n  \"grounding\": {\n    \"events\": [],\n    \"semantic_verification\": \"not_established\"\n  },\n  \"resummary\": {\n    \"transcript_record\": \"not_recorded\",\n    \"saved_transcript_usable\": null,\n    \"text_retry_supported\": null,\n    \"task_active\": null,\n    \"requires_text_mode\": null,\n    \"requires_media_validation\": null,\n    \"model_readiness\": \"not_checked\"\n  }\n}\n\n未记录或无法确认的数据为 null（未知），不代表零、成功或未发生。\n当前运行版本不代表历史任务运行版本；未记录构建修订，不能据此确认是否包含某次修复。\n阶段时长是已记录的单次墙钟区间，可能重叠；不相加，不用预计耗时补齐。\n模型事件最多保留 20 条；阶段尝试最多保留最近 20 次已记录尝试，position 仅为本报告内顺序，不是原始尝试编号或重试总数。诊断不是完整请求台账，任务请求总数、用量和费用未知。\n配置的转写方式与模型来自保存的任务选项，不证明当时实际执行；未保存的默认值不补作历史事实。\n来源检查不是语义核验或事实正确性证明；保存字幕可供核对，不保证字幕准确。\n已省略标题、原文、笔记、提示词、错误原文、网址、端点、路径、凭据及账户或设备标识；自定义名称也不导出。\n仅供用户预览后保存到本地，不会自动上传或发送。\n",
+      "compression": 8
+    }
+  ]
+}
