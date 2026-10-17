@@ -169,8 +169,11 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
     // The browser may already have anchored the retained DOM during layout.
     // Correct the current scroll offset; restoring the old one would undo that
     // native compensation and jump backwards by the inserted batch's height.
-    if (same && scroller) scroller.scrollTop = anchor?.isConnected
-      ? scroller.scrollTop + anchor.getBoundingClientRect().top - offset : top;
+    if (same && scroller) {
+      const delta = anchor?.isConnected ? anchor.getBoundingClientRect().top - offset : null;
+      if (delta === null) scroller.scrollTop = top;
+      else if (delta) scroller.scrollTop += delta;
+    }
     if (changed) doc.defaultView.dispatchEvent(new Event("learnnote:document"));
     return true;
   }

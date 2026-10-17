@@ -2,7 +2,7 @@ import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { collapseSourceReviews } from "/web/source-review.js";
 import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js?v=native-anchor-20261017";
-import { createSectionReader } from "/web/reader-sections.js";
+import { createSectionReader } from "/web/reader-sections.js?v=visual-anchor-20261017";
 import {
   installConnections,
   loadModelConnection,
@@ -20,7 +20,7 @@ import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/eviden
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
-import { installProductWorkspace } from "/web/desk-product.js?v=first-run-20260923";
+import { installProductWorkspace } from "/web/desk-product.js?v=terminal-metadata-20261017";
 import { installTools } from "/web/desk-tools.js?v=course-timeline-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";

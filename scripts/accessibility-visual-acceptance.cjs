@@ -12,7 +12,7 @@ function settingsGeometry() {
   };
   const selectors = ['.app-shell', '#mainNavigation', '#settingsView', '.settings-header',
     '.settings-layout', '.settings-menu', '.settings-content', '#settingsCloseButton',
-    '#saveSettingsButton', '#settingLocale', '[data-setting="uiScale"]',
+    '#saveSettingsButton', '#resetSettingsButton', '#settingLocale', '[data-setting="uiScale"]',
     '.settings-pane:not([hidden]) input[type="checkbox"]'];
   return { method:'fixed Playwright viewport and application uiScale setting; not native browser zoom',
     viewport:{width:innerWidth,height:innerHeight}, dpr:devicePixelRatio,
@@ -25,7 +25,17 @@ function settingsGeometry() {
         if(['hidden','clip','auto','scroll'].includes(value.overflowX)||['hidden','clip','auto','scroll'].includes(value.overflowY))
           clippingAncestors.push({tag:parent.tagName,id:parent.id,...value});
       }
-      return {selector,index,...geometry, outsideViewportX:geometry.left < -1 || geometry.right > innerWidth+1,
+      const textRects = [];
+      if (['settingsCloseButton', 'resetSettingsButton', 'saveSettingsButton'].includes(node.id)) {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          if (!walker.currentNode.textContent.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(walker.currentNode);
+          for (const r of range.getClientRects()) textRects.push({left:r.left,right:r.right,top:r.top,bottom:r.bottom});
+        }
+      }
+      return {selector,index,...geometry, textRects, clientHeight:node.clientHeight, scrollHeight:node.scrollHeight, outsideViewportX:geometry.left < -1 || geometry.right > innerWidth+1,
         clippingAncestors};
     })) };
 }
@@ -48,6 +58,45 @@ function assertSettingsContainment(geometry) {
       throw new Error(`Settings control horizontally clipped: ${element.selector} at app scale ${geometry.uiDensity}: ${JSON.stringify(element)}`);
     }
   }
+}
+
+function assertSettingsButtonLabels(geometry) {
+  for (const selector of ['#settingsCloseButton', '#resetSettingsButton', '#saveSettingsButton']) {
+    const button = geometry.elements.find(element => element.selector === selector);
+    if (!button || button.width <= 0 || button.height < 44 || !button.textRects?.length)
+      throw new Error(`Missing readable settings button: ${selector}`);
+    for (const text of button.textRects) {
+      if (text.left < button.left - 1 || text.right > button.right + 1 ||
+          text.top < button.top - 1 || text.bottom > button.bottom + 1)
+        throw new Error(`Settings button text escapes its box: ${selector}: ${JSON.stringify(button)}`);
+    }
+  }
+}
+
+async function captureMobileSettings(page, output, scale) {
+  const keyboard = [];
+  for (const [view, selector] of [['header', '#settingsCloseButton'], ['footer', '#resetSettingsButton']]) {
+    await page.locator(selector).evaluate(element => element.scrollIntoView({block: 'center'}));
+    await page.locator(selector).focus();
+    await page.keyboard.press('Tab');
+    const next = await page.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute('data-settings-tab'));
+    if (view === 'footer' && next !== 'saveSettingsButton') throw new Error('Reset must reach Save with Tab');
+    await page.keyboard.press('Shift+Tab');
+    if (!await page.locator(selector).evaluate(element => element === document.activeElement))
+      throw new Error(`Settings keyboard focus did not return: ${selector}`);
+    const geometry = await page.evaluate(settingsGeometry);
+    fs.writeFileSync(path.join(output, `settings-390x844-${scale}-${view}-geometry.json`), JSON.stringify(geometry,null,2));
+    assertSettingsButtonLabels(geometry);
+    const targetVisible = await page.locator(selector).evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+      return rect.top >= 0 && rect.bottom <= innerHeight && (hit === element || element.contains(hit));
+    });
+    if (!targetVisible) throw new Error(`Settings focused control is obscured: ${selector}`);
+    await page.screenshot({path:path.join(output, `settings-390x844-${scale}-${view}.png`), fullPage:false});
+    keyboard.push({view,next,returned:selector});
+  }
+  return keyboard;
 }
 
 async function auditViewport(page, width, height, output, scale = 200) {
@@ -80,7 +129,9 @@ async function auditViewport(page, width, height, output, scale = 200) {
     throw new Error(`Horizontal overflow at ${width}x${height}: ${JSON.stringify(result)}`);
   }
   assertSettingsContainment(geometry);
+  if (width === 390) assertSettingsButtonLabels(geometry);
   await page.screenshot({ path: path.join(output, `settings-${width}x${height}-${scale}.png`), fullPage: true });
+  if (width === 390) result.buttonKeyboard = await captureMobileSettings(page, output, scale);
   return result;
 }
 

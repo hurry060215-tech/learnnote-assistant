@@ -753,6 +753,7 @@ export function installProductWorkspace(ctx) {
     if (!s) return;
     $("sourceFrames").hidden = s.kind !== "task";
     $("openVersions").hidden = s.kind !== "task";
+    const stateLabel = { cancelled: "已停止", cancelling: "正在停止", failed: "处理失败", success: "处理已完成" }[s.status] || "";
     const contentType =
       s.summary_source === "subtitle-extract"
         ? "字幕原文 · 未调用模型"
@@ -761,12 +762,14 @@ export function installProductWorkspace(ctx) {
           : ["text-llm", "vision-llm", "page-text-llm"].includes(s.summary_source)
             ? "AI 整理笔记"
             : s.transcript_path
-              ? "字幕已取得 · 等待总结"
-              : "正在准备内容";
+              ? (stateLabel ? "字幕已保留" : "字幕已取得 · 等待总结")
+              : stateLabel
+                ? (s.artifact_status?.draft_available ? "草稿已保留" : "")
+                : "正在准备内容";
     $("readerMetadata").textContent =
       s.kind === "material"
         ? "原始资料 · 可编辑修订"
-        : `${contentType}${s.media_integrity?.duration ? " · " + timestamp(s.media_integrity.duration) : ""}`;
+        : `${[stateLabel, contentType].filter(Boolean).join(" · ")}${s.media_integrity?.duration ? " · " + timestamp(s.media_integrity.duration) : ""}`;
     $("sourceFrames").hidden =
       s.kind !== "task" || !(s.frame_grids || []).length;
   }

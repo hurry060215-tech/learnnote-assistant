@@ -3,8 +3,8 @@ const source=fs.readFileSync(path.join(__dirname,'../accessibility-visual-accept
 const defaults={overflowX:'visible',overflowY:'visible',display:'block',position:'static',width:'768px',marginLeft:'0px',marginRight:'0px',gridColumn:'auto',zoom:'1'};
 const node=(id,left,width,css={},parent=null)=>({id,tagName:'DIV',clientWidth:width,scrollWidth:width,parentElement:parent,css:{...defaults,...css},getBoundingClientRect:()=>({left,right:left+width,top:0,bottom:40,width,height:40})});
 const root=node('root',0,768,{overflowX:'hidden'}),settings=node('settingsView',76,768,{marginLeft:'76px'},root),button=node('saveSettingsButton',760,80,{},settings);
-const context={require:n=>n==='playwright'?{}:require(n),innerWidth:768,innerHeight:1024,devicePixelRatio:1,visualViewport:{scale:1},getComputedStyle:n=>n.css,
- document:{body:{css:defaults,dataset:{uiDensity:'200'}},documentElement:root,querySelectorAll:s=>s==='#settingsView'?[settings]:s==='#saveSettingsButton'?[button]:[]},module:{exports:{}}};
+const context={NodeFilter:{SHOW_TEXT:4},require:n=>n==='playwright'?{}:require(n),innerWidth:768,innerHeight:1024,devicePixelRatio:1,visualViewport:{scale:1},getComputedStyle:n=>n.css,
+ document:{createTreeWalker:()=>({nextNode:()=>false}),body:{css:defaults,dataset:{uiDensity:'200'}},documentElement:root,querySelectorAll:s=>s==='#settingsView'?[settings]:s==='#saveSettingsButton'?[button]:[]},module:{exports:{}}};
 vm.runInNewContext(source.slice(0,source.indexOf('async function auditViewport'))+'\nmodule.exports=settingsGeometry;',context);
 const result=context.module.exports();assert.equal(result.dpr,1);assert.equal(result.cssZoom,'1');assert.equal(result.uiDensity,'200');assert.match(result.method,/not native browser zoom/);
 const saved=result.elements.find(x=>x.selector==='#saveSettingsButton');assert.equal(saved.outsideViewportX,true);assert.equal(saved.right,840);assert.equal(saved.clippingAncestors[0].id,'root');assert.equal(saved.clippingAncestors[0].overflowX,'hidden');
@@ -38,5 +38,21 @@ for (const represented of [css, css.replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')]
   assert(tablet.includes(correction));assert(tablet.indexOf(correction)>tablet.indexOf('width: 100%;'));
 }
 const mature=fs.readFileSync(path.join(__dirname,'../../web/mature.css'),'utf8');assert(mature.includes('margin-left: var(--mature-nav);'));
-assert(fs.readFileSync(path.join(__dirname,'../../web/classic.html'),'utf8').includes('experience.css?v=20261017-settings-containment'));
+assert(fs.readFileSync(path.join(__dirname,'../../web/classic.html'),'utf8').includes('experience.css?v=20261017-settings-button-height'));
 console.log('Settings control bounds reject viewport and hidden-ancestor clipping at both scales; tablet width correction retains the fixed rail and exact breakpoint scope');
+
+vm.runInNewContext('module.exports=assertSettingsButtonLabels;',context);
+const labels=context.module.exports;
+const buttons=height=>({elements:['settingsCloseButton','resetSettingsButton','saveSettingsButton'].map(id=>({selector:'#'+id,left:20,right:255,width:235,top:77,bottom:77+height,height,textRects:[{left:40,right:235,top:79,bottom:110},{left:60,right:215,top:110,bottom:141}]}))});
+assert.throws(()=>labels(buttons(44)),/text escapes/,'Actual 44px mobile box cannot contain two 30px lines');
+assert.doesNotThrow(()=>labels(buttons(66)));
+const above=buttons(66);above.elements[0].textRects[0].top=74;assert.throws(()=>labels(above),/text escapes/);
+const sideways=buttons(66);sideways.elements[1].textRects[0].right=258;assert.throws(()=>labels(sideways),/text escapes/);
+const empty=buttons(66);empty.elements[2].textRects=[];assert.throws(()=>labels(empty),/Missing readable/);
+const mobileRule='.settings-header .action-button,\n  .settings-actions .action-button {\n    height: auto;\n    min-height: max(44px, var(--appearance-control-height));\n  }';
+for(const represented of [css,css.replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')]) {
+ const normalized=represented.replace(/\r\n/g,'\n');assert(normalized.includes('@media (max-width: 680px) {\n  '+mobileRule));
+}
+assert(source.includes("await page.keyboard.press('Tab')"));assert(source.includes("await page.keyboard.press('Shift+Tab')"));
+assert(source.includes("next !== 'saveSettingsButton'"));assert(source.includes('fullPage:false'));
+console.log('Mobile settings labels reject vertical and horizontal text escape; auto height retains target size and scoped breakpoint');

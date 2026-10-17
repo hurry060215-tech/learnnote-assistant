@@ -119,22 +119,51 @@ test("new attempts remove old sections, generation changes retain only the same 
 });
 
 test("scroll compensation respects both native scroll anchoring and browsers without it", () => {
-  for (const nativeAnchoring of [false, true]) {
+  for (const nativeAnchoring of [false, true, "layout"]) {
     const h = harness(), one = outline("one", 0, 10), two = outline("two", 20, 30);
     h.reader.render(projection([one, two, batch("second", 20, 30)]), task, {});
     const section = h.element.querySelectorAll("[data-reader-section]")[1];
     h.doc.selected = section.children[1].children[0].children[1];
-    let documentY = 1000;
-    section.getBoundingClientRect = () => ({ top: documentY - h.scroller.scrollTop });
+    let documentY = 1000, pending = false;
+    section.getBoundingClientRect = () => {
+      if (pending) { h.scroller.scrollTop += 150; pending = false; }
+      return { top: documentY - h.scroller.scrollTop };
+    };
     const create = h.doc.createElement;
     h.doc.createElement = tag => {
-      if (tag === "article") { documentY += 150; if (nativeAnchoring) h.scroller.scrollTop += 150; }
+      if (tag === "article") {
+        documentY += 150;
+        if (nativeAnchoring === true) h.scroller.scrollTop += 150;
+        else if (nativeAnchoring === "layout") pending = true;
+      }
       return create(tag);
     };
     h.reader.render(projection([one, two, batch("first", 0, 10), batch("second", 20, 30)]), task, {});
     assert.equal(h.scroller.scrollTop, 650, `native anchoring: ${nativeAnchoring}`);
     assert.equal(section.getBoundingClientRect().top, 500);
   }
+});
+
+test("changed source rebuilds sections without applying the old source anchor offset", () => {
+  const h = harness(), original = projection([outline("one", 0, 10), batch("first", 0, 10)]);
+  h.reader.render(original, task, {});
+  const section = h.element.querySelector("[data-reader-section]");
+  h.doc.selected = section.children[1].children[0].children[1];
+  section.getBoundingClientRect = () => { throw new Error("An old source anchor must not be measured"); };
+  h.scroller.scrollTop = 700;
+  h.reader.render({ ...original, source_revision: hash("f") }, task, {});
+  assert(!section.isConnected);
+  assert.equal(h.scroller.scrollTop, 700);
+});
+
+test("a removed selected batch retains the original no-anchor fallback", () => {
+  const h = harness(), one = outline("one", 0, 10);
+  h.reader.render(projection([one, batch("first", 0, 10)]), task, {});
+  const oldBatch = h.element.querySelector("[data-reader-batch]");
+  h.doc.selected = oldBatch; h.scroller.scrollTop = 700;
+  h.reader.render(projection([one]), task, {});
+  assert(!oldBatch.isConnected);
+  assert.equal(h.scroller.scrollTop, 700);
 });
 
 test("only exact task-owned grids supplement evidence; unrelated and external assets are excluded", () => {

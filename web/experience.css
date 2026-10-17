@@ -1599,6 +1599,11 @@ body.theme-dark { --ux-accent-strong: #6dddd2; --ux-accent-soft: #163b3d; }
 body.theme-dark .nav-item.active { color: #9bf4e9 !important; background: #163b3d !important; }
 body.theme-dark .source-dialog, body.theme-dark .material-reader.markdown-note { background: #102226 !important; }
 @media (max-width: 680px) {
+  .settings-header .action-button,
+  .settings-actions .action-button {
+    height: auto;
+    min-height: max(44px, var(--appearance-control-height));
+  }
   body[data-app-view="notes"] .result-panel { padding-top: 38px !important; scroll-margin-top: 78px; }
   body.library-empty[data-app-view="notes"] .result-panel { grid-column: 1 / -1 !important; }
   .material-reader.markdown-note { padding: 0 8px 24px; font-size: 16px; }
