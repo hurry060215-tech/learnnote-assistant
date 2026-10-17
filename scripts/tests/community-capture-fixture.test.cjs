@@ -117,3 +117,44 @@ test('All sidepanel IDs exist; generated inputs and hidden-state ordering match 
   assert(source.indexOf("keyboard.press('Escape')") < source.lastIndexOf('__communityFixture.revoke()'));
   assert(!source.includes('waitForTimeout('), 'No fixed sleep can stand in for race settlement');
 });
+
+test('Synthetic DOM diagnostics identify the missing body and cap geometry without page text', () => {
+  const { syntheticDOMDiagnostics } = require('../community-capture-visual-acceptance.cjs');
+  const node = { tagName: 'SPAN', id: 'synthetic', hidden: false,
+    getBoundingClientRect: () => ({left: 20, top: 60, right: 220, bottom: 84, width: 200, height: 24}),
+    getAttribute: () => null, hasAttribute: () => false, contains: () => true,
+    get textContent() { throw Error('Diagnostics must not read page text'); },
+  };
+  node.parentElement = node; // A hostile cycle cannot make diagnostics unbounded.
+  node.shadowRoot = {querySelector: () => node, elementFromPoint: () => node};
+  const context = vm.createContext({document: {title: 'Synthetic Bilibili-shaped visible DOM fixture', querySelector: () => node, elementFromPoint: () => node},
+    window: {}, innerWidth: 1100, innerHeight: 850,
+    getComputedStyle: () => ({display: 'inline-block', visibility: 'visible', opacity: '1', overflowX: 'visible', overflowY: 'visible'}),
+    LearnNoteCommunityDOM: {visible: () => true},
+  });
+  const result = {items: [
+    {text: 'Why does this example use a smaller batch?'},
+    {text: 'This explanation helped me compare the examples.'},
+    {text: 'Could we revisit this step?'},
+    {text: 'Rendered overlay without an asserted timestamp'},
+  ], truncated: false};
+  const diagnostic = JSON.parse(JSON.stringify(vm.runInContext(`(${syntheticDOMDiagnostics})(${JSON.stringify(result)})`, context)));
+  assert.deepEqual(diagnostic.missing_expected, ['open-shadow-comment']);
+  assert.equal(diagnostic.captured_count, 4); assert.equal(diagnostic.candidates.length, 5); assert.equal(diagnostic.exclusions.length, 6);
+  for (const candidate of [...diagnostic.candidates, ...diagnostic.exclusions]) {
+    assert.equal(candidate.ancestors.length, 10); assert.equal(candidate.hits.length, 5);
+    assert(candidate.hits.every(point => point.chain.length <= 7));
+  }
+  assert(!JSON.stringify(diagnostic).includes('Why does this example'));
+  assert(JSON.stringify(diagnostic).length < 50000);
+  context.document.title = 'A real page';
+  assert.throws(() => vm.runInContext(`(${syntheticDOMDiagnostics})(${JSON.stringify(result)})`, context), /named synthetic DOM fixture/);
+});
+
+test('The hosted collector records diagnostics before retaining the five-body assertion', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../community-capture-visual-acceptance.cjs'), 'utf8');
+  const diagnostic = source.indexOf('report.dom_diagnostics = await bounded(dom.evaluate(syntheticDOMDiagnostics, result)');
+  const assertion = source.indexOf('assert.equal(result.items.length, 5,');
+  assert(diagnostic >= 0 && assertion > diagnostic);
+  assert(source.includes("'synthetic DOM diagnostics', TIMEOUT"));
+});

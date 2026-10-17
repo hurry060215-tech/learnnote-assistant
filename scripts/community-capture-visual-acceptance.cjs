@@ -97,6 +97,51 @@ async function finishCapture({ out, report, browser, server, write = fs.writeFil
 async function collect(page) {
   return page.evaluate(site => LearnNoteCommunityDOM.collect({ document, view: window, pageUrl: site, expectedPageUrl: site }), SITE);
 }
+function syntheticDOMDiagnostics(result) {
+  if (document.title !== 'Synthetic Bilibili-shaped visible DOM fixture') throw Error('Diagnostics require the named synthetic DOM fixture');
+  const expected = [
+    ['legacy-comment', '.reply-item .reply-content', 'Why does this example use a smaller batch?'],
+    ['comment-with-controls', '.reply-wrap .reply-content', 'This explanation helped me compare the examples.'],
+    ['timed-danmaku', '.bpx-player-dm-list-dm', 'Could we revisit this step?'],
+    ['untimed-danmaku', '.bili-dm', 'Rendered overlay without an asserted timestamp'],
+    ['open-shadow-comment', null, 'Open-shadow comment body only.'],
+  ];
+  const parent = node => node?.parentElement || node?.getRootNode?.()?.host || null;
+  const label = node => node ? { tag: String(node.tagName || '').slice(0, 40), id: String(node.id || '').slice(0, 80) } : null;
+  const rect = node => { const bounds = node.getBoundingClientRect(); return Object.fromEntries(['left', 'top', 'right', 'bottom', 'width', 'height'].map(key => [key, Math.round(bounds[key] * 1000) / 1000])); };
+  const describe = node => {
+    if (!node) return { missing: true };
+    const bounds = rect(node), ancestors = [];
+    for (let current = node, depth = 0; current && depth < 10; current = parent(current), depth++) {
+      const style = getComputedStyle(current);
+      ancestors.push({ ...label(current), rect: rect(current), hidden: current.hidden,
+        aria_hidden: current.getAttribute('aria-hidden') === 'true', inert: current.hasAttribute('inert'),
+        style: Object.fromEntries(['display', 'visibility', 'opacity', 'overflowX', 'overflowY'].map(key => [key, String(style[key]).slice(0, 40)])) });
+    }
+    const left = Math.max(0, bounds.left), top = Math.max(0, bounds.top), right = Math.min(innerWidth, bounds.right), bottom = Math.min(innerHeight, bounds.bottom);
+    const points = [[(left + right) / 2, (top + bottom) / 2], [left + .5, top + .5], [right - .5, top + .5], [left + .5, bottom - .5], [right - .5, bottom - .5]];
+    const hits = points.map(([x, y]) => {
+      let hit = document.elementFromPoint(x, y); const chain = [label(hit)];
+      for (let depth = 0; hit?.shadowRoot?.elementFromPoint && depth < 6; depth++) {
+        const next = hit.shadowRoot.elementFromPoint(x, y); chain.push(label(next));
+        if (!next || next === hit) break; hit = next;
+      }
+      return { x, y, chain, contained: hit === node || node.contains(hit) };
+    });
+    return { visible: LearnNoteCommunityDOM.visible(node, window), rect: bounds, ancestors, hits };
+  };
+  const captured = result.items.slice(0, 20);
+  const candidates = expected.map(([id, selector, text]) => {
+    const node = selector ? document.querySelector(selector) : document.querySelector('#shadowComment')?.shadowRoot?.querySelector('bili-rich-text')?.shadowRoot?.querySelector('#contents');
+    return { id, accepted: captured.some(item => item.text === text), ...describe(node) };
+  });
+  const exclusions = [['hidden-parent', '.reply-item[hidden] .reply-content'], ['offscreen', '.offscreen .reply-content'],
+    ['aria-hidden', '[aria-hidden="true"] .reply-content'], ['clipped', '.clipped .reply-content'],
+    ['covered', '.covered .reply-content'], ['partial-viewport', '.partial .reply-content']].map(([id, selector]) => ({ id, ...describe(document.querySelector(selector)) }));
+  return { fixture: 'synthetic-community-dom-v1', viewport: { width: innerWidth, height: innerHeight },
+    captured_count: result.items.length, truncated: result.truncated,
+    missing_expected: candidates.filter(item => !item.accepted).map(item => item.id), candidates, exclusions };
+}
 async function run() {
   const { chromium } = require('playwright');
   const out = path.resolve(process.argv[2] || 'build/community-capture-ui'); fs.mkdirSync(out, { recursive: true });
@@ -112,7 +157,8 @@ async function run() {
     await dom.goto(origin + '/extension/tests/fixtures/community/visible-page.html');
     for (const name of ['community-source.js', 'content-community.js']) await dom.addScriptTag({ url: origin + '/extension/' + name });
     const result = await collect(dom);
-    assert.equal(result.items.length, 5);
+    report.dom_diagnostics = await bounded(dom.evaluate(syntheticDOMDiagnostics, result), 'synthetic DOM diagnostics', TIMEOUT);
+    assert.equal(result.items.length, 5, `Expected all five fixture bodies; missing: ${report.dom_diagnostics.missing_expected.join(', ')}`);
     assert(result.items.some(item => item.text === 'Open-shadow comment body only.'));
     assert(result.items.some(item => item.timestamp_seconds === 83));
     assert(result.items.some(item => item.kind === 'danmaku' && item.timestamp_seconds === null));
@@ -194,4 +240,4 @@ if (require.main === module && process.argv.includes('--self-test')) {
   new Function('return ' + communityFixture.toString());
   console.log('Community rendered fixture syntax and asset/path checks pass; actual Edge rendering is a hosted gate.');
 } else if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { communityFixture, heldAction, finishCapture };
+module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics };
