@@ -1,0 +1,204 @@
+"""Real loopback HTTP/worker contracts; these are not browser latency results."""
+import json
+import os
+from pathlib import Path
+import queue
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+ROOT = Path(__file__).resolve().parents[2]
+OPTIONS = {"content_mode": "text", "visual_understanding": False, "local_ocr": False,
+           "llm_api_key": "", "use_saved_connection": False,
+           "llm_base_url": "http://127.0.0.1:9/v1", "llm_model": "slo-reference"}
+
+
+def reference_request(minutes, label):
+    duration = minutes * 60
+    return {"mode": "subtitle_only", "title": f"SLO reference {minutes}m {label}", "page_url": "https://example.test/reference",
+        "handoff_id": f"slo-reference-{minutes}-{label}", "options": OPTIONS, "active_video": {"duration": duration},
+        "browser_subtitles": [{"start": start, "end": start + 30,
+            "text": f"Reference lesson source statement at {start} seconds."} for start in range(0, duration, 30)]}
+
+
+class ProgressiveSloFixtureTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="learnnote-slo-contract-")
+        self.data = Path(self.temp.name)
+        self.child = None
+        self.logs = []
+
+    def tearDown(self):
+        self.stop()
+        self.temp.cleanup()
+
+    def stop(self):
+        if self.child:
+            if self.child.poll() is None:
+                self.child.kill()
+            self.child.wait(10)
+            self.reader.join(5)
+            self.child.stdout.close()
+            self.child = None
+
+    def launch(self, *, resume=False):
+        env = {key: value for key, value in os.environ.items() if key.upper() in
+               {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "LANG", "LC_ALL"}}
+        env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
+        self.child = subprocess.Popen([sys.executable, str(ROOT / "scripts/progressive-slo-fixture.py"),
+            "--data-dir", str(self.data), *(["--resume"] if resume else [])], cwd=ROOT,
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
+        lines = queue.Queue()
+        def read():
+            for line in self.child.stdout:
+                self.logs.append(line)
+                if line.startswith('{"fixture_origin":'):
+                    lines.put(json.loads(line))
+        self.reader = threading.Thread(target=read, daemon=True)
+        self.reader.start()
+        try:
+            end = time.monotonic() + 30
+            while True:
+                try:
+                    self.fixture = lines.get(timeout=.1)
+                    break
+                except queue.Empty:
+                    if self.child.poll() is not None or time.monotonic() >= end:
+                        raise
+        except queue.Empty:
+            self.fail("Fixture failed to start: " + "".join(self.logs))
+        self.base = self.fixture["fixture_origin"]
+        self.wait(lambda: self.api("/health"), "HTTP health")
+        self.assertTrue(self.fixture["offline_network"])
+
+    def api(self, route, data=None, method=None):
+        request = Request(self.base + route, data=None if data is None else json.dumps(data).encode(),
+                          method=method, headers={"Content-Type": "application/json"})
+        with urlopen(request, timeout=15) as response:
+            return json.load(response)
+
+    def wait(self, check, label):
+        end = time.monotonic() + 20
+        while time.monotonic() < end:
+            try:
+                value = check()
+            except ConnectionError:
+                value = None
+            if value:
+                return value
+            time.sleep(.03)
+        self.fail(label + "\n" + "".join(self.logs))
+
+    def state(self, task_id):
+        return self.api(f"/_fixture/tasks/{task_id}")
+
+    def test_real_admission_draft_sse_cancel_retry_and_process_restart(self):
+        self.launch()
+        request = reference_request(5, "contract")
+        created = self.api("/api/tasks/from-current-page?defer=true", request)
+        task_id = created["task_id"]
+        self.assertEqual(self.state(task_id)["continuation_calls"], 0)
+        with self.assertRaises(HTTPError) as rejected:
+            self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+        self.assertEqual(rejected.exception.code, 409)
+        self.api(f"/api/tasks/{task_id}/start", OPTIONS)
+        before = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "held draft")
+        self.assertEqual(before["status"], "running")
+        self.assertEqual(set(before["hashes"]), {"transcript_path", "subtitle_path", "draft.md"})
+        self.assertEqual(before["source_coverage"], {"duration": 300, "cue_count": 10,
+            "first_start": 0, "last_end": 300, "reference_cues_complete": True,
+            "section_count": 1, "final_section_end": 300})
+        self.assertTrue(before["queue"]["generation"])
+        self.assertFalse(before["queue"]["requires_context"])
+        edition = self.api(f"/api/tasks/editions/task/{task_id}")
+        self.assertIn("按时间段的阅读提纲", edition["text"])
+        self.assertIn("不是 AI 主题总结", edition["text"])
+        self.assertIn("Reference lesson source statement at 0 seconds.", edition["text"])
+        # Actual HTTP SSE framing/replay, no event generator replacement.
+        with urlopen(self.base + f"/api/tasks/{task_id}/events/stream?after=0", timeout=10) as response:
+            self.assertIn("text/event-stream", response.headers["Content-Type"])
+            frames = []
+            for _ in range(300):
+                line = response.readline().decode()
+                frames.append(line)
+                if line == "\n" and "event: draft_ready\n" in frames:
+                    break
+        self.assertIn("event: draft_ready\n", frames)
+        self.assertTrue(any(line.startswith("id: ") and int(line[4:]) > 0 for line in frames))
+        visible = self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+        self.assertGreaterEqual(visible["after_transcript_visible_ack_seconds"], 0)
+        self.api(f"/api/tasks/{task_id}/cancel", method="POST")
+        cancelled = self.wait(lambda: (state if (state := self.state(task_id))["status"] == "cancelled"
+            and not state["waiting"] and state["queue"]["callback_finished"] else None), "cancel callback drain")
+        self.assertEqual(cancelled["hashes"], before["hashes"])
+        self.assertEqual(cancelled["continuation_calls"], 1)
+        with self.assertRaises(HTTPError) as rejected:
+            self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
+        self.assertEqual(rejected.exception.code, 409)
+        self.api(f"/api/tasks/{task_id}/retry-summary", OPTIONS)
+        retry = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "retry held")
+        self.assertNotEqual(retry["generation"], before["generation"])
+        self.assertEqual(retry["hashes"], before["hashes"])
+        self.assertEqual(retry["continuation_calls"], 2)
+        old_pid = self.fixture["worker_pid"]
+        self.stop()
+        self.launch(resume=True)
+        self.assertNotEqual(self.fixture["worker_pid"], old_pid)
+        recovered = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "startup recovery")
+        self.assertEqual(recovered["hashes"], before["hashes"])
+        self.assertEqual(recovered["generation"], retry["generation"])
+        self.assertEqual(recovered["queue"]["sequence"], retry["queue"]["sequence"])
+        self.assertEqual(recovered["queue"]["generation"], retry["queue"]["generation"])
+        startup = self.api("/_fixture/state")
+        self.assertEqual(startup["startup_recovery"]["recovered"], 1)
+        self.assertEqual(startup["startup_recovery"]["waiting_for_context"], 0)
+        self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
+        completed = self.wait(lambda: (state if (state := self.state(task_id))["status"] == "success"
+            and state["queue"]["callback_finished"] else None), "recovered completion")
+        self.assertEqual(completed["hashes"], before["hashes"])
+        self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])
+
+    def test_fresh_and_resume_directory_guards_preserve_existing_files(self):
+        original = self.data / "unrelated.txt"
+        original.write_text("keep this", encoding="utf-8")
+        for resume in (False, True):
+            result = subprocess.run([sys.executable, str(ROOT / "scripts/progressive-slo-fixture.py"),
+                "--data-dir", str(self.data), *(["--resume"] if resume else [])], capture_output=True, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(original.read_text(), "keep this")
+        self.assertEqual(list(self.data.iterdir()), [original])
+
+    def test_forbidden_attempt_survives_process_restart(self):
+        self.launch()
+        created = self.api("/api/tasks/from-current-page?defer=true", {"mode": "download_only",
+            "title": "SLO reference forbidden download", "page_url": "https://example.test/reference",
+            "handoff_id": "slo-forbidden-download", "options": OPTIONS})
+        task_id = created["task_id"]
+        self.api(f"/api/tasks/{task_id}/start", OPTIONS)
+        self.wait(lambda: self.state(task_id)["status"] == "failed", "forbidden download rejected")
+        before = self.api("/_fixture/state")["forbidden_attempts"]
+        self.assertIn("download", before)
+        self.stop()
+        self.launch(resume=True)
+        self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], before)
+
+    def test_all_reference_durations_keep_complete_persisted_source_and_outline(self):
+        self.launch()
+        for minutes in (5, 30, 60, 180):
+            with self.subTest(minutes=minutes):
+                task_id = self.api("/api/tasks/from-current-page?defer=true", reference_request(minutes, "coverage"))["task_id"]
+                self.api(f"/api/tasks/{task_id}/start", OPTIONS)
+                before = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "complete source held")
+                self.assertEqual(before["source_coverage"], {"duration": minutes * 60, "cue_count": minutes * 2,
+                    "first_start": 0, "last_end": minutes * 60, "reference_cues_complete": True,
+                    "section_count": minutes // 5, "final_section_end": minutes * 60})
+                self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
+                after = self.wait(lambda: (state if (state := self.state(task_id))["status"] == "success"
+                    and state["queue"]["callback_finished"] else None), "reference completion")
+                self.assertEqual(after["hashes"], before["hashes"])
+        self.assertEqual(self.api("/_fixture/state")["forbidden_attempts"], [])

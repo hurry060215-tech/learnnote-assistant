@@ -125,3 +125,9 @@ architecture checks and diff whitespace checks pass. Regenerating the frozen
 snapshot twice produces the same SHA-256
 `51d653368b012c833d3345eed33de816948262f8dab53c745969bd42fb934a67`.
 No local browser, publication or hosted workflow dispatch was performed.
+
+Windows-checkout portability: source-boundary and provenance comparisons
+canonicalize CRLF to Git's LF form, without changing any other source bytes.
+The complete contract executes both LF and CRLF provider/renderer sources and
+compares all 19 cases against the same immutable baseline. Product sources and
+expected HTML/record fixtures are unchanged by this test-harness correction.

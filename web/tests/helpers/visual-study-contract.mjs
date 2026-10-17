@@ -9,7 +9,14 @@ export const functionNames = ["visualWindowEvidenceState", "visualWindowReviewIt
 export const providerFiles = ["task-format.js", "task-display.js", "task-list.js", "visual-window-evidence.js"];
 export const adapterNames = ["safeNoteMediaUrl", "hasTaskDiagnostics", "taskExportUrl", "taskClipExportUrl"];
 
+// Git stores the frozen source as LF; Windows may check it out as CRLF.
+// Canonicalize only that transport difference, preserving all other bytes.
+export function canonicalSource(source) {
+  return source.replace(/\r\n/g, "\n");
+}
+
 export function functionSource(source, name) {
+  source = canonicalSource(source);
   const start = source.indexOf(`function ${name}(`);
   if (start < 0) throw Error(`Missing original function ${name}`);
   const end = source.indexOf("\n}\n", start);
