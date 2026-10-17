@@ -79,7 +79,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
   const updatedTabs = [];
   let contextIndex = 0;
   let startIndex = 0;
-  let runtimeListener = null;
+  const runtimeListeners = [];
   const fetchCalls = [];
   const storageWrites = [];
   const permissionRequests = [];
@@ -155,7 +155,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
         }
       },
       runtime: {
-        onMessage: { addListener(listener) { runtimeListener = listener; } },
+        onMessage: { addListener(listener) { runtimeListeners.push(listener); } },
         async sendMessage(message) {
           sentMessages.push(message);
           if (message.type === "get-current-context") {
@@ -200,7 +200,7 @@ export async function createSidepanelHarness({ contexts = [], preflight = null, 
     fetchCalls,
     storageWrites,
     permissionRequests,
-    emit(message) { runtimeListener?.(message); }
+    emit(message) { runtimeListeners.forEach(listener => listener(message)); }
   };
 }
 

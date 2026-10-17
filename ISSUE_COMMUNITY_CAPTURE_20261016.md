@@ -122,16 +122,16 @@ must be inspected before claiming rendered acceptance complete.
 | background transport | 0 B | 8,360 B / 100 lines | 135 lines |
 | on-demand collector | 0 B | 6,738 B / 103 lines | 125 lines |
 | sidepanel community module | 0 B | 7,253 B / 99 lines | 130 lines |
-| Full package files, uncompressed | 620,798 B / 26 files | 659,320 B / 30 files | Explicit release whitelist |
-| Deterministic comparison ZIP | 185,430 B | 197,825 B | Measurement only |
+| Full package files, uncompressed | 620,798 B / 26 files | 659,350 B / 30 files | Explicit release whitelist |
+| Deterministic comparison ZIP | 185,430 B | 197,835 B | Measurement only |
 
 The complete capture inventory grows 16,254 B (4.79%). Worker startup parsing
 adds 9,516 B including the 50-byte import change. Each explicit injection loads
 7,844 B (helper plus collector). Sidepanel-only helper/UI parsing adds 8,359 B;
-existing panel hooks add 150 B, HTML 1,779 B, CSS 898 B, and bilingual runtime
+existing panel hooks/absent-source handling add 180 B, HTML 1,779 B, CSS 898 B, and bilingual runtime
 fallback messages 5,562 B. These costs are disclosed separately rather than
 calling all additions lazy-loaded. Unique capture+community-UI inventory is
-362,778 B. The full package grows 38,522 raw bytes / 12,395 compressed bytes.
+362,778 B. The full package grows 38,552 raw bytes / 12,405 compressed bytes.
 The comparison ZIP uses sorted release whitelist/locales/icons, fixed timestamps
 and Python deflate level 6; it is not the Windows release artifact or a network
 benchmark. LF checkout tests cover all four new modules.
@@ -186,3 +186,32 @@ All per-file line caps, the separate UI byte cap, and eager startup/sidepanel co
 remain unchanged. Package size increases by 185 raw bytes and 38 deterministic
 ZIP bytes. The branch shares visibility checks rather than duplicating them;
 no code compression or inventory omission is used to meet the budget.
+
+### Accepted-task revocation correction (2026-10-17)
+
+Actual Edge run [38998203703](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38998203703)
+on 67dda14 passed the complete DOM gate, including original/representative clear
+83-second timestamps and covered/hidden/offscreen/partial negatives. The first
+Chinese 390-pixel panel case passed preview, selected save, stale navigation,
+held cancellation/save, and Escape before revocation exposed a null-identity
+exception in the existing sidepanel's `sourceContinuityKey` during `renderContext`.
+The saved task correctly remained available while page identity was cleared.
+
+The continuity helper now maps only absent (`null`/`undefined`) identity to an
+empty sentinel; valid source keys remain byte-for-byte unchanged. This cannot
+match an active prior source or reuse its context. The other legitimate cleared
+source caller is an in-flight quick-Q&A current-source check; preflight/handoff/
+progressive starts retain their existing valid-source admission and epoch guards.
+The shipped-path regression accepts a task, mounts the actual community module,
+revokes, and verifies preview cancellation, cleared identity/cues/preflight,
+disabled sending and continued access to the accepted task. Repeated revocation
+does not request a grant or recollect. Held Q&A answer/error results settle without
+repainting the cleared source. The test harness retains multiple runtime listeners
+like Chrome, so it does not hide either module's revocation listener.
+
+This correction adds 30 bytes to `sidepanel.js` (78,564 to 78,594; 1,516 to 1,517
+lines), with every cap unchanged. It does not change eager worker or on-demand
+collector bytes. Compared with 67dda14, the same 30-file package grows 30 raw bytes
+and 10 deterministic ZIP bytes. All four screenshots retained by that run were
+inspected; the remaining bilingual/wide panel cases still require actual hosted
+acceptance after this correction. No live site or model call is implied.

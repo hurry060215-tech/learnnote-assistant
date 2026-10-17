@@ -447,7 +447,8 @@ function sourceIdentityKey(identity = {}) {
   ].join("\u001f");
 }
 
-function sourceContinuityKey(identity = {}) {
+function sourceContinuityKey(identity) {
+  if (identity == null) return "";
   return [
     identity.tab_id ?? "",
     identity.canonical_page_url || "",
