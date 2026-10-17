@@ -200,7 +200,7 @@ const os = require("node:os");
       animations: "disabled",
     });
     await p
-      .getByRole("button", { name: "查看原文 [00:53 – 01:00]", exact: true })
+      .getByRole("button", { name: "查看这一处字幕上下文 [00:53 – 01:00]", exact: true })
       .click();
     await p
       .locator('.cue.active[data-time="53"]')

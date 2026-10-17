@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import vm from "node:vm";
 const source = readFileSync(new URL("../desk-api.js", import.meta.url), "utf8");
 const { timestampRanges } = await import(
   "data:text/javascript;base64," + Buffer.from(source).toString("base64")
@@ -33,4 +34,55 @@ test("invalid seconds, reversed ranges, and ordinary bracket text stay untouched
     ),
     [],
   );
+});
+
+const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
+const decorator = desk.slice(desk.indexOf("function decorateSourceTimes("), desk.indexOf("const taskEvents ="));
+function sourceButton(label) {
+  const buttons = [], seeks = [];
+  const original = { textContent: label, closest: () => null, parentElement: { closest: () => null }, replaceWith() {} };
+  const code = !label.startsWith("["), nodes = code ? [] : [original];
+  const context = vm.createContext({ state: { selected: { kind: "task" } }, timestampRanges,
+    openSource: async seconds => seeks.push(seconds), failure: error => { throw error; }, NodeFilter: { SHOW_TEXT: 4 },
+    document: {
+      createElement: () => { const button = { attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } }; buttons.push(button); return button; },
+      createTextNode: text => ({ textContent: text }), createDocumentFragment: () => ({ append() {} }),
+      createTreeWalker: () => ({ currentNode: null, nextNode() { this.currentNode = nodes.shift(); return Boolean(this.currentNode); } }),
+    } });
+  vm.runInContext(decorator, context);
+  context.decorateSourceTimes({ querySelectorAll: () => code ? [original] : [] });
+  assert.equal(buttons.length, 1, `Expected one shipped timestamp button for ${label}`);
+  return { button: buttons[0], seeks };
+}
+
+function checkConsumerNames(source, file) {
+  const names = [...source.matchAll(/getByRole\(\s*["']button["']\s*,\s*\{[^}]*?\bname:\s*(["'])(.*?)\1[^}]*?\bexact:\s*true[^}]*\}/gs)]
+    .map(match => match[2]).filter(name => /^查看(?:原文|这一处字幕上下文)\s/.test(name));
+  for (const name of names) {
+    const label = name.replace(/^查看(?:原文|这一处字幕上下文)\s+/, "");
+    const { button, seeks } = sourceButton(label);
+    assert.equal(button.attributes["aria-label"], name, `${file}: exact accessible-name selector drifted from shipped decorator`);
+    assert.equal(button.textContent, label, "The task-specific visible timestamp must remain intact");
+    assert.equal(button.type, "button");
+    button.onclick();
+    const target = timestampRanges(label.startsWith("[") ? label : `[${label}]`)[0].start;
+    assert.deepEqual(seeks, [target], `${file}: source action must retain its exact starting timestamp`);
+  }
+  return names.length;
+}
+
+test("every hosted exact timestamp-role selector matches the shipped decorator and seek target", () => {
+  const root = new URL("../../scripts/", import.meta.url), consumers = [];
+  for (const file of readdirSync(root, { recursive: true }).filter(name => /\.(cjs|mjs|js)$/.test(name))) {
+    if (checkConsumerNames(readFileSync(new URL(file.replaceAll("\\", "/"), root), "utf8"), file)) consumers.push(file);
+  }
+  assert(consumers.includes("reader-workflow-acceptance.cjs"));
+  assert(consumers.includes("progressive-sections-acceptance.cjs"));
+});
+
+test("the consumer contract detects the previous stale reader accessible name", () => {
+  const reader = readFileSync(new URL("../../scripts/reader-workflow-acceptance.cjs", import.meta.url), "utf8");
+  const stale = reader.replace("查看这一处字幕上下文 [00:53 – 01:00]", "查看原文 [00:53 – 01:00]");
+  assert.notEqual(reader, stale);
+  assert.throws(() => checkConsumerNames(stale, "stale-reader-fixture"), /exact accessible-name selector drifted/);
 });

@@ -94,6 +94,30 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertIn("accessibility-visual-acceptance.cjs", workflow)
         self.assertIn("actions/upload-artifact", workflow)
 
+    def test_self_contained_progressive_gate_runs_first_after_shared_backend_readiness(self) -> None:
+        workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["accessibility-visual"]["steps"]
+        install = next(step for step in steps if step.get("id") == "visual_dependencies")
+        shared = next(step for step in steps if step.get("name") == "Start isolated local backend")
+        self.assertLess(steps.index(install), steps.index(shared))
+        self.assertEqual(shared["if"], "${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}")
+        lines = [line.strip() for line in shared["run"].splitlines() if line.strip()]
+        ready = lines.index('if (-not $ready) { throw "Local backend did not become ready." }')
+        progressive = "node scripts/progressive-sections-acceptance.cjs http://127.0.0.1:8765 build/progressive-sections-ui"
+        reader = "node scripts/reader-workflow-acceptance.cjs http://127.0.0.1:8765 build/reader-ui"
+        self.assertEqual(lines.count(progressive), 1)
+        self.assertEqual(lines[ready + 1], progressive)
+        self.assertEqual(lines[ready + 2], 'if ($LASTEXITCODE -ne 0) { throw "Progressive generated-section reader gate failed" }')
+        self.assertGreater(lines.index(reader), ready + 2)
+        self.assertEqual(lines[lines.index(reader) + 1], 'if ($LASTEXITCODE -ne 0) { throw "Reader timeline and navigation gate failed" }')
+        self.assertNotIn("continue-on-error", shared)
+        self.assertIn("} finally {", shared["run"])
+        self.assertIn("Stop-Process", shared["run"])
+        upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertEqual(upload["if"], "always()")
+        for directory in ("build/progressive-sections-ui", "build/reader-ui", "build/ui-backend-diagnostics"):
+            self.assertIn(directory, upload["with"]["path"])
+
     def test_local_player_gate_is_hosted_and_retains_real_media_evidence(self) -> None:
         workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         for event in ("pull_request", "push"):
