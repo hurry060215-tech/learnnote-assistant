@@ -158,3 +158,48 @@ test('The hosted collector records diagnostics before retaining the five-body as
   assert(diagnostic >= 0 && assertion > diagnostic);
   assert(source.includes("'synthetic DOM diagnostics', TIMEOUT"));
 });
+
+test('Measured geometry rejects the actual Edge overlap and requires five contained hit points', () => {
+  const { assertSyntheticDOMGeometry } = require('../community-capture-visual-acceptance.cjs');
+  // Minimized trace from exact e02dd55 / UI run 38987429130. The bottom-left
+  // sample hit BILI-COMMENT-RENDERER#shadowComment then its author DIV.
+  const original = {separation: {untimed_bottom: 274, following_top: 274, gap: 0}, candidates: [
+    {id: 'untimed-danmaku', visible: false, hits: [
+      {x: 193.867, y: 262, contained: true}, {x: 20.5, y: 250.5, contained: true},
+      {x: 367.234, y: 250.5, contained: true}, {x: 20.5, y: 273.5, contained: false},
+      {x: 367.234, y: 273.5, contained: true},
+    ]},
+  ]};
+  assert.throws(() => assertSyntheticDOMGeometry(original), /measured gap/);
+  const spaced = structuredClone(original); spaced.separation = {untimed_bottom: 274, following_top: 286, gap: 12};
+  assert.throws(() => assertSyntheticDOMGeometry(spaced), /five.*hit points/);
+  spaced.candidates[0].hits[3].contained = true;
+  assert.throws(() => assertSyntheticDOMGeometry(spaced), /unchanged collector visibility/);
+  spaced.candidates[0].visible = true;
+  assert.doesNotThrow(() => assertSyntheticDOMGeometry(spaced));
+  spaced.candidates[0].hits.pop();
+  assert.throws(() => assertSyntheticDOMGeometry(spaced), /every existing.*hit-test point/);
+  const html = fs.readFileSync(path.join(__dirname, '../../extension/tests/fixtures/community/visible-page.html'), 'utf8');
+  assert.match(html, /bili-comment-renderer\{[^}]*margin-top:12px/);
+  const source = fs.readFileSync(path.join(__dirname, '../community-capture-visual-acceptance.cjs'), 'utf8');
+  assert(source.includes('assertSyntheticDOMGeometry(report.dom_diagnostics);'));
+  assert(source.includes('assert.equal(result.items.length, 5,'));
+});
+
+test('Unchanged collector rejects the reported shadow hit and accepts clear separated samples', () => {
+  const collector = {};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../extension/content-community.js'), 'utf8'), collector);
+  const box = {left: 20, top: 250, right: 367.734, bottom: 274, width: 347.734, height: 24};
+  const node = {hidden: false, parentElement: null, getRootNode: () => ({}),
+    getBoundingClientRect: () => box, getAttribute: () => null, hasAttribute: () => false,
+    matches: () => false, contains: hit => hit === node};
+  const author = {}, host = {shadowRoot: {elementFromPoint: () => author}};
+  let followingTop = 274;
+  const view = {innerWidth: 1100, innerHeight: 850,
+    getComputedStyle: () => ({display: 'inline-block', visibility: 'visible', opacity: '1', overflowX: 'visible', overflowY: 'visible'}),
+    document: {elementFromPoint: (x, y) => x < 175 && y >= followingTop - .5 ? host : node},
+  };
+  assert.equal(collector.LearnNoteCommunityDOM.visible(node, view), false);
+  followingTop = 286;
+  assert.equal(collector.LearnNoteCommunityDOM.visible(node, view), true);
+});

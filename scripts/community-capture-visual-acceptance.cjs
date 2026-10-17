@@ -138,9 +138,18 @@ function syntheticDOMDiagnostics(result) {
   const exclusions = [['hidden-parent', '.reply-item[hidden] .reply-content'], ['offscreen', '.offscreen .reply-content'],
     ['aria-hidden', '[aria-hidden="true"] .reply-content'], ['clipped', '.clipped .reply-content'],
     ['covered', '.covered .reply-content'], ['partial-viewport', '.partial .reply-content']].map(([id, selector]) => ({ id, ...describe(document.querySelector(selector)) }));
-  return { fixture: 'synthetic-community-dom-v1', viewport: { width: innerWidth, height: innerHeight },
+  const untimed = document.querySelector('.bili-dm'), following = document.querySelector('#shadowComment');
+  const separation = untimed && following ? { untimed_bottom: rect(untimed).bottom, following_top: rect(following).top, gap: rect(following).top - rect(untimed).bottom } : null;
+  return { fixture: 'synthetic-community-dom-v1', viewport: { width: innerWidth, height: innerHeight }, separation,
     captured_count: result.items.length, truncated: result.truncated,
     missing_expected: candidates.filter(item => !item.accepted).map(item => item.id), candidates, exclusions };
+}
+function assertSyntheticDOMGeometry(diagnostics) {
+  assert(diagnostics.separation?.gap >= 8, 'Independent untimed-danmaku and following shadow fixture must have a measured gap');
+  const untimed = diagnostics.candidates.find(item => item.id === 'untimed-danmaku');
+  assert.equal(untimed?.hits.length, 5, 'Measure every existing untimed-danmaku hit-test point');
+  assert(untimed.hits.every(point => point.contained), 'All five untimed-danmaku hit points must stay inside that body');
+  assert.equal(untimed.visible, true, 'The separated positive body must pass the unchanged collector visibility gate');
 }
 async function run() {
   const { chromium } = require('playwright');
@@ -158,6 +167,7 @@ async function run() {
     for (const name of ['community-source.js', 'content-community.js']) await dom.addScriptTag({ url: origin + '/extension/' + name });
     const result = await collect(dom);
     report.dom_diagnostics = await bounded(dom.evaluate(syntheticDOMDiagnostics, result), 'synthetic DOM diagnostics', TIMEOUT);
+    assertSyntheticDOMGeometry(report.dom_diagnostics);
     assert.equal(result.items.length, 5, `Expected all five fixture bodies; missing: ${report.dom_diagnostics.missing_expected.join(', ')}`);
     assert(result.items.some(item => item.text === 'Open-shadow comment body only.'));
     assert(result.items.some(item => item.timestamp_seconds === 83));
@@ -240,4 +250,4 @@ if (require.main === module && process.argv.includes('--self-test')) {
   new Function('return ' + communityFixture.toString());
   console.log('Community rendered fixture syntax and asset/path checks pass; actual Edge rendering is a hosted gate.');
 } else if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics };
+module.exports = { communityFixture, heldAction, finishCapture, syntheticDOMDiagnostics, assertSyntheticDOMGeometry };
