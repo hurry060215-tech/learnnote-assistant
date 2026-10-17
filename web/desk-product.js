@@ -773,6 +773,10 @@ export function installProductWorkspace(ctx) {
     $("sourceFrames").hidden =
       s.kind !== "task" || !(s.frame_grids || []).length;
   }
+  window.addEventListener("learnnote:metadata", event => {
+    const source = event.detail;
+    if (source?.epoch === state.epoch && source.id === state.selected?.id && source.kind === state.selected?.kind) updateReadingContext();
+  });
   $("sourceFrames").onclick = async () => {
     const s = state.selected;
     if (!s || s.kind !== "task") return;

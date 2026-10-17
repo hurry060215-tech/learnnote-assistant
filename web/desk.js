@@ -20,7 +20,7 @@ import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/eviden
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
-import { installProductWorkspace } from "/web/desk-product.js?v=terminal-metadata-20261017";
+import { installProductWorkspace } from "/web/desk-product.js?v=selected-refresh-20261017";
 import { installTools } from "/web/desk-tools.js?v=course-timeline-20261016";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
@@ -246,6 +246,7 @@ function drawList() {
 }
 function showHome({ remember = true, check = true } = {}) {
   if (check && !guard()) return;
+  invalidateSelectedReads();
   state.navigation ||= [];
   if (remember && state.selected)
     state.navigation.push({ kind: state.selected.kind, id: state.selected.id });
@@ -301,6 +302,7 @@ function refresh() {
 async function refreshLibrary() {
   if (state.refreshing) return;
   state.refreshing = true;
+  const snapshot = selectedSnapshot();
   try {
     const [tasks, materials, health] = await Promise.all([
       api("/api/tasks"),
@@ -328,6 +330,11 @@ async function refreshLibrary() {
         a.updated_at || a.created_at || "",
       ),
     );
+    // A list requested before a selected read/navigation cannot roll it back.
+    if (state.selected && !selectedSnapshotCurrent(snapshot)) {
+      const current = state.selected;
+      state.items = state.items.map(item => item.id === current.id && item.kind === current.kind ? current : item);
+    }
     syncTaskEventStreams(state.items);
     drawList();
     window.dispatchEvent(new CustomEvent("learnnote:library"));
@@ -337,19 +344,11 @@ async function refreshLibrary() {
         (i) => i.kind === state.selected.kind && i.id === state.selected.id,
       );
     if (selected) {
-      const changed = claimMapVersion(selected) !== claimMapVersion(state.selected);
-      const mediaChanged = JSON.stringify(localMediaSource(selected)) !== JSON.stringify(localMediaSource(state.selected));
-      const selectionEpoch = state.epoch;
-      state.selected = selected;
-      renderStatus();
-      if (changed && !state.editing) {
-        claimTimeline.reset();
-        await loadEdition(state.epoch);
-      } else if (!state.editing) state.personalReview?.load();
-      if (mediaChanged && selectionEpoch === state.epoch && state.selected?.id === selected.id &&
-          !$("sourcePanel").hidden && $("sourcePanel").dataset.sourceTaskId === selected.id)
-        await openSource();
-    } else if (state.selected && !state.editing) state.personalReview?.load();
+      await adoptSelectedSnapshot(selected, snapshot);
+    } else if (state.selected && !state.editing) {
+      if (state.selected.kind === "task" && selectedSnapshotCurrent(snapshot)) showHome({ remember: false, check: false });
+      else state.personalReview?.load();
+    }
     const completed = state.items.filter(
       (item) =>
         item.kind === "task" &&
@@ -380,8 +379,81 @@ async function refreshLibrary() {
     state.refreshing = false;
   }
 }
+function selectedSnapshot() {
+  const selected = state.selected;
+  return selected && { id: selected.id, kind: selected.kind, epoch: state.epoch,
+    revision: state.selectedRevision || 0, version: claimMapVersion(selected) };
+}
+function selectedSourceCurrent(snapshot) {
+  return snapshot && snapshot.epoch === state.epoch && snapshot.id === state.selected?.id && snapshot.kind === state.selected?.kind;
+}
+function selectedSnapshotCurrent(snapshot) {
+  return selectedSourceCurrent(snapshot) && snapshot.revision === (state.selectedRevision || 0)
+    && !(state.selectedControlPending?.id === snapshot.id && state.selectedControlPending?.kind === snapshot.kind)
+    && snapshot.version === claimMapVersion(state.selected);
+}
+function invalidateSelectedReads() {
+  state.selectedRevision = (state.selectedRevision || 0) + 1;
+  editionRequest++;
+  if (state.selectedRefresh) { state.selectedRefresh.dirty = false; state.selectedRefresh.controller?.abort(); }
+  state.selectedRefresh = null;
+}
+async function adoptSelectedSnapshot(selected, snapshot, forceEdition = false) {
+  if (!selectedSnapshotCurrent(snapshot) || selected.id !== snapshot.id || selected.kind !== snapshot.kind) return;
+  const changed = claimMapVersion(selected) !== claimMapVersion(state.selected);
+  const media = JSON.stringify(localMediaSource(selected));
+  const mediaChanged = media !== JSON.stringify(localMediaSource(state.selected));
+  state.selected = selected;
+  state.selectedRevision = (state.selectedRevision || 0) + 1;
+  renderStatus();
+  window.dispatchEvent(new CustomEvent("learnnote:metadata", { detail: { id: selected.id, kind: selected.kind, epoch: snapshot.epoch, control_generation: selected.control_generation } }));
+  if ((changed || forceEdition) && !state.editing) {
+    claimTimeline.reset();
+    await loadEdition(snapshot.epoch);
+  } else if (!state.editing) state.personalReview?.load();
+  if (mediaChanged && selectedSourceCurrent(snapshot) && media === JSON.stringify(localMediaSource(state.selected)) &&
+      !$("sourcePanel").hidden && $("sourcePanel").dataset.sourceTaskId === selected.id)
+    await openSource();
+}
+function refreshSelectedTask(taskId = state.selected?.id) {
+  if (state.selected?.kind !== "task" || state.selected.id !== taskId || state.editing || state.selectedControlPending?.id === taskId) return Promise.resolve();
+  let lane = state.selectedRefresh;
+  if (!lane || !selectedSourceCurrent(lane)) {
+    lane = state.selectedRefresh = { ...selectedSnapshot(), dirty: false, promise: null };
+  }
+  lane.dirty = true;
+  if (lane.promise) return lane.promise;
+  lane.promise = (async () => {
+    let replayedConflict = false;
+    while (lane.dirty && state.selectedRefresh === lane && selectedSourceCurrent(lane) && !state.editing && state.selectedControlPending?.id !== taskId) {
+      lane.dirty = false;
+      const snapshot = selectedSnapshot();
+      // Successful replies and missing-task replies share one contention replay.
+      const replayConflict = () => {
+        if (!replayedConflict && selectedSourceCurrent(snapshot)) { lane.dirty = true; replayedConflict = true; }
+      };
+      lane.controller = new AbortController();
+      try {
+        const value = await api(`/api/tasks/${encodeURIComponent(taskId)}`, { signal: lane.controller.signal });
+        if (!selectedSnapshotCurrent(snapshot)) {
+          replayConflict();
+          continue;
+        }
+        if (value.task?.id === taskId) await adoptSelectedSnapshot({ ...value.task, kind: "task" }, snapshot, true);
+      } catch (error) {
+        if (error.status === 404) {
+          if (selectedSnapshotCurrent(snapshot) && !state.editing) showHome({ remember: false, check: false });
+          else replayConflict();
+        }
+        // Keep the readable edition on transient failures; events/polling retry.
+      }
+    }
+  })().finally(() => { lane.promise = null; });
+  return lane.promise;
+}
 async function openItem(item, { remember = true, check = true, openMedia = true } = {}) {
   if (check && !guard()) return;
+  invalidateSelectedReads();
   state.navigation ||= [];
   if (
     remember &&
@@ -460,6 +532,7 @@ const sectionReader = createSectionReader({
 });
 async function loadEdition(epoch) {
   const selected = state.selected;
+  const version = claimMapVersion(selected);
   const request = ++editionRequest;
   const progressive = selected.kind === "task" && selected.options?.visual_understanding
     && ["running", "cancelling", "failed", "cancelled"].includes(selected.status)
@@ -470,7 +543,7 @@ async function loadEdition(epoch) {
   ]);
   if (epoch !== state.epoch || request !== editionRequest || state.editing
       || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind
-      || state.selected?.updated_at !== selected.updated_at) return;
+      || claimMapVersion(state.selected) !== version) return;
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
@@ -603,7 +676,7 @@ const taskEvents = new Map();
 const taskEventHub = createTaskEventHub({
   connect: url => new EventSource(url),
   onUpdate: () => refresh(),
-  onInvalidate: taskId => taskEvents.delete(taskId),
+  onInvalidate: taskId => { taskEvents.delete(taskId); refreshSelectedTask(taskId); },
 });
 function syncTaskEventStreams(items = state.items) {
   if (typeof EventSource !== "function") return;
@@ -1094,8 +1167,9 @@ $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
 $("closeSource").onclick = () => closeSource();
 installNoteEditor({
-  state, $, guard, notice, renderNote,
-  onEnterEdit: () => { evidenceRequest++; claimTimeline.reset(); state.personalReview?.reset(); },
+  state, $, guard, notice,
+  renderNote: () => { invalidateSelectedReads(); renderNote(); refreshSelectedTask(); },
+  onEnterEdit: () => { invalidateSelectedReads(); evidenceRequest++; claimTimeline.reset(); state.personalReview?.reset(); },
   saveNote: (selected, body) => api(sourcePath(selected), {
     method: "PUT", body: JSON.stringify(body),
   }),
@@ -1280,6 +1354,7 @@ $("taskStatus").onclick = async (e) => {
   const button = e.target.closest("[data-task-action]");
   if (!button || state.taskAction) return;
   const selected = state.selected,
+    actionEpoch = state.epoch,
     action = button.dataset.taskAction;
   if (action === "diagnostics") {
     await workspaceTools.diagnostics().catch(failure);
@@ -1305,6 +1380,9 @@ $("taskStatus").onclick = async (e) => {
       if (!scopes) return;
       startQuery = "?" + new URLSearchParams(scopes);
     }
+    if (!selectedSourceCurrent({ ...selected, epoch: actionEpoch })) return;
+    state.selectedControlPending = { id: selected.id, kind: selected.kind, epoch: actionEpoch };
+    invalidateSelectedReads();
     await api(`/api/tasks/${selected.id}/${action}${startQuery}`, {
       method: "POST",
       body: JSON.stringify(
@@ -1325,11 +1403,16 @@ $("taskStatus").onclick = async (e) => {
             : startOptions || options(),
       ),
     });
+    state.selectedControlPending = null;
+    if (selectedSourceCurrent({ ...selected, epoch: actionEpoch })) { invalidateSelectedReads(); refreshSelectedTask(selected.id); }
     await refresh();
   } catch (error) {
     failure(error);
   } finally {
     state.taskAction = null;
+    const pending = state.selectedControlPending;
+    state.selectedControlPending = null;
+    if (selectedSourceCurrent(pending)) { invalidateSelectedReads(); refreshSelectedTask(pending.id); }
     if (state.selected) renderStatus();
   }
 };

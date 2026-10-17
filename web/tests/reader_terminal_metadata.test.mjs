@@ -9,7 +9,7 @@ assert.ok(projection.includes('$("readerMetadata").textContent'), "exercise the 
 function harness(selected) {
   const state = { selected }, nodes = new Map(), readerNav = {};
   const $ = id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); };
-  const context = vm.createContext({ state, $, readerNav, timestamp: () => "5:00" });
+  const context = vm.createContext({ window: { addEventListener() {} }, state, $, readerNav, timestamp: () => "5:00" });
   vm.runInContext(projection, context);
   return { state, $, readerNav, update: () => context.updateReadingContext() };
 }

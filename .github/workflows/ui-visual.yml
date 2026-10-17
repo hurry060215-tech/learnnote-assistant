@@ -35,6 +35,9 @@ on:
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
       - "scripts/install-visual-media-tools.ps1"
+      - "scripts/windows-media-stdin-probe.py"
+      - "scripts/tests/test_windows_media_stdin_probe.py"
+      - "docs/qa/windows-media-stdin-probe.md"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -98,6 +101,9 @@ on:
       - "scripts/progressive-slo-*"
       - "scripts/progressive-visual-*"
       - "scripts/install-visual-media-tools.ps1"
+      - "scripts/windows-media-stdin-probe.py"
+      - "scripts/tests/test_windows_media_stdin_probe.py"
+      - "docs/qa/windows-media-stdin-probe.md"
       - "scripts/tests/test_progressive_visual_fixture.py"
       - "docs/qa/progressive-visual-continuation.md"
       - "scripts/tests/*progressive*slo*"
@@ -192,7 +198,10 @@ jobs:
           New-Item -ItemType Directory -Force build/ui-visual-data | Out-Null
           $env:PYTHONPATH = "backend"
           $env:LEARNNOTE_DATA_DIR = "$PWD/build/ui-visual-data"
-          $server = Start-Process -FilePath python -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8765") -PassThru -WindowStyle Hidden
+          $diagnostics = "$PWD/build/ui-backend-diagnostics"
+          New-Item -ItemType Directory -Force $diagnostics | Out-Null
+          $primaryFailure = $null
+          $server = Start-Process -FilePath python -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8765") -PassThru -WindowStyle Hidden -RedirectStandardOutput "$diagnostics/stdout.log" -RedirectStandardError "$diagnostics/stderr.log"
           try {
             $ready = $false
             for ($attempt = 0; $attempt -lt 30; $attempt++) {
@@ -277,8 +286,41 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Task stream reconnect gate failed" }
             node scripts/design-visual-acceptance.cjs http://127.0.0.1:8765 build/design-ui
             if ($LASTEXITCODE -ne 0) { throw "Design alignment and responsive visual gate failed" }
+          } catch {
+            $primaryFailure = $_
+            throw
           } finally {
-            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+            try {
+              $server.Refresh()
+              $exited = $server.HasExited
+              $status = [ordered]@{
+                capturedBeforeCleanup = $true
+                pid = $server.Id
+                hasExited = $exited
+                exitCode = $(if ($exited) { $server.ExitCode } else { $null })
+                workingSetBytes = $(if (-not $exited) { $server.WorkingSet64 } else { $null })
+                peakWorkingSetBytes = $(if (-not $exited) { $server.PeakWorkingSet64 } else { $null })
+                helperFailed = ($null -ne $primaryFailure)
+                capturedAt = [DateTime]::UtcNow.ToString("o")
+              }
+              $status | ConvertTo-Json | Set-Content -Encoding utf8 "$diagnostics/process-status.json"
+              if ($null -ne $primaryFailure) {
+                foreach ($log in @("stdout.log", "stderr.log")) {
+                  Write-Host "Shared backend diagnostic tail: $log"
+                  Get-Content -Encoding utf8 -Tail 80 "$diagnostics/$log" | ForEach-Object {
+                    if ($_.Length -gt 2000) { $_.Substring(0, 2000) } else { $_ }
+                  }
+                }
+              }
+            } catch {
+              Write-Warning "Shared backend diagnostics failed: $($_.Exception.GetType().Name)"
+            }
+            try {
+              if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction Stop }
+            } catch {
+              if ($null -eq $primaryFailure) { throw }
+              Write-Warning "Shared backend cleanup also failed: $($_.Exception.GetType().Name)"
+            }
           }
       - name: Personal annotations with actual Edge and backend
         if: ${{ !cancelled() && steps.visual_dependencies.outcome == 'success' }}
@@ -343,6 +385,9 @@ jobs:
             build/unified-ui
             build/redesign-ui
             build/ui-visual
+            build/ui-backend-diagnostics/stdout.log
+            build/ui-backend-diagnostics/stderr.log
+            build/ui-backend-diagnostics/process-status.json
             build/learning-ui
             build/encoding-redecode-ui
             build/pdf-ocr-ui
@@ -459,6 +504,13 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/progressive-visual-ui
+      - name: Diagnose owned media child stdin with identical input
+        if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          python scripts/windows-media-stdin-probe.py build/media-stdin-probe
+          if ($LASTEXITCODE -ne 0) { throw "Media stdin diagnostic identity, control or cleanup failed" }
       - name: Join real visual batches to retained reader sections
         if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}
         timeout-minutes: 10
@@ -480,6 +532,8 @@ jobs:
             build/progressive-visual-ui/*.json
             build/progressive-visual-ui/*.log
             build/progressive-visual-ui/*.png
+            build/media-stdin-probe/*.json
+            build/media-stdin-probe/*.log
           if-no-files-found: warn
           retention-days: 14
 

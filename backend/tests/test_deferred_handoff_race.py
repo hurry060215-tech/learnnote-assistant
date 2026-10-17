@@ -20,7 +20,7 @@ class DeferredHandoffRaceTests(unittest.TestCase):
         for name in ("app.storage.TASK_DIR", "app.observability.TASK_DIR", "app.main.TASK_DIR"):
             self.stack.enter_context(patch(name, root))
         self.stack.enter_context(patch("app.storage.ensure_dirs", lambda: None))
-        self.stack.enter_context(patch("app.main.task_payload", lambda task: task.model_dump(mode="json")))
+        self.stack.enter_context(patch("app.main.task_payload", lambda task, *, queue_snapshot=None: task.model_dump(mode="json")))
         self.stack.enter_context(patch("app.main.require_ready_note_model", lambda options: None))
         self.stack.enter_context(patch.dict(main._deferred_handoffs, {}, clear=True))
         self.client = TestClient(main.app)

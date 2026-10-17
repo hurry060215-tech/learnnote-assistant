@@ -72,7 +72,8 @@ async function cancellationProbe(close) {
     openSource: async seconds => { $('sourcePanel').hidden = false; calls.push(['openSource', seconds]); },
     localPlayer: {cancelSeek() {}}, sourceCueCleanup: null, sourceCueRender: null, sourceWindowRender: null,
   });
-  vm.runInContext('let sourceRequest = 0;' + desk.slice(desk.indexOf('function closeSource('), desk.indexOf('let inlineSourceRequest'))
+  vm.runInContext('let sourceRequest = 0, editionRequest = 0;'
+    + desk.slice(desk.indexOf('function invalidateSelectedReads('), desk.indexOf('async function adoptSelectedSnapshot(')) + desk.slice(desk.indexOf('function closeSource('), desk.indexOf('let inlineSourceRequest'))
     + desk.slice(desk.indexOf('async function openItem('), desk.indexOf('let editionRequest'))
     + desk.slice(desk.indexOf('let evidenceRequest = 0;'), desk.indexOf('async function drawReview()')), context);
   const pending = context.openEvidenceSource(two, 10);
@@ -96,7 +97,7 @@ const editionNodes = new Map([
   ['annotations', { dataset: {} }],
 ]);
 let renderCalls = 0, timelineCalls = 0;
-const editionContext = vm.createContext({ state: { selected, epoch: 3, text: note, revision, editing: false }, $: id => editionNodes.get(id),
+const editionContext = vm.createContext({ claimMapVersion, state: { selected, epoch: 3, text: note, revision, editing: false }, $: id => editionNodes.get(id),
   api: async () => ({ text: note, revision }), sourcePath: () => '/synthetic/edition', LearnNoteMarkdown: { configure() {} },
   taskAsset: value => value, sectionReader: { render: () => false }, renderEditionStable,
   document: { scrollingElement: { scrollTop: 0 } }, renderNote: () => { renderCalls++; timelineCalls++; },

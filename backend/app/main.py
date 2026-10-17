@@ -4,6 +4,8 @@ from .model_data_consent import page_data_preview
 from .deferred_task_consent import start_reviewed_handoff, task_or_404
 from .task_artifacts import public_summary_task, task_artifact_path, task_artifact_states, read_task_report, owned_bundle_writer, task_media_path_diagnostics, task_report_path, saved_task_media_file
 from .task_paths import TaskArtifactUnavailable, artifact_name
+from .task_projection_evidence import TaskProjectionEvidence
+from .queue_journal import read_queue_snapshot, queue_status_from_snapshot
 from .whole_duration_estimates import task_duration_estimates
 from .task_archives import (BundleArchive, StudyArchive, build_bundle_archive,
     build_sanitized_archive, build_support_archive, write_file_if_exists as _write_file_if_exists)
@@ -386,8 +388,8 @@ def rerun_options_from_body(body: RerunFromMediaRequest | TaskOptions | None) ->
     return body
 
 
-def task_media_file_exists(task: TaskRecord) -> bool:
-    return task_media_validation(task)[0] == "verified"
+def task_media_file_exists(task: TaskRecord, *, evidence=None) -> bool:
+    return task_media_validation(task, evidence=evidence)[0] == "verified"
 
 
 def task_media_source_is_definitively_non_video(task: TaskRecord) -> bool:
@@ -407,7 +409,9 @@ def task_media_source_is_definitively_non_video(task: TaskRecord) -> bool:
     return all(is_non_video(source) for source in sources)
 
 
-def task_media_validation(task: TaskRecord) -> tuple[str, str]:
+def task_media_validation(task: TaskRecord, *, evidence=None) -> tuple[str, str]:
+    if evidence is not None:
+        return evidence.media_validation(task)
     media_path = task_media_path(task)
     if media_path is None:
         return "missing", ""
@@ -417,16 +421,16 @@ def task_media_validation(task: TaskRecord) -> tuple[str, str]:
     return "verified", signature
 
 
-def task_media_ready_for_rerun(task: TaskRecord, *, allow_existing_note: bool = False) -> bool:
+def task_media_ready_for_rerun(task: TaskRecord, *, allow_existing_note: bool = False, evidence=None) -> bool:
     if task.status not in {"success", "failed"}:
         return False
     if task.note_path and not allow_existing_note:
         return False
-    return task_media_file_exists(task)
+    return task_media_file_exists(task, evidence=evidence)
 
 
-def task_media_display_name(task: TaskRecord) -> str:
-    media_path = task_media_path(task)
+def task_media_display_name(task: TaskRecord, *, evidence=None) -> str:
+    media_path = evidence.media_path(task) if evidence is not None else task_media_path(task)
     if media_path:
         return media_path.name
     raw_path = task.media_path or task.source_media_path
@@ -714,8 +718,8 @@ def _safe_browser_request_header_names(selected: ResourceCandidate | None) -> li
     return _safe_request_header_names((selected.request_headers or {}).keys())
 
 
-def _direct_extraction_route(task: TaskRecord) -> str:
-    media_exists = task_media_file_exists(task)
+def _direct_extraction_route(task: TaskRecord, *, evidence=None) -> str:
+    media_exists = task_media_file_exists(task, evidence=evidence)
     if task.mode == "subtitle_only":
         return "browser_subtitles_only"
     if task.source_type == "local":
@@ -733,12 +737,12 @@ def _direct_extraction_route(task: TaskRecord) -> str:
     return "pending_or_no_media"
 
 
-def direct_extraction_evidence(task: TaskRecord) -> dict:
+def direct_extraction_evidence(task: TaskRecord, *, evidence=None) -> dict:
     selected = task.selected_resource
     attempts = task.download_attempts or []
     cookie_summary = task.cookie_summary or {}
     cookie_count = cookie_summary.get("total", cookie_summary.get("cookie_count", 0))
-    media_exists = task_media_file_exists(task)
+    media_exists = task_media_file_exists(task, evidence=evidence)
     successful_attempts = [attempt for attempt in attempts if attempt.status == "success"]
     failed_attempts = [attempt for attempt in attempts if attempt.status == "failed"]
     strategy_order: list[str] = []
@@ -759,7 +763,7 @@ def direct_extraction_evidence(task: TaskRecord) -> dict:
             active_source_type = "player_source"
 
     drm_detected = bool(task.drm_detected or (active and active.drm_detected))
-    route = _direct_extraction_route(task)
+    route = _direct_extraction_route(task, evidence=evidence)
     boundary = "normal_accessible_media_only"
     if drm_detected:
         boundary = "drm_or_encrypted_not_bypassed"
@@ -1309,12 +1313,12 @@ def render_bundle_manifest(task: TaskRecord, transcript: dict, visual_index: dic
     }
 
 
-def _recovery_evidence(task: TaskRecord) -> task_recovery_guidance.RecoveryEvidence:
+def _recovery_evidence(task: TaskRecord, *, evidence=None) -> task_recovery_guidance.RecoveryEvidence:
     return task_recovery_guidance.RecoveryEvidence(
         inventory=read_resource_inventory(task),
         preflight=read_page_preflight_report(task),
-        media_exists=task_media_file_exists(task),
-        media_name=task_media_display_name(task),
+        media_exists=task_media_file_exists(task, evidence=evidence),
+        media_name=task_media_display_name(task, evidence=evidence),
         mse_boundary_summary=_mse_append_boundary_summary(task.selected_resource),
     )
 
@@ -1331,8 +1335,8 @@ def diagnostic_recovery_steps(task: TaskRecord) -> list[str]:
     return task_recovery_guidance.diagnostic_recovery_steps(task, evidence)
 
 
-def diagnostic_recovery_profile(task: TaskRecord) -> dict:
-    return task_recovery_guidance.diagnostic_recovery_profile(task, _recovery_evidence(task))
+def diagnostic_recovery_profile(task: TaskRecord, *, evidence=None) -> dict:
+    return task_recovery_guidance.diagnostic_recovery_profile(task, _recovery_evidence(task, evidence=evidence))
 
 
 def _audit_gate_state(task: TaskRecord, passed: bool, *, skipped: bool = False) -> str:
@@ -1347,7 +1351,7 @@ def _audit_gate_state(task: TaskRecord, passed: bool, *, skipped: bool = False) 
     return "wait"
 
 
-def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
+def task_audit_gates(task: TaskRecord, *, evidence=None) -> list[dict[str, str]]:
     selected = task.selected_resource
     attempts = task.download_attempts or []
     diagnostics = task.summary_diagnostics or {}
@@ -1356,7 +1360,7 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     is_local = task.source_type == "local"
     is_download_only = task.mode == "download_only"
     has_route = bool(selected and (selected.url or selected.kind)) or is_local or is_page_text or is_subtitle_only
-    has_media = task_media_file_exists(task)
+    has_media = task_media_file_exists(task, evidence=evidence)
     has_transcript = bool(task.transcript_path)
     has_visuals = bool(task.visual_windows or task.frame_grids or diagnostics.get("frame_grid_count"))
     has_note = bool(task.note_path)
@@ -1465,9 +1469,9 @@ def task_audit_gates(task: TaskRecord) -> list[dict[str, str]]:
     ]
 
 
-def task_audit_summary(task: TaskRecord) -> dict:
-    task = public_summary_task(task)
-    gates = task_audit_gates(task)
+def task_audit_summary(task: TaskRecord, *, evidence=None) -> dict:
+    task = public_summary_task(task) if evidence is None else task
+    gates = task_audit_gates(task, evidence=evidence)
     released = [gate for gate in gates if gate["state"] in {"pass", "skip"}]
     blocked = [gate for gate in gates if gate["state"] in {"fail", "warn"}]
     return {
@@ -1479,7 +1483,7 @@ def task_audit_summary(task: TaskRecord) -> dict:
     }
 
 
-def task_reuse_evidence(task: TaskRecord) -> dict:
+def task_reuse_evidence(task: TaskRecord, *, evidence=None) -> dict:
     browser_subtitle_count = len(task.browser_subtitles or [])
     browser_subtitle_span = 0.0
     if task.browser_subtitles:
@@ -1490,10 +1494,10 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     available, _ = task_artifact_states(task, ("subtitle_path", "transcript_path", "note_path"))
     subtitle_available, transcript_ready, note_ready = (available[field] for field in ("subtitle_path", "transcript_path", "note_path"))
     has_visual_slices = bool(task.frame_grids or task.visual_windows)
-    media_validation, media_signature = task_media_validation(task)
+    media_validation, media_signature = task_media_validation(task, evidence=evidence)
     media_available = media_validation == "verified"
     is_download_only = task.mode == "download_only"
-    rerun_ready = task_media_ready_for_rerun(task)
+    rerun_ready = task_media_ready_for_rerun(task, evidence=evidence)
     if media_validation == "invalid":
         suggested_next_step = "download_media"
     elif rerun_ready:
@@ -1538,9 +1542,9 @@ def task_reuse_evidence(task: TaskRecord) -> dict:
     }
 
 
-def task_source_evidence_quality(task: TaskRecord) -> tuple[dict, dict]:
+def task_source_evidence_quality(task: TaskRecord, *, evidence=None) -> tuple[dict, dict]:
     diagnostics = task.summary_diagnostics or {}
-    media_validation, media_signature = task_media_validation(task)
+    media_validation, media_signature = task_media_validation(task, evidence=evidence)
     has_media = media_validation == "verified"
     media_path_exists = media_validation != "missing"
     invalid_media = media_validation == "invalid"
@@ -1678,8 +1682,10 @@ def task_eta_seconds(task: TaskRecord) -> int | None:
     return None
 
 
-def task_payload(task: TaskRecord) -> dict:
+def task_payload(task: TaskRecord, *, queue_snapshot=None) -> dict:
     task = public_summary_task(task)
+    evidence = TaskProjectionEvidence(task, media_path=task_media_path,
+        media_signature=media_file_video_signature, non_video=task_media_source_is_definitively_non_video)
     payload = task.model_dump(mode="json")
     payload["media_integrity"] = task.media_integrity.model_dump(mode="json")
     payload["handoff_integrity"] = task.handoff_integrity.model_dump(mode="json")
@@ -1691,22 +1697,23 @@ def task_payload(task: TaskRecord) -> dict:
     payload["workflow_stage"] = task_workflow_stage(task)
     payload["eta_seconds"] = task_eta_seconds(task)
     payload.update(task_duration_estimates(task))
-    source_quality, evidence_quality = task_source_evidence_quality(task)
+    source_quality, evidence_quality = task_source_evidence_quality(task, evidence=evidence)
     payload["source_quality"] = source_quality
     payload["evidence_quality"] = evidence_quality
-    payload["direct_extraction"] = direct_extraction_evidence(task)
-    payload["queue"] = queue_status(TASK_DIR.parent, task.id)
+    payload["direct_extraction"] = direct_extraction_evidence(task, evidence=evidence)
+    payload["queue"] = (queue_status_from_snapshot(queue_snapshot, task.id) if queue_snapshot is not None
+                        else queue_status(TASK_DIR.parent, task.id))
     claim_map = safe_claim_projection(read_json(task.id, "claim_evidence_map.json", {}))
     payload["claim_evidence"] = {
         "path": "claim_evidence_map.json" if claim_map else "",
         "counts": claim_map.get("counts", {}) if isinstance(claim_map, dict) else {},
         "quality": claim_map.get("quality", {}) if isinstance(claim_map, dict) else {},
     }
-    payload["audit"] = task_audit_summary(task)
-    payload["recovery"] = diagnostic_recovery_profile(task)
-    payload["reuse"] = task_reuse_evidence(task)
-    payload["resume_available"] = task_media_file_exists(task)
-    payload["next_actions"] = task_next_actions(task)
+    payload["audit"] = task_audit_summary(task, evidence=evidence)
+    payload["recovery"] = diagnostic_recovery_profile(task, evidence=evidence)
+    payload["reuse"] = task_reuse_evidence(task, evidence=evidence)
+    payload["resume_available"] = task_media_file_exists(task, evidence=evidence)
+    payload["next_actions"] = task_next_actions(task, evidence=evidence)
     payload["artifact_status"] = task_artifact_status(task)
     qa_history = read_task_qa_history(task.id)
     payload["qa"] = {
@@ -2419,7 +2426,7 @@ def _recent_qa_history(task_id: str, limit: int = 4) -> list[dict]:
     return read_task_qa_history(task_id)[-limit:]
 
 
-def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
+def task_next_actions(task: TaskRecord, limit: int = 9, *, evidence=None) -> list[dict]:
     actions: list[dict] = []
     seen: set[str] = set()
 
@@ -2435,16 +2442,16 @@ def task_next_actions(task: TaskRecord, limit: int = 9) -> list[dict]:
             "target": target,
         })
 
-    media_ready = task_media_file_exists(task)
+    media_ready = task_media_file_exists(task, evidence=evidence)
     note_ready = bool(task.note_path)
     transcript_ready = bool(task.transcript_path or task.browser_subtitles)
     visual_ready = bool(task.visual_windows or task.frame_grids or task.visual_index_path)
     qa_ready = note_ready or transcript_ready or visual_ready
     has_diagnostics = bool(task.download_attempts or task.error_code or task.selected_resource or task.summary_diagnostics)
-    can_continue_media = task_media_ready_for_rerun(task, allow_existing_note=True) and (
+    can_continue_media = task_media_ready_for_rerun(task, allow_existing_note=True, evidence=evidence) and (
         task.mode == "download_only" or not note_ready or task.status == "failed"
     )
-    media_name = task_media_display_name(task) if media_ready else "media.mp4"
+    media_name = task_media_display_name(task, evidence=evidence) if media_ready else "media.mp4"
 
     if can_continue_media:
         add(
@@ -3350,7 +3357,8 @@ def resume_task_from_checkpoint(
 def api_list_tasks() -> dict:
     records = [expire_deferred_handoff(task.id) if task.awaiting_confirmation else task
                for task in list_tasks()]
-    return {"tasks": [task_payload(task) for task in records if task is not None]}
+    snapshot = read_queue_snapshot(TASK_DIR.parent)
+    return {"tasks": [task_payload(task, queue_snapshot=snapshot) for task in records if task is not None]}
 
 
 @app.get("/api/storage")

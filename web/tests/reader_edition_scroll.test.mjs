@@ -19,7 +19,7 @@ function harness() {
     querySelector: () => null, querySelectorAll: () => [heading] };
   const task = { kind: "task", id: "a", status: "running", summary_source: "transcript-draft", updated_at: "one", options: {} };
   const state = { epoch: 1, selected: task, editing: false }, pending = [];
-  const context = vm.createContext({ state, $: id => id === "document" ? reader : { dataset: {} },
+  const context = vm.createContext({ claimMapVersion: task => JSON.stringify([task?.control_generation, task?.control_retry_count, task?.updated_at]), state, $: id => id === "document" ? reader : { dataset: {} },
     api: () => new Promise(resolve => pending.push(resolve)), sourcePath: selected => `/edition/${selected.id}`,
     LearnNoteMarkdown: { configure() {} }, taskAsset: value => value, sectionReader: { render: () => false },
     renderEditionStable, document: { scrollingElement: scroller }, loadClaimTimeline() {},
@@ -49,7 +49,9 @@ test("a delayed production edition response preserves the user's current passage
 
 test("late edition responses cannot render after newer navigation, task generation or editing", async () => {
   for (const mutate of [h => h.state.epoch++, h => { h.state.selected = { ...h.state.selected, id: "b" }; },
-    h => { h.state.selected = { ...h.state.selected, updated_at: "new-generation" }; }, h => { h.state.editing = true; }]) {
+    h => { h.state.selected = { ...h.state.selected, updated_at: "new-generation" }; },
+    h => { h.state.selected = { ...h.state.selected, control_generation: "new-attempt" }; },
+    h => { h.state.selected = { ...h.state.selected, control_retry_count: 2 }; }, h => { h.state.editing = true; }]) {
     const h = harness(), waiting = h.context.loadEdition(1), oldNode = h.heading(); mutate(h);
     h.scroller.scrollTop = 200;
     h.pending[0](h.edition("obsolete")); await waiting;

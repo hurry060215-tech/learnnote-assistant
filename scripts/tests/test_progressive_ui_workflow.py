@@ -27,7 +27,7 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         for step in job["steps"]:
             self.assertNotIn("continue-on-error", step)
         commands = [s for s in job["steps"] if "run" in s]
-        self.assertEqual(len(commands), 4)
+        self.assertEqual(len(commands), 5)
         self.assertIn("-c backend/requirements.windows-py312.lock.txt", commands[0]["run"])
         self.assertIn("python -m pip check", commands[0]["run"])
         self.assertIn("npm ci", commands[0]["run"])
@@ -50,7 +50,12 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         self.assertLess(provision, contracts)
         self.assertNotIn("continue-on-error", steps[provision])
         self.assertEqual(steps[provision]["run"], "./scripts/install-visual-media-tools.ps1 -OutputDirectory build/visual-media-tools")
-        visual = commands[3]
+        probe = commands[3]
+        self.assertEqual(probe["if"], "${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}")
+        self.assertEqual(probe["timeout-minutes"], "4")
+        self.assertEqual(probe["run"].splitlines()[0], "python scripts/windows-media-stdin-probe.py build/media-stdin-probe")
+        self.assertEqual(sum(step["run"].count("python scripts/windows-media-stdin-probe.py") for step in commands), 1)
+        visual = commands[4]
         self.assertEqual(visual["if"], "${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}")
         self.assertEqual(visual["timeout-minutes"], "10")
         self.assertIn("Get-Command ffmpeg -ErrorAction Stop", visual["run"])
@@ -73,6 +78,7 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
             "build/progressive-slo-ui/*.png",
             "build/progressive-visual-ui/*.json", "build/progressive-visual-ui/*.log",
             "build/progressive-visual-ui/*.png",
+            "build/media-stdin-probe/*.json", "build/media-stdin-probe/*.log",
         ])
         for event in ("push", "pull_request"):
             patterns = self.workflow["on"][event]["paths"]
@@ -84,6 +90,9 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
                              "scripts/progressive-visual-api-acceptance.cjs",
                              "scripts/progressive-visual-fixture.py",
                              "scripts/install-visual-media-tools.ps1",
+                             "scripts/windows-media-stdin-probe.py",
+                             "scripts/tests/test_windows_media_stdin_probe.py",
+                             "docs/qa/windows-media-stdin-probe.md",
                              "scripts/tests/test_progressive_visual_fixture.py",
                              "web/tests/progressive_visual_fixture.test.mjs",
                              "docs/qa/progressive-visual-continuation.md",

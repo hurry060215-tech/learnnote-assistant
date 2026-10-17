@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import vm from "node:vm";
 import fixture from "../../scripts/progressive-slo-api-acceptance.cjs";
 const { DURATIONS, REPETITIONS, p95, summarize, captionRequest, readableGeometry } = fixture;
 function complete() { return DURATIONS.flatMap(minutes => Array.from({ length: REPETITIONS }, (_, index) =>
@@ -8,6 +9,54 @@ function complete() { return DURATIONS.flatMap(minutes => Array.from({ length: R
 function geometry() { return { source_matches: true, warning_present: true, viewport: { width: 1440, height: 1000 },
   heading: { top: 100, bottom: 140, left: 100, right: 600, width: 500, height: 40, visible: true, unobscured: true },
   excerpt: { top: 220, bottom: 250, left: 100, right: 600, width: 500, height: 30, visible: true, unobscured: true } }; }
+
+test("cancelled metadata observer binds the actual event and visible current reader", () => {
+  const expected = { task_id: "owned", generation: "a".repeat(64) };
+  function harness() {
+    let listener;
+    const header = { isConnected: true, innerText: "已停止 · 字幕已保留", parentElement: null,
+      getBoundingClientRect: () => ({ top: 80, bottom: 105, left: 20, right: 300, width: 280, height: 25 }) };
+    const reader = { dataset: { readerSource: "task:owned" } }, status = { dataset: { status: "cancelled" } };
+    const context = vm.createContext({ window: { addEventListener: (name, fn) => { assert.equal(name, "learnnote:metadata"); listener = fn; } },
+      location: { hash: "#task/owned" }, innerWidth: 390, innerHeight: 844,
+      document: { getElementById: id => ({ readerMetadata: header, document: reader, taskStatus: status })[id], elementFromPoint: () => header },
+      getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }) });
+    vm.runInContext(`(${fixture.observeCancelledMetadata.toString()})`, context)(expected);
+    return { header, reader, status, context, event: detail => listener({ detail }),
+      read: () => vm.runInContext(`(${fixture.cancelledUiObservation.toString()})()`, context) };
+  }
+  const detail = { id: "owned", kind: "task", epoch: 3, control_generation: expected.generation };
+  const good = harness(); assert.equal(fixture.cancelledUiReady(good.read(), expected), false);
+  good.event(detail); assert(fixture.cancelledUiReady(good.read(), expected));
+  for (const patch of [{ id: "other" }, { kind: "material" }, { control_generation: "old" }, { epoch: -1 }]) {
+    const h = harness(); h.event({ ...detail, ...patch }); assert.throws(() => fixture.cancelledUiReady(h.read(), expected));
+  }
+  for (const mutate of [h => { h.header.innerText = "字幕已取得 · 等待总结"; }, h => { h.status.dataset.status = "running"; },
+    h => { h.header.isConnected = false; }, h => { h.context.document.elementFromPoint = () => null; }]) {
+    const h = harness(); h.event(detail); mutate(h); assert.equal(fixture.cancelledUiReady(h.read(), expected), false);
+  }
+  for (const mutate of [h => { h.reader.dataset.readerSource = "task:other"; }, h => { h.context.location.hash = "#task/other"; },
+    h => { h.status.dataset.status = "failed"; }]) {
+    const h = harness(); h.event(detail); mutate(h); assert.throws(() => fixture.cancelledUiReady(h.read(), expected));
+  }
+});
+
+test("cancelled UI observation is armed before cancellation and outside the drain clock", () => {
+  const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
+  const observe = source.indexOf("await page.evaluate(observeCancelledMetadata");
+  const clock = source.indexOf("const cancelStart = performance.now()");
+  const end = source.indexOf("const cancelSeconds = (performance.now() - cancelStart)");
+  const check = source.indexOf("report.cancelled_ui = await page.evaluate(cancelledUiObservation)");
+  assert(observe >= 0 && observe < clock && clock < end && end < check);
+  assert(check < source.indexOf('await capture("draft-after-cancel.png")'));
+  const geometry = source.indexOf("const cancelledGeometry = await readerGeometry(id)");
+  const final = source.indexOf("report.cancelled_ui_before_capture = await page.evaluate(cancelledUiObservation)");
+  const capture = source.indexOf('await capture("draft-after-cancel.png")');
+  const remove = source.indexOf('window.removeEventListener("learnnote:metadata"');
+  assert(check < geometry && geometry < final && final < capture && capture < remove);
+  assert.match(source.slice(final, capture), /assert\(cancelledUiReady\(report.cancelled_ui_before_capture, cancelIdentity\)/);
+  assert.match(source, /assert\(cancelSeconds <= 2,/);
+});
 
 test("complete matrix uses nearest-rank p95 and retains every slow sample", () => {
   assert.equal(p95(Array.from({ length: 20 }, (_, i) => i + 1)), 19);

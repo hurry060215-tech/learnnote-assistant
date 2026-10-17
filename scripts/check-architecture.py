@@ -10,7 +10,7 @@ from javascript_graph import javascript_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "app"
-BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery", "model_data_consent", "deferred_task_consent"}
+BOUNDARY_MODULES = {"library", "knowledge", "study", "integrations", "observability", "media_kinds", "summary_diagnostics", "media_candidate_ranking", "media_transport", "asr_pipeline", "local_video_task", "visual_pipeline", "page_text_pipeline", "transcript_pipeline", "note_pipeline", "task_artifacts", "media_source_context", "media_url_parsing", "media_json_discovery", "media_discovery", "media_manifests", "qa_evidence", "qa_history", "task_archives", "task_recovery_guidance", "task_catalog_recovery", "model_data_consent", "deferred_task_consent", "task_projection_evidence"}
 ROUTER_MODULES = {
     path.stem
     for path in (APP / "routers").glob("*.py")
@@ -40,6 +40,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/concept_relation_snapshot.py": 130,
     "backend/app/routers/concept_relations.py": 90,
     "backend/app/main.py": 4270,
+    "backend/app/task_projection_evidence.py": 90,
     "backend/app/task_recovery_guidance.py": 451,
     "backend/app/downloader.py": 2520,
     "backend/app/processor.py": 1450,

@@ -106,6 +106,45 @@ async function recordFailureDiagnostics(report, operations, timeout = 5000) {
     finally { clearTimeout(timer); }
   }
 }
+function observeCancelledMetadata(expected) {
+  const state = { expected, event: null, error: null };
+  state.listener = event => {
+    const detail = event.detail || {};
+    if (detail.id !== expected.task_id || detail.kind !== "task" || detail.control_generation !== expected.generation)
+      state.error = "Cancelled metadata event belongs to another task or generation";
+    else if (!Number.isInteger(detail.epoch) || detail.epoch < 0) state.error = "Invalid selected metadata epoch";
+    else state.event = { id: detail.id, kind: detail.kind, epoch: detail.epoch, control_generation: detail.control_generation };
+  };
+  globalThis.referenceCancelledMetadata = state;
+  window.addEventListener("learnnote:metadata", state.listener);
+}
+function cancelledUiObservation() {
+  const state = globalThis.referenceCancelledMetadata;
+  const metadata = document.getElementById("readerMetadata"), rect = metadata?.getBoundingClientRect();
+  let visible = Boolean(metadata?.isConnected);
+  for (let node = metadata; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0) visible = false;
+  }
+  const hit = rect && document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+  return { event: state?.event, error: state?.error, route: location.hash,
+    reader_source: document.getElementById("document")?.dataset.readerSource,
+    status: document.getElementById("taskStatus")?.dataset.status, header: metadata?.innerText || "",
+    visible: visible && Boolean(hit && (hit === metadata || metadata.contains(hit))) && rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight
+      && rect.left >= 0 && rect.right <= innerWidth };
+}
+function cancelledUiReady(observation, expected) {
+  assert(!observation.error, observation.error);
+  assert.equal(observation.route, "#task/" + expected.task_id, "Cancelled reader route remains current");
+  assert.equal(observation.reader_source, "task:" + expected.task_id, "Cancelled reader source remains current");
+  assert(!["failed", "success"].includes(observation.status), "Unexpected terminal reader state");
+  if (!observation.event) return false;
+  assert.equal(observation.event.id, expected.task_id);
+  assert.equal(observation.event.kind, "task");
+  assert.equal(observation.event.control_generation, expected.generation, "Cancelled metadata generation remains current");
+  return observation.status === "cancelled" && observation.visible === true && /已停止/.test(observation.header)
+    && !/等待总结|正在准备内容|正在停止/.test(observation.header);
+}
 function p95(values) { return [...values].sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]; }
 function summarize(samples) {
   return DURATIONS.map(minutes => {
@@ -384,6 +423,8 @@ async function main(output = "build/progressive-slo-ui") {
     report.lifecycle_trace = trace = { phases: [], network: [] };
     const id = await prepare(5, "lifecycle"); await submit(id);
     const before = (await visible(id)).state; await capture("draft-before-cancel.png");
+    const cancelIdentity = { task_id: id, generation: before.generation };
+    await page.evaluate(observeCancelledMetadata, cancelIdentity);
     const cancelStart = performance.now(); await api(`/api/tasks/${id}/cancel`, { method: "POST" });
     const cancelled = await until(async () => { const state = await snapshot(id);
       return state.status === "cancelled" && !state.waiting && state.queue?.callback_finished ? state : null;
@@ -391,8 +432,19 @@ async function main(output = "build/progressive-slo-ui") {
     const cancelSeconds = (performance.now() - cancelStart) / 1000;
     assert(cancelSeconds <= 2, `Cancel/drain took ${cancelSeconds}s`);
     assert.deepEqual(cancelled.hashes, before.hashes); assert.equal(cancelled.continuation_calls, before.continuation_calls);
-    await page.locator('#taskStatus[data-status="cancelled"]').waitFor();
-    const cancelledGeometry = await readerGeometry(id); await capture("draft-after-cancel.png");
+    assert.equal(cancelled.generation, before.generation);
+    await until(async () => {
+      report.cancelled_ui = await page.evaluate(cancelledUiObservation);
+      return cancelledUiReady(report.cancelled_ui, cancelIdentity);
+    }, "same-generation cancelled reader and visible stopped header");
+    const cancelledGeometry = await readerGeometry(id);
+    report.cancelled_ui_before_capture = await page.evaluate(cancelledUiObservation);
+    assert(cancelledUiReady(report.cancelled_ui_before_capture, cancelIdentity), "Stopped header must survive the reading observation");
+    await capture("draft-after-cancel.png");
+    await page.evaluate(() => {
+      window.removeEventListener("learnnote:metadata", globalThis.referenceCancelledMetadata.listener);
+      delete globalThis.referenceCancelledMetadata;
+    });
     await submit(id, "retry-summary");
     const retry = await until(async () => { const state = await snapshot(id); return state.waiting ? state : null; }, "explicit summary retry held");
     assert.deepEqual(retry.hashes, before.hashes); assert.notEqual(retry.generation, before.generation);
@@ -438,5 +490,5 @@ async function main(output = "build/progressive-slo-ui") {
   }
   if (primaryError) throw primaryError;
 }
-module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics };
+module.exports = { DURATIONS, REPETITIONS, OPTIONS, p95, summarize, readableGeometry, captionRequest, createStartupParser, finishAcceptance, saveCheckpoint, scrollOutlineObserved, outlineGeometry, edgeExecutable, edgeLaunchOptions, networkLocation, streamIdentity, nativeSseRecord, traceStamp, observeNativeSse, recordFailureDiagnostics, observeCancelledMetadata, cancelledUiObservation, cancelledUiReady };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

@@ -130,3 +130,11 @@ remains inside the original timing window. A later passing run alone therefore
 cannot establish that native scroll compensation caused an earlier failure.
 A final node ID of null means the current heading is not the observed scroll
 handle; only handles used for the one-shot scroll receive an ID.
+
+The after-cancel screenshot additionally requires a current selected-metadata
+event for the same task and admitted control generation, the unchanged reader
+source/route, cancelled status, and a visible unobscured stopped header. Its
+listener is armed before cancellation. This separate UI wait occurs after the
+unchanged API/worker-drain clock and 2-second assertion, so it cannot hide slow
+cancellation. Missing/stale metadata fails the screenshot gate instead of
+capturing an old waiting label; no delay, reload or source change is substituted.

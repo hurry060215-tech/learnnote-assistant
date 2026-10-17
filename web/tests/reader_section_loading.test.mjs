@@ -9,7 +9,7 @@ function harness() {
   const state = { selected, epoch: 1, editing: false }, pending = [], applied = [], ordinary = [], timelines = [];
   const nodes = new Map();
   const $ = id => { if (!nodes.has(id)) nodes.set(id, { dataset: {}, querySelector: () => null }); return nodes.get(id); };
-  const context = vm.createContext({ state, $, document: { scrollingElement: {} }, timestamp: value => value,
+  const context = vm.createContext({ claimMapVersion: task => JSON.stringify([task?.control_generation, task?.control_retry_count, task?.updated_at]), state, $, document: { scrollingElement: {} }, timestamp: value => value,
     LearnNoteMarkdown: { configure() {}, markdownToHtml: value => value }, taskAsset: () => "", openSource() {}, failure() {}, decorateSourceTimes() {},
     sourcePath: value => `/editions/${value.id}`, api: path => new Promise((resolve, reject) => pending.push({ path, resolve, reject })),
     createSectionReader: () => ({ render: (projection, task, edition) => { applied.push({ projection, task, edition }); return !!projection?.accepted && !edition.edited; }, clear() {} }),

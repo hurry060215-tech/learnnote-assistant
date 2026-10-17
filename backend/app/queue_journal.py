@@ -67,13 +67,22 @@ def cancel_queued_processing(root: Path, task_id: str, *, expected_generation: s
         return False
 
 
+def read_queue_snapshot(root: Path) -> tuple[list[dict], bool | None]:
+    """Read and order once; callers own this request-local, nonmutating value."""
+    rows, paused = read_queue_entries(root)
+    return (rows if rows and rows[0].get("state") == "unknown" else ordered_entries(rows)), paused
+
+
 def queue_status(root: Path, task_id: str) -> dict[str, object]:
     """Return a durable, privacy-safe queue snapshot for one task."""
+    return queue_status_from_snapshot(read_queue_snapshot(root), task_id)
 
-    rows, paused = read_queue_entries(root)
-    if rows and rows[0].get("state") == "unknown":
+
+def queue_status_from_snapshot(snapshot: tuple[list[dict], bool | None], task_id: str) -> dict[str, object]:
+    """Pure projection; no queue read, initialization, repair or row mutation."""
+    entries, paused = snapshot
+    if entries and entries[0].get("state") == "unknown":
         return {"state": "unknown", "position": 0, "queued_count": 0, "running_count": 0, "kind": ""}
-    entries = ordered_entries(rows)
     active = [row for row in entries if row["state"] in {"queued", "running", "recovering"}]
     current = next((row for row in active if row["task_id"] == task_id), None)
     if current is None:

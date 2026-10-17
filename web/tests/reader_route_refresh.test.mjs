@@ -37,7 +37,7 @@ function harness({ holdEdition = false } = {}) {
     loadAnnotations: async () => {}, openSource: async () => actions.push("source:" + state.selected.id), document: { querySelector: () => null },
   });
   $("settings").click = () => { actions.push("settings"); $("settingsDialog").open = true; };
-  vm.runInContext(home + refreshAndOpen + route + ";globalThis.methods={refresh,applyRoute,openItem,showHome};", context);
+  vm.runInContext("let editionRequest = 0;" + home + refreshAndOpen + route + ";globalThis.methods={refresh,applyRoute,openItem,showHome};", context);
   return { state, location, requests, notices, streams, actions, $, held, edition, enteredEdition, old, next, methods: context.methods,
     create: () => { tasks = [next, old]; }, setTasks: value => { tasks = value; }, setMaterials: value => { materials = value; },
     setGuard: value => { allowed = value; }, failFreshTasks: error => { taskError = error; } };
