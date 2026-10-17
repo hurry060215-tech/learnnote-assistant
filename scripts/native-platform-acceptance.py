@@ -16,8 +16,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -137,14 +139,58 @@ def capture_native_window(pid, output, phase):
             "visual_review_required": True}
 
 
-def await_ready(process, api, output, phase, *, native):
+def selected_session_origin(data_dir, preferred_port):
+    """Read routing evidence only from this disposable destination, never scan ports."""
+    marker = data_dir / ".desktop-session.json"
+    try:
+        info = marker.lstat()
+    except FileNotFoundError:
+        return None  # DesktopSession publishes atomically after backend startup.
+    assert marker.parent.resolve() == data_dir, "Desktop session directory must not resolve elsewhere"
+    assert stat.S_ISREG(info.st_mode) and info.st_size <= 4096, "Invalid desktop session marker file"
+    with marker.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        assert (opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino), "Desktop session marker changed while opening"
+        raw = stream.read(4097)
+    assert len(raw) <= 4096, "Oversized desktop session marker"
+    record = json.loads(raw.decode("utf-8"))
+    assert isinstance(record, dict) and set(record) == {"url"}, "Invalid desktop session record"
+    origin = record["url"]
+    match = re.fullmatch(r"http://127\.0\.0\.1:([1-9][0-9]{0,4})", origin) if isinstance(origin, str) else None
+    assert match, "Desktop session must contain a canonical loopback origin only"
+    # Match the launcher's bounded available_port fallback, not arbitrary services.
+    assert preferred_port <= int(match[1]) < min(preferred_port + 20, 65536), "Desktop session port outside launcher range"
+    return origin
+
+
+def await_ready(process, api, output, phase, *, native, session_root=None, expected_version=None):
     deadline = time.monotonic() + 90
+    selected = None
+    if session_root is not None:
+        assert native and isinstance(expected_version, str) and expected_version, "Session routing requires the frozen native version"
+        preferred_port = int(api.origin.rsplit(":", 1)[1])
     while True:
         if process.poll() is not None:
             raise AssertionError(f"{phase}: process exited {process.returncode}; see log")
+        if session_root is not None:
+            origin = selected_session_origin(session_root, preferred_port)
+            if origin is None:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"{phase}: destination desktop session did not start")
+                time.sleep(.25)
+                continue
+            assert selected in (None, origin), "Destination desktop session origin changed during startup"
+            selected = api.origin = origin
         try:
             health = api.call("GET", "/health").json()
             assert health["ok"] is True and health["service"] == "learnnote"
+            if session_root is not None:
+                # The URL-only marker is not PID proof. Require the known live
+                # helper, exact destination/version, then its PID-owned window.
+                assert process.poll() is None, "Frozen helper exited during backend readiness"
+                assert health.get("app_version") == expected_version, "Helper backend version differs from the frozen old app"
+                assert Path(health["data_paths"]["root"]) == session_root, "Helper backend did not switch to persisted destination"
+                assert health["data_paths"]["all_under_data_dir"] is True
             break
         except requests.ConnectionError:
             if time.monotonic() >= deadline:
@@ -159,6 +205,7 @@ def await_ready(process, api, output, phase, *, native):
             time.sleep(.5)
         capture = capture_native_window(process.pid, output, phase)
         write_json(output / f"{phase}-window.json", capture)
+        assert process.poll() is None, "Native helper exited during window readiness"
     return health
 
 
@@ -388,12 +435,15 @@ def migration_smoke(executable, output):
                     stopped = inventory(source)
                     write_json(output / "stopped-source-inventory.json", stopped)
                     assert same_snapshot(plan["snapshot"], stopped), "Stopping the old process changed durable source data"
-                    health = await_ready(helper, migrated, output, "migration-helper", native=True)
+                    health = await_ready(helper, migrated, output, "migration-helper", native=True,
+                                         session_root=target, expected_version=health["app_version"])
                     # Environment still names source: only persisted config may select destination.
                     assert Path(health["data_paths"]["root"]) == target, "Helper backend did not switch to persisted destination"
                     assert health["data_paths"]["all_under_data_dir"] is True
                     write_json(output / "restarted-backend.json", {"pid": helper.pid,
-                        "app_version": health["app_version"], "data_paths": health["data_paths"]})
+                        "app_version": health["app_version"], "data_paths": health["data_paths"],
+                        "requested_origin": f"http://127.0.0.1:{port}", "selected_origin": migrated.origin,
+                        "routing_source": "destination/.desktop-session.json"})
                     assert migration_exports(migrated, material, output, "after") == before, "Migration changed material or annotation exports"
                     active = json.loads((app_root / "learnnote-config.json").read_bytes())
                     assert active == {**json.loads(previous), "data_dir": str(target)}

@@ -4,6 +4,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { cleanupFixture } = require("./course-upgrade-fixture-helpers.cjs");
 const ROOT = path.resolve(__dirname, ".."), BASE = "http://127.0.0.1:18943";
 const PLAN = { ok: true, preview: true, token: "synthetic-review", source: "C:\\Synthetic\\LearnNote\\学习资料与逐字稿", path: "D:\\Synthetic\\LearnNote\\新的学习资料目录",
   file_count: 12, byte_count: 4194304,
@@ -74,6 +75,43 @@ async function openMigrationSettings(page) {
   });
   await page.locator("#settings").click(); await page.locator('[data-settings-section="storage"]').click();
 }
+function migrationModalFocusIsSafe(state) {
+  const inside = state.insideModal && !state.rootFallback;
+  const chrome = !state.insideModal && !state.documentHasFocus && state.rootFallback && ["BODY", "HTML"].includes(state.activeTag);
+  return state.open && state.modal && state.settingsOpen && state.openDialogs === 2 && state.phase === "preview"
+    && state.backgroundVisible && !state.backgroundDisabled && state.backgroundFocusRefused && (inside || chrome);
+}
+async function checkMigrationModalFocus(page, report, width, dark) {
+  const dialog = page.locator("#dataMigrationDialog");
+  async function observe(key) {
+    const state = await dialog.evaluate(node => {
+      const active = document.activeElement, background = document.querySelector("#settingsDialog [data-close]"), rect = background.getBoundingClientRect();
+      const state = { activeTag: active?.tagName, activeId: active?.id || "", documentHasFocus: document.hasFocus(),
+        insideModal: node.contains(active), rootFallback: active === document.body || active === document.documentElement,
+        open: node.open, modal: node.matches(":modal"), settingsOpen: document.querySelector("#settingsDialog").open,
+        openDialogs: document.querySelectorAll("dialog[open]").length, phase: node.dataset.phase,
+        backgroundVisible: rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1,
+        backgroundDisabled: background.disabled };
+      background.focus({ preventScroll: true });
+      state.backgroundFocusRefused = document.activeElement !== background;
+      return state;
+    });
+    (report.native_modal_focus ||= []).push({ width, dark, key, ...state });
+    assert(migrationModalFocusIsSafe(state), `Native migration modal focus/background contract: ${JSON.stringify(state)}`);
+    return state;
+  }
+  const before = await page.evaluate(() => JSON.stringify(window.__migrationFixture.calls));
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press("Tab"); const state = await observe("Tab");
+    // Browser chrome is a valid native Tab destination; reverse navigation must
+    // return to the modal without enabling the underlying settings controls.
+    if (!state.insideModal) {
+      await page.keyboard.press("Shift+Tab"); const returned = await observe("Shift+Tab");
+      assert(returned.insideModal && returned.documentHasFocus, "Reverse Tab must return from browser chrome to migration modal");
+    }
+  }
+  assert.equal(await page.evaluate(() => JSON.stringify(window.__migrationFixture.calls)), before, "Keyboard navigation must not activate background preview or migration");
+}
 async function main() {
   const out = path.resolve(process.argv[2] || "build/data-migration-ui"); fs.mkdirSync(out, { recursive: true });
   const report = { passed: false, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), browser: "Microsoft Edge",
@@ -82,7 +120,7 @@ async function main() {
     not_tested: ["native folder dialog", "desktop process exit", "actual file copying and configuration commit", "real credentials", "native webview"] };
   const save = () => fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
   const check = text => { report.checks.push(text); save(); };
-  let browser, page, context;
+  let browser, page, context, primaryError;
   save();
   try {
     assert.equal(process.platform, "win32", "Run this actual Edge fixture in the authorized hosted Windows visual job");
@@ -164,14 +202,14 @@ async function main() {
       await openPreview();
       assert.equal(await page.locator("#dataMigrationDialog").getAttribute("aria-labelledby"), "dataMigrationHeading");
       await page.waitForFunction(() => document.activeElement?.matches("[data-migration-close]"));
-      for (let i = 0; i < 10; i++) { await page.keyboard.press("Tab"); assert(await page.evaluate(() => document.querySelector("#dataMigrationDialog").contains(document.activeElement))); }
+      await checkMigrationModalFocus(page, report, width, dark);
       assert.equal(await page.locator("#dataMigrationDialog").evaluate(el => getComputedStyle(el).animationName), "none");
       await snapshot(`${width}-${dark ? "dark" : "light"}-preview`);
       await snapshot(`${width}-${dark ? "dark" : "light"}-confirm`, "[data-migration-confirm]");
       const actions = await page.locator("#dataMigrationDialog button:visible").evaluateAll(elements => elements.map(el => el.getBoundingClientRect().height)); assert(actions.every(height => height >= 44));
       await page.keyboard.press("Escape"); await page.waitForFunction(() => !document.querySelector("#dataMigrationDialog").open && document.activeElement?.id === "changeSettingsFolder");
     }
-    assert.equal(await count("apply"), 0); check("1280/1440/768/390 light/dark previews and confirmation captured; centered, no overflow, 44px actions, native focus trap, Escape return and reduced motion");
+    assert.equal(await count("apply"), 0); check("1280/1440/768/390 light/dark previews and confirmation captured; centered, no overflow, 44px actions, native modal/background isolation, Escape return and reduced motion");
     // Re-enter through the real mobile drawer; no forced off-screen settings clicks.
     await page.keyboard.press("Escape"); await openSettings();
     await page.evaluate(() => window.__migrationFixture.mode = "held-preview"); await page.locator("#changeSettingsFolder").click(); await phase("selecting");
@@ -198,6 +236,7 @@ async function main() {
     assert(report.bridge_calls.filter(call => call.method === "apply").every(call => call.token === PLAN.token));
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpected_requests, []); report.passed = true;
   } catch (error) {
+    primaryError = error;
     report.errors.push(error.stack || error.message);
     if (page) {
       report.bridge_calls = await page.evaluate(() => window.__migrationFixture?.calls || []).catch(() => []);
@@ -208,9 +247,9 @@ async function main() {
     if (page) await page.screenshot({ path: path.join(out, "failure.png"), animations: "disabled" }).then(() => report.screenshots.push("failure.png")).catch(() => {});
     throw error;
   } finally {
-    save(); if (context) await context.close(); if (browser) await browser.close();
+    await cleanupFixture({ report: save, context: () => context?.close(), browser: () => browser?.close() }, primaryError);
   }
   console.log(`PASS: migration preview/cancel/confirm/conflict, exact disclosures, mobile menu and accessibility; ${report.screenshots.length} screenshots at ${out}`);
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { PLAN, installBridge, syntheticResponse, migrationSidebarReady, openMigrationSettings };
+module.exports = { PLAN, installBridge, syntheticResponse, migrationSidebarReady, openMigrationSettings, migrationModalFocusIsSafe };

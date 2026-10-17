@@ -4,6 +4,7 @@ import json
 import importlib.util
 import os
 import platform
+import stat
 import sys
 from types import SimpleNamespace
 import tempfile
@@ -259,6 +260,126 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
         self.assertIs(caught.exception, primary)
         process.terminate.assert_called_once()
 
+    def test_selected_session_origin_accepts_only_canonical_bounded_loopback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            marker = root / ".desktop-session.json"
+            self.assertIsNone(MODULE.selected_session_origin(root, 12345))
+            for preferred, origin in ((12345, "http://127.0.0.1:12345"), (12345, "http://127.0.0.1:12364"),
+                                      (65530, "http://127.0.0.1:65535")):
+                marker.write_text(json.dumps({"url": origin}), encoding="utf-8")
+                self.assertEqual(MODULE.selected_session_origin(root, preferred), origin)
+            invalid = ("https://127.0.0.1:12345", "http://localhost:12345", "http://[::1]:12345",
+                       "http://127.0.0.2:12345", "http://example.test:12345", "http://127.0.0.1:12345/",
+                       "http://127.0.0.1:12345/path", "http://user@127.0.0.1:12345", "http://127.0.0.1:12345?x=1",
+                       "http://127.0.0.1:12345#x", "http://127.0.0.1:012345", "http://127.0.0.1:0",
+                       "http://127.0.0.1:65536", "http://127.0.0.1:12344", "http://127.0.0.1:12365",
+                       " http://127.0.0.1:12345", "http://127.0.0.1:12345\n", 12345)
+            for origin in invalid:
+                with self.subTest(origin=origin):
+                    marker.write_text(json.dumps({"url": origin}), encoding="utf-8")
+                    with self.assertRaises(AssertionError):
+                        MODULE.selected_session_origin(root, 12345)
+
+    def test_selected_session_rejects_invalid_file_shape_size_encoding_and_links(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            marker = root / ".desktop-session.json"
+            for raw in (b"[]", b"{}", b'{"url":"http://127.0.0.1:12345","pid":71}', b"{", b"\xff", b" " * 4097):
+                with self.subTest(raw=raw[:60]):
+                    marker.write_bytes(raw)
+                    with self.assertRaises((AssertionError, ValueError)):
+                        MODULE.selected_session_origin(root, 12345)
+            marker.write_text('{"url":"http://127.0.0.1:12345"}', encoding="utf-8")
+            with patch.object(Path, "lstat", return_value=SimpleNamespace(st_mode=stat.S_IFLNK, st_size=1)):
+                with self.assertRaisesRegex(AssertionError, "marker file"):
+                    MODULE.selected_session_origin(root, 12345)
+            with patch.object(Path, "resolve", return_value=root / "elsewhere"):
+                with self.assertRaisesRegex(AssertionError, "resolve elsewhere"):
+                    MODULE.selected_session_origin(root, 12345)
+            opened = marker.stat()
+            with patch.object(MODULE.os, "fstat", return_value=SimpleNamespace(st_dev=opened.st_dev, st_ino=opened.st_ino + 1)):
+                with self.assertRaisesRegex(AssertionError, "changed while opening"):
+                    MODULE.selected_session_origin(root, 12345)
+
+    def test_helper_readiness_waits_for_session_then_uses_only_selected_origin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve(); destination = root / "destination"; destination.mkdir()
+            marker = destination / ".desktop-session.json"
+            process = Mock(pid=71); process.poll.return_value = None
+            api = Mock(origin="http://127.0.0.1:12345")
+            health = {"ok": True, "service": "learnnote", "app_version": "fixture",
+                      "data_paths": {"root": str(destination), "all_under_data_dir": True}}
+            def call(method, path, **kwargs):
+                self.assertEqual(api.origin, "http://127.0.0.1:12346")
+                return SimpleNamespace(json=lambda: health if path == "/health" else {"focused": True}, text="LearnNote")
+            api.call.side_effect = call
+            clock = [0.0]
+            def sleep(seconds):
+                api.call.assert_not_called()
+                clock[0] += seconds
+                marker.write_text('{"url":"http://127.0.0.1:12346"}', encoding="utf-8")
+            with patch.object(MODULE, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)), patch.object(
+                    MODULE, "capture_native_window", return_value={"pid": 71, "visual_review_required": True}) as capture:
+                self.assertEqual(MODULE.await_ready(process, api, root, "helper", native=True,
+                                 session_root=destination, expected_version="fixture"), health)
+            self.assertEqual([call.args[:2] for call in api.call.call_args_list], [("GET", "/health"), ("GET", "/"), ("POST", "/api/desktop/focus")])
+            capture.assert_called_once_with(71, root, "helper")
+            self.assertEqual(clock[0], .25)
+            self.assertEqual(json.loads((root / "helper-window.json").read_bytes())["pid"], 71)
+
+    def test_helper_session_timeout_and_death_never_probe_unadvertised_port(self):
+        for dead in (False, True):
+            with self.subTest(dead=dead), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp).resolve(); process = Mock(pid=71)
+                process.poll.return_value = 1 if dead else None
+                api = Mock(origin="http://127.0.0.1:12345")
+                with patch.object(MODULE, "time", SimpleNamespace(monotonic=Mock(side_effect=[0, 90]), sleep=Mock())):
+                    with self.assertRaises(AssertionError if dead else TimeoutError):
+                        MODULE.await_ready(process, api, root, "helper", native=True,
+                                           session_root=root, expected_version="fixture")
+                api.call.assert_not_called()
+                self.assertEqual(api.origin, "http://127.0.0.1:12345")
+
+    def test_helper_session_cannot_substitute_wrong_backend_or_exited_process(self):
+        for changed in ("service", "version", "root", "paths", "process"):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp).resolve()
+                (root / ".desktop-session.json").write_text('{"url":"http://127.0.0.1:12346"}', encoding="utf-8")
+                process = Mock(pid=71); process.poll.return_value = None
+                api = Mock(origin="http://127.0.0.1:12345")
+                health = {"ok": True, "service": "learnnote", "app_version": "fixture",
+                          "data_paths": {"root": str(root), "all_under_data_dir": True}}
+                if changed == "service": health["service"] = "foreign"
+                elif changed == "version": health["app_version"] = "other"
+                elif changed == "root": health["data_paths"]["root"] = str(root / "other")
+                elif changed == "paths": health["data_paths"]["all_under_data_dir"] = False
+                else: process.poll.side_effect = [None, 0]
+                api.call.return_value.json.return_value = health
+                with patch.object(MODULE, "capture_native_window") as capture, self.assertRaises(AssertionError):
+                    MODULE.await_ready(process, api, root, "helper", native=True,
+                                       session_root=root, expected_version="fixture")
+                api.call.assert_called_once_with("GET", "/health")
+                capture.assert_not_called()
+
+    def test_helper_session_origin_change_does_not_scan_another_port(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve(); marker = root / ".desktop-session.json"
+            marker.write_text('{"url":"http://127.0.0.1:12346"}', encoding="utf-8")
+            process = Mock(pid=71); process.poll.return_value = None
+            api = Mock(origin="http://127.0.0.1:12345")
+            api.call.side_effect = MODULE.requests.ConnectionError("not ready")
+            clock = [0.0]
+            def sleep(seconds):
+                clock[0] += seconds
+                marker.write_text('{"url":"http://127.0.0.1:12347"}', encoding="utf-8")
+            with patch.object(MODULE, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)):
+                with self.assertRaisesRegex(AssertionError, "origin changed"):
+                    MODULE.await_ready(process, api, root, "helper", native=True,
+                                       session_root=root, expected_version="fixture")
+            api.call.assert_called_once_with("GET", "/health")
+            self.assertEqual(api.origin, "http://127.0.0.1:12346")
+
     def test_failed_migration_cannot_retain_passing_base_report(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); app = root / "LearnNote.app"
@@ -356,19 +477,22 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
                 def launch(exe, data, destination, phase, port, arguments=()):
                     process = Mock(pid=71 + len(processes)); process.poll.return_value = None
                     processes.append(process); launches.append((exe, data, list(arguments)))
-                    api = Mock(); api.call.return_value.json.return_value = {"material": {"material_id": "fixture", "sha256": "a" * 64}}
+                    api = Mock(origin=f"http://127.0.0.1:{port}"); api.call.return_value.json.return_value = {"material": {"material_id": "fixture", "sha256": "a" * 64}}
                     try:
                         yield process, api
                     finally:
                         process.poll.return_value = 0
-                def ready(process, api, destination, phase, *, native):
+                def ready(process, api, destination, phase, *, native, session_root=None, expected_version=None):
                     self.assertTrue(native)
                     source = destination / "source"
                     if phase == "old-app":
                         (source / ".desktop-session.lock").write_bytes(b"0")
                         (source / "preferences.json").write_text('{"theme":"light"}', encoding="utf-8")
-                        return {"data_paths": {"root": str(source)}}
+                        return {"app_version": "fixture", "data_paths": {"root": str(source)}}
                     self.assertIsNotNone(processes[0].poll())
+                    self.assertEqual(session_root, destination / "destination")
+                    self.assertEqual(expected_version, "fixture")
+                    api.origin = "http://127.0.0.1:12346"
                     if outcome == "helper_failed":
                         raise RuntimeError("synthetic frozen helper failure")
                     exe, _data, args = launches[1]
@@ -415,6 +539,11 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
                     self.assertEqual((evidence / "source/preferences.json").read_bytes(), (hidden / "preferences.json").read_bytes())
                     self.assertEqual((evidence / "app-root/learnnote-config.json").read_bytes(), previous)
                     self.assertEqual(json.loads(receipt.read_bytes())["stage"], str(hidden))
+                if outcome == "pass":
+                    backend = json.loads((evidence / "restarted-backend.json").read_bytes())
+                    self.assertEqual(backend["requested_origin"], "http://127.0.0.1:12345")
+                    self.assertEqual(backend["selected_origin"], "http://127.0.0.1:12346")
+                    self.assertEqual(backend["routing_source"], "destination/.desktop-session.json")
                 self.assertFalse((executable.parent / "learnnote-config.json").exists())
                 self.assertFalse(launches[0][0].exists())  # Disposable bundle removed after evidence capture.
 

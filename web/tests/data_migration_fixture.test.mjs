@@ -38,3 +38,24 @@ for (const checkout of [workflow.replace(/\r\n/g, "\n"), workflow.replace(/\r?\n
   assert.match(checkout, /            build\/data-migration-ui\r?\n/);
 } assert.match(workflow, /retention-days: 14/);
 console.log("Migration hosted fixture contract: isolated bridge, held requests, conflicts, shipped menu, Edge matrix and artifact retention passed (browser execution not claimed)");
+
+const { migrationModalFocusIsSafe } = require("../../scripts/data-migration-visual-acceptance.cjs");
+const focus = { insideModal: true, rootFallback: false, documentHasFocus: true, activeTag: "BUTTON", open: true, modal: true,
+  settingsOpen: true, openDialogs: 2, phase: "preview", backgroundVisible: true, backgroundDisabled: false, backgroundFocusRefused: true };
+assert(migrationModalFocusIsSafe(focus));
+const chrome = { ...focus, insideModal: false, rootFallback: true, documentHasFocus: false, activeTag: "BODY" };
+assert(migrationModalFocusIsSafe(chrome));
+for (const change of [{ insideModal: false }, { rootFallback: true }, { open: false }, { modal: false }, { settingsOpen: false },
+  { openDialogs: 1 }, { openDialogs: 3 }, { phase: "applying" }, { backgroundVisible: false }, { backgroundDisabled: true }, { backgroundFocusRefused: false }]) {
+  assert(!migrationModalFocusIsSafe({ ...focus, ...change }), JSON.stringify(change));
+}
+assert(!migrationModalFocusIsSafe({ ...chrome, documentHasFocus: true }));
+assert(!migrationModalFocusIsSafe({ ...chrome, activeTag: "BUTTON" }));
+assert.match(script, /Keyboard navigation must not activate background preview or migration/);
+assert.match(script, /Reverse Tab must return from browser chrome/);
+
+assert.match(script, /cleanupFixture\(\{ report: save, context: \(\) => context\?\.close\(\), browser: \(\) => browser\?\.close\(\) \}, primaryError\)/);
+const { cleanupFixture } = require("../../scripts/course-upgrade-fixture-helpers.cjs");
+const primary = Error("original migration failure"), cleanupOrder = [];
+await cleanupFixture(Object.fromEntries(["report", "context", "browser"].map(label => [label, () => { cleanupOrder.push(label); throw Error(label); }])), primary);
+assert.deepEqual(cleanupOrder, ["report", "context", "browser"]); assert.equal(primary.message, "original migration failure"); assert.equal(primary.cleanupErrors.length, 3);
