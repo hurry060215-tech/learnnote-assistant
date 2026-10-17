@@ -119,7 +119,28 @@ establish an improvement or Windows overhead. All 25 focused contracts and all
 ## Exit criterion
 
 Keep all 80 samples, original timing clocks, thresholds and failure predicates
-unchanged during diagnosis. Once Windows owner/I/O evidence resolves the cause,
+unchanged during diagnosis. After the bounded diagnostic run,
 remove `--contention-diagnostics` from the workflow invocation and rerun the
 original complete gate with the observer disabled. An instrumented diagnostic
 run alone is not a clean performance acceptance result.
+
+
+## Return to the clean required gate
+
+Run [39026365346](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39026365346)
+on `2e91eb6a069a7785d2ab1fe680edb7595d1cbedb` completed all 80 reference
+rows and reference cancellation/recovery with the collector enabled. These
+remain instrumented results. The independent joined visual scenario later
+failed its stage viewport assertion; that failure is retained separately.
+
+The required workflow now removes only `--contention-diagnostics`. It retains
+the original full dataset, clocks, thresholds, lifecycle checks and fatal
+failures. The opt-in fixture collector remains available for a separate
+diagnostic investigation. A clean hosted run is still pending.
+
+The diagnostic run directly correlated a 4.329-second completion-owned task
+lock with a selected-reader wait after sample 60's readable acknowledgement.
+Library indexing occupied 99.883% of that hold, but the boundary includes
+artifact reads, library locking and catalog/evidence writes. This is an open
+performance finding, not proof that one specific I/O operation is responsible.
+No production lock or indexing behavior is changed by retiring the observer.

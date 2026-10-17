@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const { spawn, execFile } = require("node:child_process");
 const { edgeLaunchOptions, createStartupParser, observeNativeSse, networkLocation,
-  recordFailureDiagnostics, finishAcceptance } = require("./progressive-slo-api-acceptance.cjs");
+  recordFailureDiagnostics, finishAcceptance, observeReadingMetadata } = require("./progressive-slo-api-acceptance.cjs");
 const visualProse = "Reference paragraph 1: This deterministic response describes the supplied synthetic image and caption window. It is an unverified draft, retained only for this bounded continuation test.";
 const captionText = "Synthetic source: the first window shows a generated test pattern.";
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -25,6 +25,39 @@ function visibleStageStates(rows) {
   }
   for (const [key, expected] of Object.entries({ frames: "done", vision: "stopped", merge: "pending", verify: "pending" }))
     assert.equal(rows.find(value => value.stage === key).state, expected, `Actual terminal stage ${key}`);
+}
+function captureStageNavigation(expected) {
+  const selected = globalThis.referenceReadingMetadata, reader = document.getElementById("document");
+  const panel = document.getElementById("taskStatus");
+  if (!/^[a-f0-9]{64}$/.test(expected.generation || "") || selected?.error
+      || selected?.event?.id !== expected.task_id || selected.event.kind !== "task"
+      || selected.event.control_generation !== expected.generation
+      || location.hash !== `#task/${expected.task_id}` || reader?.dataset.readerSource !== `task:${expected.task_id}`
+      || reader.dataset.readerRevision !== expected.reader_revision || panel?.dataset.status !== "cancelled")
+    throw new Error("Stage navigation requires the current cancelled task, generation and reader revision");
+  const progress = [...panel.querySelectorAll("details.task-progress-details")]
+    .filter(node => node.dataset.taskProgress === expected.task_id);
+  const timeline = progress.length === 1 && progress[0].querySelector(".task-timeline");
+  if (!panel.isConnected || panel.hidden || !progress[0]?.open || !timeline?.isConnected || !panel.contains(timeline))
+    throw new Error("Stage navigation requires one connected open current task timeline");
+  const ids = globalThis.visualStageNodes ||= new WeakMap();
+  if (!ids.has(timeline)) ids.set(timeline, globalThis.visualStageNodeNext = (globalThis.visualStageNodeNext || 0) + 1);
+  const snapshot = () => ({ node_id: ids.get(timeline), connected: timeline.isConnected,
+    in_panel: panel.contains(timeline), scroll_top: document.scrollingElement.scrollTop,
+    top: timeline.getBoundingClientRect().top, browser_monotonic_ms: performance.now() });
+  const before = snapshot();
+  // Resolve and scroll in one browser call: status refresh can replace a
+  // transported locator handle before its evaluate callback starts.
+  if (expected.scroll) timeline.scrollIntoView({ block: "center", behavior: "instant" });
+  const after = snapshot(), nodes = [...timeline.querySelectorAll("li")];
+  if (nodes.length > 16) throw new Error("Unexpected stage row count");
+  const rows = nodes.map(node => {
+    const rect = node.getBoundingClientRect();
+    return { stage: node.dataset.stage, state: node.dataset.state, text: node.innerText,
+      top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, width: innerWidth, height: innerHeight };
+  });
+  return { selected_metadata: { ...selected.event }, route: location.hash, reader_source: reader.dataset.readerSource,
+    reader_revision: reader.dataset.readerRevision, before, after, rows };
 }
 async function stopOwnedFixture(child, script, data, grace = 5000) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -214,6 +247,7 @@ async function main(output = "build/progressive-visual-ui") {
     browser = await chromium.launch(launch);
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block" });
     await context.addInitScript(() => localStorage.setItem("learnnote.sidebar.collapsed", "true"));
+    await context.addInitScript(observeReadingMetadata);
     await context.route("**/*", route => {
       if (new URL(route.request().url()).origin !== base) { boundedDiagnostic(report, "external_requests", networkLocation(route.request().url())); return route.abort(); }
       return route.continue();
@@ -261,13 +295,12 @@ async function main(output = "build/progressive-visual-ui") {
     await capture("cancelled-retained-visual.png");
     const progress = page.locator("details.task-progress-details").first();
     if (!await progress.evaluate(node => node.open)) await progress.locator(":scope > summary").click();
-    await progress.locator(".task-timeline").evaluate(node => node.scrollIntoView({ block: "center", behavior: "instant" }));
-    report.stage_geometry = await progress.locator(".task-timeline li").evaluateAll(nodes => nodes.map(node => {
-      const rect = node.getBoundingClientRect();
-      return { stage: node.dataset.stage, state: node.dataset.state, text: node.innerText, top: rect.top, bottom: rect.bottom,
-        left: rect.left, right: rect.right, width: innerWidth, height: innerHeight };
-    }));
+    const stageSource = { task_id: id, generation: report.cancelled.state.generation, reader_revision: report.cancelled_geometry.reader_revision };
+    report.stage_navigation = await page.evaluate(captureStageNavigation, { ...stageSource, scroll: true });
+    report.stage_geometry = report.stage_navigation.rows;
     visibleStageStates(report.stage_geometry);
+    report.stage_before_capture = await page.evaluate(captureStageNavigation, stageSource);
+    visibleStageStates(report.stage_before_capture.rows);
     await capture("actual-stage-states.png");
     const figures = second.locator("details").first();
     await figures.locator("summary").click();
@@ -332,5 +365,5 @@ async function main(output = "build/progressive-visual-ui") {
   } finally { releaseDelayed?.(); await finishAcceptance({ save, closeBrowser: async () => { if (browser) await browser.close(); }, stopBackend }, report, primaryError); }
   if (primaryError) throw primaryError;
 }
-module.exports = { visualProse, captionText, captureReadableCaption, boundedDiagnostic, visibleStageStates, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
+module.exports = { visualProse, captionText, captureReadableCaption, boundedDiagnostic, visibleStageStates, captureStageNavigation, stopOwnedFixture, visualEventDetail, visualEventMatches, retainedViewport, rememberVisibleBatch, inspectVisibleBatch };
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });

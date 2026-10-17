@@ -51,7 +51,12 @@ or remove a Draft label.
 5. Separately scroll to real stage rows and the task-owned source grid. The
    visible terminal timeline must show completed frames, stopped vision, and
    pending merge/verification. These are actual stage states, not a new timing
-   performance claim. Capture the retained visual draft at 390 px as well.
+   performance claim. After the retained-prose capture, resolve the current open
+   timeline and perform its one explicit scroll synchronously, bound to the
+   route, reader source/revision and selected task generation from the existing
+   selection/metadata events. Record before/after node identity and scroll; a
+   later strict observation immediately before the PNG does not scroll again.
+   Capture the retained visual draft at 390 px as well.
 6. Upload the changed source. Hold a genuinely fetched old-source partial response,
    navigate to the new task, and then deliver the unchanged old response. It must
    not replace the current reader or introduce old batches. Original artifact
@@ -106,6 +111,12 @@ duplicated,
 wrong-source, moved-body, obscured and offscreen content. Caption placement occurs
 before the retained-prose comparison or after changed-source response delivery;
 it does not re-scroll during insertion or alter the separate 80-row SLO clocks.
+An actual `renderStatus` regression reproduces a timeline handle becoming
+detached when the status panel repaints. The stage-navigation fixture resolves
+its current target inside the scroll call and rejects wrong source/generation
+or a closed/detached panel. It does not add product autoscroll or repeatedly seek
+a passing viewport. The earlier hosted offscreen-stage failure did not record
+target identity, so this reproduction does not establish its exact cause.
 Hosted native Edge and screenshot inspection remain required before
 claiming this browser scenario passed.
 

@@ -245,3 +245,96 @@ test("visible stage evidence rejects offscreen and falsely completed continuatio
     assert.throws(() => fixture.visibleStageStates(changed), /Visible stage/);
   }
 });
+
+const moduleUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const production = name => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+const { preserveReaderPosition } = await import(moduleUrl(production("reader-progress.js")));
+const { escapeHtml: esc } = await import(moduleUrl(production("desk-api.js")));
+const { timelineHtml, taskExplanation } = await import(moduleUrl(production("desk-progress.js")
+  .replace('"/web/desk-api.js"', JSON.stringify(moduleUrl(production("desk-api.js"))))));
+function stageNavigationDom() {
+  let top = 2300, current, writes = 0;
+  const scrolls = [], generation = hash("a"), state = { selected: { id: "owned", kind: "task", status: "cancelled", phase: "cancelled" }, model: {}, health: {} };
+  const scroller = { ownerDocument: {}, get scrollTop() { return top; }, set scrollTop(value) { top = value; } };
+  scroller.ownerDocument.scrollingElement = scroller;
+  const reader = { isConnected: true, hidden: false, dataset: { readerSource: "task:owned", readerRevision: "partial-current" },
+    getBoundingClientRect: () => ({ top: 900 - top }) };
+  const panel = { dataset: {}, isConnected: true, hidden: false,
+    querySelector: () => current?.progress, querySelectorAll: selector => selector === "details.task-progress-details" ? [current.progress] : [],
+    contains: node => node === current && current.isConnected,
+    set innerHTML(value) {
+      if (current) current.isConnected = false;
+      writes++;
+      const rows = [...value.matchAll(/<li data-stage="([^"]+)" data-state="([^"]+)">/g)].map((match, index) => ({
+        dataset: { stage: match[1], state: match[2] }, innerText: match[1],
+        getBoundingClientRect: () => ({ top: 400 + Math.floor(index / 5) * 60 - top,
+          bottom: 450 + Math.floor(index / 5) * 60 - top, left: 200 + index % 5 * 170, right: 360 + index % 5 * 170 }),
+      }));
+      current = { isConnected: true, progress: { dataset: { taskProgress: "owned" }, open: true },
+        getBoundingClientRect: () => ({ top: 400 - top }), querySelectorAll: () => rows,
+        scrollIntoView(options) { scrolls.push({ connected: this.isConnected, options }); if (this.isConnected) top = 200; } };
+      current.progress.querySelector = () => current;
+    } };
+  const events = ["frames", "vision"].map(phase => ({ event: "stage_timing", phase,
+    status: phase === "frames" ? "completed" : "cancelled", timestamp: "2026-10-17T00:00:00Z", details: { duration_ms: 100 } }));
+  const context = vm.createContext({ state, taskEvents: new Map([["owned", { events }]]), $: id => ({ document: reader, taskStatus: panel, regenerate: {} })[id],
+    document: { scrollingElement: scroller, getElementById: id => ({ document: reader, taskStatus: panel })[id] },
+    location: { hash: "#task/owned" }, performance, innerWidth: 1440, innerHeight: 1000,
+    referenceReadingMetadata: { event: { id: "owned", kind: "task", control_generation: generation, epoch: 1, source_event: "metadata" }, error: null },
+    preserveReaderPosition, timelineHtml, taskExplanation, esc, statusLabel: () => "已停止", mountQueueControls() {}, api() {}, refresh() {} });
+  const desk = production("desk.js");
+  vm.runInContext(desk.slice(desk.indexOf("function renderStatus("), desk.indexOf("async function loadAnnotations(")), context);
+  context.renderStatus(false);
+  const expected = { task_id: "owned", generation, reader_revision: reader.dataset.readerRevision };
+  return { context, panel, reader, scroller, scrolls, expected, current: () => current, writes: () => writes,
+    capture: (scroll = false) => vm.runInContext(`(${fixture.captureStageNavigation.toString()})`, context)({ ...expected, scroll }) };
+}
+
+test("actual status repaint detaches a transported timeline; current one-shot stage navigation stays visible", () => {
+  const h = stageNavigationDom(), stale = h.current();
+  h.context.renderStatus(false);
+  stale.scrollIntoView({ block: "center", behavior: "instant" });
+  assert.equal(stale.isConnected, false); assert.equal(h.scroller.scrollTop, 2300);
+  assert.throws(() => fixture.visibleStageStates(h.capture().rows), /Visible stage/);
+  h.scrolls.length = 0;
+  const placed = h.capture(true); fixture.visibleStageStates(placed.rows);
+  assert.equal(placed.before.connected, true); assert.equal(placed.after.connected, true);
+  assert.equal(placed.before.node_id, placed.after.node_id); assert.equal(placed.before.scroll_top, 2300); assert.equal(placed.after.scroll_top, 200);
+  assert.equal(h.scrolls.length, 1); assert.equal(h.scrolls[0].connected, true);
+  h.context.renderStatus(false); // A later history repaint must respect the explicit new position.
+  const final = h.capture(); fixture.visibleStageStates(final.rows);
+  assert.equal(h.scroller.scrollTop, 200); assert.notEqual(final.after.node_id, placed.after.node_id);
+  assert.equal(h.scrolls.length, 1, "The pre-capture observation does not scroll again");
+});
+
+test("stage navigation refuses stale source, generation, closed or detached status before scrolling", () => {
+  for (const mutate of [h => { h.context.location.hash = "#task/other"; },
+    h => { h.reader.dataset.readerSource = "task:other"; }, h => { h.reader.dataset.readerRevision = "new"; },
+    h => { h.context.referenceReadingMetadata.event.control_generation = hash("b"); },
+    h => { h.context.referenceReadingMetadata.event.id = "other"; }, h => { h.context.referenceReadingMetadata.error = "obsolete"; },
+    h => { h.context.referenceReadingMetadata.event = null; }, h => { h.expected.generation = ""; },
+    h => { h.panel.dataset.status = "running"; }, h => { h.panel.hidden = true; }, h => { h.panel.isConnected = false; },
+    h => { h.current().progress.open = false; }, h => { h.current().progress.dataset.taskProgress = "other"; },
+    h => { h.current().isConnected = false; }]) {
+    const h = stageNavigationDom(); mutate(h); assert.throws(() => h.capture(true)); assert.equal(h.scrolls.length, 0);
+  }
+});
+
+test("a later offscreen stage remains a failure rather than triggering a corrective scroll", () => {
+  const h = stageNavigationDom(); fixture.visibleStageStates(h.capture(true).rows);
+  h.scroller.scrollTop = 2300;
+  assert.throws(() => fixture.visibleStageStates(h.capture().rows), /Visible stage/);
+  assert.equal(h.scrolls.length, 1);
+});
+
+test("stage navigation is separate from retained prose and rechecks current identity before the PNG", () => {
+  const script = readFileSync(new URL("../../scripts/progressive-visual-api-acceptance.cjs", import.meta.url), "utf8");
+  assert(script.indexOf("context.addInitScript(observeReadingMetadata)") < script.indexOf("context.newPage()"));
+  const start = script.indexOf("const stageSource ="), final = script.indexOf("report.stage_before_capture =");
+  assert(start > script.indexOf('await capture("cancelled-retained-visual.png")'));
+  assert(script.indexOf("report.stage_geometry =") < final);
+  assert(final < script.indexOf('await capture("actual-stage-states.png")'));
+  assert.equal(script.split("page.evaluate(captureStageNavigation, { ...stageSource, scroll: true })").length - 1, 1);
+  assert.match(script, /generation: report\.cancelled\.state\.generation/);
+  assert.doesNotMatch(script, /progress\.locator\("\.task-timeline"\)\.evaluate/);
+});

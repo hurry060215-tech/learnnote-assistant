@@ -4,14 +4,24 @@ const { execFileSync } = require("node:child_process");
 const { runNativeZoomMatrix, waitForNativePreset } = require("./timeline-native-zoom-matrix.cjs");
 const { captureNativeViews } = require("./timeline-native-capture.cjs");
 
+function nativeFailureEvidence(action, error) {
+  const allowed = new Set(["entered", "process-lookup", "forms-load", "native-type-compile", "owned-window-enumeration", "foreground", "drawing-load", "display-geometry", "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds", "containment-check", "prepare-complete"]);
+  const stderr = String(error.stderr || "");
+  const phases = stderr.slice(0, 8192).split(/\r?\n/).filter(line => line.startsWith("LN_NATIVE_PHASE:")).map(line => line.slice(16)).filter(phase => allowed.has(phase)).slice(0, 32);
+  return { action: ["reset", "90", "125", "150", "200", "prepare", "capture", "dismiss-translation"].includes(action) ? action : "unknown", code: ["ETIMEDOUT", "ENOENT", "EACCES", "EPERM"].includes(error.code) ? error.code : "native-call-failed", phases, stderr_truncated: stderr.length > 8192 };
+}
+
 async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   assert.equal(process.platform, "win32", "Native Edge zoom acceptance requires the hosted Windows runner");
   const { chromium } = require("playwright");
   const origin = new URL(base).origin;
   const server = await chromium.launchServer({ channel: "msedge", headless: false, args: ["--window-size=1440,1000"] });
   let ownedPid, browser, context, page, preparation, translationOffer, before, after, zoomCommand, report, failure;
-  const unexpected = [], errors = [], captures = [], zoomCases = [];
-  const nativeKey = (zoom, capturePath) => JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout: 15000 }));
+  const unexpected = [], errors = [], captures = [], zoomCases = [], nativeFailures = [];
+  const nativeKey = (zoom, capturePath) => {
+    try { return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", path.join(__dirname, "timeline-native-zoom.ps1"), "-OwnedBrowserPid", String(ownedPid), "-Zoom", zoom, ...(capturePath ? ["-CapturePath", capturePath] : [])], { encoding: "utf8", timeout: 15000 })); }
+    catch (error) { if (nativeFailures.length < 16) nativeFailures.push(nativeFailureEvidence(zoom, error)); throw error; }
+  };
   const metrics = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
     cssZoom: getComputedStyle(document.body).zoom, documentZoom: getComputedStyle(document.documentElement).zoom,
     visualScale: visualViewport.scale, overflow: document.documentElement.scrollWidth - innerWidth }));
@@ -70,7 +80,7 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
   } catch (error) {
     failure = error;
     await page?.screenshot({path:path.join(out,"native-zoom-failure.png")}).catch(()=>{});
-    report = {passed:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,captures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
+    report = {passed:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,captures,native_failures:nativeFailures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
     writeFailureReport();
     throw error;
   } finally {
@@ -85,10 +95,10 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
       }
     }
     if (cleanupErrors.length) {
-      report = {...report, passed:false, cleanup_errors:cleanupErrors};
+      report = {...report, passed:false, native_failures:nativeFailures, cleanup_errors:cleanupErrors};
       writeFailureReport();
       if (!failure) throw new Error(cleanupErrors.join("; "));
     }
   }
 }
-module.exports = { assertNativeTimelineZoom };
+module.exports = { assertNativeTimelineZoom, nativeFailureEvidence };

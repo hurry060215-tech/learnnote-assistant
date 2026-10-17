@@ -7,6 +7,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeTimelineZoomContract(unittest.TestCase):
+    def test_prepare_phase_markers_are_fixed_and_bounded(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        phases = ["entered", "process-lookup", "forms-load", "native-type-compile",
+                  "owned-window-enumeration", "foreground", "drawing-load", "display-geometry",
+                  "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds",
+                  "containment-check", "prepare-complete"]
+        offsets = [helper.index(f'Write-NativePhase "{phase}"') for phase in phases]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertIn('[Console]::Error.Flush()', helper)
+        source = (ROOT / "scripts/timeline-native-zoom-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertIn('timeout: 15000', source)
+        self.assertIn('throw error;', source)
+        subprocess.run(["node", "-e", r"""
+const assert = require('node:assert/strict');
+const {nativeFailureEvidence} = require('./scripts/timeline-native-zoom-acceptance.cjs');
+const r = nativeFailureEvidence('prepare', {code:'ETIMEDOUT',stderr:'secret\nLN_NATIVE_PHASE:entered\r\nLN_NATIVE_PHASE:unknown\n'+'LN_NATIVE_PHASE:forms-load\n'.repeat(500)});
+assert.equal(r.code,'ETIMEDOUT'); assert.equal(r.phases.length,32); assert.equal(r.stderr_truncated,true);
+assert(!JSON.stringify(r).includes('secret')); assert(!JSON.stringify(r).includes('unknown'));
+assert.equal(nativeFailureEvidence('prepare',{code:'private',stderr:''}).code,'native-call-failed');
+assert.equal(nativeFailureEvidence('x'.repeat(1000000),{}).action,'unknown');
+assert.equal(nativeFailureEvidence('capture',{}).action,'capture');
+"""], cwd=ROOT, check=True, timeout=10)
+
     def test_translation_dismissal_is_exact_owned_and_before_keyboard_baseline(self):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
         action = helper.split('if ($Zoom -eq "dismiss-translation") {', 1)[1].split('if ($Zoom -in', 1)[0]

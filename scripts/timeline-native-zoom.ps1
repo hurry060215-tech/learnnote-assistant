@@ -4,13 +4,22 @@ param(
   [string]$CapturePath
 )
 $ErrorActionPreference = "Stop"
+# Fixed markers only: no URLs, profile data, titles, or arbitrary exception text.
+function Write-NativePhase([string]$phase) {
+  [Console]::Error.WriteLine("LN_NATIVE_PHASE:" + $phase)
+  [Console]::Error.Flush()
+}
+Write-NativePhase "entered"
 # This helper accepts only the disposable browser process started by the test.
 # It never uses the arbitrary foreground window, changes permissions, or reads a
 # user profile. Extension warning/permission dialogs are outside this test.
 if ($OwnedBrowserPid -le 0) { throw "An owned Edge process ID is required." }
+Write-NativePhase "process-lookup"
 $process = Get-Process -Id $OwnedBrowserPid -ErrorAction Stop
 if ($process.ProcessName -ne "msedge") { throw "The owned process is not Edge." }
+Write-NativePhase "forms-load"
 Add-Type -AssemblyName System.Windows.Forms
+Write-NativePhase "native-type-compile"
 Add-Type @"
 using System;
 using System.Collections.Generic;
@@ -43,9 +52,11 @@ public static class TimelineZoomWindow {
   }
 }
 "@
+Write-NativePhase "owned-window-enumeration"
 $windows = @([TimelineZoomWindow]::OwnedWindows([uint32]$OwnedBrowserPid))
 if ($windows.Count -ne 1) { throw "Expected exactly one visible window owned by the disposable Edge process." }
 $window = $windows[0]
+Write-NativePhase "foreground"
 [void][TimelineZoomWindow]::SetForegroundWindow($window)
 Start-Sleep -Milliseconds 200
 function Assert-OwnedForeground {
@@ -139,7 +150,9 @@ if ($Zoom -eq "dismiss-translation") {
 }
 if ($Zoom -in @("prepare", "capture")) {
   if ($Zoom -eq "capture" -and (-not $CapturePath -or [IO.Path]::GetExtension($CapturePath) -ne ".png")) { throw "An owned PNG output path is required." }
+  Write-NativePhase "drawing-load"
   Add-Type -AssemblyName System.Drawing
+  Write-NativePhase "display-geometry"
   $display = [System.Windows.Forms.SystemInformation]::VirtualScreen
   $screens = @([System.Windows.Forms.Screen]::AllScreens)
   $windowAwareness = [TimelineZoomWindow]::GetAwarenessFromDpiAwarenessContext([TimelineZoomWindow]::GetWindowDpiAwarenessContext($window))
@@ -151,6 +164,7 @@ if ($Zoom -in @("prepare", "capture")) {
        window_dpi_awareness = $windowAwareness; helper_thread_dpi_awareness = $threadAwareness }
   }
   Assert-OwnedForeground
+  Write-NativePhase "owned-dwm-bounds"
   $rect = New-Object TimelineZoomWindow+Rect
   if ([TimelineZoomWindow]::DwmGetWindowAttribute($window, 9, [ref]$rect, 16) -ne 0) { throw "Owned Edge window bounds unavailable." }
   # No DPI mode is changed. At one 96-DPI display, physical DWM and PowerShell
@@ -177,10 +191,13 @@ if ($Zoom -in @("prepare", "capture")) {
     # Fit only the already verified disposable window, before the zoom baseline.
     # Capture mode never moves/resizes a window or accepts a cropped rectangle.
     Assert-OwnedForeground
+    Write-NativePhase "maximize-owned-window"
     [void][TimelineZoomWindow]::ShowWindow($window, 3) # SW_MAXIMIZE
     Start-Sleep -Milliseconds 250
+    Write-NativePhase "read-maximized-bounds"
     $rect = Read-OwnedBounds
   }
+  Write-NativePhase "containment-check"
   $width = $rect.Right - $rect.Left
   $height = $rect.Bottom - $rect.Top
   $bounds = [System.Drawing.Rectangle]::new($rect.Left, $rect.Top, $width, $height)
@@ -188,6 +205,7 @@ if ($Zoom -in @("prepare", "capture")) {
     throw "Owned Edge window is not wholly on the display; no partial capture accepted. Geometry: $(Describe-Geometry $rect | ConvertTo-Json -Depth 4 -Compress)"
   }
   if ($Zoom -eq "prepare") {
+    Write-NativePhase "prepare-complete"
     @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";
        method = "maximize-owned-window-before-baseline"; before = $initialGeometry;
        after = (Describe-Geometry $rect) } | ConvertTo-Json -Depth 5 -Compress
