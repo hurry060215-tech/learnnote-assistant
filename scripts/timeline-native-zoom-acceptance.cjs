@@ -5,9 +5,16 @@ const { runNativeZoomMatrix, waitForNativePreset } = require("./timeline-native-
 const { captureNativeViews } = require("./timeline-native-capture.cjs");
 
 function nativeFailureEvidence(action, error) {
-  const allowed = new Set(["entered", "process-lookup", "forms-load", "native-type-compile", "owned-window-enumeration", "foreground", "drawing-load", "display-geometry", "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds", "containment-check", "prepare-complete"]);
+  const allowed = new Set(["entered", "process-lookup", "forms-load", "native-type-compile", "owned-window-enumeration", "foreground", "drawing-load", "display-geometry", "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds", "containment-check", "prepare-complete", "payload-built", "json-serialized", "output-emitted"]);
   const stderr = String(error.stderr || "");
-  const phases = stderr.slice(0, 8192).split(/\r?\n/).filter(line => line.startsWith("LN_NATIVE_PHASE:")).map(line => line.slice(16)).filter(phase => allowed.has(phase)).slice(0, 32);
+  const phases = [];
+  for (const line of stderr.slice(0, 8192).split(/\r?\n/)) {
+    const match = /^LN_NATIVE_PHASE:([a-z-]+)\|(\d{1,5})$/.exec(line);
+    if (!match || !allowed.has(match[1])) continue;
+    const elapsed = Number(match[2]);
+    if (elapsed > 60000 || (phases.length && elapsed < phases.at(-1).elapsed_ms)) continue;
+    if (phases.length < 32) phases.push({ phase: match[1], elapsed_ms: elapsed });
+  }
   return { action: ["reset", "90", "125", "150", "200", "prepare", "capture", "dismiss-translation"].includes(action) ? action : "unknown", code: ["ETIMEDOUT", "ENOENT", "EACCES", "EPERM"].includes(error.code) ? error.code : "native-call-failed", phases, stderr_truncated: stderr.length > 8192 };
 }
 

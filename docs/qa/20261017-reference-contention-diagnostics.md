@@ -133,10 +133,10 @@ rows and reference cancellation/recovery with the collector enabled. These
 remain instrumented results. The independent joined visual scenario later
 failed its stage viewport assertion; that failure is retained separately.
 
-The required workflow now removes only `--contention-diagnostics`. It retains
+The return-to-clean change removed only `--contention-diagnostics`. It retained
 the original full dataset, clocks, thresholds, lifecycle checks and fatal
 failures. The opt-in fixture collector remains available for a separate
-diagnostic investigation. A clean hosted run is still pending.
+diagnostic investigation. The resulting clean hosted run is described below.
 
 The diagnostic run directly correlated a 4.329-second completion-owned task
 lock with a selected-reader wait after sample 60's readable acknowledgement.
@@ -144,3 +144,89 @@ Library indexing occupied 99.883% of that hold, but the boundary includes
 artifact reads, library locking and catalog/evidence writes. This is an open
 performance finding, not proof that one specific I/O operation is responsible.
 No production lock or indexing behavior is changed by retiring the observer.
+
+## Clean failure and scoped index/reader follow-on
+
+The observer-disabled [run 39027492471](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39027492471)
+at `d79074aeda2adfd0ff99a8cde8e63e34b7a38cde` completed all 80 reference
+samples and cancellation/recovery. All first-outline p95 values passed, but
+the unchanged after-transcript ACK maxima failed: **8.422 seconds** for the
+60-minute cohort and **10.343 seconds** for the 180-minute cohort. The complete
+[artifact 12099810000](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39027492471/artifacts/12099810000)
+is retained. This is a clean failure, not performance acceptance.
+
+Sample 53 (`2a247d1aebdf`) spent 7.179 seconds in an edition GET; its preceding
+selected-task GET took 0.145 seconds. Sample 76 (`e2c2f5c08765`) was readable
+at 3.872 seconds, then spent 7.624 seconds awaiting held-continuation confirmation.
+Its overlapping personal-review and selected GETs took 7.957 and 8.050 seconds.
+Cross-sample list requests lasted 10.655 and 16.679 seconds. The backend UTC
+draft-ready-to-summarizing event gaps were 8.222 and 10.104 seconds.
+
+Source ordering places those event gaps before the summary adapter's gate wait.
+They include the event-silent note-path save/index, duration measurement work,
+and summarizing save/index, as well as intervening event/lock/scheduling work.
+They are not monotonic operation timings. This run has no collector ownership
+evidence, so it cannot attribute either gap to the earlier completion lock owner,
+SQLite, physical disk, or HTTP worker-pool queueing. The two runs remain separate.
+
+The next opt-in diagnostic adds five ordinary synchronous aliases, measured
+only while inside the actual `storage.index_task` call:
+
+- `library._read_text`: artifact text reading/canonicalization
+- `library._connect`: first catalog connection and schema preparation
+- `library.record_to_evidence` and `library.transcript_evidence`: evidence construction
+- `library.replace_task_evidence`: evidence validation and its separate connection,
+  transaction, commit and close
+
+The returned connection and all product lock/connection behavior remain unchanged.
+The main index SQL/commit/close, library-lock wait, path resolution and assembly
+remain mixed residual time; `_connect` does not include the later connection
+lifetime. Nested boundaries remain inclusive and cannot be summed as disjoint costs.
+
+Exact task-kind/method HTTP envelopes and synchronous handlers cover edition GET,
+personal-review GET, fixture task-state GET and visible POST. Server envelope and
+handler operation IDs link through the existing worker context. CDP request IDs
+and browser/server clocks are separate: task/path/time correlation alone does
+not prove a one-to-one CDP-to-handler join. Pre-handler elapsed time also includes
+unmeasured dispatch work; it is not labeled as thread-pool wait.
+
+Only the known notes-router branch is materialized for FastAPI 0.143's effective
+handler bindings. Its exact prior cache references and all wrappers are restored
+after serving stops, including setup failure. Coroutine/generator target drift
+fails setup. No recursive routing compatibility layer or shared-runtime patch
+is introduced. The metric vocabulary rises from 17 to 26 within the unchanged
+32-key limit; all operation/event bounds and 16/16/8/24 retention stay unchanged.
+Subspans can still be dropped, so retained records and drop counts must be read
+together.
+
+A fifth six-pair alternating Linux experiment on this follow-on measured list
+median wall time **0.685661 seconds disabled versus 0.742575 enabled (8.30%)**;
+thread CPU was 0.685120 versus 0.741711 seconds (8.26%). Median edition calls were
+1.877 versus 1.964 ms. Selected calls were 9.999 versus 9.720 ms, personal-review
+5.270 versus 4.658 ms, and fixture-state 6.361 versus 6.247 ms. A separate
+360-cue controlled task's real update/index was 44.734 versus 44.564 ms, with
+thread CPU 41.945 versus 41.942 ms. That update probe used a fresh catalog with
+one task and 361 evidence rows; the list fixture copied all 80 task directories,
+not their catalog. It covers observer cost, not retained-catalog index latency.
+Negative differences reflect measurement
+variation, not a product speedup or proof of zero overhead. These direct-call
+experiments do not measure full HTTP transport or establish Windows overhead.
+All original 80 tasks and 1,520 file hashes were preserved, with complete list
+and reader-response equality after only observation-clock/root normalization.
+
+A separate retained-catalog experiment then seeded all original 80 tasks through
+the actual `index_task`, without modifying their files: 80 catalog tasks and
+11,080 evidence rows, seeded in 2.234 seconds wall / 1.877 seconds thread CPU.
+The separate 360-cue control task brought the catalog to 81 tasks and 11,441
+evidence rows. Six alternating update pairs measured **51.624 ms disabled versus
+54.704 ms enabled (5.97%)**, and thread CPU 48.186 versus 50.313 ms (4.41%).
+All original task hashes and their complete list response still matched. This
+experiment ran within 11:31:21–11:31:30 UTC after the independent tests finished
+at 11:31:13; the earlier fresh-catalog result is retained separately. The seeded
+catalog is more representative local context, not proof of Windows parity.
+
+The next hosted run may explicitly enable this diagnostic. Its timings must be
+labeled observer-enabled and paired with the clean failure above. All prior
+5.9–21.4% local observations remain evidence, not a guaranteed overhead range.
+After diagnosis and any reviewed fix, remove the flag and pass the complete
+original observer-disabled gate; do not weaken the ACK clocks or thresholds.

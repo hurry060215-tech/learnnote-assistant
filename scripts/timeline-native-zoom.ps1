@@ -5,8 +5,10 @@ param(
 )
 $ErrorActionPreference = "Stop"
 # Fixed markers only: no URLs, profile data, titles, or arbitrary exception text.
+$phaseClock = [Diagnostics.Stopwatch]::StartNew()
 function Write-NativePhase([string]$phase) {
-  [Console]::Error.WriteLine("LN_NATIVE_PHASE:" + $phase)
+  $elapsed = [Math]::Min(60000, [Math]::Max(0, $phaseClock.ElapsedMilliseconds))
+  [Console]::Error.WriteLine("LN_NATIVE_PHASE:" + $phase + "|" + $elapsed)
   [Console]::Error.Flush()
 }
 Write-NativePhase "entered"
@@ -206,9 +208,14 @@ if ($Zoom -in @("prepare", "capture")) {
   }
   if ($Zoom -eq "prepare") {
     Write-NativePhase "prepare-complete"
-    @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";
+    $payload = @{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";
        method = "maximize-owned-window-before-baseline"; before = $initialGeometry;
-       after = (Describe-Geometry $rect) } | ConvertTo-Json -Depth 5 -Compress
+       after = (Describe-Geometry $rect) }
+    Write-NativePhase "payload-built"
+    $json = $payload | ConvertTo-Json -Depth 5 -Compress
+    Write-NativePhase "json-serialized"
+    $json
+    Write-NativePhase "output-emitted"
     exit 0
   }
   $bitmap = [System.Drawing.Bitmap]::new($width, $height)

@@ -12,7 +12,7 @@ class NativeTimelineZoomContract(unittest.TestCase):
         phases = ["entered", "process-lookup", "forms-load", "native-type-compile",
                   "owned-window-enumeration", "foreground", "drawing-load", "display-geometry",
                   "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds",
-                  "containment-check", "prepare-complete"]
+                  "containment-check", "prepare-complete", "payload-built", "json-serialized", "output-emitted"]
         offsets = [helper.index(f'Write-NativePhase "{phase}"') for phase in phases]
         self.assertEqual(offsets, sorted(offsets))
         self.assertIn('[Console]::Error.Flush()', helper)
@@ -22,13 +22,28 @@ class NativeTimelineZoomContract(unittest.TestCase):
         subprocess.run(["node", "-e", r"""
 const assert = require('node:assert/strict');
 const {nativeFailureEvidence} = require('./scripts/timeline-native-zoom-acceptance.cjs');
-const r = nativeFailureEvidence('prepare', {code:'ETIMEDOUT',stderr:'secret\nLN_NATIVE_PHASE:entered\r\nLN_NATIVE_PHASE:unknown\n'+'LN_NATIVE_PHASE:forms-load\n'.repeat(500)});
+const r = nativeFailureEvidence('prepare', {code:'ETIMEDOUT',stderr:'secret\nLN_NATIVE_PHASE:entered|0\r\nLN_NATIVE_PHASE:unknown|0\n'+'LN_NATIVE_PHASE:forms-load|10\n'.repeat(500)});
 assert.equal(r.code,'ETIMEDOUT'); assert.equal(r.phases.length,32); assert.equal(r.stderr_truncated,true);
 assert(!JSON.stringify(r).includes('secret')); assert(!JSON.stringify(r).includes('unknown'));
 assert.equal(nativeFailureEvidence('prepare',{code:'private',stderr:''}).code,'native-call-failed');
 assert.equal(nativeFailureEvidence('x'.repeat(1000000),{}).action,'unknown');
 assert.equal(nativeFailureEvidence('capture',{}).action,'capture');
+const invalid = ['LN_NATIVE_PHASE:entered|NaN','LN_NATIVE_PHASE:entered|Infinity','LN_NATIVE_PHASE:entered|-1','LN_NATIVE_PHASE:entered|60001','LN_NATIVE_PHASE:entered|0.5'];
+assert.deepEqual(nativeFailureEvidence('prepare',{stderr:invalid.join('\n')}).phases,[]);
+const timed = nativeFailureEvidence('prepare',{stderr:'LN_NATIVE_PHASE:payload-built|14000\nLN_NATIVE_PHASE:json-serialized|13000\nLN_NATIVE_PHASE:output-emitted|14999'});
+assert.deepEqual(timed.phases,[{phase:'payload-built',elapsed_ms:14000},{phase:'output-emitted',elapsed_ms:14999}]);
 """], cwd=ROOT, check=True, timeout=10)
+
+    def test_prepare_payload_and_output_remain_equivalent(self):
+        helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")
+        payload = helper.split('$payload = ', 1)[1].split('\n    Write-NativePhase "payload-built"', 1)[0]
+        self.assertEqual(payload, '@{ owned_pid = $OwnedBrowserPid; window = $window.ToInt64(); action = "prepare";\n       method = "maximize-owned-window-before-baseline"; before = $initialGeometry;\n       after = (Describe-Geometry $rect) }')
+        self.assertIn('$json = $payload | ConvertTo-Json -Depth 5 -Compress', helper)
+        self.assertIn('Write-NativePhase "json-serialized"\n    $json\n    Write-NativePhase "output-emitted"\n    exit 0', helper)
+        self.assertIn('[Diagnostics.Stopwatch]::StartNew()', helper)
+        self.assertIn('[Math]::Min(60000, [Math]::Max(0, $phaseClock.ElapsedMilliseconds))', helper)
+        self.assertNotIn('[Console]::Out', helper)
+        self.assertNotIn('[Environment]::Exit', helper)
 
     def test_translation_dismissal_is_exact_owned_and_before_keyboard_baseline(self):
         helper = (ROOT / "scripts/timeline-native-zoom.ps1").read_text(encoding="utf-8")

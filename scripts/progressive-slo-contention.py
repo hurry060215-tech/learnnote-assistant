@@ -16,6 +16,7 @@ from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 import functools
 import heapq
+import inspect
 import itertools
 import os
 import platform
@@ -29,6 +30,7 @@ SLOW_SECONDS = .020
 MAX_METRICS = 32
 _current = ContextVar("reference_contention_operation", default=None)
 _section = ContextVar("reference_contention_section", default="unlabelled")
+_index_active = ContextVar("reference_contention_index_active", default=False)
 
 
 def _task_id(value):
@@ -260,10 +262,23 @@ class RequestEnvelope:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
-        match = re.fullmatch(r"/api/tasks(?:/([a-f0-9]{12})(?:/(start|cancel))?)?", path)
-        if scope["type"] != "http" or not match:
+        method = scope.get("method", "")
+        task_id = None
+        if scope["type"] == "http":
+            match = re.fullmatch(r"/api/tasks(?:/([a-f0-9]{12})(?:/(start|cancel))?)?", path)
+            if match and method == ("POST" if match[2] else "GET"):
+                task_id = match[1] or ""
+            elif method == "GET":
+                match = re.fullmatch(r"/api/tasks/editions/task/([a-f0-9]{12})(?:/personal-review)?", path)
+                if match:
+                    task_id = match[1]
+            if task_id is None:
+                match = re.fullmatch(r"/_fixture/tasks/([a-f0-9]{12})(/visible)?", path)
+                if match and method == ("POST" if match[2] else "GET"):
+                    task_id = match[1]
+        if task_id is None:
             return await self.app(scope, receive, send)
-        with self.collector.operation("http_request", match[1] or "", cpu=False):
+        with self.collector.operation("http_request", task_id, cpu=False):
             await self.app(scope, receive, send)
 
 
@@ -271,7 +286,7 @@ def _install(app, stack):
     """Call only after configure_fixture has verified its synthetic data marker."""
     from app import (storage, main, processor, processor_state, subtitle_notes,
                      pipeline_progress, progressive_sections, screen_subtitle_tasks,
-                     duration_estimates, whole_duration_estimates)
+                     duration_estimates, whole_duration_estimates, library)
     collector = Collector()
     real_lock = storage._lock
     measured = MeasuredTaskLock(real_lock, collector)
@@ -300,6 +315,46 @@ def _install(app, stack):
             stack.enter_context(patch.object(module, name, replacement))
         return replacement
 
+    def require_sync(function):
+        if any(not inspect.isfunction(target) or any(check(target) for check in
+               (inspect.iscoroutinefunction, inspect.isgeneratorfunction, inspect.isasyncgenfunction))
+               for target in (function, inspect.unwrap(function))):
+            raise TypeError("fixture diagnostic target must remain an ordinary synchronous function")
+
+    # These are function boundaries, not SQL statements or raw file-I/O timers.
+    # The connection object is returned untouched; its later use/close stays in
+    # the inclusive outer index span. Other callers of these aliases are untimed.
+    def index_part(function, span):
+        @functools.wraps(function)
+        def call(*args, **kwargs):
+            if not _index_active.get():
+                return function(*args, **kwargs)
+            with collector.span(span):
+                return function(*args, **kwargs)
+        return call
+    for name, label in (
+        ("_read_text", "index_artifact_text"),
+        ("_connect", "index_connect_schema"),
+        ("record_to_evidence", "index_note_evidence"),
+        ("transcript_evidence", "index_transcript_evidence"),
+        ("replace_task_evidence", "index_replace_evidence"),
+    ):
+        original = getattr(library, name)
+        require_sync(original)
+        stack.enter_context(patch.object(library, name, index_part(original, label)))
+
+    original_index = storage.index_task
+    require_sync(original_index)
+    @functools.wraps(original_index)
+    def index_call(*args, **kwargs):
+        token = _index_active.set(True)
+        try:
+            with collector.span("library_index_sqlite"):
+                return original_index(*args, **kwargs)
+        finally:
+            _index_active.reset(token)
+    stack.enter_context(patch.object(storage, "index_task", index_call))
+
     aliases(storage.update_task, "update_task", [(module, "update_task") for module in
         (storage, main, processor, processor_state, subtitle_notes, progressive_sections, screen_subtitle_tasks)], True)
     # These defining-module boundaries cover actual I/O and decoder/index work.
@@ -308,7 +363,6 @@ def _install(app, stack):
         (storage, "get_task", "manifest_read_validate"),
         (storage, "read_json", "task_json_read_decode"),
         (storage, "atomic_write_text", "atomic_file_write"),
-        (storage, "index_task", "library_index_sqlite"),
         (storage, "reconcile_stale_tasks", "list_reconcile"),
         (duration_estimates, "_read", "duration_file_read_decode"),
         (duration_estimates, "_history", "remaining_history"),
@@ -346,6 +400,43 @@ def _install(app, stack):
             continue
         label = "list_handler" if route.path == "/api/tasks" else "selected_handler"
         stack.enter_context(patch.object(route.dependant, "call", wrapped(route.dependant.call, label, True)))
+
+    route_targets = {
+        ("GET", "/api/tasks/editions/{kind}/{source_id}"): ("edition_handler", "source_id", 1),
+        ("GET", "/api/tasks/editions/{kind}/{source_id}/personal-review"): ("personal_review_handler", "source_id", 1),
+        ("GET", "/_fixture/tasks/{task_id}"): ("fixture_state_handler", "task_id", 0),
+        ("POST", "/_fixture/tasks/{task_id}/visible"): ("visible_handler", "task_id", 0),
+    }
+    def reader_handler(function, label, key, position):
+        @functools.wraps(function)
+        def call(*args, **kwargs):
+            if key == "source_id" and (args[0] if args else kwargs.get("kind")) != "task":
+                return function(*args, **kwargs)
+            task_id = args[position] if len(args) > position else kwargs.get(key, "")
+            with collector.operation(label, task_id):
+                with collector.span(label):
+                    return function(*args, **kwargs)
+        return call
+    found = set()
+    reader_routes = list(app.routes)
+    # FastAPI 0.143 (also pinned on Windows) dispatches included notes routes
+    # through lazy effective dependants. Resolve only this known router, before
+    # serving; restore calls first, then these exact cache references at teardown.
+    for branch in app.routes:
+        if getattr(branch, "original_router", None) is main.notes_router:
+            for name in ("_effective_candidates", "_effective_candidates_version"):
+                stack.enter_context(patch.object(branch, name, getattr(branch, name)))
+            reader_routes.extend(branch.effective_candidates())
+    for route in reader_routes:
+        for method in getattr(route, "methods", ()):
+            key = (method, getattr(route, "path", ""))
+            if key in route_targets:
+                require_sync(route.dependant.call)
+                stack.enter_context(patch.object(route.dependant, "call",
+                    reader_handler(route.dependant.call, *route_targets[key])))
+                found.add(key)
+    if found != set(route_targets):
+        raise AssertionError("fixture diagnostic reader routes are incomplete")
     previous_middleware, previous_stack = list(app.user_middleware), app.middleware_stack
     app.add_middleware(RequestEnvelope, collector=collector)
     def restore_middleware():

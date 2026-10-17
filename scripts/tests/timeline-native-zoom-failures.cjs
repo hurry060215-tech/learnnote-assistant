@@ -36,7 +36,7 @@ async function probe({ failureAt = "newPage", reportFails = false, closeFails = 
 
 async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=false,translationFailure=false,prepareFailure=false}) {
   const primary=new Error(translationFailure?'PRIMARY_TRANSLATION':'PRIMARY_MATRIX'),resetError=new Error('RESET_FAILED'),calls=[],writes=[];
-  primary.code='ETIMEDOUT';primary.stderr='private arbitrary stderr\r\nLN_NATIVE_PHASE:entered\r\nLN_NATIVE_PHASE:native-type-compile\r\n';
+  primary.code='ETIMEDOUT';primary.stderr='private arbitrary stderr\r\nLN_NATIVE_PHASE:entered|0\r\nLN_NATIVE_PHASE:native-type-compile|100\r\n';
   let zoom=100,lastKey='',resets=0;
   const baseline={width:1000,height:600,dpr:1,cssZoom:'1',documentZoom:'1',visualScale:1,overflow:0};
   const close=key=>async()=>{calls.push(key);if(closeFailure)throw new Error('CLOSE_'+key);};
@@ -67,7 +67,7 @@ async function lateProbe({matrixFailure=false,resetFailure=false,closeFailure=fa
   assert.equal(resets,(translationFailure||prepareFailure)?1:2,'Final reset attempted after both successful and failed matrix');
   if(prepareFailure){
     assert(!calls.includes('dismiss-translation'));
-    assert.deepEqual(writes.at(-1).native_failures[0],{action:'prepare',code:'ETIMEDOUT',phases:['entered','native-type-compile'],stderr_truncated:false});
+    assert.deepEqual(writes.at(-1).native_failures[0],{action:'prepare',code:'ETIMEDOUT',phases:[{phase:'entered',elapsed_ms:0},{phase:'native-type-compile',elapsed_ms:100}],stderr_truncated:false});
     assert(!JSON.stringify(writes).includes('private arbitrary stderr'));
   }else{
     assert(calls.indexOf('prepare') < calls.indexOf('dismiss-translation'));
