@@ -1,4 +1,5 @@
 const { chromium } = require("playwright");
+const { openDataManagement } = require("./settings-management-fixture.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 (async () => {
@@ -123,7 +124,7 @@ const fs = require("node:fs");
     await p.locator("[data-close-tool]").click();
     await p.locator("#settings").click();
     await p.locator('[data-settings-section="storage"]').click();
-    await p.locator('[data-settings-page="storage"] summary').click();
+    await openDataManagement(p);
     await p.locator("#studyTools").click();
     await p.getByText("调整每日目标与时区", {exact:true}).click();
     await p.waitForSelector("#dailyTarget");

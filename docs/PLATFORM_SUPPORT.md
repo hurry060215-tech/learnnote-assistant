@@ -5,11 +5,13 @@
 | 平台 | 浏览器工作台启动 | 本地后端/容器 | 浏览器扩展交接 | 数据目录与凭据 | 当前门槛 |
 | --- | --- | --- | --- | --- | --- |
 | Windows x64 | 可用：`start-learnnote.bat` 启动本机后端并打开默认浏览器 | 可用 | 可用：Chrome/Edge 真实 smoke | 可用：可迁移数据目录，凭据不写任务 | 需要用户授权浏览器页面和本地服务 |
-| macOS arm64 | 预览：浏览器优先启动；未签名 `.app` 已有托管 macOS 原生启动证据 | 合成资料导入/导出、重启及个人批注恢复通过 | 浏览器连接协议可用；本机配对仍需单独验证 | Keychain 路径存在；凭据迁移未验收 | 未签名/未公证；版本升级与回退尚未验收 |
+| macOS arm64 | 预览：浏览器优先启动；未签名 `.app` 已有托管 macOS 原生启动证据 | 合成资料导入/导出、重启及个人批注恢复通过 | 浏览器连接协议可用；本机配对仍需单独验证 | 明确预览后的本机目录复制/重启通过；Keychain 路径存在，凭据不迁移 | 未签名/未公证；旧版应用配合升级前快照回退已验收，非新版数据库降级 |
 | macOS x64 | 预览：浏览器优先启动 | 三系统契约不等于 x64 原生应用运行 | 连接协议与 arm64 相同 | 需平台验收 | 未提供 x64 原生应用验收证据 |
-| Linux x64 | 预览：浏览器工作台；原生桌面集成未验收 | 源码后端合成导入/导出、重启及个人批注恢复通过；Docker 构建通过 | 浏览器连接协议可用 | 由用户管理目录和凭据；完整任务迁移未验收 | 不承诺发行版级集成或可执行自动更新 |
+| Linux x64 | 预览：浏览器工作台；原生桌面集成未验收 | 源码后端合成导入/导出、重启及个人批注恢复通过；Docker 构建通过 | 浏览器连接协议可用 | 用户管理目录；模型密钥仅会话保存或由用户显式配置环境变量，无明文回退；完整任务迁移未验收 | 不承诺发行版级集成或可执行自动更新 |
 | ARM NAS | 不提供桌面承诺 | linux/arm64 容器构建通过；NAS 运行与性能仍为预览 | 需用户明确配置可访问服务 | 用户管理挂载卷 | 多架构构建不代表 NAS 的 ffmpeg、模型和存储实测 |
 | Docker (linux/amd64、linux/arm64) | 不适用 | 可用：compose/镜像构建 | 可用：浏览器连接用户明确暴露的本地端口 | 可用：挂载卷；不启用官方云同步 | 需要用户自行保护端口和反向代理 |
+
+Linux 本地服务中的已选模型密钥只保留到服务退出；显式环境变量配置由用户管理，清除已保存连接不会删除该配置。详见[API 密钥隐私边界](../PRIVACY.md#api-keys)。
 
 ## 跨平台不变量
 
@@ -45,6 +47,34 @@ credential migration, extension pairing, real platform media, and native
 updater rollback remain separate requirements. No user vault, provider key,
 real browser profile or media-site account is used by this workflow.
 
+## Verified migration and rollback (2026-10-17)
+
+[Native run 38993618885](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38993618885)
+on `ba068363ef9057b81e165657338a8741226941e4` passed both lanes. The macOS
+arm64 frozen app additionally passed normal application Quit with backend/session
+cleanup, stopped-source copy, destination-only known-path mapping, config-last
+activation and a native restart using the selected destination. Original material,
+content and personal-annotation exports were identical; source bytes, paths and
+modification times were unchanged. The restarted owned window visibly lists the
+imported material. [Exact evidence and limits](qa/20261017-native-data-migration.md).
+
+[Platform run 38992754421](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38992754421)
+on product-equivalent `25eafe0ad8bd96cefba9a0af2a78ea1dc3a237b7` passed the
+Windows/macOS/Linux contracts, including 82 migration/lifecycle tests per lane.
+[Windows CI](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38992754462)
+also passed the offline backend suite containing copied foreign-task ownership
+and export fixtures. This is bounded task compatibility, not automatic relocation
+of external media or arbitrary foreign-library schemas. See the
+[migration guide](DATA_DIRECTORY_MIGRATION.md) and
+[task ownership boundaries](qa/20261016-task-path-portability.md).
+
+The separate [native version rollback evidence](QA_NATIVE_VERSION_ROLLBACK.md)
+proves old/new/old application execution with restoration of the pre-upgrade data
+snapshot and retention of newer edits in a separate copy. It does not prove that
+an old binary can read a newer schema. Native window Close, the actual native
+settings bridge/folder dialog, credential transfer and macOS extension pairing
+are not established by the Quit/helper smoke.
+
 The separate `obsidian-native-acceptance.yml` uses a pinned official macOS
 Obsidian release, checks its code signature, and runs only the repository's
 compiled plugin in a disposable synthetic vault and isolated app profile. It
@@ -62,8 +92,8 @@ on `f39da5f2c2901be3a05b56c13458a448a29b13e0` passed the macOS arm64
 unsigned application and Linux source-backend lanes. Reports and restart/restore
 screenshots were inspected. The first-launch screenshot captured a loading
 window, so it is not visual proof of first-launch readiness; startup/API checks
-and the later rendered windows passed. These native harness and packaging paths
-are unchanged in the current updater-capability correction.
+and the later rendered windows passed. The newer migration evidence above
+supersedes this baseline for the paths it explicitly exercises.
 
 [Container run 38973618230](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/38973618230)
 on `cdad6c49132f1b8640ec1330c33794fd1b1bb480` passed the existing

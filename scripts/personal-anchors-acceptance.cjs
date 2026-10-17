@@ -1,5 +1,6 @@
 /* Actual Edge + actual backend. All task files come from our bounded fixture. */
 const { chromium } = require("playwright");
+const { openDataManagement } = require("./settings-management-fixture.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -210,8 +211,7 @@ const path = require("node:path");
     await page.goto(base, { waitUntil: "networkidle" });
     await page.locator("#settings").click();
     await page.locator('[data-settings-section="storage"]').click();
-    const management = page.locator('#settingsDialog [data-settings-page="storage"] details');
-    if (!await management.evaluate(node => node.open)) await management.locator("summary").click();
+    await openDataManagement(page);
     await page.locator("#studyTools").click();
     await page.locator(".study-backup > summary").click();
     const exportButton = page.getByRole("button", { name: "导出学习备份", exact: true });

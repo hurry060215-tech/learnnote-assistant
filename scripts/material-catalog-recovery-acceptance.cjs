@@ -4,6 +4,7 @@
 // Run only in an authorized Windows Edge environment:
 // node scripts/material-catalog-recovery-acceptance.cjs [loopback-origin] [output]
 const assert = require("node:assert/strict");
+const { openDataManagement } = require("./settings-management-fixture.cjs");
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { createHash } = require("node:crypto");
 const root = path.resolve(__dirname, "..");
@@ -69,8 +70,7 @@ async function main() {
   async function openStorage() {
     await page.locator("#settings").click();
     await page.locator('[data-settings-section="storage"]').click();
-    const details = page.locator('#settingsDialog [data-settings-page="storage"] details');
-    if (!(await details.evaluate(element => element.open))) await details.locator("summary").click();
+    await openDataManagement(page);
     await page.locator("#storageTools").click();
     await page.locator("#materialCatalogSnapshot").waitFor();
     await page.waitForFunction(() => !document.querySelector("#materialCatalogCheck").disabled);

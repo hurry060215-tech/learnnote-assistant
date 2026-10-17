@@ -1,5 +1,11 @@
 # Move a desktop data directory safely
 
+The stopped-copy and native restart path has passed the
+[unsigned macOS arm64 acceptance](qa/20261017-native-data-migration.md).
+Windows/macOS/Linux automated migration contracts also pass. This does not claim
+an actual native folder-dialog interaction or automatic foreign-root migration;
+the precise supported scope and failure behavior are below.
+
 Use **Settings → Data location → Change location** in the desktop client. The
 first step is a preview. It does not change the active directory, merge folders,
 or rewrite the source. Choose an existing **empty** folder outside the current

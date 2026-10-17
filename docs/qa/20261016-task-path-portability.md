@@ -1,5 +1,14 @@
 # Task artifact path portability (#70)
 
+Follow-on status (2026-10-17): the separate
+[explicit desktop data-directory move](../DATA_DIRECTORY_MIGRATION.md) now
+provides preview and destination-only mapping for a proven selected native root.
+Its [packaged macOS acceptance](20261017-native-data-migration.md) passed.
+The read-only resolver described below is unchanged: it does not infer uncertain
+same-platform old roots, repair a foreign catalog or migrate external media.
+Statements below about this reader slice having no preview API do not describe
+the separate explicit desktop move.
+
 ## Scope and ownership
 
 The active data-directory selection defines `TASK_DIR/<task id>`. Configured
