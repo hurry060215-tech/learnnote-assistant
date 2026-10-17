@@ -43,6 +43,7 @@ MODULE_SIZE_LIMITS = {
     "backend/app/concept_relation_snapshot.py": 130,
     "backend/app/routers/concept_relations.py": 90,
     "backend/app/main.py": 4270,
+    "backend/app/grounding_literals.py": 190,  # Narrow literal-equivalence checks only.
     "backend/app/task_projection_evidence.py": 90,
     "backend/app/task_recovery_guidance.py": 451,
     "backend/app/downloader.py": 2520,

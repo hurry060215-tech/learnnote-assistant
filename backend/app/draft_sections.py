@@ -44,7 +44,7 @@ def temporal_outline_markdown(document: dict, stamp) -> list[str]:
     if not document["sections"]:
         return []
     lines = ["## 按时间段的阅读提纲（字幕摘录草稿）", "",
-             "> 以下按原始时间分段，标题摘自原句；不是 AI 主题总结，也未完成事实校验。", ""]
+             "> 每 5 分钟抽取至多 3 条原文（首、中、末条），不保证连续上下文；每条最多 280 字，长句可能省略。不是 AI 主题总结，也未完成事实校验。点击时间点可查看前后字幕。", ""]
     for section in document["sections"]:
         # Heading is only a time range: source text cannot inject headings/HTML.
         lines.extend([f"### {stamp(section['start'])}–{stamp(section['end'])}", ""])

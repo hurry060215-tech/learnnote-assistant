@@ -300,6 +300,27 @@ test("failed merge preserves the completed generated-section draft explanation",
   assert.match(taskExplanation(task), /已生成的分段仍以草稿保留/);
   assert.match(eventLogHtml([{ event: "partial_section_ready", timestamp: "2026-10-09T00:00:00Z" }]), /分段草稿可读/);
 });
+test("grounding rejection points to source context without promising retry repairs transcription", () => {
+  for (const diagnostics of [
+    { llm_failure_stage: "grounding_validation", llm_failure_code: "rejected" },
+    { llm_failure_code: "llm_unavailable", llm_last_failure: { stage: "grounding_validation", code: "rejected" } },
+  ]) for (const partial of [false, true]) {
+    const task = { status: "failed", error_code: "summary_unavailable", summary_diagnostics: diagnostics,
+      artifact_status: { partial_draft_available: partial } };
+    const text = taskExplanation(task);
+    assert.match(text, /未通过来源检查.*处理记录和字幕上下文.*重试不会修正原始转写/);
+    assert.match(text, /字幕摘录只是原文预览，不是 AI 要点/);
+    assert.doesNotMatch(text, /检查模型连接|调整模型/);
+    assert.equal(text.includes("已生成的分段仍以草稿保留"), partial);
+    assert.doesNotMatch(taskExplanation({ ...task, status: "running" }), /未通过来源检查/);
+  }
+});
+test("connection and repaired states never masquerade as a terminal grounding rejection", () => {
+  for (const code of ["repaired", "repair_required", "api_error", "missing_api_key"])
+    assert.doesNotMatch(taskExplanation({ status: "failed", error_code: "summary_unavailable",
+      summary_diagnostics: { llm_failure_stage: "grounding_validation", llm_failure_code: code } }), /候选总结未通过来源检查/);
+  assert.match(taskExplanation({ status: "success", options: { content_mode: "subtitles" } }), /本次未下载视频、转写音频或调用模型/);
+});
 test("log text is escaped and duration formatting handles long steps", () => {
   assert(
     !eventLogHtml([

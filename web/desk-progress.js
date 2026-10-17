@@ -214,6 +214,13 @@ export function timelineHtml(
     .join("")}</ol><p class="muted">抽帧与本地准备包含已启用的本地 OCR；本地输出/来源检查记录格式与来源映射检查，不代表事实已核验。画面和笔记汇总步骤可包含上面的细分耗时，请勿相加。</p></details>`;
 }
 export function taskExplanation(task) {
+  const diagnostics = task.summary_diagnostics || {}, last = diagnostics.llm_last_failure || {};
+  const groundingRejected = task.status === "failed" && task.error_code === "summary_unavailable"
+    && ((diagnostics.llm_failure_stage === "grounding_validation" && diagnostics.llm_failure_code === "rejected")
+      || (last.stage === "grounding_validation" && last.code === "rejected"));
+  if (groundingRejected)
+    return "AI 候选总结未通过来源检查，尚未发布为完整笔记。字幕摘录只是原文预览，不是 AI 要点。先查看处理记录和字幕上下文，再决定是否用已保存字幕重新总结；重试不会修正原始转写。"
+      + (task.artifact_status?.partial_draft_available ? "已生成的分段仍以草稿保留，需回源核对。" : "");
   if (task.status === "failed" && task.artifact_status?.partial_draft_available)
     return "完整总结尚未完成；已生成的分段仍以草稿保留，可先阅读或核对字幕，再重试。";
   if (task.options?.content_mode === "subtitles")

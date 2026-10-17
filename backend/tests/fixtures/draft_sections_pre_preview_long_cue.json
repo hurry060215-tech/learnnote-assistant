@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "summary_generated": false,
+  "basis": "time-bucketed source excerpts, not AI topic inference",
+  "source": "browser-subtitle",
+  "sections": [
+    {
+      "id": "draft-time-0",
+      "kind": "temporal_outline",
+      "status": "draft",
+      "verified": false,
+      "summary_generated": false,
+      "start": 0.0,
+      "end": 10.0,
+      "source_cue_count": 1,
+      "heading_excerpt": "Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Sy",
+      "excerpts": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "text": "Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long cue. Synthetic saved long",
+          "source_cue_index": 0
+        }
+      ]
+    }
+  ],
+  "revision": "950ed03b2ca4ce934f20678ec0658f1f3e2c375ddc9976e9e28ecd1f44517a15"
+}

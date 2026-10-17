@@ -454,11 +454,12 @@ def note_generation_contract(options: TaskOptions) -> str:
         use_case_contracts.get(use_case, "")
         + custom_profile + f"学习目标：{learning_goal_instruction(options)}\n"
         f"深度约束：{summary_depth_instruction(options) if learning_goal(options) != 'auto' else {'brief': '精简：保留核心结论和必要前提，省略次要例子。', 'standard': '标准：保留核心解释、原有例子和因果步骤；篇幅随材料，不设最低字数。', 'deep': '详细：保留推导、操作步骤、例子和条件；不扩写材料外的知识。'}.get(options.summary_depth, '篇幅随材料。')}\n"
-        "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或课程没有给出的通用建议。"
+        "按材料本身组织。访谈或播客保留话题、各方观点、例子和分歧；说话人姓名仅在来源明确时使用，观点应归属于说话人，不写成已验证事实。授课材料继续保留概念、推导和例题。"
+        "共同约束：时间戳只能来自字幕段或画面窗口；不要编造时长、画面、例题、公式、工具、事实或材料没有给出的通用建议。"
         "外文专有名称只按字幕或画面证据原文书写；字幕只有中文名时保留中文名，禁止自行补写英文译名、品牌或人名。"
         + (
             "用户已明确要求练习：可以生成与材料匹配的自测题，数量由内容决定，不设固定题数；"
-            "题目必须标为“自测题”，答案只能由材料直接推出，不能伪装成老师讲过的例题。"
+            "题目必须标为“自测题”，答案只能由材料直接推出，不能伪装成来源给出的例题。"
             if options.generate_questions
             else "默认不生成自测题、复习问题或答案章节；题目由学习空间单独生成，或仅在用户明确要求时生成。"
         )
@@ -503,6 +504,7 @@ def note_grounding_issues(
     visual_evidence: str = "",
     title: str = "",
 ) -> list[str]:
+    from .grounding_literals import unsupported_quantity_labels, source_scoped_duration, without_editorial_headings
     text = str(note or "").strip()
     if not text:
         return ["empty_note"]
@@ -515,7 +517,10 @@ def note_grounding_issues(
         r"(?:总?时长\s*(?:约为|大约|约|为|是|[:：])?|总共|共计|全长|长达|持续|共|约为|大约|约)\s*"
         r"(?:约|大约|为|是|[:：])?\s*(\d+(?:\.\d+)?)\s*(小时|分钟|秒)",
     )
-    for value, unit in duration_pattern.findall(opening):
+    for match in duration_pattern.finditer(opening):
+        if source_scoped_duration(text, match, transcript.full_text):
+            continue
+        value, unit = match.groups()
         claimed = float(value) * {"小时": 3600, "分钟": 60, "秒": 1}[unit]
         tolerance = max(8.0, duration * 0.18)
         if duration > 0 and abs(claimed - duration) > tolerance:
@@ -525,17 +530,14 @@ def note_grounding_issues(
     evidence = f"{title}\n{transcript.full_text}\n{visual_evidence}".lower()
     # A valid timestamp cannot establish a contradictory quantity. Leave
     # structural list numbers/timestamps out of this evidence check.
-    quantities = r"(?<![\d.])(\d+(?:\.\d+)?)\s*(摄氏度|℃|°c|%|％|美元|人民币|万元|元|公斤|千克|毫克|毫米|厘米|kg|mg)"
-    def values(value):
-        return {(float(number), {"℃":"摄氏度", "°c":"摄氏度", "％":"%", "kg":"千克", "公斤":"千克", "mg":"毫克"}.get(unit, unit)) for number, unit in re.findall(quantities, value.lower())}
-    missing_quantities = values(text) - values(evidence)
+    missing_quantities = unsupported_quantity_labels(text, evidence)
     if missing_quantities:
-        issues.append("unsupported_quantity:" + ",".join(f"{number:g}{unit}" for number, unit in sorted(missing_quantities)))
+        issues.append("unsupported_quantity:" + ",".join(missing_quantities))
     evidence_tokens = {
         token.lower().strip("._-")
         for token in re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{2,}", evidence)
     }
-    note_without_urls = re.sub(r"https?://\S+", " ", text)
+    note_without_urls = re.sub(r"https?://\S+", " ", without_editorial_headings(str(note or "")))
     # TL;DR is a formatting label, not an invented term from the video.
     note_without_urls = re.sub(r"\btl\s*[;:/]\s*dr\b", " ", note_without_urls, flags=re.I)
     unsupported_tokens = sorted({
@@ -578,7 +580,7 @@ def _repair_grounded_note(
                 "content": (
                     "你是学习笔记的事实核查编辑。下面的候选笔记包含超出证据或时长错误。"
                     "请直接输出修订后的 Markdown，不要解释修改过程。\n"
-                    "只允许保留字幕和画面摘要能支持的课程内容；删除外部工具、通用经验、老师没有讲过的例题和无依据建议。"
+                    "只允许保留字幕和画面摘要能支持的材料内容；删除外部工具、通用经验、来源没有给出的例子和无依据建议。"
                     "外文专有名称只能使用证据原文，禁止自行补写英文译名。"
                     "对检测问题 unsupported_terms 中逐个列出的外文项，必须删除该外文写法（包括括号译名和标题），"
                     "保留材料支持的对应中文解释；不得因为你知道某个酒店、品牌或人名的英文名称就继续保留。"
@@ -596,7 +598,7 @@ def _repair_grounded_note(
         )
         return (response.choices[0].message.content or "").strip()
     except Exception as exc:
-        _record_llm_event(events, "grounding_repair", "api_error", exc, model=model)
+        _record_llm_event(events, "grounding_repair", "api_error", exc, model=model, request_stage="grounding_repair", repair_outcome="api_error")
         return ""
 
 
@@ -611,11 +613,13 @@ def _validated_generated_note(
     events: list[dict] | None,
     title: str = "",
     artifact_dir: Path | None = None,
+    request_stage: str = "text_summary",
 ) -> str:
+    scope = {"request_stage": request_stage}
     issues = note_grounding_issues(candidate, transcript, grids, visual_evidence, title)
     if not issues:
         return candidate.strip()
-    _record_llm_event(events, "grounding_validation", "repair_required", issues=issues, model=model)
+    _record_llm_event(events, "grounding_validation", "repair_required", issues=issues, model=model, repair_outcome="required", **scope)
     repaired = _repair_grounded_note(
         client,
         model,
@@ -630,7 +634,7 @@ def _validated_generated_note(
     )
     remaining = note_grounding_issues(repaired, transcript, grids, visual_evidence, title)
     if repaired and not remaining:
-        _record_llm_event(events, "grounding_validation", "repaired", model=model)
+        _record_llm_event(events, "grounding_validation", "repaired", model=model, repair_outcome="repaired", **scope)
         return repaired
     from .grounding_recovery import omit_unsupported_name_passages
     recovered, omitted = omit_unsupported_name_passages(repaired, remaining)
@@ -638,14 +642,14 @@ def _validated_generated_note(
         if artifact_dir is not None:
             artifact_dir.mkdir(parents=True, exist_ok=True)
             (artifact_dir / "omitted-summary-passages.json").write_text(json.dumps({"issues": remaining, "passages": omitted, "published": False}, ensure_ascii=False, indent=2), encoding="utf-8")
-        _record_llm_event(events, "grounding_validation", "partial_recovery", omitted_passages=len(omitted), issues=remaining, model=model)
+        _record_llm_event(events, "grounding_validation", "partial_recovery", omitted_passages=len(omitted), issues=remaining, model=model, repair_outcome="partial_recovery", **scope)
         return recovered
     _record_llm_event(
         events,
         "grounding_validation",
         "rejected",
         issues=remaining or ["empty_repair"],
-        model=model,
+        model=model, repair_outcome="rejected", **scope,
     )
     if artifact_dir is not None:
         try:
@@ -1369,7 +1373,7 @@ def summarize_with_llm(
 
         def batch_prompt(index: int, batch: list[VisionGridEntry]) -> str:
             return (
-                "你是严谨的课程学习笔记助手。下面是一批视频画面网格和对应字幕。"
+                "你是严谨的材料阅读笔记助手。下面是一批视频画面网格和对应字幕。"
                 "请先做局部图文总结，不要写完整总笔记。\n"
                 "每个窗口只需包含时间范围、画面可见信息和字幕重点；操作、PPT、代码、公式或例题线索仅在确实出现时记录。\n"
                 "不要为了统一格式补写易错点、例题或其他未出现的内容。\n"
@@ -1531,7 +1535,7 @@ def summarize_with_llm(
                                 {
                                     "role": "user",
                                     "content": (
-                                    "你是严谨的课程学习笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
+                                    "你是严谨的材料阅读笔记助手。请把下面所有局部图文摘要和字幕合并成一份完整 Markdown 学习笔记。"
                                     "必须覆盖所有时间窗口，不要只总结开头。\n\n"
                                     "画面索引必须保留 W 编号、时间范围和画面网格 URL，方便用户回看截图。\n"
                                     f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
@@ -1565,7 +1569,7 @@ def summarize_with_llm(
                     merge_prompt,
                     events,
                     title,
-                    artifact_dir=vision_cache_dir,
+                    artifact_dir=vision_cache_dir, request_stage="vision_merge",
                 )
                 if not grounded:
                     return None
@@ -1602,12 +1606,20 @@ def summarize_with_llm(
         sections = []
         for index, block in enumerate(blocks, 1):
             check_cancel()
+            child_events = []
             partial = summarize_with_llm(
                 title, TranscriptResult(full_text=block, source=transcript.source, warning=transcript.warning, provenance=transcript.provenance), [],
                 options.model_copy(update={"visual_understanding": False}),
                 page_url=page_url, page_context=page_context,
-                events=events, cancel_check=cancel_check,
+                events=child_events, cancel_check=cancel_check,
             )
+            # Child traces contain categories only after the public projection;
+            # never identify a chunk by copying its source text into diagnostics.
+            for event in child_events:
+                event.update(chunk_index=index, chunk_count=len(blocks), completed_chunks=index if partial else index - 1)
+                event.setdefault("request_stage", "text_summary")
+                if events is not None:
+                    events.append(event)
             if not partial:
                 return None
             body = re.sub(r"^# [^\n]*\n+", "", partial[0], count=1)
@@ -1633,7 +1645,7 @@ def summarize_with_llm(
         {
             "type": "text",
             "text": (
-                "你是严谨的课程学习笔记助手。请结合字幕输出 Markdown。\n"
+                "你是严谨的材料阅读笔记助手。请结合字幕输出 Markdown。\n"
                 f"笔记风格：{options.note_style}；笔记模板：{options.note_template}；详略程度：{options.summary_depth}。\n"
                 f"{note_generation_contract(options)}\n"
                 f"{_evidence_contract(transcript, grids)}\n"

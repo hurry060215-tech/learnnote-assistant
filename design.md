@@ -221,6 +221,11 @@ color system. Playback preserves a focused virtual subtitle button and its scrol
 position; automatic following resumes after focus leaves only if Follow remains
 enabled. Current subtitle buttons expose `aria-current="time"` as well as the
 existing visible selection. Explicit Home/End/arrow navigation remains bounded.
+Transcript previews explicitly identify source sampling, possible gaps and
+truncation, never semantic keypoints. Failed summary and transcript-draft states
+surface the existing source panel beside retry; timestamp controls name their
+context action. Grounding rejection points to source context and processing
+records without suggesting that retry repairs transcription or verifies facts.
 
 ## Motion and accessibility
 

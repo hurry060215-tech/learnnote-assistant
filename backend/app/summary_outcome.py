@@ -30,6 +30,7 @@ _INTERNAL_WARNING_PARTS = {
     "模型服务的凭据未通过验证", "模型服务暂时限制了请求频率", "模型服务响应超时", "模型服务未能完成总结",
     "字幕已保留，尚未得到可用的 AI 总结。调整模型后可直接重新总结，无需再次下载或转写。",
     "诊断详情已省略",
+    "字幕已保留，尚未得到可用的 AI 总结。请先查看来源检查诊断并核对字幕，再决定是否重新总结，无需再次下载或转写。",
 }
 
 
@@ -57,7 +58,7 @@ def safe_summary_warning(value: str) -> str:
 def summary_failure_message(warning: str, events: list[dict] | None = None) -> str:
     detail = (str(warning or "") + " " + " ".join(str(item.get("message") or item.get("code") or "") for item in (events or []))).lower()
     if "未通过来源检查" in detail or any(item.get("stage") == "grounding_validation" and item.get("code") == "rejected" for item in (events or [])):
-        reason = "总结中的部分内容未通过来源检查"
+        return "总结中的部分内容未通过来源检查；字幕已保留，尚未得到可用的 AI 总结。请先查看来源检查诊断并核对字幕，再决定是否重新总结，无需再次下载或转写。"
     elif any(word in detail for word in ("insufficient balance", "insufficient_quota", "credit balance", "余额不足", "欠费", "模型服务额度不足")):
         reason = "模型服务额度不足"
     elif any(word in detail for word in ("missing_api_key", "未配置", "no api key", "尚未配置可用模型")):
@@ -101,13 +102,38 @@ _EVENT_CODES = {"ok", "success", "cache_hit", "api_error", "mojibake_blocked", "
     "missing_openai_sdk", "client_init_failed", "repair_required", "repaired", "partial_recovery", "rejected", "llm_unavailable", "offline_fixture", "unclassified"}
 
 
+_GROUNDING_ISSUE_CODES = {"empty_note", "duration_mismatch", "unsupported_quantity", "unsupported_terms",
+                          "unsupported_example_section", "empty_repair"}
+_REQUEST_STAGES = {"text_summary", "vision_merge", "vision_batch", "grounding_repair"}
+_REPAIR_OUTCOMES = {"required", "repaired", "partial_recovery", "rejected", "api_error"}
+
+
 def safe_summary_events(events: list[dict] | None) -> list[dict]:
     result = []
-    for event in (events or [])[:20]:
+    # Keep the terminal result and its preceding repair failure, even when a
+    # long input produces more than twenty diagnostic events. This is no ledger.
+    retained = events or []
+    if len(retained) > 20:
+        retained = retained[:18] + retained[-2:]
+    for event in retained:
         if not isinstance(event, dict):
             continue
         safe = {"stage": event.get("stage") if isinstance(event.get("stage"), str) and event["stage"] in _EVENT_STAGES else "unknown",
                 "code": event.get("code") if isinstance(event.get("code"), str) and event["code"] in _EVENT_CODES else "unclassified"}
+        issues = event.get("issues", event.get("issue_codes", []))
+        if isinstance(issues, list):
+            codes = sorted({value.split(":", 1)[0] for value in issues if isinstance(value, str)} & _GROUNDING_ISSUE_CODES)
+            if codes:
+                safe["issue_codes"] = codes
+        if isinstance(event.get("request_stage"), str) and event["request_stage"] in _REQUEST_STAGES:
+            safe["request_stage"] = event["request_stage"]
+        if isinstance(event.get("repair_outcome"), str) and event["repair_outcome"] in _REPAIR_OUTCOMES:
+            safe["repair_outcome"] = event["repair_outcome"]
+        count, index, completed = (event.get(key) for key in ("chunk_count", "chunk_index", "completed_chunks"))
+        if type(count) is int and 1 <= count <= 1000000 and type(index) is int and 1 <= index <= count:
+            safe.update(chunk_count=count, chunk_index=index)
+            if type(completed) is int and 0 <= completed <= count:
+                safe["completed_chunks"] = completed
         if event.get("stage") == "provider_compatibility":
             # Compatibility provenance is an allowlisted category only. Never
             # preserve a provider body, raw message, endpoint or arbitrary field.

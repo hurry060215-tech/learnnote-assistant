@@ -238,19 +238,24 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
         "",
         "> 字幕摘录草稿：原始文字已保存。以下提供时间段阅读提纲和原句预览，尚未生成 AI 主题总结或完成事实校验。",
         "",
-        "## 原文预览",
+        "## 原文抽样（最多 12 条，不保证连续）",
+        "",
+        "> 按字幕条目位置均匀抽取，不按内容重要性筛选；每条最多显示 280 字，省略处标记为 […]。点击时间点可查看前后字幕。",
         "",
     ]
     for segment in _representative_segments(transcript):
         text = canonicalize_unicode_text(segment.text).strip()
         text = redact_sensitive_url_values(re.sub(r"\s+", " ", text))
         if text:
-            lines.append(f"- `{_format_timestamp(segment.start)}` {text[:280]}")
-    if len(lines) == 6:
+            lines.append(f"- `{_format_timestamp(segment.start)}` {text[:280]}{' […]' if len(text) > 280 else ''}")
+    has_timed_preview = len(lines) > 8
+    if not has_timed_preview:
+        lines[4] = "## 原文开头预览（最多 12 行）"
+        lines[6] = "> 当前没有带时间点的字幕；以下仅预览开头最多 12 行，每行最多 280 字，不代表内容要点，也无法按时间定位。"
         for line in transcript_text.splitlines()[:12]:
             text = redact_sensitive_url_values(re.sub(r"\s+", " ", line).strip())
             if text:
-                lines.append(f"- {text[:280]}")
+                lines.append(f"- {text[:280]}{' […]' if len(text) > 280 else ''}")
     section_document = draft_sections_document(transcript)
     write_json(task_id, "draft_sections.json", section_document)
     lines.extend(["", *temporal_outline_markdown(section_document, _format_timestamp)])
@@ -258,7 +263,8 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
         "",
         "## 当前状态",
         "",
-        "- 完整内容保留在字幕页；AI 总结完成后，正文才会更新为提炼后的笔记。",
+        ("- 可通过“查看字幕原文”阅读完整字幕；AI 总结完成后，正文才会更新为提炼后的笔记。" if has_timed_preview
+         else "- 完整文字已保存；当前来源面板不展示未分段文字。AI 总结完成后，正文才会更新为提炼后的笔记。"),
         "",
     ])
     target = task_dir(task_id) / "draft.md"

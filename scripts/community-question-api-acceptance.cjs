@@ -3,7 +3,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const { spawn } = require("node:child_process");
-const { chromium } = require("playwright");
 const { completedAction, cleanupFixture } = require("./course-upgrade-fixture-helpers.cjs");
 const { bounded } = require("./range-platform-browser-acceptance.cjs");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -15,6 +14,25 @@ async function until(check, label, timeout = 20000) {
 }
 function browserLaunchOptions(executablePath) {
   return executablePath ? { executablePath, headless: true } : { channel: "msedge", headless: true };
+}
+async function navigateHome(page) {
+  await page.evaluate(() => { location.hash = ""; });
+  await page.locator("#welcome #homeUrlForm").waitFor({ state: "visible" });
+  assert(await page.evaluate(() => location.hash === "" && document.getElementById("reading").hidden
+    && !document.getElementById("toolsDialog").open), "Home navigation must hide the reader and dismiss the transient dialog");
+}
+function answerViewportState(dialog) {
+  const frame = dialog.getBoundingClientRect(), header = dialog.querySelector(":scope > header").getBoundingClientRect();
+  const label = dialog.querySelector("#communityQuestionResult h3"), answer = dialog.querySelector("#communityQuestionResult .answer");
+  const visible = node => {
+    if (!node) return false;
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.top >= Math.max(0, frame.top, header.bottom)
+      && rect.bottom <= Math.min(innerHeight, frame.bottom) && rect.left >= Math.max(0, frame.left)
+      && rect.right <= Math.min(innerWidth, frame.right);
+  };
+  return { label_visible: visible(label), answer_visible: visible(answer),
+    unverified_label: Boolean(label?.textContent.includes("整体未经事实验证")) };
 }
 async function unexpectedDialog(dialog, report) {
   report.errors.push(`Unexpected ${dialog.type()} dialog: ${dialog.message()}`);
@@ -67,6 +85,7 @@ async function finishFixture({ browser, backend, out, report, write = fs.writeFi
   if (failure) throw failure;
 }
 async function main() {
+  const { chromium } = require("playwright");
   const out = path.resolve(process.argv[2] || "build/community-question-ui"); fs.mkdirSync(out, { recursive: true });
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-opinion-qa-"));
   const report = { passed: false, synthetic_only: true, actual_http: true, actual_disk: true, provider_called: false,
@@ -139,8 +158,8 @@ async function main() {
       const value = await response.json(); await page.locator("#communityQuestionConsent").waitFor(); return value;
     }
     async function confirm() { await page.locator("#communityQuestionConsent").check(); await page.locator("#communityQuestionSend").click(); }
-    async function capture(name, target) {
-      for (const width of [1280, 390]) for (const theme of ["light", "dark"]) {
+    async function capture(name, target, { widths = [1280, 390], answerBody = false } = {}) {
+      for (const width of widths) for (const theme of ["light", "dark"]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await page.evaluate(theme => document.body.classList.toggle("dark", theme === "dark"), theme);
         await page.locator(target).scrollIntoViewIfNeeded();
@@ -151,6 +170,10 @@ async function main() {
         });
         assert(!geometry.overflow && geometry.left >= 0 && geometry.right <= geometry.width + 1, JSON.stringify(geometry));
         assert(geometry.controls.every(height => height >= 44));
+        if (answerBody) {
+          const visible = await page.locator("#toolsDialog").evaluate(answerViewportState);
+          assert(visible.label_visible && visible.answer_visible && visible.unverified_label, JSON.stringify(visible));
+        }
         const filename = `${name}-${theme}-${width}.png`; await page.screenshot({ path: path.join(out, filename), animations: "disabled" }); report.screenshots.push(filename);
       }
       await page.setViewportSize({ width: 1280, height: 1000 }); await page.evaluate(() => document.body.classList.remove("dark"));
@@ -210,6 +233,7 @@ async function main() {
     assert.match(await page.locator("#communityQuestionResult").innerText(), /整体未经事实验证/);
     assert.equal(await page.locator("#communityQuestionResult button,#communityQuestionResult a,#communityQuestionResult img").count(), 0);
     await capture("answer", "#communityQuestionResult h3");
+    await capture("answer-body", "#communityQuestionResult .answer", { widths: [390], answerBody: true });
     assert.equal((await api(task + "/qa")).items.length, 0);
     const completedState = await readState();
     assert.equal(completedState.persistence.original_artifacts_unchanged, true);
@@ -227,7 +251,7 @@ async function main() {
       if (action === "close" || action === "back") await page.locator(action === "close" ? "[data-close-tool]" : "[data-tool-back]").click();
       if (action === "question") await page.locator("#communityQuestionText").fill("Changed while waiting");
       if (action === "settings") await page.evaluate(() => window.dispatchEvent(new Event("learnnote:settings")));
-      if (action === "navigation") { await page.evaluate(() => { location.hash = ""; }); await page.locator("#home").waitFor(); }
+      if (action === "navigation") await navigateHome(page);
       await api("/_fixture/release", { method: "POST" });
       if (action === "navigation") { await page.goto(`${base}/#task/${fixture.task_id}`); await page.locator("#document h1").waitFor(); }
       await open(); await expand(); assert.equal(await page.locator("#communityQuestionResult").innerText(), "");
@@ -265,4 +289,4 @@ async function main() {
   if (primaryError) throw primaryError;
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { until, browserLaunchOptions, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture };
+module.exports = { until, browserLaunchOptions, navigateHome, answerViewportState, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture };

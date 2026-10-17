@@ -160,7 +160,9 @@ def build_summary_diagnostics(
         if event.get("stage") == "vision_batch" and str(event.get("code") or "").lower() not in {"", "ok", "success", "cache_hit", "offline_fixture", "repaired", "unclassified"}
     )
     llm_failure_code = _llm_failure_code(summary_source, summary_warning, llm_configured)
-    if not llm_failure_code and last_llm_failure and summary_source == "local-template":
+    if last_llm_failure.get("stage") == "grounding_validation" and last_llm_failure.get("code") == "rejected":
+        llm_failure_code = "rejected"
+    elif not llm_failure_code and last_llm_failure and summary_source == "local-template":
         llm_failure_code = str(last_llm_failure.get("code") or "llm_unavailable")
     page_context_text = (page_context or "").strip()
     try:
@@ -184,7 +186,7 @@ def build_summary_diagnostics(
         "llm_provider": llm_provider_name(effective_llm_base_url),
         "llm_failure_code": llm_failure_code,
         "llm_failure_stage": (_warning_field(summary_warning, "stage") or last_llm_failure.get("stage") or "") if llm_failure_code else "",
-        "llm_failure_reason": (_warning_field(summary_warning, "reason") or last_llm_failure.get("message") or last_llm_failure.get("error_type") or "") if llm_failure_code else "",
+        "llm_failure_reason": (_warning_field(summary_warning, "reason") or last_llm_failure.get("message") or last_llm_failure.get("error_type") or "") if llm_failure_code and llm_failure_code != "rejected" else "",
         "llm_event_count": len(safe_llm_events),
         "llm_events": safe_llm_events,
         "llm_last_event": safe_llm_events[-1] if safe_llm_events else {},

@@ -76,7 +76,7 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
   function sourceButton(start, end) {
     const button = make("button", time(start, end), "time-link");
     button.type = "button";
-    button.setAttribute("aria-label", `查看原文 ${time(start, end)}`);
+    button.setAttribute("aria-label", `查看这一处字幕上下文 ${time(start, end)}`);
     button.addEventListener("click", () => openSource(start));
     return button;
   }
@@ -111,7 +111,7 @@ export function createSectionReader({ element, scroller, timestamp, renderMarkdo
       clear(); identity = plan.identity;
       shell = make("div", undefined, "progressive-reader");
       shell.dataset.progressiveReader = "true";
-      shell.append(make("h1", task.title), make("p", "字幕阅读提纲 · 按原始时间分段，摘自字幕；不是 AI 主题总结。图文草稿按来源时间补入，仍需核对。", "muted"));
+      shell.append(make("h1", task.title), make("p", "字幕原文抽样 · 每 5 分钟抽取至多 3 条（首、中、末条），不保证连续上下文；长句可能省略，不是 AI 主题总结。点击时间点可查看前后字幕。图文草稿仍需核对。", "muted"));
       const groups = make("div"); groups.dataset.readerGroups = "true";
       overflow = make("section"); overflow.dataset.readerUnmatched = "true";
       shell.append(groups, overflow); element.replaceChildren(shell); changed = true;

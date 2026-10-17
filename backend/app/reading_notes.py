@@ -49,7 +49,7 @@ def readable_extract(title, transcript, grids, page_url=""):
     lines = [
         f"# {title or '学习笔记'}",
         "",
-        "> 字幕摘录：未使用文字模型。以下内容只来自已取得的字幕或转写，并保留原文定位。",
+        "> 字幕摘录：以下是已取得的字幕或转写原文，不是 AI 总结；保留原文定位。",
         "",
     ]
     if page_url:
@@ -62,7 +62,7 @@ def readable_extract(title, transcript, grids, page_url=""):
             start = stamp(usable[0].start)
             end = stamp(usable[-1].end)
             lines += ["## 概述", "", f"已取得 {len(usable)} 段带时间点的字幕，覆盖 {start}–{end}；以下按原文停顿分节。", ""]
-        lines += ["## 核心要点", ""]
+        lines += ["## 原文定位", ""]
         for segment in usable[: min(8, len(usable))]:
             lines.append(f"- `{stamp(segment.start)}` 原文段落，见下方定位。")
         lines.append("")

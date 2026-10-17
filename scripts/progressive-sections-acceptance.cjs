@@ -20,6 +20,8 @@ const TRANSCRIPT = [
   { start: 0, end: 10, text: "The circle is orange." },
   { start: 10, end: 20, text: "The square is blue." },
 ];
+const LONG_TRANSCRIPT = Array.from({ length: 2000 }, (_, index) => ({ start: index * 8, end: index * 8 + 8,
+  text: `Synthetic original cue ${index}; continuous source context, not an AI summary.` }));
 const FINAL_MARKER = "显式模拟成功后的最终样本";
 const HOSTILE_TEXT = '<img src="fixture-hostile.png" onerror="window.__progressiveHostileExecuted=true"><script>window.__progressiveHostileExecuted=true</script>';
 const digest = value => createHash("sha256").update(value).digest("hex");
@@ -50,7 +52,8 @@ function batch(number, scenario) {
 }
 
 function partialText(withFirst, scenario) {
-  return `# ${scenario.title}\n\n## 已生成的分段草稿\n\n> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。\n\n${withFirst ? batch(1, scenario) + "\n\n" : ""}${batch(2, scenario)}\n`;
+  return `# ${scenario.title}\n\n## 已生成的分段草稿\n\n> 证据补充中：以下批次已生成，后续批次、合并与最终检查尚未全部完成。未验证的内容已标记，请回源核对。\n\n${withFirst ? batch(1, scenario) + "\n\n" : ""}${batch(2, scenario)}\n`
+    + (scenario.name === "text" ? "\n原文抽样（不保证连续）：`02:13:20` Synthetic original cue 1000.\n" : "");
 }
 
 function createFixture(scenario) {
@@ -61,6 +64,7 @@ function createFixture(scenario) {
     retryCalls: 0,
     explicitSuccess: false,
     events: [],
+    transcript: scenario.name === "text" ? LONG_TRANSCRIPT : TRANSCRIPT,
     edition: { text: partialText(false, scenario), revision: "fixture-batch-2", edited: false },
     task: {
       id: TASK_ID, title: scenario.title, kind: "task", source_type: "local", mode: visualRequested(scenario) ? "visual" : "subtitle_only",
@@ -153,6 +157,9 @@ function createFixture(scenario) {
       error_code: "summary_unavailable", summary_source: "local-template",
     });
     fixture.task.artifact_status.failure_phase = "summarizing";
+    if (scenario.name === "text") fixture.task.summary_diagnostics = {
+      llm_failure_stage: "grounding_validation", llm_failure_code: "rejected",
+    };
     return record("task_terminal");
   };
   fixture.retry = () => {
@@ -367,7 +374,7 @@ async function runScenario(scenario, out) {
           if (url.pathname === taskRoot) return await json({ task: fixture.task });
           if (url.pathname === `${taskRoot}/events`) return await json({ events: fixture.events });
           if (url.pathname === `${taskRoot}/qa`) return await json({ items: [] });
-          if (url.pathname === `${taskRoot}/transcript`) return await json({ segments: TRANSCRIPT });
+          if (url.pathname === `${taskRoot}/transcript`) return await json({ segments: fixture.transcript });
           if (url.pathname === `${taskRoot}/partial-note`) return await json(fixture.projection());
           if (url.pathname === `${taskRoot}/frames/synthetic-grid.png`) return await route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64") });
           if (url.pathname === `/api/tasks/editions/task/${TASK_ID}`) {
@@ -617,7 +624,8 @@ async function runScenario(scenario, out) {
     await waitEdition();
     assert.equal(await page.locator("#taskStatus").getAttribute("data-status"), "needs-summary");
     assert.equal(await page.locator(`#taskStatus [${estimateAttribute}="estimated"]`).count(), 0);
-    assert.match(await page.locator("#taskStatus").innerText(), /完整总结尚未完成.*分段仍以草稿保留/s);
+    assert.match(await page.locator("#taskStatus").innerText(), scenario.name === "text"
+      ? /未通过来源检查.*分段仍以草稿保留/s : /完整总结尚未完成.*分段仍以草稿保留/s);
     assert.equal(await page.locator("#document .transcript-draft").count(), 0, "Partial generated source chunks must not collapse into a transcript-only draft");
     assert.equal(await page.getByRole("heading", { name: "Core points", exact: true }).count(), responseScenario(scenario) ? 1 : 2);
     assert.match(await page.locator("#document").innerText(), /草稿 · 证据补充中 · 未完成最终校验 · 待最终来源检查/);
@@ -626,6 +634,27 @@ async function runScenario(scenario, out) {
     await page.evaluate(() => { window.getSelection().removeAllRanges(); window.scrollTo(0, 0); });
     await screenshot("04-failed-partial-chapters.png");
     report.checks.push("Failed local-template metadata retains generated source chunks when partial_draft_available is true; hostile text stays escaped");
+
+    if (scenario.name === "text") {
+      const original = digest(JSON.stringify(fixture.transcript)), posts = report.requests.filter(value => value.startsWith("POST ")).length;
+      const source = page.locator('[data-task-action="source"]');
+      await source.focus(); await source.press("Enter");
+      await page.locator('#sourceContent [data-cue-index="0"]').waitFor({ state: "visible" });
+      assert.match(await page.locator("#sourceTranscript summary").innerText(), /2000 段/);
+      await page.locator("#closeSource").click();
+      const sample = page.getByRole("button", { name: "查看这一处字幕上下文 02:13:20", exact: true });
+      await sample.focus(); await sample.press("Enter");
+      await page.locator('#sourceContent [data-cue-index="1000"]').waitFor({ state: "visible" });
+      for (const index of [999, 1000, 1001]) assert.match(await page.locator(`#sourceContent [data-cue-index="${index}"]`).innerText(), new RegExp(`original cue ${index};`));
+      assert.equal(await page.locator('#sourceContent [data-cue-index="1000"]').getAttribute("aria-current"), "time");
+      const rendered = await page.locator("#sourceContent .cue").count();
+      assert(rendered < 80, "A long saved transcript must keep a bounded contiguous DOM window");
+      assert.equal(digest(JSON.stringify(fixture.transcript)), original); assert.equal(digest(fixture.edition.text), partialHash);
+      assert.equal(report.requests.filter(value => value.startsWith("POST ")).length, posts);
+      report.observations.grounding_context = { cue_count: fixture.transcript.length, rendered_cues: rendered, selected_cue: 1000, neighbor_cues: [999, 1001], source_unchanged: true, edition_unchanged: true };
+      await screenshot("04-grounding-original-context.png"); await page.locator("#closeSource").click();
+      report.checks.push("Failed grounded text task opens original subtitles by keyboard; the middle sample shows adjacent verbatim cues in a bounded long-transcript window without retry or source mutation");
+    }
 
     await page.locator('[data-task-action="retry-summary"]').click();
     await page.waitForFunction(() => document.getElementById("taskStatus")?.dataset.status === "running");

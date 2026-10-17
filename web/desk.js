@@ -2,12 +2,12 @@ import { canOcrMaterial, mountMaterialOcr } from "/web/material-ocr.js";
 import { mountQueueControls } from "/web/queue-controls.js";
 import { collapseSourceReviews } from "/web/source-review.js";
 import { preserveReaderPosition, renderEditionStable } from "/web/reader-progress.js?v=native-anchor-20261017";
-import { createSectionReader } from "/web/reader-sections.js?v=snapshot-conflict-20261017";
+import { createSectionReader } from "/web/reader-sections.js?v=source-preview-20261017";
 import {
   installConnections,
   loadModelConnection,
 } from "/web/desk-connections.js";
-import { timelineHtml, taskExplanation } from "/web/desk-progress.js";
+import { timelineHtml, taskExplanation } from "/web/desk-progress.js?v=source-preview-20261017";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
 import { installNoteEditor } from "/web/desk-note-controls.js";
@@ -649,8 +649,10 @@ function decorateSourceTimes(root) {
         ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
         : Number(match[1]) * 60 + Number(match[2]);
       const button = document.createElement("button");
+      button.type = "button";
       button.className = "time-link";
       button.textContent = code.textContent;
+      button.setAttribute("aria-label", `查看这一处字幕上下文 ${code.textContent}`);
       button.onclick = () => openSource(seconds).catch(failure);
       code.replaceWith(button);
     }
@@ -679,7 +681,7 @@ function decorateSourceTimes(root) {
         button.type = "button";
         button.className = "time-link";
         button.textContent = range.label;
-        button.setAttribute("aria-label", `查看原文 ${range.label}`);
+        button.setAttribute("aria-label", `查看这一处字幕上下文 ${range.label}`);
         button.onclick = () => openSource(range.start).catch(failure);
         fragment.append(button);
         offset = range.index + range.label.length;
@@ -768,6 +770,8 @@ function renderTaskStatus(reload) {
         : ["success", "cancelling"].includes(t.status)
           ? ""
           : '<button data-task-action="cancel">停止处理</button>';
+  const sourceAction = t.transcript_path && (needsSummary || t.summary_source === "transcript-draft" || t.summary_source === "partial-draft")
+    ? '<button type="button" data-task-action="source">查看字幕原文</button>' : "";
   const title = (needsSummary ? "字幕已保留 · 总结尚未完成" : statusLabel(t)) + queueDetail + budgetDetail;
   const raw =
     t.message && !["success"].includes(t.status)
@@ -778,7 +782,7 @@ function renderTaskStatus(reload) {
     priorProgress?.dataset.taskProgress === t.id
       ? priorProgress.open
       : t.status !== "success";
-  panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}</div>${raw}`;
+  panel.innerHTML = `<div class="task-status-heading"><strong>${esc(title)}</strong><button data-task-action="diagnostics">查看处理记录</button></div><p>${esc(taskExplanation(t))}</p>${timelineHtml(t, taskEvents.get(t.id)?.events || [], progressExpanded)}${t.awaiting_confirmation ? `<p class="task-plan">${t.options?.content_mode === "subtitles" ? "仅提取字幕 · 不调用模型" : `${t.options?.visual_understanding ? "图文笔记 · 视觉理解已启用" : "文字笔记 · 视觉理解关闭"} · ${esc(state.model.model || state.health.default_llm_model || "尚未配置模型")}`}</p>` : ""}<div class="task-status-actions">${action}${sourceAction}</div>${raw}`;
   mountQueueControls(panel, t, api, refresh);
   if (t.claim_evidence?.path) {
     const details = document.createElement("details");
@@ -1111,7 +1115,9 @@ async function openSource(seconds, sourceOverride = null, target = {}) {
     renderedCues = [...$("sourceContent").querySelectorAll(".cue")];
     activeCueIndex = -1;
     if (!cues.length)
-      $("sourceContent").append(document.createTextNode("暂无可用字幕。"));
+      $("sourceContent").append(document.createTextNode(data.full_text?.trim()
+        ? "文字已保存，但没有带时间点的字幕段；当前来源面板无法展示这份未分段文字或按时间定位。"
+        : "暂无可用字幕。"));
     panel.dataset.sourceKey = sourceKey;
     panel.dataset.contentMode = "transcript";
     if (transcript) {
@@ -1375,6 +1381,10 @@ $("taskStatus").onclick = async (e) => {
     action = button.dataset.taskAction;
   if (action === "diagnostics") {
     await workspaceTools.diagnostics().catch(failure);
+    return;
+  }
+  if (action === "source") {
+    await openSource(undefined, selected).catch(failure);
     return;
   }
   if (action === "new") {
