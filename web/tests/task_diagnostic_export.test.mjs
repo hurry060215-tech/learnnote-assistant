@@ -51,10 +51,11 @@ test("format supersession drops older response; JSON uses exact bytes and generi
   assert.equal(h.nodes.find(node => node.tag === "a").download, "learnnote-diagnostics.json");
   assert.match(h.requests[1].path, /\?format=json$/);
 });
-for (const action of ["取消导出", "关闭", "← 返回", "invalidate", "cancel", "close"]) {
+for (const action of ["取消导出", "关闭", "← 返回", "invalidate", "cancel", "close", "pagehide"]) {
   test(`${action} invalidates pending response and cached save`, async () => {
     const h = setup(), handle = h.api.open({ taskId: "task" });
-    if (action === "invalidate") h.api.invalidate();
+    if (action === "pagehide") h.context.window.emit("pagehide");
+    else if (action === "invalidate") h.api.invalidate();
     else if (["cancel", "close"].includes(action)) handle.dialog.emit(action);
     else h.find(action).click();
     assert.equal(h.requests[0].options.signal.aborted, true);

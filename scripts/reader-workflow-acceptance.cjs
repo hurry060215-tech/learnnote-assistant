@@ -209,8 +209,9 @@ const os = require("node:os");
     await p.locator("#closeSource").click();
     await p.locator('[data-task-action="diagnostics"]').click();
     await p.locator(".processing-records").waitFor({ state: "visible" });
-    await p.getByText("诊断详情与日志下载", { exact: true }).click();
-    assert(await p.getByRole("link", { name: "逐步日志 JSON" }).isVisible());
+    await p.getByText("诊断详情与安全报告", { exact: true }).click();
+    assert(await p.getByRole("button", { name: "预览安全诊断报告", exact: true }).isVisible());
+    assert.equal(await p.locator('#toolsDialog a[href*="/exports/diagnostics"], #toolsDialog a[href*="events?limit=2000"]').count(), 0);
     await p.screenshot({
       path: path.join(out, "processing-log.png"),
       animations: "disabled",

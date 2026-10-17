@@ -59,7 +59,7 @@ test("fixture rejects wrong asset/API methods and unapproved querystrings before
 test("native post-zoom capture failure still resets and closes owned process despite cleanup failures", async () => {
   const primary = new Error("owned capture failed"), logged = [], actions = []; let closed = 0, serverClosed = 0;
   const process = { argv: ["node", "fixture", "out", "--native"], platform: "win32", env: {}, exitCode: 0 };
-  const locator = { async waitFor() {}, filter() { return this; }, locator() { return this; }, async click() {} };
+  const locator = { async inputValue() { return "md"; }, async isChecked() { return false; }, async isDisabled() { return true; }, getByText() { return this; }, getByRole() { return this; }, async waitFor() {}, filter() { return this; }, locator() { return this; }, async click() {} };
   const page = { setDefaultTimeout() {}, on() {}, async goto() {}, locator() { return locator; }, async bringToFront() {}, async waitForFunction() {}, async evaluate() { return { width: 1440, height: 900, dpr: 1, cssZoom: "1", documentZoom: "1", visualScale: 1, overflow: 0 }; } };
   const browser = { async newContext() { return { async route() {}, async newPage() { return page; } }; }, async close() { closed++; throw new Error("browser cleanup failed"); } };
   const require = name => {
@@ -91,4 +91,42 @@ test("actual settings startup model-route query has one explicit synthetic respo
   assert.equal(context.fixtureTransportAllowed("GET", new URL(route, "http://127.0.0.1:8765")), true);
   assert.ok(source.includes(`'${route}': { routes: []`));
   assert.equal(context.fixtureTransportAllowed("GET", new URL(route + "&unexpected=true", "http://127.0.0.1:8765")), false);
+});
+
+test("hosted entry follows shipped collapsed disclosures through real summary clicks", async () => {
+  const tools = fs.readFileSync(new URL("../desk-tools.js", import.meta.url), "utf8");
+  const classic = fs.readFileSync(new URL("../classic.html", import.meta.url), "utf8");
+  const reader = fs.readFileSync(new URL("../../scripts/reader-workflow-acceptance.cjs", import.meta.url), "utf8");
+  assert.match(tools, /<details><summary>诊断详情与安全报告<\/summary>[^]*?<button data-safe-diagnostic-report/);
+  assert.match(classic, /<details id="resultMoreActions"[^>]*>\s*<summary[^>]*aria-label="更多操作"/);
+  assert.match(reader, /getByText\("诊断详情与安全报告", \{ exact: true \}\).click\(\)/);
+  assert.match(reader, /getByRole\("button", \{ name: "预览安全诊断报告", exact: true \}\)/);
+  assert.doesNotMatch(source + reader, /诊断详情与日志下载|脱敏诊断包|name: "逐步日志 JSON"|\.open\s*=\s*true/);
+  const context = {}; vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf("async function openDiagnosticEntry("), source.indexOf("const native =")), context);
+  for (const surface of ["desk", "classic"]) {
+    let disclosed = false, visible = false; const clicks = [];
+    const button = { async waitFor(options) { assert.equal(options.state, "visible"); assert(disclosed); visible = true; } };
+    const page = { async waitForFunction() {}, async evaluate() {}, locator(selector) {
+      if (selector === "#toolsDialog[open]") return {
+        getByText(text, options) { assert.equal(text, "诊断详情与安全报告"); assert.equal(options.exact, true); return { async click() { disclosed = true; clicks.push("desk-summary"); } }; },
+        getByRole(role, options) { assert.equal(role, "button"); assert.equal(options.name, "预览安全诊断报告"); assert.equal(options.exact, true); return button; },
+      };
+      if (selector === "#resultMoreActions > summary") return { async click() { disclosed = true; clicks.push("classic-summary"); } };
+      assert.equal(selector, "#diagnosticsButton"); assert(disclosed); visible = true; return button;
+    } };
+    assert.equal(await context.openDiagnosticEntry(page, surface), button);
+    assert.equal(visible, true); assert.deepEqual(clicks, [surface + "-summary"]);
+  }
+});
+
+test("whole-page browser Back is explicit and follows verified native zoom restoration", () => {
+  const seed = source.indexOf("await page.goto('about:blank#diagnostic-history-start')");
+  const app = source.indexOf("await page.goto(`${base}/web/");
+  const restored = source.indexOf("zoomEvidence.restored =");
+  const back = source.indexOf("await page.goBack({ waitUntil: 'load' })");
+  assert(seed >= 0 && seed < app && restored < back);
+  assert.match(source.slice(back), /assert.equal\(page.url\(\), 'about:blank#diagnostic-history-start'\)/);
+  assert.match(source.slice(back), /await dialog.waitFor\(\{ state: 'detached' \}\); assert.equal\(downloads, 2\)/);
+  assert.match(source.slice(back), /wholePageBrowserBack: true/);
 });

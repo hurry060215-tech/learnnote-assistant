@@ -19,6 +19,19 @@ function fixtureTransportAllowed(method, url) {
   if (name === '/api/model/route') return query === '?transcriber=faster-whisper&whisper_model=small&visual_understanding=true';
   return !query;
 }
+async function openDiagnosticEntry(page, surface) {
+  if (surface === 'desk') {
+    const processing = page.locator('#toolsDialog[open]');
+    await processing.getByText('诊断详情与安全报告', { exact: true }).click();
+    const opener = processing.getByRole('button', { name: '预览安全诊断报告', exact: true });
+    await opener.waitFor({ state: 'visible' });
+    return opener;
+  }
+  await page.waitForFunction(() => typeof exportTaskArtifact === 'function');
+  await page.evaluate(() => { window.pywebview = { api: { export_task() { throw new Error('Direct desktop export forbidden'); } } }; });
+  await page.locator('#resultMoreActions > summary').click();
+  return page.locator('#diagnosticsButton');
+}
 const native = process.argv.includes('--native');
 const json = JSON.stringify({ schema_version: 1, versions: { historical_build: null }, model: { usage: null } }, null, 2) + '\n';
 (async () => {
@@ -76,16 +89,14 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       });
       const page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', error => report.errors.push({ surface, width, error: error.message }));
+      await page.goto('about:blank#diagnostic-history-start');
       await page.goto(`${base}/web/${surface === 'classic' ? 'classic' : 'index'}.html?task=${TASK_ID}&tab=diagnostics`);
-      let opener;
-      if (surface === 'desk') { await page.locator('#toolsDialog[open] [data-safe-diagnostic-report]').waitFor(); opener = page.locator('#toolsDialog [data-safe-diagnostic-report]'); }
-      else {
-        await page.waitForFunction(() => typeof exportTaskArtifact === 'function');
-        await page.evaluate(() => { window.pywebview = { api: { export_task() { throw new Error('Direct desktop export forbidden'); } } }; document.querySelector('#resultMoreActions').open = true; });
-        opener = page.locator('#diagnosticsButton');
-      }
+      const opener = await openDiagnosticEntry(page, surface);
       await opener.click(); const dialog = page.locator('.task-diagnostic-export');
       await dialog.locator('pre').filter({ hasText: '历史构建' }).waitFor();
+      assert.equal(await dialog.locator('select').inputValue(), 'md');
+      assert.equal(await dialog.locator('input[type=checkbox]').isChecked(), false);
+      assert.equal(await dialog.getByRole('button', { name: '保存已预览报告' }).isDisabled(), true);
       let zoomEvidence;
       const metrics = () => page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
         cssZoom: getComputedStyle(document.body).zoom, documentZoom: getComputedStyle(document.documentElement).zoom,
@@ -113,7 +124,12 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       await page.screenshot({ path: path.join(output, screenshot), fullPage: true }); report.screenshots.push(screenshot);
       let downloads = 0; page.on('download', () => downloads++);
       for (const [format, bytes] of [['md', markdown], ['json', json]]) {
-        if (format === 'json') { await dialog.locator('select').selectOption('json'); await page.waitForFunction(text => document.querySelector('.task-diagnostic-export pre')?.textContent === text, json); }
+        if (format === 'json') {
+          await dialog.locator('select').selectOption('json');
+          await page.waitForFunction(text => document.querySelector('.task-diagnostic-export pre')?.textContent === text, json);
+          assert.equal(await dialog.locator('input[type=checkbox]').isChecked(), false);
+          assert.equal(await dialog.getByRole('button', { name: '保存已预览报告' }).isDisabled(), true);
+        }
         await dialog.locator('input[type=checkbox]').check();
         if (native && format === 'md') {
           const save = dialog.getByRole('button', { name: '保存已预览报告' }); await save.scrollIntoViewIfNeeded(); await save.focus();
@@ -133,6 +149,9 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
       assert(await opener.evaluate(node => document.activeElement === (node.closest('details:not([open])')?.querySelector('summary') || node)), 'Close restores visible opener or collapsed menu summary');
       if (surface === 'classic') await page.locator('#resultMoreActions > summary').click();
       await opener.click(); await dialog.locator('pre').filter({ hasText: '历史构建' }).waitFor();
+      assert.equal(await dialog.locator('select').inputValue(), 'md');
+      assert.equal(await dialog.locator('input[type=checkbox]').isChecked(), false);
+      assert.equal(await dialog.getByRole('button', { name: '保存已预览报告' }).isDisabled(), true);
       await dialog.getByRole('button', { name: '取消导出' }).click(); await dialog.waitFor({ state: 'detached' });
       assert.equal(downloads, 2);
       if (native) {
@@ -140,7 +159,13 @@ const json = JSON.stringify({ schema_version: 1, versions: { historical_build: n
         zoomEvidence.restored = await require('./timeline-native-zoom-matrix.cjs').waitForNativePreset(page, metrics, zoomEvidence.baseline, 100);
         prepared = false;
       }
-      report.cases.push({ surface, width, native, zoomEvidence, downloads, diagnosticGets, byteEquality: true, focusRestore: true, cancel: true });
+      // Native zoom is restored before Back leaves the app's origin and live metrics.
+      if (surface === 'classic') await page.locator('#resultMoreActions > summary').click();
+      await opener.click(); await dialog.locator('pre').filter({ hasText: '历史构建' }).waitFor();
+      await page.goBack({ waitUntil: 'load' });
+      assert.equal(page.url(), 'about:blank#diagnostic-history-start');
+      await dialog.waitFor({ state: 'detached' }); assert.equal(downloads, 2);
+      report.cases.push({ surface, width, native, zoomEvidence, downloads, diagnosticGets, byteEquality: true, focusRestore: true, cancel: true, wholePageBrowserBack: true });
       await context.close();
     }
     assert.deepEqual(report.errors, []); assert.deepEqual(report.unexpected, []); report.passed = true;
