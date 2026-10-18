@@ -586,9 +586,18 @@ test('Windows actual extracted guards execute inside observer scope and independ
 // This freezes predicate evaluation and rejection ordering, including short-circuiting.
 test('extracted action guards preserve the exact original predicates and evaluation order', () => {
   const source = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
-  const original = source.slice(source.indexOf('function Assert-Process {'), source.indexOf('# Independent evidence proof'))
-    .replace(/Stop-OwnedGuard '[a-z-]+' ('[^']*')/g, 'throw $1').trim();
-  assert.equal(createHash('sha256').update(original).digest('hex'), '771f17736daa01cc218b923001ef0324e2c45c9768d6ed892ec5efd5e2b03510');
+  const guardHash = text => {
+    const canonical = text.replace(/\r\n/g, '\n'); // Git's Windows checkout changes line endings only.
+    const original = canonical.slice(canonical.indexOf('function Assert-Process {'), canonical.indexOf('# Independent evidence proof'))
+      .replace(/Stop-OwnedGuard '[a-z-]+' ('[^']*')/g, 'throw $1').trim();
+    return createHash('sha256').update(original).digest('hex');
+  };
+  const baseline = '771f17736daa01cc218b923001ef0324e2c45c9768d6ed892ec5efd5e2b03510';
+  const lf = source.replace(/\r\n/g, '\n');
+  for (const text of [lf, lf.replace(/\n/g, '\r\n')]) {
+    assert.equal(guardHash(text), baseline);
+    assert.notEqual(guardHash(text.replace('GetForegroundWindow() -ne', 'GetForegroundWindow() -eq')), baseline);
+  }
   const ci = fs.readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const release = fs.readFileSync(new URL('../../.github/workflows/desktop-release.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(ci.slice(0, ci.indexOf('permissions:')), /paths(?:-ignore)?:/);

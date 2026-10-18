@@ -7,6 +7,9 @@ on:
       - "scripts/*reliability*.py"
       - "scripts/test-backend-offline.py"
       - "scripts/progressive-slo.py"
+      - "scripts/progressive-slo-catalog-diagnostic.py"
+      - "scripts/tests/test_progressive_slo_catalog_diagnostic.py"
+      - "scripts/tests/test_catalog_diagnostic_workflow.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
       - "scripts/owned_process_tree_sample.py"
@@ -21,6 +24,9 @@ on:
       - "scripts/*reliability*.py"
       - "scripts/test-backend-offline.py"
       - "scripts/progressive-slo.py"
+      - "scripts/progressive-slo-catalog-diagnostic.py"
+      - "scripts/tests/test_progressive_slo_catalog_diagnostic.py"
+      - "scripts/tests/test_catalog_diagnostic_workflow.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
       - "scripts/owned_process_tree_sample.py"
@@ -31,6 +37,12 @@ on:
   schedule:
     - cron: "23 18 * * 1"
   workflow_dispatch:
+    inputs:
+      catalog_profile:
+        description: "Run the synthetic catalog diagnostic (not browser timing or release acceptance)"
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -127,6 +139,13 @@ jobs:
         run: |
           python scripts/progressive-slo.py --repetitions 20 --output-dir build/reliability/progressive-outline
           if ($LASTEXITCODE -ne 0) { throw "Caption outline p95 exceeded its reference budget" }
+      - name: Optional synthetic catalog native-call diagnostic
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.catalog_profile }}
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python scripts/progressive-slo-catalog-diagnostic.py --output-dir build/reliability/catalog-native-diagnostic
+          if ($LASTEXITCODE -ne 0) { throw "Synthetic catalog diagnostic failed" }
       - name: Upload offline reliability evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -145,6 +164,7 @@ jobs:
             build/reliability/local-range/*.json
             build/reliability/local-range/*.log
             build/reliability/progressive-outline/report.json
+            build/reliability/catalog-native-diagnostic/report.json
           if-no-files-found: warn
           retention-days: 14
 
