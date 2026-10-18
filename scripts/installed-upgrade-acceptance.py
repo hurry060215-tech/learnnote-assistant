@@ -27,6 +27,9 @@ spec = importlib.util.spec_from_file_location('rollback_seed', ROOT / 'scripts/n
 seed = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(seed)
 native = seed.native
+location_spec = importlib.util.spec_from_file_location('installed_download_location', ROOT / 'scripts/installed_download_location.py')
+location = importlib.util.module_from_spec(location_spec)
+location_spec.loader.exec_module(location)
 
 
 def digest(path):
@@ -196,7 +199,7 @@ def cleanup_owned(process, api):
 
 
 @contextmanager
-def running(directory, data, output, phase, version):
+def running(directory, data, output, phase, version, *, lifecycle=None):
     port, debug_port = native.free_port(), native.free_port()
     env = installed_environment(data, port)
     prepare_installed_profile(data, env)
@@ -228,6 +231,8 @@ def running(directory, data, output, phase, version):
             raise
         finally:
             errors = cleanup_owned(process, api)
+            if lifecycle is not None:
+                lifecycle['normal_close'] = process is not None and not errors and process.poll() is not None
             if errors:
                 if failure is None:
                     raise errors[0]
@@ -305,10 +310,27 @@ def verify_snapshot(path, expected):
     assert seed.inventory(path) == expected, 'Original stopped snapshot changed'
 
 
-def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False):
-    subprocess.run(['node', str(ROOT / 'scripts/installed-diagnostic-acceptance.cjs'),
-                    str(output), str(debug), origin, task_id, str(pid), '--expected-version', version,
-                    *(['--startup-only'] if startup_only else [])], check=True, timeout=180, env=safe_environment(os.environ))
+def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None):
+    command = ['node', str(ROOT / 'scripts/installed-diagnostic-acceptance.cjs'),
+               str(output), str(debug), origin, task_id, str(pid), '--expected-version', version,
+               *(['--startup-only'] if startup_only else [])]
+    if location_evidence is None:
+        subprocess.run(command, check=True, timeout=180, env=safe_environment(os.environ))
+        return
+    command.append('--private-location-evidence')
+    try:
+        result = subprocess.run(command, check=False, timeout=180, env=safe_environment(os.environ), stdout=subprocess.PIPE, text=True)
+    except subprocess.TimeoutExpired as error:
+        # Partial private stdout is never attached to an error or persisted.
+        error.stdout = error.output = None
+        raise
+    try:
+        location_evidence.accept(result.stdout)
+    except Exception:
+        pass  # Optional evidence must not replace the installed child failure.
+    finally:
+        result.stdout = None
+    result.check_returncode()
 
 
 def exercise(args, output):
@@ -323,6 +345,8 @@ def exercise(args, output):
               'expected_versions': {'previous': args.expected_previous_version, 'current': args.expected_current_version}}
     installed = False
     failure = None
+    location_evidence = None
+    lifecycle = {}
     try:
         report['installers'] = {name: digest(path) for name, path in [('previous', args.previous_installer), ('current', args.current_installer)]}
         report['previous_install_exit'] = install(args.previous_installer, directory)
@@ -345,12 +369,16 @@ def exercise(args, output):
         assert config.read_bytes() == config_before, 'Installer changed original config'
         assert seed.inventory(data) == report['pre_upgrade_inventory'], 'Installer changed old data bytes'
         report['current_files'] = installed_files(directory, args.expected_current_version, diagnostic_assets=True)
-        with running(directory, data, output, 'current', args.expected_current_version) as (api, debug, pid):
+        try:
+            location_evidence = location.DownloadLocationEvidence(data, output)
+        except Exception:
+            report['download_location_evidence'] = {'status': 'unavailable'}
+        with running(directory, data, output, 'current', args.expected_current_version, lifecycle=lifecycle) as (api, debug, pid):
             assert retained(api, ids) == before, 'Upgraded app changed original retained evidence'
             transcript_path = Path(api.call('GET', f'/api/tasks/{ids["task_id"]}').json()['task']['transcript_path'])
             transcript_before = (digest(transcript_path), transcript_path.stat().st_mtime_ns)
             # Native WebView2, actual installed UI/API, no API response mocks.
-            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version)
+            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version, location_evidence=location_evidence)
             assert retained(api, ids) == before, 'Read-only preview altered saved source'
             with local_model() as (endpoint, calls):
                 api.call('POST', f'/api/tasks/{ids["task_id"]}/retry-summary', json={
@@ -391,6 +419,12 @@ def exercise(args, output):
         report['failure_type'] = type(error).__name__
         raise
     finally:
+        if location_evidence is not None:
+            try:
+                location_evidence.finish(lifecycle.get('normal_close') is True)
+                report['download_location_evidence'] = location_evidence.report
+            except Exception:
+                report['download_location_evidence'] = {'status': 'unavailable'}
         # Preserve and recheck the stopped original snapshot even after a failed run.
         secondary = []
         if 'pre_upgrade_inventory' in report:

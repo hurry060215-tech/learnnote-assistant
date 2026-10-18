@@ -10,7 +10,7 @@ import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 import observationHelpers from '../../scripts/installed-download-observation.cjs';
 const { fileObservation, downloadObservation, attachDownloadObservation } = observationHelpers;
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded, emitLocationEvidence } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -734,13 +734,13 @@ test('actual final cleanup preserves the original failure in LF and CRLF source'
   const original = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   async function verify(raw) {
     const source = raw.replace(/\r\n/g, '\n');
-    const start = source.indexOf('    try { if (downloadObserver) await downloadObserver.close(); }');
+    const start = source.indexOf('    try { emitLocationEvidence(config, nativeDirectory, locationExpected); }');
     const end = source.indexOf('\n  }\n}', start);
     assert(start >= 0 && end > start, 'Exact final-cleanup source boundaries must exist');
-    const run = new (Object.getPrototypeOf(async function() {}).constructor)('downloadObserver', 'report', 'failure', 'finish', 'browser', 'binding', 'verifyOwned', 'config', 'fs', 'path', source.slice(start, end));
+    const run = new (Object.getPrototypeOf(async function() {}).constructor)('downloadObserver', 'report', 'failure', 'finish', 'browser', 'binding', 'verifyOwned', 'config', 'fs', 'path', 'emitLocationEvidence', 'nativeDirectory', 'locationExpected', source.slice(start, end));
     const primary = new Error('original primary'); const report = { passed: false, cleanup: { errors: [] } }; let wrote = false;
-    await assert.rejects(run({ close() { throw new Error('observer secondary'); } }, report, primary, finish, undefined, undefined, () => {}, {}, { writeFileSync() { wrote = true; } }, { join() { return 'owned'; } }), error => error === primary);
-    assert(wrote); assert.equal(report.download_observation_cleanup_failed, true);
+    await assert.rejects(run({ close() { throw new Error('observer secondary'); } }, report, primary, finish, undefined, undefined, () => {}, {}, { writeFileSync() { wrote = true; } }, { join() { return 'owned'; } }, () => { throw new Error('pipe secondary'); }, 'unused', []), error => error === primary);
+    assert(wrote); assert.equal(report.location_evidence_unavailable, true); assert.equal(report.download_observation_cleanup_failed, true);
     assert.equal(report.cleanup.disconnect, false); assert.equal(report.cleanup.owned_app_alive, false);
   }
   for (const newline of ['\n', '\r\n']) {
@@ -1073,4 +1073,46 @@ test('Windows actual foreground proof rejects ownership and capture races withou
       else { assert.equal(captures, 0, mode); assert.equal(evidence.phase, 'guard-before', mode); assert.equal(evidence.reason, 'exception', mode); }
     }
   }
+});
+
+
+test('private result-location pipe contains only bounded directory token and own expected hashes', () => {
+  const config = parseArgs([...args, '--private-location-evidence']);
+  assert.equal(config.privateLocationEvidence, true);
+  assert.throws(() => parseArgs([...args, '--private-location-evidence', '--private-location-evidence']));
+  const directory = path.join(config.output, 'local-native-exports-Ab12Cd');
+  const expected = [{ format: 'md', bytes: 8, sha256: 'a'.repeat(64) }, { format: 'json', bytes: 12, sha256: 'b'.repeat(64) }];
+  let line;
+  emitLocationEvidence(config, directory, expected, value => { line = value; });
+  assert(line.length <= 4096); assert(line.startsWith('OWNED_DOWNLOAD_EVIDENCE:'));
+  assert.deepEqual(JSON.parse(line.slice(24)), { directory: 'local-native-exports-Ab12Cd', expected });
+  assert(!line.includes(config.output)); assert.doesNotMatch(line, /blob:|guid|http:|private-content/);
+  let calls = 0; emitLocationEvidence({}, directory, expected, () => calls++); emitLocationEvidence(config, directory, [], () => calls++); assert.equal(calls, 0);
+  for (const value of [[...expected, expected[0]], [{ ...expected[0], bytes: 0 }], [{ ...expected[0], sha256: 'private-content' }], [{ ...expected[0], raw: 'private-content' }]]) assert.throws(() => emitLocationEvidence(config, directory, value, () => assert.fail('must not emit')));
+  assert.throws(() => emitLocationEvidence(config, path.join(config.output, '..', 'local-native-exports-Ab12Cd'), expected));
+});
+
+test('download and native phase receipts use one bounded monotonic timeline with truthful event attribution', async () => {
+  let now = 1000; const observer = downloadObservation('http://127.0.0.1:8765', () => now);
+  observer.active('md'); const child = fakeChild();
+  const result = withNativeHelper(child, () => {
+    observer.begin({ guid: 'private', url: 'blob:http://127.0.0.1:8765/private', suggestedFilename: 'learnnote-diagnostics.md' });
+    now += 2; observer.progress({ guid: 'private', state: 'completed', receivedBytes: 8, totalBytes: 8 });
+    now += 3; child.line('PHASE:filename-set'); now += 4; child.line('PHASE:save-invoke');
+    child.line('PHASE:save-completion'); child.line('{"native_dialog":true,"saved":true}'); child.end(0);
+  }, {}, phase => observer.phase(phase));
+  child.line('READY'); await result;
+  assert.equal(observer.report.timeline_contract, 'parent_monotonic_receipt_order_not_native_execution_time');
+  const times = Object.fromEntries(observer.report.timeline.map(item => [item.event, item.elapsed_ms]));
+  assert.equal(times['download-completed'], 2); assert.equal(times['filename-set'], 5); assert.equal(times['save-invoke'], 9);
+  observer.active('json'); observer.progress({ guid: 'private', state: 'canceled', receivedBytes: 8, totalBytes: 8 });
+  assert.equal(observer.report.timeline.at(-1).format, 'md');
+  const count = observer.report.timeline.length; observer.phase('private-unknown'); assert.equal(observer.report.timeline.length, count);
+  now = 1e9; for (let i = 0; i < 2000; i++) observer.phase('save-invoke');
+  assert.equal(observer.report.timeline.length, 32); assert.equal(observer.report.timeline_dropped, 1000); assert.equal(observer.report.timeline.at(-1).elapsed_ms, 180000); assert.equal(observer.report.timeline.at(-1).time_capped, true);
+  assert.doesNotMatch(JSON.stringify(observer.report), /private|blob:|guid/);
+  observer.close(); const before = JSON.stringify(observer.report); observer.phase('filename-set'); assert.equal(JSON.stringify(observer.report), before);
+  const failed = fakeChild(), primary = new Error('primary');
+  const rejected = withNativeHelper(failed, () => { throw primary; }, {}, () => { throw new Error('secondary'); });
+  failed.line('READY'); await assert.rejects(rejected, error => error === primary);
 });

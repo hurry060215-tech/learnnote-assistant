@@ -1,5 +1,7 @@
 """Offline contracts for the actual installed acceptance runner."""
 import importlib.util
+import hashlib
+from contextlib import contextmanager
 import json
 import os
 import stat
@@ -215,6 +217,231 @@ class InstalledUpgradeTests(unittest.TestCase):
         value['timings']['attempts'][0]['stages'][0]['status'] = 'completed'
         with self.assertRaises(AssertionError):
             runner.verify_retry_diagnostic(value)
+
+    def test_location_census_reads_only_fresh_exact_approved_files_after_normal_close(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir(); output = root / 'output'; output.mkdir()
+            default = root / 'approved-downloads'; default.mkdir()
+            observer = runner.location.DownloadLocationEvidence(data, output, lambda: default)
+            expected = b'own reviewed bytes'
+            native = output / 'local-native-exports-Ab12Cd'; native.mkdir()
+            (default / 'learnnote-diagnostics.md').write_bytes(expected)
+            (native / 'learnnote-diagnostics.json').write_bytes(expected)
+            (default / 'unrelated-secret').write_bytes(b'unrelated private content')
+            value = {'directory': native.name, 'expected': [{'format': format, 'bytes': len(expected), 'sha256': hashlib.sha256(expected).hexdigest()} for format in ('md', 'json')]}
+            observer.accept('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps(value))
+            original = Path.open; opened = []
+            def read(path, *args, **kwargs):
+                opened.append(path); return original(path, *args, **kwargs)
+            with patch.object(Path, 'open', read), patch.object(Path, 'iterdir', side_effect=AssertionError('no enumeration')):
+                observer.finish(True)
+            self.assertEqual(opened, [default / 'learnnote-diagnostics.md', native / 'learnnote-diagnostics.json'])
+            found = next(row for row in observer.report['locations'] if row['location'] == 'default_downloads')
+            self.assertEqual(found['before'], 'missing'); self.assertTrue(found['matches_expected'])
+            self.assertEqual(found['sha256'], value['expected'][0]['sha256'])
+            self.assertEqual(observer.report['status'], 'checked'); self.assertIsNone(observer.private)
+            serialized = json.dumps(observer.report)
+            for private in (str(root), native.name, 'unrelated', 'own reviewed bytes'):
+                self.assertNotIn(private, serialized)
+            self.assertEqual(len(observer.report['locations']), 10)
+            self.assertEqual(sum(row['matches_expected'] is True for row in observer.report['locations']), 2)
+
+    def test_location_census_refuses_preexisting_mismatch_oversize_and_unsafe_paths(self):
+        for mode in ('preexisting', 'wrong-bytes', 'oversized', 'directory', 'file-reparse', 'parent-reparse'):
+            with self.subTest(mode=mode), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); data = root / 'data'; data.mkdir(); output = root / 'output'; output.mkdir()
+                default = root / 'approved-downloads'; default.mkdir(); file = default / 'learnnote-diagnostics.md'
+                expected = b'own'
+                if mode == 'preexisting': file.write_bytes(expected)
+                observer = runner.location.DownloadLocationEvidence(data, output, lambda: default)
+                if mode == 'directory': file.mkdir()
+                elif mode != 'preexisting': file.write_bytes(b'bad' if mode == 'wrong-bytes' else b'x' * (runner.location.MAX_BYTES + 2) if mode == 'oversized' else expected)
+                original_stat, original_open = Path.lstat, Path.open
+                opened = []
+                def info(path, *args, **kwargs):
+                    result = original_stat(path, *args, **kwargs)
+                    if (mode == 'file-reparse' and path == file) or (mode == 'parent-reparse' and path == default):
+                        return SimpleNamespace(st_mode=result.st_mode, st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+                    return result
+                def read(path, *args, **kwargs): opened.append(path); return original_open(path, *args, **kwargs)
+                observer.accept('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({'directory': 'local-native-exports-Ab12Cd', 'expected': [{'format': 'md', 'bytes': 3, 'sha256': hashlib.sha256(expected).hexdigest()}]}))
+                with patch.object(Path, 'lstat', info), patch.object(Path, 'open', read): observer.finish(True)
+                found = next(row for row in observer.report['locations'] if row['location'] == 'default_downloads')
+                self.assertIsNot(found['matches_expected'], True); self.assertNotIn('sha256', found)
+                if mode != 'wrong-bytes': self.assertEqual(opened, [])
+                else: self.assertEqual(opened, [file])
+                self.assertNotIn(str(root), json.dumps(observer.report))
+
+    def test_location_census_refuses_real_links_directory_replacement_and_file_read_races(self):
+        for mode in ('link', 'hardlink', 'parent-replaced', 'file-raced'):
+            with self.subTest(mode=mode), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); folder = root / 'downloads'; folder.mkdir(); file = folder / 'learnnote-diagnostics.md'
+                baseline, parents = runner.location.exact_file(file)
+                value = b'own'; expected = {'bytes': 3, 'sha256': hashlib.sha256(value).hexdigest()}
+                if mode in ('link', 'hardlink'):
+                    other = root / 'private'; other.write_bytes(value)
+                    try:
+                        if mode == 'link': file.symlink_to(other)
+                        else: os.link(other, file)
+                    except OSError: continue  # Reparse-attribute rejection is exercised on every platform above.
+                elif mode == 'parent-replaced':
+                    folder.rename(root / 'prior'); folder.mkdir(); file.write_bytes(value)
+                else: file.write_bytes(value)
+                original = Path.open
+                def read(path, *args, **kwargs):
+                    if mode == 'file-raced':
+                        path.rename(root / 'original'); path.write_bytes(b'bad')
+                    return original(path, *args, **kwargs)
+                with patch.object(Path, 'open', read):
+                    found, _ = runner.location.exact_file(file, expected, {'file': baseline, 'parents': parents})
+                self.assertIn(found['state'], ('unsafe', 'unavailable'))
+                self.assertIsNone(found['matches_expected']); self.assertNotIn('sha256', found)
+
+    def test_location_parent_replaced_during_open_is_rejected_before_any_read(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); folder = root / 'downloads'; folder.mkdir(); file = folder / 'learnnote-diagnostics.md'
+            before, parents = runner.location.exact_file(file); file.write_bytes(b'own')
+            original = Path.open; wrapper = Mock()
+            def opened(path, *args, **kwargs):
+                folder.rename(root / 'prior'); folder.mkdir()
+                (root / 'prior' / file.name).rename(file)  # Same file inode, new parent identity.
+                stream = original(path, *args, **kwargs)
+                wrapper.__enter__ = Mock(return_value=wrapper); wrapper.__exit__ = Mock(side_effect=lambda *_: stream.close())
+                wrapper.fileno = stream.fileno; wrapper.read = Mock(side_effect=AssertionError('must not read'))
+                return wrapper
+            with patch.object(Path, 'open', opened):
+                value, _ = runner.location.exact_file(file, {'bytes': 3, 'sha256': hashlib.sha256(b'own').hexdigest()}, {'file': before, 'parents': parents})
+            self.assertEqual(value['state'], 'unavailable'); wrapper.read.assert_not_called()
+
+    def test_location_private_input_is_bounded_and_never_permits_arbitrary_paths(self):
+        value = {'directory': 'local-native-exports-Ab12Cd', 'expected': [{'format': 'md', 'bytes': 3, 'sha256': 'a' * 64}]}
+        self.assertEqual(runner.location.parse_private('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps(value)), value)
+        invalid = [None, '', 'x' * 4097, 'OWNED_DOWNLOAD_EVIDENCE:{}']
+        for directory in ('../private', '/private', 'local-native-exports-abc/../../private', 'local-native-exports-too-long'):
+            invalid.append('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({**value, 'directory': directory}))
+        for item in ({**value['expected'][0], 'format': 'txt'}, {**value['expected'][0], 'bytes': True}, {**value['expected'][0], 'sha256': 'private'}, {**value['expected'][0], 'raw': 'private'}):
+            invalid.append('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({**value, 'expected': [item]}))
+        invalid.append('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({**value, 'expected': value['expected'] * 3}))
+        for raw in invalid:
+            with self.subTest(raw=repr(raw)[:50]), self.assertRaises((AssertionError, TypeError, ValueError, KeyError)):
+                runner.location.parse_private(raw)
+
+    def test_location_observation_requires_normal_close_and_handles_missing_registry(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+            observer = runner.location.DownloadLocationEvidence(data, root, Mock(side_effect=OSError('private registry error')))
+            self.assertTrue(observer.report['downloads_folder_unavailable'])
+            observer.accept('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({'directory': 'local-native-exports-Ab12Cd', 'expected': [{'format': 'md', 'bytes': 3, 'sha256': 'a' * 64}]}))
+            with patch.object(runner.location, 'exact_file', side_effect=AssertionError('must not probe')):
+                observer.finish(False)
+            self.assertEqual(observer.report['status'], 'unavailable'); self.assertEqual(observer.report['locations'], []); self.assertIsNone(observer.private)
+            self.assertNotIn('private', json.dumps(observer.report))
+
+    def test_location_registry_contract_is_exact_read_only_local_and_unexpanded(self):
+        registry = SimpleNamespace(HKEY_CURRENT_USER=1, KEY_READ=2, REG_SZ=3)
+        context = Mock(); context.__enter__ = Mock(return_value='key'); context.__exit__ = Mock(return_value=False)
+        registry.OpenKey = Mock(return_value=context); registry.QueryValueEx = Mock()
+        for value, kind in [(r'\\server\share', 3), (r'%USERPROFILE%\Downloads', 3), ('relative', 3), (r'C:\Downloads', 4)]:
+            registry.QueryValueEx.return_value = value, kind
+            with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_OS': 'Windows'}), patch.dict(sys.modules, {'winreg': registry}), self.assertRaises(AssertionError): runner.location.default_downloads()
+        registry.QueryValueEx.return_value = r'C:\Downloads', 3
+        target = Path(r'C:\Downloads')
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_OS': 'Windows'}), patch.dict(sys.modules, {'winreg': registry}), patch.object(runner.location, 'fixed_local_drive', return_value=True) as drive, patch.object(runner.location, 'ancestry', return_value={target: (1, 2)}):
+            self.assertEqual(runner.location.default_downloads(), target)
+        drive.assert_called_once_with('C:\\')
+        registry.OpenKey.assert_called_with(1, r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders', 0, 2)
+        registry.QueryValueEx.assert_called_with('key', '{374DE290-123F-4565-9164-39C4925E467B}')
+
+    def test_default_downloads_rejects_nonhosted_context_before_registry_or_paths(self):
+        for environment in ({}, {'GITHUB_ACTIONS': 'true'}, {'GITHUB_ACTIONS': 'false', 'RUNNER_ENVIRONMENT': 'github-hosted'}, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'self-hosted'}, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_OS': 'Linux'}):
+            registry = Mock()
+            with patch.dict(os.environ, environment, clear=True), patch.dict(sys.modules, {'winreg': registry}), patch.object(runner.location, 'ancestry') as paths:
+                with self.assertRaises(AssertionError): runner.location.default_downloads()
+            registry.OpenKey.assert_not_called(); paths.assert_not_called()
+
+    def test_default_downloads_rejects_remote_drive_before_path_inspection(self):
+        registry = SimpleNamespace(HKEY_CURRENT_USER=1, KEY_READ=2, REG_SZ=3)
+        context = Mock(); context.__enter__ = Mock(return_value='key'); context.__exit__ = Mock(return_value=False)
+        registry.OpenKey = Mock(return_value=context); registry.QueryValueEx = Mock(return_value=(r'Z:\Downloads', 3))
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_OS': 'Windows'}), patch.dict(sys.modules, {'winreg': registry}), patch.object(runner.location, 'fixed_local_drive', return_value=False) as drive, patch.object(runner.location, 'ancestry') as paths:
+            with self.assertRaises(AssertionError): runner.location.default_downloads()
+        drive.assert_called_once_with('Z:\\'); paths.assert_not_called()
+        for kind in range(7):
+            function = Mock(return_value=kind)
+            with patch.object(runner.location.ctypes, 'WinDLL', return_value=SimpleNamespace(GetDriveTypeW=function), create=True) as library:
+                self.assertEqual(runner.location.fixed_local_drive('C:\\'), kind == 3)
+            library.assert_called_once_with('kernel32', use_last_error=True)
+            self.assertEqual(function.argtypes, [runner.location.ctypes.c_wchar_p]); self.assertEqual(function.restype, runner.location.ctypes.c_uint)
+            function.assert_called_once_with('C:\\')
+
+    def test_default_downloads_registry_change_after_close_never_follows_new_path(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir(); output = root / 'output'; output.mkdir()
+            original = root / 'original'; original.mkdir(); other = root / 'other'; other.mkdir()
+            observer = runner.location.DownloadLocationEvidence(data, output, Mock(side_effect=[original, other]))
+            observer.accept('OWNED_DOWNLOAD_EVIDENCE:' + json.dumps({'directory': 'local-native-exports-Ab12Cd', 'expected': [{'format': 'md', 'bytes': 3, 'sha256': 'a' * 64}]}))
+            with patch.object(Path, 'open', side_effect=AssertionError('no contents read')):
+                observer.finish(True)
+            self.assertTrue(observer.report['downloads_folder_unavailable'])
+            found = next(row for row in observer.report['locations'] if row['location'] == 'default_downloads')
+            self.assertEqual(found['state'], 'unavailable'); self.assertIsNone(found['matches_expected'])
+            self.assertNotIn(str(other), json.dumps(observer.report))
+
+    def test_ui_private_pipe_is_captured_scrubbed_and_preserves_primary_error(self):
+        primary = subprocess.CalledProcessError(1, ['node'])
+        result = SimpleNamespace(stdout='OWNED_DOWNLOAD_EVIDENCE:private-token', check_returncode=Mock(side_effect=primary))
+        evidence = Mock(); evidence.accept.side_effect = RuntimeError('secondary')
+        with patch.object(runner.subprocess, 'run', return_value=result) as child:
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.16', location_evidence=evidence)
+        self.assertIs(caught.exception, primary); self.assertIsNone(result.stdout)
+        self.assertEqual(child.call_args.kwargs['stdout'], subprocess.PIPE); self.assertTrue(child.call_args.kwargs['text'])
+        self.assertEqual(child.call_args.kwargs['timeout'], 180); self.assertIn('--private-location-evidence', child.call_args.args[0])
+        timeout = subprocess.TimeoutExpired(['node'], 180, output=b'private-token')
+        with patch.object(runner.subprocess, 'run', side_effect=timeout):
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.16', location_evidence=evidence)
+        self.assertIs(caught.exception, timeout); self.assertIsNone(timeout.output)
+
+    def test_actual_running_retains_normal_close_fact_even_when_ui_failed(self):
+        for errors in ([], [RuntimeError('secondary close')]):
+            with self.subTest(cleanup_errors=bool(errors)), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+                process = Mock(); process.poll.return_value = None
+                api = Mock(); primary = RuntimeError('primary UI failure'); lifecycle = {}
+                def cleanup(*_): process.poll.return_value = 0; return errors
+                with patch.object(runner.subprocess, 'Popen', return_value=process), patch.object(runner.native, 'Api', return_value=api), patch.object(runner, 'verify_health'), patch.object(runner, 'verify_api_owner'), patch.object(runner, 'cleanup_owned', side_effect=cleanup):
+                    with self.assertRaises(RuntimeError) as caught:
+                        with runner.running(root, data, root, 'current', '0.2.16', lifecycle=lifecycle): raise primary
+                self.assertIs(caught.exception, primary)
+                self.assertEqual(lifecycle['normal_close'], not errors)
+
+    def test_actual_exercise_closes_first_and_preserves_ui_error_if_location_finalizer_fails(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); transcript = root / 'transcript'; transcript.write_bytes(b'owned')
+            primary = RuntimeError('primary UI failure'); events = []
+            api = Mock(); api.call.return_value.json.return_value = {'task': {'transcript_path': str(transcript)}}
+            @contextmanager
+            def running(*args, **kwargs):
+                phase = args[3]
+                try: yield api, 123, 456
+                finally:
+                    events.append('closed-' + phase)
+                    if 'lifecycle' in kwargs: kwargs['lifecycle']['normal_close'] = True
+            observer = Mock()
+            def finish(normal):
+                self.assertTrue(normal); self.assertEqual(events[-1], 'closed-current'); events.append('observed'); raise RuntimeError('secondary observation')
+            observer.finish.side_effect = finish
+            def ui(*args, **kwargs):
+                if not kwargs.get('startup_only'): raise primary
+            args = SimpleNamespace(previous_installer=Path('old.exe'), current_installer=Path('new.exe'), expected_previous_version='0.2.15', expected_current_version='0.2.16')
+            with patch.object(runner, 'Path', side_effect=lambda value: root if value == 'D:/LearnNoteUpgradeSmoke' else Path(value)), patch.object(runner, 'install', return_value=0), patch.object(runner, 'installed_files', return_value={}), patch.object(runner, 'digest', return_value='hash'), patch.object(runner, 'running', running), patch.object(runner.seed, 'seed', return_value={'task_id': 'owned', 'material_id': 'owned'}), patch.object(runner, 'retained', return_value={}), patch.object(runner.seed, 'snapshot', side_effect=lambda data, destination: destination.mkdir() or {}), patch.object(runner.seed, 'inventory', return_value={}), patch.object(runner, 'verify_snapshot'), patch.object(runner, 'run_ui', side_effect=ui), patch.object(runner.location, 'DownloadLocationEvidence', return_value=observer):
+                with self.assertRaises(RuntimeError) as caught: runner.exercise(args, root)
+            self.assertIs(caught.exception, primary)
+            self.assertEqual(events, ['closed-previous', 'closed-current', 'observed'])
+            report = json.loads((root / 'installed-upgrade-report.json').read_text())
+            self.assertEqual(report['download_location_evidence'], {'status': 'unavailable'})
+            self.assertEqual(report['failure_type'], 'RuntimeError')
 
     def test_report_write_does_not_replace_install_failure(self):
         primary = RuntimeError('installer')

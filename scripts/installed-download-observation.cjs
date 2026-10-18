@@ -2,6 +2,7 @@
 // No URL, filename, path, contents, GUID or filesystem timestamp is retained.
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
+const { performance } = require('node:perf_hooks');
 const MAX_BYTES = 256 * 1024, MAX_COUNT = 1000;
 const count = (report, key) => { if (report[key] < MAX_COUNT) report[key]++; else report.counts_capped = true; };
 const size = value => Number.isSafeInteger(value) && value >= 0 ? Math.min(MAX_BYTES + 1, value) : null;
@@ -41,16 +42,26 @@ function fileObservation(expectedBytes) {
   return observation;
 }
 
-function downloadObservation(origin) {
+function downloadObservation(origin, clock = () => performance.now()) {
+  const started = clock();
   let active, closed = false;
   const records = new Map();
   const report = { status: 'not_attached', contract: 'passive_page_download_events', setup_failure: null,
     begins: 0, progress_events: 0, ignored_events: 0, dropped_downloads: 0, invalid_events: 0,
-    detach_failed: false, counts_capped: false, downloads: [] };
+    detach_failed: false, counts_capped: false, downloads: [],
+    timeline_contract: 'parent_monotonic_receipt_order_not_native_execution_time', timeline: [], timeline_dropped: 0 };
+  const stamp = (event, format = active) => {
+    if (report.timeline.length >= 32) { count(report, 'timeline_dropped'); return; }
+    const elapsed = Math.max(0, clock() - started);
+    report.timeline.push({ format, event, elapsed_ms: Math.min(180000, Math.floor(elapsed)), time_capped: elapsed > 180000 });
+  };
   const invalid = () => { count(report, 'invalid_events'); };
   return {
     report,
     active(format) { assert(['md', 'json', 'cancel'].includes(format)); active = format; },
+    phase(phase) {
+      if (!closed && active && ['uia-initialization', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'native-ready', 'action-dispatch'].includes(phase)) stamp(phase);
+    },
     begin(event) {
       if (closed) return;
       count(report, 'begins');
@@ -62,7 +73,7 @@ function downloadObservation(origin) {
         if (records.size >= 4) { count(report, 'dropped_downloads'); return; }
         const item = { format: active, expected_name_matches: active === 'cancel' ? null : event.suggestedFilename === `learnnote-diagnostics.${active}`,
           state: 'begun', received_bytes: null, total_bytes: null, bytes_capped: false };
-        records.set(event.guid, item); report.downloads.push(item);
+        records.set(event.guid, item); report.downloads.push(item); stamp('download-begun');
       } catch { invalid(); }
     },
     progress(event) {
@@ -75,6 +86,7 @@ function downloadObservation(origin) {
         if (!['inProgress', 'completed', 'canceled'].includes(event.state)) { invalid(); return; }
         if (received === null || total === null) invalid();
         // Chromium maps both INTERRUPTED and CANCELLED to the CDP 'canceled' value.
+        if (item.state !== event.state) stamp(`download-${event.state}`, item.format);
         item.state = event.state; item.received_bytes = received; item.total_bytes = total;
         item.bytes_capped = event.receivedBytes > MAX_BYTES + 1 || event.totalBytes > MAX_BYTES + 1;
       } catch { invalid(); }

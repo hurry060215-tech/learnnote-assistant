@@ -18,9 +18,10 @@ const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-val
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
   const [output, port, origin, taskId, pid] = args;
-  let startupOnly = false, expectedVersion;
+  let startupOnly = false, expectedVersion, privateLocationEvidence = false;
   for (let i = 5; i < args.length; i++) {
-    if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
+    if (args[i] === '--private-location-evidence' && !privateLocationEvidence) privateLocationEvidence = true;
+    else if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
     else if (args[i] === '--expected-version' && !expectedVersion) expectedVersion = args[++i];
     else throw new Error('Unknown or repeated acceptance option');
   }
@@ -33,7 +34,7 @@ function parseArgs(args) {
   assert(url.port && Number(url.port) !== Number(port), 'API and debug ports must be distinct');
   assert(/^[A-Za-z0-9_-]{1,128}$/.test(taskId), 'Invalid synthetic task ID');
   assert(output && !output.startsWith('--'), 'Output directory is required');
-  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion };
+  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
 }
 
 async function bounded(promise, label, timeout = TIMEOUT) {
@@ -429,7 +430,8 @@ do {
 throw 'Native Save did not finish';`;
 }
 
-async function withNativeHelper(child, action, timeouts = {}) {
+async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}) {
+  const observed = phase => { try { onPhase(phase); } catch { } }; // Optional receipt evidence only.
   let controlFailure, controlInvalid = false;
   let foregroundEvidence, foregroundInvalid = false;
   let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
@@ -446,7 +448,7 @@ async function withNativeHelper(child, action, timeouts = {}) {
     while ((index = output.indexOf('\n')) >= 0) {
       const line = output.slice(0, index).trim(); output = output.slice(index + 1);
       if (line.startsWith('PHASE:')) {
-        const phase = line.slice(6); if (NATIVE_PHASES.includes(phase)) nativePhase = phase; else fail(new Error('Unknown native helper phase'));
+        const phase = line.slice(6); if (NATIVE_PHASES.includes(phase)) { nativePhase = phase; observed(phase); } else fail(new Error('Unknown native helper phase'));
       } else if (line.startsWith('SUBPHASE:')) {
         const subphase = line.slice(9);
         if (nativePhase === 'filename-host' && HOST_SUBPHASES.includes(subphase)) nativeSubphase = subphase;
@@ -480,7 +482,7 @@ async function withNativeHelper(child, action, timeouts = {}) {
       } else if (line.startsWith('FOREGROUND:')) {
         try { assert(hostFailure && !foregroundEvidence && line.length <= 8192); foregroundEvidence = validateForegroundEvidence(JSON.parse(line.slice(11))); }
         catch { foregroundInvalid = true; }
-      } else if (line === 'READY' && !ready) { ready = true; readyResolve(); }
+      } else if (line === 'READY' && !ready) { ready = true; observed('native-ready'); readyResolve(); }
       else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
     }
   });
@@ -496,7 +498,7 @@ async function withNativeHelper(child, action, timeouts = {}) {
   });
   try {
     await bounded(Promise.race([readyPromise, done]), 'native helper readiness', timeouts.ready ?? TIMEOUT);
-    const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
+    const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; observed('action-dispatch'); return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
     return value;
   } catch (error) {
     failure = hostFailure || controlFailure || error;
@@ -531,7 +533,7 @@ function nativeDialog(config, binding, directory, destination, action, observeOn
   const script = nativeDialogScript(config, binding, directory, destination, observeOnly);
   const child = spawn('powershell.exe', nativeDialogCommand(script),
     { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], timeout: 35000 });
-  return withNativeHelper(child, action);
+  return withNativeHelper(child, action, {}, config.observeNativePhase);
 }
 
 async function assertSavedBytes(file, expected, timeout = 10000, observation) {
@@ -582,6 +584,17 @@ async function finish(report, failure, { disconnect, alive, write }) {
   if (failure) throw failure;
 }
 
+function emitLocationEvidence(config, directory, expected, write = value => process.stdout.write(value)) {
+  if (!config.privateLocationEvidence || !directory || !expected.length) return;
+  const name = path.basename(directory);
+  assert(/^local-native-exports-[A-Za-z0-9]{6}$/.test(name) && path.dirname(directory) === config.output);
+  assert(expected.length <= 2 && new Set(expected.map(item => item.format)).size === expected.length);
+  for (const item of expected) assert(Object.keys(item).sort().join(',') === 'bytes,format,sha256' && ['md', 'json'].includes(item.format) && Number.isSafeInteger(item.bytes) && item.bytes > 0 && item.bytes <= MAX_BYTES && /^[a-f0-9]{64}$/.test(item.sha256));
+  // Python captures this bounded pipe in memory; never inherit it into CI logs.
+  const line = 'OWNED_DOWNLOAD_EVIDENCE:' + JSON.stringify({ directory: name, expected });
+  assert(line.length <= 4096); write(line + '\n');
+}
+
 async function main(args) {
   const config = parseArgs(args), { expectedVersion } = config;
   assert.equal(process.platform, 'win32', 'Installed WebView2 acceptance requires Windows');
@@ -597,6 +610,7 @@ async function main(args) {
     blocked_external_requests: 0, network_observation_scope: 'After attachment, before test navigation',
     cleanup: { disconnect: false, owned_app_alive: false, errors: [] } };
   let browser, page, binding, failure, downloadObserver, syntheticVerified = false, nativeDirectory;
+  const locationExpected = [];
   const read = route => readInstalledJSON(config.origin, route);
   const capture = async filename => {
     assert(syntheticVerified, 'No screenshot before exact synthetic task verification');
@@ -639,6 +653,7 @@ async function main(args) {
       config.captureNativeDialog = syntheticVerified;
       downloadObserver = await attachDownloadObservation(page, config.origin, bounded);
       report.page_download_observation = downloadObserver.report;
+      config.observeNativePhase = phase => downloadObserver.phase(phase);
       report.phase = 'visible-diagnostic-disclosure';
       await page.locator('#taskStatus [data-task-action="diagnostics"]').click();
       const processing = page.locator('#toolsDialog[open]');
@@ -679,6 +694,8 @@ async function main(args) {
         const gets = report.diagnostic_requests;
         const destination = path.join(nativeDirectory, `learnnote-diagnostics.${format}`);
         assert.equal(fs.existsSync(destination), false);
+        try { locationExpected.push({ format, bytes: expected.length, sha256: createHash('sha256').update(expected).digest('hex') }); }
+        catch { report.location_evidence_unavailable = true; }
         const observation = fileObservation(expected.length);
         const attempt = { format, native_dialog_completed: false, file: observation.report };
         report.native_save_attempts.push(attempt); downloadObserver.active(format);
@@ -735,6 +752,8 @@ async function main(args) {
       catch { report.failure_capture_unavailable = true; }
     }
   } finally {
+    try { emitLocationEvidence(config, nativeDirectory, locationExpected); }
+    catch { report.location_evidence_unavailable = true; }
     try { if (downloadObserver) await downloadObserver.close(); }
     catch { report.download_observation_cleanup_failed = true; }
     await finish(report, failure, {
@@ -747,5 +766,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });
