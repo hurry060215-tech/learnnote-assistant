@@ -371,6 +371,68 @@ test('true filename input requires full owned focus and selection before one Uni
   assert.doesNotMatch(source, /SendKeys|SetForegroundWindow|Clipboard|CBN_EDIT|keybd_event/);
 });
 
+test('only the typed final popup-set rejection can settle inside the existing filename readback clock', () => {
+  const raw = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const bytes of [raw, raw.replace(/\n/g, '\r\n')]) {
+    const source = bytes.replace(/\r\n/g, '\n');
+    const start = source.indexOf('    try { Assert-FilenameInputFocus $edit $filenameEditHandle }');
+    const end = source.indexOf("    Set-InputPredicate 'host-readback';", start);
+    assert(start >= 0 && end > start);
+    const branch = source.slice(start, end);
+    assert.match(branch, /\$script:inputFacts.predicate -cne 'dialog-guard' -or/);
+    assert.match(branch, /\$rejection.Exception -isnot \[InvalidOperationException\] -or/);
+    assert.match(branch, /\$rejection.Exception.Data\['learnnote_guard_reason'\] -cne 'popup-set'\) \{ throw \$rejection \}/);
+    assert.match(branch, /if \(\$clock.ElapsedMilliseconds -lt 2000\) \{ Start-Sleep -Milliseconds 25 \}/);
+    assert.match(branch, /if \(\$clock.ElapsedMilliseconds -ge 2000\) \{\n        Set-InputPredicate 'readback-timeout'; \$script:inputFacts.readback_timeout=\$true; throw \$rejection/);
+    assert.match(branch, /continue # Re-prove the original exact guard/);
+    assert.doesNotMatch(branch, /\.Message|SetValue|SendUnicode|SetFocus|\.Invoke|StartNew|AddSeconds/);
+    assert(source.indexOf("Stage 'filename-readback'") < start && source.indexOf("Stage 'save-focus'", start) > end);
+    // Removing this one read-only catch restores every byte of the previous helper.
+    const restored = source.slice(0, start) + '    Assert-FilenameInputFocus $edit $filenameEditHandle\n' + source.slice(end);
+    assert.equal(createHash('sha256').update(restored).digest('hex'), '1d4cb7c23abcc01c2cc7081629b79f199b9c59714be465d249947124dfeeab77');
+  }
+});
+
+test('Windows real dialog guards settle only transient readback popups without resending input', { skip: process.platform !== 'win32' }, () => {
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1'), '-SettlingOnly'],
+    { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert(!output.includes('PRIVATE')); const { actions } = JSON.parse(output.trim()); assert.equal(actions.length, 34);
+  for (const row of actions) {
+    const phase = row.mode.startsWith('settle-phase-') ? row.mode.slice('settle-phase-'.length) : null;
+    const sent = !phase || ['save-focus', 'save-invoke'].includes(phase);
+    assert.equal(row.unicode_sends, sent ? 1 : 0, row.mode);
+    assert.equal(row.host_sets, 0, row.mode); assert.equal(row.edit_sets, 0, row.mode);
+    assert.equal(row.passed, row.mode === 'settle-transient', row.mode);
+    assert.equal(row.save_invokes, row.passed ? 1 : 0, row.mode);
+    if (row.passed) {
+      assert.equal(row.readback_guards, 3); assert.equal(row.facts.readback_iterations, 3);
+      assert.equal(row.facts.host_matches, true); assert.equal(row.facts.edit_matches, true);
+      assert.equal(row.facts.readback_timeout, false); assert.equal(row.metadata, null); continue;
+    }
+    assert.equal(row.original, true, row.mode); validateInputFailure(row.metadata);
+    const details = row.metadata, facts = details.action;
+    if (row.mode === 'settle-persistent') {
+      assert.equal(row.stage, 'filename-readback'); assert.equal(facts.predicate, 'readback-timeout');
+      assert.equal(facts.readback_timeout, true); assert(facts.readback_elapsed_ms >= 2000);
+      assert(facts.readback_iterations > 1); assert.equal(row.readback_guards, facts.readback_iterations);
+      assert.equal(details.guard_failure.reason, 'popup-set');
+    } else {
+      assert.equal(facts.readback_timeout, false, row.mode);
+      assert.equal(facts.predicate, row.mode === 'settle-bound-tag' ? 'edit-host-control' : 'dialog-guard', row.mode);
+      if (phase) { assert.equal(row.stage, phase); assert.equal(row.readback_guards, sent ? 1 : 0); }
+      else {
+        assert.equal(row.stage, 'filename-readback');
+        assert.equal(row.readback_guards, row.mode.startsWith('settle-then-') ? 2 : 1, row.mode);
+      }
+      const reasons = { 'settle-then-process': 'process-identity', 'settle-then-root': 'root-identity',
+        'settle-then-pid': 'dialog-identity', 'settle-then-warning': 'dialog-identity', 'settle-then-foreground': 'foreground',
+        'settle-untagged': 'unclassified', 'settle-tag-case': 'unclassified' };
+      assert.equal(details.guard_failure.reason, reasons[row.mode] || 'popup-set', row.mode);
+    }
+    if (!phase || !sent) { assert.equal(facts.host_matches, null, row.mode); assert.equal(facts.edit_matches, null, row.mode); }
+  }
+});
+
 test('Windows Unicode input builder has the correct native ABI and literal down/up events without native input', { skip: process.platform !== 'win32' }, () => {
   const raw = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   for (const text of [raw, raw.replace(/\n/g, '\r\n')]) {
@@ -418,7 +480,7 @@ test('Windows extracted control validation accepts only exact initial names and 
       if (row.mode === 'invoke-pattern') { assert.equal(row.original, true); assert.equal(observation.save.pattern_available, false); }
     }
   }
-  assert.equal(parsed.actions.length, 100);
+  assert.equal(parsed.actions.length, 98);
   for (const row of parsed.actions) {
     assert.equal(row.passed, row.mode === 'action-success', row.mode); assert.equal(row.edit_sets, 0, row.mode);
     if (row.mode !== 'action-success' && row.mode !== 'action-format-fault') { validateInputFailure(row.metadata); validateInputPopups(row.popups); assert(row.metadata.action.predicate); }

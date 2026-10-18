@@ -359,7 +359,20 @@ function Set-OwnedFilenameText {
   do {
     $script:inputFacts.readback_iterations=[Math]::Min(1000,$script:inputFacts.readback_iterations+1)
     $script:inputFacts.host_matches=$null; $script:inputFacts.edit_matches=$null
-    Assert-FilenameInputFocus $edit $filenameEditHandle
+    try { Assert-FilenameInputFocus $edit $filenameEditHandle }
+    catch {
+      $rejection=$_
+      # Only the final tagged popup-set predicate may settle, after all preceding
+      # process/root/dialog/foreground/owner checks passed. No input is sent here.
+      if ($script:inputFacts.predicate -cne 'dialog-guard' -or
+          $rejection.Exception -isnot [InvalidOperationException] -or
+          $rejection.Exception.Data['learnnote_guard_reason'] -cne 'popup-set') { throw $rejection }
+      if ($clock.ElapsedMilliseconds -lt 2000) { Start-Sleep -Milliseconds 25 }
+      if ($clock.ElapsedMilliseconds -ge 2000) {
+        Set-InputPredicate 'readback-timeout'; $script:inputFacts.readback_timeout=$true; throw $rejection
+      }
+      continue # Re-prove the original exact guard; never resend, dismiss or invoke.
+    }
     Set-InputPredicate 'host-readback'; $script:inputFacts.host_matches=$hostValue.get_Current().get_Value() -ceq $c.destination
     if ($script:inputFacts.host_matches) {
       Set-InputPredicate 'edit-readback'; $script:inputFacts.edit_matches=$value.get_Current().get_Value() -ceq $c.destination

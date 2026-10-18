@@ -1,3 +1,4 @@
+param([switch]$SettlingOnly)
 $ErrorActionPreference='Stop'
 # Synthetic CLR contracts only. No native windows, input, UIA providers or external data.
 Add-Type @'
@@ -14,11 +15,11 @@ namespace System.Windows.Automation {
  public class AutomationElement { public static SyntheticNode FocusedElement { get { if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-fault") throw SyntheticState.Failure; if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-element") return SyntheticState.Save; return SyntheticState.Mode=="action-focus-element" ? SyntheticState.Save : SyntheticState.Focus==3 ? SyntheticState.Edit : SyntheticState.Save; } } public static SyntheticNode FromHandle(IntPtr h) { return h.ToInt32()==4 ? SyntheticState.Combo : SyntheticState.Save; } }
 }
 public static class SyntheticState {
- public static string Mode; public static bool Diagnostic; public static int ValueReads, SavePatterns, HostSets, EditSets, SaveInvokes, UnicodeSends, Focus, Selections, FocusChecks, SelectionChecks, VisibleCalls, ClassCalls, PopupClassCalls;
+ public static string Mode; public static int ReadbackGuards; public static bool Diagnostic; public static int ValueReads, SavePatterns, HostSets, EditSets, SaveInvokes, UnicodeSends, Focus, Selections, FocusChecks, SelectionChecks, VisibleCalls, ClassCalls, PopupClassCalls;
  public static readonly Exception Failure=new InvalidOperationException("PRIVATE_original");
  public static SyntheticNode Host, Combo, Edit, Save;
  public static void Reset(string mode, string value) {
-  Failure.Data.Clear(); Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0; PopupClassCalls=0;
+  Failure.Data.Clear(); ReadbackGuards=0; Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0; PopupClassCalls=0;
   Host=new SyntheticNode(5); Combo=new SyntheticNode(4); Edit=new SyntheticNode(3); Save=new SyntheticNode(2);
   Edit.Pattern.Info.Value=value; Edit.Pattern.Info.IsReadOnly=mode=="readonly";
   Combo.Pattern.Info.Value=mode=="host-name" ? "wrong.md" : value; Combo.Pattern.Info.IsReadOnly=mode=="host-readonly";
@@ -107,8 +108,15 @@ public static class OwnedFilenameInput {
  }
 }
 public static class OwnedSave {
+ public static string SyntheticStateStage;
+ public static string Title(IntPtr h) { return "LearnNote - Video Learning Notes"; }
  public static IntPtr[] Visible(uint pid) {
   SyntheticState.VisibleCalls++;
+  if(SyntheticState.Mode.StartsWith("settle-")) {
+   bool extra=SyntheticStateStage=="filename-readback" && (SyntheticState.Mode=="settle-persistent" || SyntheticState.Mode=="settle-transient" && SyntheticState.ReadbackGuards<=2 || SyntheticState.Mode.StartsWith("settle-then-") && SyntheticState.ReadbackGuards==1);
+   if(SyntheticState.Mode.StartsWith("settle-phase-")) extra=SyntheticState.Mode=="settle-phase-"+SyntheticStateStage;
+   return extra ? new [] {new IntPtr(10),new IntPtr(1),new IntPtr(11)} : new [] {new IntPtr(10),new IntPtr(1)};
+  }
   int count=SyntheticState.Mode=="popup-limit" ? 65 : SyntheticState.Mode=="popup-truncated" ? 10 : SyntheticState.Mode=="popup-mixed" ? 4 : 3;
   if(SyntheticState.Mode=="popup-set-race" && SyntheticState.VisibleCalls>1) count=2;
   var list=new IntPtr[count]; list[0]=new IntPtr(10); list[1]=new IntPtr(1); for(int i=2;i<count;i++) list[i]=new IntPtr(9+i); return list;
@@ -125,9 +133,13 @@ public static class OwnedSave {
  }
  public static IntPtr GetDlgItem(IntPtr h,int id) { if (h.ToInt32()==4 && id==1001) return new IntPtr(SyntheticState.Mode=="host-wrong-edit" || SyntheticState.Mode=="action-wrong-edit" ? 9 : 3); return SyntheticState.Mode=="save-missing" ? IntPtr.Zero : new IntPtr(2); }
  public static IntPtr GetParent(IntPtr h) { if (h.ToInt32()==3) return new IntPtr(SyntheticState.Mode=="host-parent" || SyntheticState.Mode=="action-parent" || (SyntheticState.Mode=="action-after-parent" && SyntheticState.UnicodeSends>0) ? 9 : 4); return new IntPtr(SyntheticState.Mode=="save-parent" ? 9 : 1); }
- public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
- public static bool IsWindow(IntPtr h) { return !(SyntheticState.Mode=="popup-owner-dead" && h.ToInt32()==99 || SyntheticState.Mode=="popup-dead" && h.ToInt32()==11); } public static int Pid(IntPtr h) { return (h.ToInt32()==4 && SyntheticState.Mode=="host-owner") || (h.ToInt32()==11 && SyntheticState.Mode=="popup-foreign") || (h.ToInt32()==99 && SyntheticState.Mode=="popup-owner-foreign") ? 999 : 111; }
+ public static IntPtr GetForegroundWindow() { return new IntPtr(SyntheticState.Mode=="settle-then-foreground" && SyntheticState.ReadbackGuards>1 ? 11 : 1); }
+ public static bool IsWindow(IntPtr h) { return !(SyntheticState.Mode=="popup-owner-dead" && h.ToInt32()==99 || SyntheticState.Mode=="popup-dead" && h.ToInt32()==11 || SyntheticState.Mode=="settle-then-root" && SyntheticState.ReadbackGuards>1 && h.ToInt32()==10); } public static int Pid(IntPtr h) { return (SyntheticState.Mode=="settle-then-pid" && SyntheticState.ReadbackGuards>1 && h.ToInt32()==1) || (h.ToInt32()==4 && SyntheticState.Mode=="host-owner") || (h.ToInt32()==11 && SyntheticState.Mode=="popup-foreign") || (h.ToInt32()==99 && SyntheticState.Mode=="popup-owner-foreign") ? 999 : 111; }
  public static string Class(IntPtr h) {
+  if(SyntheticState.Mode.StartsWith("settle-")) {
+   if(h.ToInt32()==10) return "WindowsForms10.Window.1";
+   if(h.ToInt32()==1) return SyntheticState.Mode=="settle-then-warning" && SyntheticState.ReadbackGuards>1 ? "OtherDialog" : "#32770";
+  }
   if(SyntheticState.Mode.StartsWith("popup-")) {
    SyntheticState.ClassCalls++;
    if(SyntheticState.Mode=="popup-budget" && SyntheticState.ClassCalls==1) Thread.Sleep(510);
@@ -146,8 +158,11 @@ public static class OwnedSave {
  public static int GetDlgCtrlID(IntPtr h) { return h.ToInt32()==3 ? 1001 : 1; }
 }
 '@
-function Stage([string]$name) { $script:stage=$name }
+function Stage([string]$name) { $script:stage=$name; [OwnedSave]::SyntheticStateStage=$name }
 function Assert-Control($node,$parent) {
+  if ([SyntheticState]::Mode -ceq 'settle-bound-tag' -and [SyntheticState]::UnicodeSends -gt 0 -and $node.Handle -eq 3) {
+    try { Stop-OwnedGuard 'popup-set' 'PRIVATE_bound_guard' } catch { $script:lastGuardFailure=$_.Exception; throw }
+  }
   if ([SyntheticState]::UnicodeSends -gt 0 -and
       (([SyntheticState]::Mode -ceq 'action-after-edit-control' -and $node.Handle -eq 3) -or
        ([SyntheticState]::Mode -ceq 'action-after-save-control' -and $node.Handle -eq 2))) { throw [SyntheticState]::Failure }
@@ -170,6 +185,7 @@ $results=[Collections.Generic.List[object]]::new()
 $cases=@('md-name','md-stem','json-name','json-stem','wrong-stem','wrong-extension','wrong-case','path','empty','readonly',
   'edit-zero','edit-two','edit-control','value-pattern','save-missing','save-parent','save-control','save-profile',
   'invoke-pattern','runtime-fault','guard-before','guard-after','runtime-race','budget','format-fault','host-pattern','host-readonly','host-name','host-runtime-empty','host-runtime-race','host-parent','host-wrong-edit','host-class','host-type','host-owner','host-ancestry')
+if ($SettlingOnly) { $cases=@() }
 foreach ($mode in $cases) {
   $json=$mode.StartsWith('json-'); $filename=if ($json) { 'learnnote-diagnostics.json' } else { 'learnnote-diagnostics.md' }
   $name=switch ($mode) {
@@ -220,6 +236,29 @@ foreach ($mode in $cases) {
 # Evidence stubs are explicit: no missing-command lookup or native inspection.
 function Assert-Root { throw [SyntheticState]::Failure }
 function Get-OwnedDialogIdentityFacts($Binding) { return $null }
+# The settling fixture executes the real complete dialog guard against controlled native calls.
+# Its process/foreground/identity predicates therefore run before the real popup-set tag.
+if ($SettlingOnly) {
+  . (Join-Path $root 'installed-native-dialog-guards.ps1')
+  $actualDialogGuard=${function:Assert-Dialog}
+  function Get-CimInstance {
+    if ([SyntheticState]::Mode -ceq 'settle-then-process' -and [SyntheticState]::ReadbackGuards -gt 1) { return $null }
+    return @{Name='LearnNote.exe';CreationDate=[DateTime]::new(638000000000000000,[DateTimeKind]::Utc)}
+  }
+  function Assert-Dialog([IntPtr]$handle) {
+    $root=[IntPtr]10; $rootClass='WindowsForms10.Window.1'
+    if ($script:stage -ceq 'filename-readback') { [SyntheticState]::ReadbackGuards++ }
+    try {
+      if ($script:stage -ceq 'filename-readback' -and [SyntheticState]::Mode -in @('settle-untagged','settle-wrong-type','settle-tag-case')) {
+        $failure=if ([SyntheticState]::Mode -ceq 'settle-wrong-type') { [Exception]::new('Unexpected owned popup; no native input') } else { [InvalidOperationException]::new('Unexpected owned popup; no native input') }
+        if ([SyntheticState]::Mode -cne 'settle-untagged') { $failure.Data['learnnote_guard_reason']=if ([SyntheticState]::Mode -ceq 'settle-tag-case') { 'Popup-set' } else { 'popup-set' } }
+        throw $failure
+      }
+      & $actualDialogGuard $handle
+    } catch { $script:lastGuardFailure=$_.Exception; throw }
+  }
+  function Get-OwnedDialogIdentityFacts($Binding) { return $null }
+}
 $actionResults=[Collections.Generic.List[object]]::new()
 $nativeSource=[IO.File]::ReadAllText((Join-Path $root 'installed-diagnostic-acceptance.cjs')).Replace("`r`n","`n")
 foreach ($newline in @('lf','crlf')) {
@@ -228,14 +267,21 @@ foreach ($newline in @('lf','crlf')) {
   $start=$text.IndexOf('function Assert-BoundControls {'); $end=$text.IndexOf("Stage 'save-completion';",$start)
   if ($start -lt 0 -or $end -le $start) { throw 'Missing action source boundaries' }
   $action=$text.Substring($start,$end-$start)
-  foreach ($mode in @('action-success','action-wrapper-runtime','action-ancestry','action-host-runtime','action-host-handle','action-parent','action-wrong-edit','action-host-readback','action-edit-readback','action-after-runtime','action-after-parent',
+  $actionModes=@('action-success','action-wrapper-runtime','action-ancestry','action-host-runtime','action-host-handle','action-parent','action-wrong-edit','action-host-readback','action-edit-readback','action-after-runtime','action-after-parent',
     'action-text-pattern','action-selection-unsupported','action-native-focus','action-uia-focus','action-focus-element','action-focus-wrong','action-range-text','action-selection-zero','action-selection-two','action-selection-partial','action-selection-focus-race','action-modifier','action-partial-send','action-after-focus','action-save-focus','action-selection-race','action-edit-readonly','action-host-readonly',
-    'action-after-guard-process-identity','action-after-guard-root-identity','action-after-guard-foreground','action-after-guard-dialog-identity','action-after-guard-owner-process','action-after-guard-owner-root','action-after-guard-popup-set','action-after-edit-control','action-after-save-control','action-after-destination','action-after-uia-focus','action-after-uia-fault','action-after-focused-element','action-after-focused-fault','action-after-host-current','action-after-edit-current','action-after-host-value','action-after-edit-value','action-save-host-value','action-save-edit-value','action-invoke-fault','action-format-fault' )) {
+    'action-after-guard-process-identity','action-after-guard-root-identity','action-after-guard-foreground','action-after-guard-dialog-identity','action-after-guard-owner-process','action-after-guard-owner-root','action-after-edit-control','action-after-save-control','action-after-destination','action-after-uia-focus','action-after-uia-fault','action-after-focused-element','action-after-focused-fault','action-after-host-current','action-after-edit-current','action-after-host-value','action-after-edit-value','action-save-host-value','action-save-edit-value','action-invoke-fault','action-format-fault' )
+  if ($SettlingOnly) { $actionModes=@('settle-transient','settle-persistent','settle-then-process','settle-then-root','settle-then-pid','settle-then-warning','settle-then-foreground','settle-untagged','settle-wrong-type','settle-tag-case','settle-bound-tag','settle-phase-filename-set','settle-phase-filename-focus','settle-phase-filename-select','settle-phase-filename-type','settle-phase-save-focus','settle-phase-save-invoke') }
+  foreach ($mode in $actionModes) {
     # Execute each real two-second readback timeout once; all other action cases run in both newline forms.
     if ($newline -ceq 'crlf' -and $mode -in @('action-host-readback','action-edit-readback')) { continue }
     [SyntheticState]::Reset('md-name','learnnote-diagnostics.md')
-    $hostControl=[SyntheticState]::Host; $script:guardCalls=0
-    . (Join-Path $root 'installed-native-save-controls.ps1')
+    $hostControl=[SyntheticState]::Host; $script:guardCalls=0; $script:lastGuardFailure=$null
+    $c=@{observer=(Join-Path $root 'installed-native-dialog-observation.ps1');pid=111;start='638000000000000000';destination='D:\owned\local-native-exports-fresh\learnnote-diagnostics.md'}
+    $element=[object]::new(); $dialog=[IntPtr]1
+    $all=[Windows.Automation.Condition]::TrueCondition; $desc=[Windows.Automation.TreeScope]::Descendants
+    $controls=[IO.File]::ReadAllText((Join-Path $root 'installed-native-save-controls.ps1')).Replace("`r`n","`n")
+    if ($newline -ceq 'crlf') { $controls=$controls.Replace("`n","`r`n") }
+    Invoke-Expression $controls
     [SyntheticState]::Mode=$mode; $script:destinations=0
     function Assert-Destination { $script:destinations++; if ([SyntheticState]::UnicodeSends -gt 0 -and [SyntheticState]::Mode -ceq 'action-after-destination') { throw [SyntheticState]::Failure } }
     $passed=$false; $reason='complete'; $same=$false
@@ -247,7 +293,7 @@ foreach ($newline in @('lf','crlf')) {
     try { Invoke-Expression $action; $passed=$true }
     catch {
       $exception=$_.Exception; $failureMessage=$exception.Message
-      for ($i=0; $i -lt 5 -and $exception; $i++) { $failureMessage=$exception.Message; if ([Object]::ReferenceEquals($exception,[SyntheticState]::Failure)) { $same=$true; break }; $exception=$exception.InnerException }
+      for ($i=0; $i -lt 5 -and $exception; $i++) { $failureMessage=$exception.Message; if ([Object]::ReferenceEquals($exception,[SyntheticState]::Failure) -or ($script:lastGuardFailure -and [Object]::ReferenceEquals($exception,$script:lastGuardFailure))) { $same=$true; break }; $exception=$exception.InnerException }
       $reason=switch ($failureMessage) {
         'Bound filename ComboBox and Edit changed' { 'binding'; break }
         'Native filename readback differs' { 'readback'; break }
@@ -271,9 +317,10 @@ foreach ($newline in @('lf','crlf')) {
         else { throw 'Unexpected synthetic evidence line' }
       }
     }
-    $actionResults.Add(@{mode=$mode;newline=$newline;metadata=$metadata;popups=$popupMetadata;passed=$passed;reason=$reason;original=$same;stage=$script:stage;selections=[SyntheticState]::Selections;selection_checks=[SyntheticState]::SelectionChecks;unicode_sends=[SyntheticState]::UnicodeSends;host_sets=[SyntheticState]::HostSets;edit_sets=[SyntheticState]::EditSets;save_invokes=[SyntheticState]::SaveInvokes;destinations=$script:destinations})
+    $actionResults.Add(@{mode=$mode;newline=$newline;metadata=$metadata;popups=$popupMetadata;passed=$passed;reason=$reason;original=$same;stage=$script:stage;selections=[SyntheticState]::Selections;selection_checks=[SyntheticState]::SelectionChecks;unicode_sends=[SyntheticState]::UnicodeSends;host_sets=[SyntheticState]::HostSets;edit_sets=[SyntheticState]::EditSets;save_invokes=[SyntheticState]::SaveInvokes;destinations=$script:destinations;readback_guards=[SyntheticState]::ReadbackGuards;facts=$script:inputFacts})
   }
 }
+if ($SettlingOnly) { @{actions=@($actionResults.ToArray())} | ConvertTo-Json -Depth 8 -Compress; exit 0 }
 $popupResults=[Collections.Generic.List[object]]::new()
 foreach ($newline in @('lf','crlf')) {
   $raw=[IO.File]::ReadAllText((Join-Path $root 'installed-native-save-controls.ps1')).Replace("`r`n","`n")
