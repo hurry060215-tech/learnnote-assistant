@@ -11,6 +11,8 @@ const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ances
 const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
 const OBSERVER_EXCEPTIONS = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
 const NATIVE_PHASES = ['uia-initialization', 'ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
+const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-value-pattern', 'edit-initial-name',
+  'save-handle', 'save-control', 'save-profile', 'save-invoke-pattern', 'runtime-ids'];
 
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
@@ -110,6 +112,43 @@ function validateHostFailure(value) {
   assert(value.host_count === null || Number.isInteger(value.host_count) && value.host_count >= 0 && value.host_count <= 64);
   assert(typeof value.host_count_capped === 'boolean');
   assert(!value.host_count_capped || value.host_count === 64);
+  return value;
+}
+function validateControlFailure(value) {
+  exactKeys(value, ['subphase', 'observation']); assert(CONTROL_SUBPHASES.includes(value.subphase));
+  const observation = value.observation;
+  exactKeys(observation, ['status', 'phase', 'reason', 'exception_type', 'elapsed_ms', 'edit', 'save']);
+  assert(['complete', 'unavailable'].includes(observation.status));
+  assert(['guard-before', 'edit', 'save', 'guard-after', 'complete'].includes(observation.phase));
+  assert(['complete', 'exception', 'budget', 'runtime-changed'].includes(observation.reason));
+  assert(observation.exception_type === null || OBSERVER_EXCEPTIONS.includes(observation.exception_type));
+  assert(Number.isInteger(observation.elapsed_ms) && observation.elapsed_ms >= 0 && observation.elapsed_ms <= 35000);
+  if (observation.status === 'unavailable') {
+    assert.notEqual(observation.phase, 'complete'); assert.notEqual(observation.reason, 'complete');
+    assert.equal(observation.edit, null); assert.equal(observation.save, null); return value;
+  }
+  assert.equal(observation.phase, 'complete'); assert.equal(observation.reason, 'complete'); assert.equal(observation.exception_type, null);
+  const booleans = ['control_valid', 'native_identity', 'pattern_available', 'runtime_present', 'runtime_stable',
+    'read_only', 'expected_basename', 'expected_stem', 'handle_present', 'direct_child', 'profile_matches'];
+  for (const role of ['edit', 'save']) {
+    const facts = observation[role]; exactKeys(facts, ['phase', 'reason', 'exception_type', 'count', 'count_capped', ...booleans]);
+    assert(['query', 'count', 'handle', 'control', 'pattern', 'value', 'complete'].includes(facts.phase));
+    assert(['complete', 'rejected', 'exception'].includes(facts.reason));
+    assert(facts.exception_type === null || OBSERVER_EXCEPTIONS.includes(facts.exception_type));
+    assert(facts.count === null || Number.isInteger(facts.count) && facts.count >= 0 && facts.count <= 64);
+    assert(typeof facts.count_capped === 'boolean'); assert(!facts.count_capped || facts.count === 64);
+    for (const key of booleans) assert(facts[key] === null || typeof facts[key] === 'boolean');
+    assert.equal(facts.phase === 'complete', facts.reason === 'complete');
+    if (facts.reason !== 'exception') assert.equal(facts.exception_type, null);
+    if (facts.runtime_present === true) assert.equal(facts.runtime_stable, true); else assert.equal(facts.runtime_stable, null);
+    if (role === 'edit') {
+      for (const key of ['handle_present', 'direct_child', 'profile_matches']) assert.equal(facts[key], null);
+      assert(!(facts.expected_basename && facts.expected_stem));
+    } else {
+      assert.equal(facts.count, null); assert.equal(facts.count_capped, false);
+      for (const key of ['read_only', 'expected_basename', 'expected_stem']) assert.equal(facts[key], null);
+    }
+  }
   return value;
 }
 const GUARD_REASONS = ['process-identity', 'root-identity', 'foreground', 'dialog-identity', 'owner-process', 'owner-root', 'popup-set', 'unclassified'];
@@ -365,18 +404,7 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
  } catch { } # Evidence collection cannot replace the original rejection.
  throw $original;
 }
-Stage 'filename-edit';
-$edits=@($hostControl.FindAll($desc,$all) | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit -and $_.Current.ClassName -ceq 'Edit' -and $_.Current.AutomationId -ceq '1001' });
-if ($edits.Count -ne 1) { throw 'Ambiguous native filename edit' }; $edit=$edits[0]; Assert-Control $edit $element;
-$value=$edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern);
-if ($value.Current.IsReadOnly -or $value.Current.Value -cne [IO.Path]::GetFileName($c.destination)) { throw 'Expected writable synthetic export filename' }
-Stage 'save-button';
-$buttonHandle=[OwnedSave]::GetDlgItem($dialog,1);
-if ($buttonHandle -eq [IntPtr]::Zero -or [OwnedSave]::GetParent($buttonHandle) -ne $dialog) { throw 'Expected direct native Save button' }
-$button=[Windows.Automation.AutomationElement]::FromHandle($buttonHandle); Assert-Control $button $element;
-if ($button.Current.ControlType -ne [Windows.Automation.ControlType]::Button -or $button.Current.ClassName -cne 'Button' -or $button.Current.AutomationId -cne '1') { throw 'Unexpected native Save control' }
-$invoke=$button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern);
-$editRuntime=$edit.GetRuntimeId() -join ','; $buttonRuntime=$button.GetRuntimeId() -join ',';
+. (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');
 function Assert-BoundControls {
  Assert-Control $edit $element; Assert-Control $button $element;
  if (($edit.GetRuntimeId() -join ',') -cne $editRuntime -or ($button.GetRuntimeId() -join ',') -cne $buttonRuntime -or
@@ -401,6 +429,7 @@ throw 'Native Save did not finish';`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}) {
+  let controlFailure, controlInvalid = false;
   let foregroundEvidence, foregroundInvalid = false;
   let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
@@ -429,6 +458,15 @@ async function withNativeHelper(child, action, timeouts = {}) {
           hostFailure.native_host_failure = details;
           nativeSubphase = hostFailure.native_host_failure.subphase;
         } catch { fail(new Error('Invalid native host failure metadata')); }
+      } else if (line.startsWith('CONTROLFAIL:')) {
+        try {
+          assert(ready && ['filename-edit', 'save-button'].includes(nativePhase) && !controlFailure);
+          controlFailure = new Error('Owned native Save helper failed');
+          assert(line.length <= 8192);
+          const details = validateControlFailure(JSON.parse(line.slice(12)));
+          assert.equal(details.subphase.startsWith('edit-'), nativePhase === 'filename-edit');
+          controlFailure.native_control_failure = details;
+        } catch { controlInvalid = true; fail(new Error('Invalid native control failure metadata')); }
       } else if (line.startsWith('CAPTURE:')) {
         try { assert(ready && nativePhase === 'dialog-capture' && !nativeCapture); nativeCapture = validateNativeCapture(JSON.parse(line.slice(8))); }
         catch { captureInvalid = true; } // Never retain paths or unvalidated pixel metadata.
@@ -451,6 +489,7 @@ async function withNativeHelper(child, action, timeouts = {}) {
   child.once('close', code => {
     closedResolve();
     if (hostFailure) fail(hostFailure);
+    else if (controlFailure) fail(controlFailure);
     else if (code === 0 && ready && result) doneResolve({ ...result, ...(nativeCapture ? { native_dialog_capture: nativeCapture } : {}), ...(captureInvalid ? { native_capture_unavailable: true } : {}) });
     else { const error = new Error('Owned native Save helper failed'); fail(error); }
   });
@@ -459,7 +498,8 @@ async function withNativeHelper(child, action, timeouts = {}) {
     const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
     return value;
   } catch (error) {
-    failure = hostFailure || error;
+    failure = hostFailure || controlFailure || error;
+    if (controlInvalid) failure.native_control_observation_unavailable = true;
     if (nativePhase) failure.native_stage = nativePhase;
     if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
     if (hostObservation) failure.native_host_observation = hostObservation;
@@ -658,7 +698,7 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
-    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable']) {
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable', 'native_control_failure', 'native_control_observation_unavailable']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
     if (error.native_dialog_capture) {
@@ -683,5 +723,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

@@ -8,7 +8,7 @@ import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -263,6 +263,94 @@ function emitHostFailure(child, details) {
   child.line('PHASE:filename-host'); child.line('SUBPHASE:' + details.subphase); child.line('HOSTFAIL:' + JSON.stringify(details));
 }
 
+const unavailableControls = () => ({ subphase: 'edit-initial-name', observation: { status: 'unavailable',
+  phase: 'guard-after', reason: 'exception', exception_type: 'runtime', elapsed_ms: 5, edit: null, save: null } });
+
+test('control failure facts stay bounded, preserve strict rejection and reject raw native properties', async () => {
+  validateControlFailure(unavailableControls());
+  for (const mutate of [value => { value.Value = 'PRIVATE'; }, value => { value.subphase = 'PRIVATE'; },
+    value => { value.observation.elapsed_ms = 35001; }, value => { value.observation.exception_type = 'PRIVATE'; },
+    value => { value.observation.edit = { Value: 'PRIVATE' }; }]) {
+    const value = unavailableControls(); mutate(value); assert.throws(() => validateControlFailure(value));
+  }
+  for (const mode of ['valid', 'invalid', 'oversized', 'late-success', 'held']) {
+    const child = fakeChild(); let actions = 0;
+    const result = withNativeHelper(child, () => {
+      actions++; child.line('PHASE:filename-edit');
+      child.line('CONTROLFAIL:' + (mode === 'invalid' ? '{"Value":"PRIVATE"}' : mode === 'oversized' ? 'x'.repeat(8193) : JSON.stringify(unavailableControls())));
+      if (mode === 'held') return new Promise(() => {});
+      if (mode === 'late-success') child.line('{"native_dialog":true,"saved":true}');
+      child.end(mode === 'late-success' ? 0 : 1);
+    }, { action: 5 }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed'); assert.equal(error.native_stage, 'filename-edit');
+      if (['invalid', 'oversized'].includes(mode)) {
+        assert.equal(error.native_control_observation_unavailable, true); assert.equal(error.native_control_failure, undefined);
+      } else assert.deepEqual(error.native_control_failure, unavailableControls());
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    }); assert.equal(actions, 1);
+  }
+});
+
+test('adjacent control validation keeps exact names, strict controls and action-time destination/readback guards', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8');
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  assert.match(source, /\$expected -cin @\('learnnote-diagnostics.md','learnnote-diagnostics.json'\)/);
+  assert.match(source, /\$Name -ceq \$expected -or \$Name -ceq \[IO.Path\]::GetFileNameWithoutExtension\(\$expected\)/);
+  assert.match(source, /\$value.Current.IsReadOnly -or !\(Test-InitialNativeFilename \$value.Current.Value \$c.destination\)/);
+  assert.doesNotMatch(source, /-like|-match|StartsWith|SetValue|\.Invoke\(|SendKeys|SendMessage|SetForeground|RootElement|GetWindowText/);
+  assert.match(source, /ElapsedMilliseconds -ge 1000/); assert.match(source, /\$editFacts=\$null; \$saveFacts=\$null/);
+  assert.match(source, /if \(\$facts.control_valid -eq \$false\) \{ throw \}/);
+  assert.match(source, /GetRuntimeId\(\) -join ','\) -cne \$binding.runtime/);
+  assert.match(source, /throw \$original/); assert.match(script, /installed-native-save-controls.ps1/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$value.SetValue\(\$c.destination\)/);
+  assert.match(script, /Current.Value -cne \$c.destination/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke\(\)/);
+  nativeDialogCommand(script);
+  const originalValidation = text => {
+    const canonical = text.replace(/\r\n/g, '\n'), start = canonical.indexOf("Stage 'filename-edit';");
+    return canonical.slice(start, canonical.indexOf('} catch {', start))
+      .replace(/^\$controlSubphase='[^']*';\n/gm, '').replace(" $controlSubphase='edit-control';", '')
+      .replace('!(Test-InitialNativeFilename $value.Current.Value $c.destination)', '$value.Current.Value -cne [IO.Path]::GetFileName($c.destination)');
+  };
+  const expected = 'a97e8cacafb84f941c2f8071f480a2d6d3d3d8cceb2696e464ed7b5317514130';
+  for (const text of [source.replace(/\r\n/g, '\n'), source.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')]) {
+    assert.equal(createHash('sha256').update(originalValidation(text)).digest('hex'), expected);
+    assert.notEqual(createHash('sha256').update(originalValidation(text.replaceAll("AutomationId -ceq '1001'", "AutomationId -ceq '1002'"))).digest('hex'), expected);
+  }
+});
+
+test('Windows extracted control validation accepts only exact initial names and retains both targets through faults', { skip: process.platform !== 'win32' }, () => {
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1')],
+    { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert(!output.includes('PRIVATE')); const cases = JSON.parse(output.trim()); assert.equal(cases.length, 25);
+  for (const row of cases) {
+    const success = ['md-name', 'md-stem', 'json-name', 'json-stem'].includes(row.mode);
+    assert.equal(row.passed, success, row.mode);
+    if (success) { assert.equal(row.metadata, null, row.mode); assert.equal(row.stage, 'save-button', row.mode); continue; }
+    assert.equal(row.primary_preserved, true, row.mode);
+    if (row.mode === 'format-fault') { assert.equal(row.metadata, null); continue; }
+    validateControlFailure(row.metadata);
+    const observation = row.metadata.observation;
+    if (['edit-control', 'save-control', 'guard-before', 'guard-after', 'runtime-race', 'budget'].includes(row.mode)) {
+      assert.equal(observation.status, 'unavailable', row.mode); assert.equal(observation.edit, null); assert.equal(observation.save, null);
+      if (['edit-control', 'save-control'].includes(row.mode)) { assert.equal(row.original, true); assert.equal(row.save_patterns, 0); }
+      if (row.mode === 'edit-control') assert.equal(row.value_reads, 0);
+      if (row.mode === 'runtime-race') assert.equal(observation.reason, 'runtime-changed');
+      if (row.mode === 'budget') assert.equal(observation.reason, 'budget');
+    } else {
+      assert.equal(observation.status, 'complete', row.mode);
+      if (row.mode.startsWith('edit-')) assert.equal(observation.save.pattern_available, true, row.mode);
+      if (row.mode === 'readonly') assert.equal(observation.edit.read_only, true);
+      if (['wrong-stem', 'wrong-extension', 'wrong-case', 'path', 'empty'].includes(row.mode)) {
+        assert.equal(observation.edit.expected_basename, false, row.mode); assert.equal(observation.edit.expected_stem, false, row.mode);
+      }
+      if (row.mode === 'value-pattern') { assert.equal(row.original, true); assert.equal(observation.edit.pattern_available, false); assert.equal(observation.save.pattern_available, true); }
+      if (row.mode === 'invoke-pattern') { assert.equal(row.original, true); assert.equal(observation.save.pattern_available, false); }
+    }
+  }
+});
+
 test('host rejection records zero/multiple/provider failure separately; late matching evidence never retries Save', async () => {
   for (const details of [hostFailureDetails(0), hostFailureDetails(2), hostFailureDetails(null, 'query'), hostFailureDetails(1, 'host-validation'), hostFailureDetails(1, 'modern-ancestor')]) {
     const child = fakeChild(); let actions = 0;
@@ -388,7 +476,7 @@ test('failure observer is bounded, read-only, prunes content branches and checks
   for (const type of ['List', 'ListItem', 'Tree', 'TreeItem', 'DataGrid', 'DataItem', 'Document']) assert(observer.includes(`ControlType]::${type}`));
   assert.doesNotMatch(observer, /\.Current\.(?:Name|Value)|get_(?:Name|Value)\(|SetValue|\.Invoke\(|RootElement|GetWindowText|\.screenshot\(|CopyFromScreen|GetForegroundWindow/);
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
-  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');"));
   assert.match(branch, /\. \$c.observer/); assert.match(branch, /-Guard \{ Assert-Dialog \$dialog \}/);
   assert.match(branch, /catch \{ \}/); assert.match(branch, /throw \$original;/);
   assert.doesNotMatch(branch, /SetValue|\.Invoke\(|Start-Sleep/);
@@ -492,7 +580,8 @@ test('native file equality reads stable exact UTF-8 bytes and retains the actual
 });
 
 test('native dialog script is exact owned modern Save profile, fresh contained filename and one bounded invocation', () => {
-  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
+  let script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
+  script = script.replace(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');", fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8'));
   const guards = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
   assert.match(script, /installed-native-dialog-guards\.ps1/);
   assert.match(guards, /CreationDate.ToUniversalTime\(\).Ticks.ToString\(\) -cne \$c.start/);
@@ -502,14 +591,14 @@ test('native dialog script is exact owned modern Save profile, fresh contained f
   assert.match(script, /AutomationId -ceq 'FileNameControlHost'/); assert.match(script, /ClassName -ceq 'AppControlHost'/);
   assert.match(script, /ClassName -ceq 'DUIViewWndClassName'/); assert.match(script, /AutomationId -ceq '1001'/);
   assert.match(script, /\[OwnedSave\]::GetDlgItem\(\$dialog,1\)/); assert.match(script, /AutomationId -cne '1'/);
-  assert.match(script, /Current.Value -cne \[IO.Path\]::GetFileName\(\$c.destination\)/);
+  assert.match(script, /Test-InitialNativeFilename \$value.Current.Value \$c.destination/);
   assert.match(script, /\[IO.Path\]::GetDirectoryName\(\$file\) -cne \$dir/); assert.match(script, /ReparsePoint/);
   assert(script.includes("$dir -notmatch '^[A-Za-z]:\\\\'"));
   assert.equal(script.match(/\$invoke.Invoke\(\)/g).length, 1);
   assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke/);
   assert.match(script, /Current.Value -cne \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
   assert.doesNotMatch(script, /SendKeys|SendMessage|SetForegroundWindow|RootElement|\.Current.Name/);
-  assert(['powershell.exe', ...nativeDialogCommand(script)].join(' ').length + 1 < 32767);
+  nativeDialogCommand(nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md'));
   assert.throws(() => nativeDialogCommand('x'.repeat(13000)), /command-line limit/);
 });
 
@@ -518,7 +607,7 @@ test('Windows PowerShell parser validates the actual generated native helper wit
   const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$source=[Console]::In.ReadToEnd(); $tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors); if ($errors.Count) { throw "Native helper parse failed" }; Write-Output "PARSED"'],
-    { input: script + '\n' + observer + '\n' + ['guards', 'win32'].map(name => fs.readFileSync(new URL(`../../scripts/installed-native-dialog-${name}.ps1`, import.meta.url), 'utf8')).join('\n') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-foreground-evidence.ps1', import.meta.url), 'utf8') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: script + '\n' + observer + '\n' + ['guards', 'win32'].map(name => fs.readFileSync(new URL(`../../scripts/installed-native-dialog-${name}.ps1`, import.meta.url), 'utf8')).join('\n') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-foreground-evidence.ps1', import.meta.url), 'utf8') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.equal(output.trim(), 'PARSED');
 });
 
@@ -652,7 +741,7 @@ test('Win32 evidence uses independent exact proof, only owned child structure, a
     /Pid\(\$winChild\) -ne \$Binding.config.pid/, /GetParent\(\$winChild\) -ne \$winHandle/, /winNodes.Clear\(\)/]) assert.match(source, pattern);
   assert.doesNotMatch(source, /GetWindowText|::Title|SendMessage|SendKeys|SetValue|\.Invoke\(|EnumWindows|EnumChildWindows|GetForegroundWindow|RootElement|GetDesktopWindow/);
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
-  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');"));
   assert.match(branch, /Get-OwnedDialogWin32Observation \$bound/); assert.match(branch, /throw \$original;/);
   assert.doesNotMatch(branch, /SetValue|\.Invoke\(/);
   const guards = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
@@ -664,7 +753,7 @@ test('Win32 evidence uses independent exact proof, only owned child structure, a
 test('Windows actual extracted guards execute inside observer scope and independently bound Win32 proof', { skip: process.platform !== 'win32' }, () => {
   const generated = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
   const start = generated.indexOf('} catch {\n $original=$_;') + '} catch {'.length;
-  const body = generated.slice(start, generated.indexOf("Stage 'filename-edit';", start)).replace(/}\s*$/, '');
+  const body = generated.slice(start, generated.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');", start)).replace(/}\s*$/, '');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
     path.resolve('scripts/tests/native-guard-evidence-faults.ps1'), '-HostFailureBody', Buffer.from(body).toString('base64')], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true });
   assert(!output.includes('PRIVATE')); assert(!output.includes('C:\\'));
@@ -789,7 +878,7 @@ test('foreground proof is read-only, independently bound, class/topology stable 
   assert.match(capture, /ValidateSet\('dialog','foreground'\)/);
   assert(capture.indexOf("$phase='guard-after'") < capture.indexOf('[IO.File]::Open'));
   const script = nativeDialogScript({ ...parseArgs(args), captureNativeDialog: true }, { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
-  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');"));
   assert.match(branch, /if \(\$c.capture\)/); assert.match(branch, /Get-OwnedForegroundEvidence \$bound \$c.directory \$c.destination/);
   assert.match(branch, /throw \$original;/);
 });
