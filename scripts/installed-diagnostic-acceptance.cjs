@@ -10,7 +10,7 @@ const SYNTHETIC_TITLE = 'Synthetic rollback captions';
 const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
 const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
 const OBSERVER_EXCEPTIONS = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
-const NATIVE_PHASES = ['ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
+const NATIVE_PHASES = ['uia-initialization', 'ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
 
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
@@ -242,6 +242,7 @@ function validateForegroundEvidence(value) {
 }
 
 // Native common Save dialog only: no browser download override or global keys.
+// Initialize Framework defaults from a compiled frame before dynamic PowerShell UIA calls.
 function nativeDialogScript(config, binding, directory, destination, observeOnly = false) {
   const payload = Buffer.from(JSON.stringify({ pid: config.ownedPid, start: binding.owned_start,
     directory, destination, observeOnly,
@@ -249,9 +250,15 @@ function nativeDialogScript(config, binding, directory, destination, observeOnly
   return String.raw`$ErrorActionPreference='Stop';
 $c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json;
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes;
-Add-Type @'
+Add-Type -ReferencedAssemblies @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.AutomationIdentifier].Assembly.Location) -TypeDefinition @'
 using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
 public static class OwnedSave {
+ [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+ public static void InitializeAutomation() {
+  var providers=new System.Windows.Automation.ClientSideProviderDescription[0];
+  System.Windows.Automation.ClientSettings.RegisterClientSideProviders(providers);
+  GC.KeepAlive(providers);
+ }
  public delegate bool Callback(IntPtr h, IntPtr p);
  [DllImport("user32.dll")] static extern bool EnumWindows(Callback cb, IntPtr p);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
@@ -271,6 +278,7 @@ public static class OwnedSave {
 }
 '@;
 function Stage([string]$name) { [Console]::Out.WriteLine('PHASE:'+$name); [Console]::Out.Flush() }
+Stage 'uia-initialization'; [OwnedSave]::InitializeAutomation();
 . (Join-Path (Split-Path $c.observer) 'installed-native-dialog-guards.ps1');
 Stage 'ownership';
 function Assert-Destination {

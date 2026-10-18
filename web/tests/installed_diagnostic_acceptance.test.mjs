@@ -100,6 +100,130 @@ test('native helper startup and pre-click failures never trigger the real Save',
   }
 });
 
+function nativeBootstrap() {
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' },
+    'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  return script.slice(script.indexOf('Add-Type -AssemblyName UIAutomationClient;'),
+    script.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-dialog-guards.ps1');"));
+}
+
+test('standard proxies initialize exactly once through a managed frame before readiness or discovery', () => {
+  for (const observeOnly of [false, true]) {
+    const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' },
+      'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md', observeOnly);
+    assert.match(script, /MethodImpl\(System.Runtime.CompilerServices.MethodImplOptions.NoInlining\)/);
+    assert.match(script, /var providers=new System.Windows.Automation.ClientSideProviderDescription\[0\];/);
+    assert.match(script, /RegisterClientSideProviders\(providers\);\n  GC.KeepAlive\(providers\);/);
+    assert.equal(script.match(/RegisterClientSideProviders\(/g).length, 1);
+    assert.equal(script.match(/\[OwnedSave\]::InitializeAutomation\(\)/g).length, 1);
+    const initialized = script.indexOf('[OwnedSave]::InitializeAutomation()');
+    assert(initialized < script.indexOf("Stage 'ownership'"));
+    assert(initialized < script.indexOf("WriteLine('READY')"));
+    assert(initialized < script.indexOf('[Windows.Automation.AutomationElement]::FromHandle'));
+    assert.match(script, /ReferencedAssemblies @\(\[Windows.Automation.AutomationElement\].Assembly.Location,\[Windows.Automation.AutomationIdentifier\].Assembly.Location\)/);
+    assert.doesNotMatch(nativeBootstrap(), /catch|RegisterClientSideProviderAssembly|LoadFrom|LoadFile|GetType\(|Invoke\(/);
+    nativeDialogCommand(script);
+  }
+});
+
+test('proxy initialization failure is retained before readiness and never clicks Save', async () => {
+  const child = fakeChild(); let actions = 0;
+  const result = withNativeHelper(child, () => { actions++; });
+  child.line('PHASE:uia-initialization'); child.end(1);
+  await assert.rejects(result, error => error.native_stage === 'uia-initialization' && error.message === 'Owned native Save helper failed');
+  assert.equal(actions, 0); assert.deepEqual(child.writes, []);
+});
+
+test('Windows actual initializer propagates registration failure without retry or readiness', { skip: process.platform !== 'win32' }, () => {
+  const bootstrap = nativeBootstrap();
+  const method = bootstrap.match(/ \[System.Runtime.CompilerServices.MethodImpl[^]*?\n \}/)[0];
+  const script = `$ErrorActionPreference='Stop'; Add-Type @'
+using System;
+namespace System.Windows.Automation {
+ public struct ClientSideProviderDescription { }
+ public static class ClientSettings {
+  public static int Calls; public static readonly Exception Failure=new InvalidOperationException("synthetic initialization failure");
+  public static void RegisterClientSideProviders(ClientSideProviderDescription[] providers) {
+   Calls++; if (providers == null || providers.Length != 0) throw new Exception("wrong registration"); throw Failure;
+  }
+ }
+}
+public static class OwnedSave { ${method} }
+'@;
+$ready=$false; $same=$false;
+try { [OwnedSave]::InitializeAutomation(); $ready=$true } catch {
+ $errorObject=$_.Exception;
+ for ($i=0; $i -lt 4 -and $errorObject; $i++) {
+  if ([Object]::ReferenceEquals($errorObject,[Windows.Automation.ClientSettings]::Failure)) { $same=$true; break }
+  $errorObject=$errorObject.InnerException;
+ }
+}
+@{calls=[Windows.Automation.ClientSettings]::Calls;ready=$ready;original=$same} | ConvertTo-Json -Compress`;
+  const output = execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert.deepEqual(JSON.parse(output.trim()), { calls: 1, ready: false, original: true });
+});
+
+test('Windows actual bootstrap exposes typed Value and Invoke patterns on owned synthetic WinForms controls', { skip: process.platform !== 'win32' }, () => {
+  const script = `$ErrorActionPreference='Stop';\n${nativeBootstrap()}
+Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing;
+Add-Type -ReferencedAssemblies @([Windows.Forms.Form].Assembly.Location,[Drawing.Point].Assembly.Location) -TypeDefinition @'
+using System; using System.Threading; using System.Windows.Forms;
+public static class SyntheticProxyControls {
+ static Thread worker; static Form form; static readonly ManualResetEvent ready=new ManualResetEvent(false);
+ static Exception failure; public static IntPtr Edit, Button;
+ public static void Start() {
+  worker=new Thread(() => {
+   try {
+    using (form=new Form()) using (var edit=new TextBox()) using (var button=new Button()) {
+     edit.Name="SyntheticEdit"; edit.Text="synthetic proxy fixture"; button.Name="SyntheticButton";
+     form.Controls.Add(edit); form.Controls.Add(button);
+     var root=form.Handle; Edit=edit.Handle; Button=button.Handle;
+     ready.Set(); Application.Run();
+    }
+   } catch (Exception error) { failure=error; ready.Set(); }
+  });
+  worker.IsBackground=true; worker.SetApartmentState(ApartmentState.STA); worker.Start();
+  if (!ready.WaitOne(5000)) throw new TimeoutException("synthetic controls not ready");
+  if (failure != null) throw failure;
+ }
+ public static void Stop() {
+  if (worker == null || !worker.IsAlive) return;
+  form.BeginInvoke(new Action(() => Application.ExitThread()));
+  if (!worker.Join(5000)) throw new TimeoutException("synthetic controls did not close");
+ }
+}
+'@;
+$failure=$null;
+try {
+ [SyntheticProxyControls]::Start();
+ $edit=[Windows.Automation.AutomationElement]::FromHandle([SyntheticProxyControls]::Edit);
+ $button=[Windows.Automation.AutomationElement]::FromHandle([SyntheticProxyControls]::Button);
+ $ec=$edit.get_Current(); $bc=$button.get_Current();
+ $value=$edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern);
+ $invoke=$button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern);
+ $client=[Windows.Automation.AutomationElement].Assembly.GetName();
+ $providers=@([AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -ceq 'UIAutomationClientsideProviders' });
+ $assemblyMatches=$providers.Count -eq 1;
+ if ($assemblyMatches) {
+  $actual=$providers[0].GetName();
+  $assemblyMatches=$actual.Version -eq $client.Version -and $actual.CultureInfo.Name -ceq $client.CultureInfo.Name -and
+   [Convert]::ToBase64String($actual.GetPublicKeyToken()) -ceq [Convert]::ToBase64String($client.GetPublicKeyToken());
+ }
+ @{edit_type=$ec.ControlType.Id;button_type=$bc.ControlType.Id;value_pattern=($value -is [Windows.Automation.ValuePattern]);
+   invoke_pattern=($invoke -is [Windows.Automation.InvokePattern]);writable=(!$value.Current.IsReadOnly);
+   synthetic_value=($value.Current.Value -ceq 'synthetic proxy fixture');assembly_matches=$assemblyMatches;
+   owned=($ec.ProcessId -eq $PID -and $bc.ProcessId -eq $PID);
+   exact_handles=([IntPtr]$ec.NativeWindowHandle -eq [SyntheticProxyControls]::Edit -and [IntPtr]$bc.NativeWindowHandle -eq [SyntheticProxyControls]::Button)} | ConvertTo-Json -Compress;
+} catch { $failure=$_; throw } finally {
+ try { [SyntheticProxyControls]::Stop() } catch { if (!$failure) { throw } }
+}`;
+  const output = execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  const lines = output.trim().split(/\r?\n/);
+  assert.equal(lines.shift(), 'PHASE:uia-initialization'); assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), { edit_type: 50004, button_type: 50000, value_pattern: true,
+    invoke_pattern: true, writable: true, synthetic_value: true, assembly_matches: true, owned: true, exact_handles: true });
+});
+
 test('native helper is reaped on click failure and preserves that failure if reap also fails', async () => {
   const primary = new Error('actual Save click failed');
   for (const brokenCleanup of [false, true]) {
