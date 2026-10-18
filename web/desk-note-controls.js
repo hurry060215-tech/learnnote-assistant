@@ -132,7 +132,7 @@ export function installNoteEditor({ state, $, saveNote, renderNote, renderMarkdo
     if (on) preview.innerHTML = renderMarkdown(textarea.value);
   };
   $("edit").onclick = () => {
-    if (!state.selected || state.readerSnapshot) return;
+    if (!state.selected) return;
     if (!state.editing) {
       onEnterEdit();
       state.editing = true;

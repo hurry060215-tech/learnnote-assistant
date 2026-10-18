@@ -41,6 +41,115 @@ class ProgressiveSloSnapshotTests(unittest.TestCase):
                                 text=True, capture_output=True, timeout=30, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_callback_failure_retains_primary_identity_and_safe_bounded_chain(self):
+        self.run_isolated(r'''
+from fastapi import BackgroundTasks
+from app import main
+secret = 'PRIVATE_CREDENTIAL_CONTENT'
+primary = RuntimeError(secret)
+cause = PermissionError(13, secret, 'C:\\PRIVATE_DIRECTORY\\source.json')
+cause.winerror = 5
+entered, release = threading.Event(), threading.Event()
+def failing(task_id, payload):
+    private_local = payload
+    entered.set()
+    assert release.wait(5)
+    try:
+        raise cause
+    except PermissionError:
+        raise primary
+background = BackgroundTasks()
+main.schedule_processing(background, failing, task.id, secret)
+assert entered.wait(5)
+worker = main.queue_for(data)
+with worker.condition:
+    future = worker.jobs[task.id][1]
+release.set()
+try:
+    future.result(timeout=5)
+except RuntimeError as caught:
+    assert caught is primary, 'Observer replaced the actual queue exception'
+else:
+    raise AssertionError('Callback failure did not reach its original Future')
+background.tasks[0].func()  # Production response-lifetime wait still consumes it.
+value = snapshot(task.id)
+assert value['error_code'] == 'queued_task_failed'
+callback = value['callback']
+assert callback['entered'] and callback['failed'] and not callback['completed']
+assert not callback['diagnostic_failed']
+assert [item['category'] for item in callback['exceptions']] == ['RuntimeError', 'PermissionError']
+assert callback['exceptions'][1]['errno'] == 13 and callback['exceptions'][1]['winerror'] == 5
+encoded = json.dumps(callback)
+for forbidden in (secret, 'PRIVATE_DIRECTORY', 'source.json', 'private_local', 'payload', 'message', 'args', 'locals'):
+    assert forbidden not in encoded, encoded
+for item in callback['exceptions']:
+    assert set(item) == {'category', 'errno', 'winerror', 'frames'}
+    assert len(item['frames']) <= 12
+    for frame in item['frames']:
+        assert set(frame) == {'file', 'function', 'line'}
+        assert '/' not in frame['file'] and '\\' not in frame['file']
+worker.stop()
+''')
+
+    def test_callback_success_and_diagnostic_failure_preserve_execution(self):
+        self.run_isolated(r'''
+from fastapi import BackgroundTasks
+from app import main
+worker = main.queue_for(data)
+for broken in (False, True):
+    entered, release = threading.Event(), threading.Event()
+    primary = ValueError('PRIVATE_MESSAGE')
+    def callback(task_id):
+        entered.set()
+        assert release.wait(5)
+        if broken:
+            raise primary
+    background = BackgroundTasks()
+    context = patch.object(fixture, 'callback_exception_chain', side_effect=RuntimeError('PRIVATE_FORMATTER'))
+    with context:
+        main.schedule_processing(background, callback, task.id)
+        assert entered.wait(5)
+        with worker.condition:
+            future = worker.jobs[task.id][1]
+        release.set()
+        try:
+            assert future.result(timeout=5) is None
+            assert not broken
+        except ValueError as caught:
+            assert broken and caught is primary
+        observed = snapshot(task.id)['callback']
+        assert observed == dict(schema_version=1, entered=True, completed=not broken,
+            failed=broken, diagnostic_failed=broken, exceptions=[])
+worker.stop()
+''')
+
+    def test_callback_evidence_bounds_frames_chains_cycles_and_redacts_paths(self):
+        self.run_isolated(r'''
+def deep(depth):
+    if depth:
+        return deep(depth - 1)
+    exec(compile("raise ValueError('PRIVATE_MESSAGE')", 'C:\\PRIVATE_DIRECTORY\\fixture_test.py', 'exec'))
+try:
+    deep(30)
+except ValueError as error:
+    evidence = fixture.callback_exception_chain(error)
+assert len(evidence) == 1 and len(evidence[0]['frames']) == 12
+assert evidence[0]['frames'][-1]['file'] == 'fixture_test.py'
+assert 'PRIVATE_' not in json.dumps(evidence)
+last = None
+for _ in range(8):
+    current = RuntimeError('PRIVATE_MESSAGE')
+    current.__cause__ = last
+    last = current
+assert len(fixture.callback_exception_chain(last)) == 4
+last.__cause__ = last
+assert len(fixture.callback_exception_chain(last)) == 1
+suppressed = ValueError('PRIVATE_MESSAGE')
+suppressed.__context__ = last
+suppressed.__suppress_context__ = True
+assert len(fixture.callback_exception_chain(suppressed)) == 1
+''')
+
     def test_outline_read_waits_for_actual_writer_after_prior_task_reads(self):
         self.run_isolated(r'''
 segments = [TranscriptSegment(start=start, end=start + 30,

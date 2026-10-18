@@ -13,7 +13,7 @@ from functools import partial
 from .pipeline_timing import emit_timing, take_attempt_timing
 from .draft_sections import draft_sections_document, temporal_outline_markdown
 from .observability import read_task_events, record_task_event
-from .storage import atomic_write_text, get_task, read_json, task_dir, write_json
+from .storage import atomic_write_text, read_json, task_dir, write_json
 # Use the same RLock as read_json/write_json for complete metadata transactions.
 from .storage import _lock as _task_data_lock
 from .text_cleanup import canonicalize_unicode_text, redact_sensitive_url_values
@@ -82,11 +82,6 @@ def start_pipeline_attempt(task_id: str, *, entry_route: str = "", options=None)
             "stages": {},
             "draft": {},
         }
-        try:
-            from .task_control_state import task_generation
-            attempt["control_generation"] = task_generation(get_task(task_id))
-        except (OSError, ValueError):
-            pass  # Unstamped legacy/test artifacts remain ineligible for fast reading.
         attempts = payload.get("attempts") if isinstance(payload.get("attempts"), list) else []
         retry = bool(attempts)
         attempts.append(attempt)
@@ -233,12 +228,6 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
 
     if expected_attempt_id is UNSET_ATTEMPT:
         expected_attempt_id = current_pipeline_attempt(task_id)
-    from .generated_draft_reader import draft_source_revision
-    source_revision = ""
-    try:
-        source_revision = draft_source_revision(get_task(task_id), transcript)
-    except (OSError, ValueError):
-        pass  # A missing legacy manifest cannot acquire a reader witness.
     transcript_text = canonicalize_unicode_text(transcript.full_text or "").strip()
     if not transcript_text:
         return None
@@ -298,19 +287,6 @@ def write_progressive_draft(task_id: str, title: str, transcript: TranscriptResu
                 "sections_artifact": "draft_sections.json",
                 "summary_generated": False,
             }
-            try:
-                from .task_control_state import task_generation
-                from .text_cleanup import decode_text_bytes
-                import hashlib
-                task = get_task(task_id)
-                attempt = next(item for item in payload["attempts"] if item.get("attempt_id") == expected_attempt_id)
-                if (attempt.get("control_generation") == task_generation(task)
-                        and source_revision == draft_source_revision(task, transcript)):
-                    body = decode_text_bytes("\n".join(lines).encode("utf-8"), source="draft.md").text
-                    draft.update(body_revision=hashlib.sha256(body.encode()).hexdigest(),
-                                 source_revision=source_revision)
-            except (OSError, ValueError, StopIteration):
-                pass  # Optional reader witness must not change ordinary publication.
             payload["draft"] = draft
             _sync_current_attempt(payload)
             write_json(task_id, "pipeline_metrics.json", payload)

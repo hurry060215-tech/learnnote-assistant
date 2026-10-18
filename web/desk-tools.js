@@ -89,7 +89,6 @@ export function installTools(ctx) {
       .join("");
   }
   function current() {
-    if (state.readerSnapshot) throw new Error("正在同步来源与编辑，请稍候。");
     if (!state.selected) throw new Error("请先打开一份笔记。");
     return { ...state.selected };
   }

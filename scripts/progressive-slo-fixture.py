@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import sys
 import threading
@@ -20,6 +21,32 @@ from urllib.parse import urlsplit
 from unittest.mock import patch
 
 MARKER = {"schema_version": 1, "fixture": "progressive-slo-complete-captions"}
+
+
+def callback_exception_chain(error):
+    """Synthetic fixture evidence only: no messages, source lines, args or locals."""
+    result, seen = [], set()
+    categories = {"AssertionError", "AttributeError", "FileNotFoundError", "OSError", "PermissionError",
+                  "RuntimeError", "TimeoutError", "TypeError", "ValueError", "KeyError", "IndexError"}
+    while error is not None and id(error) not in seen and len(result) < 4:
+        seen.add(id(error))
+        name = type(error).__name__
+        frames = []
+        for frame, line in traceback.walk_tb(error.__traceback__):
+            basename = frame.f_code.co_filename.replace("\\", "/").rsplit("/", 1)[-1]
+            function = frame.f_code.co_name
+            frames.append({"file": basename if re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", basename) else "<other>",
+                           "function": function if re.fullmatch(r"[A-Za-z0-9_<>]{1,120}", function) else "<other>",
+                           "line": line})
+            if len(frames) > 12:
+                frames.pop(0)
+        result.append({"category": name if type(error).__module__ == "builtins" and name in categories else "other",
+                       "errno": error.errno if isinstance(error, OSError) and type(error.errno) is int else None,
+                       "winerror": getattr(error, "winerror", None) if isinstance(error, OSError)
+                           and type(getattr(error, "winerror", None)) is int else None,
+                       "frames": frames})
+        error = error.__cause__ or (None if error.__suppress_context__ else error.__context__)
+    return result
 
 
 def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics=False):
@@ -82,8 +109,35 @@ def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics
     original_recovery = main.recover_processing
 
     def schedule(background_tasks, function, task_id, *args, **kwargs):
-        register(task_id, admission=True)
-        return original_schedule(background_tasks, function, task_id, *args, **kwargs)
+        record = register(task_id, admission=True)
+        callback = {"schema_version": 1, "entered": False, "completed": False,
+                    "failed": False, "diagnostic_failed": False, "exceptions": []}
+        with lock:
+            record["callback"] = callback
+
+        def observed(*values, **options):
+            with lock:
+                callback["entered"] = True
+            try:
+                result = function(*values, **options)
+            except Exception as error:
+                with lock:
+                    callback["failed"] = True
+                # The queue retains the original exception; do not replace it if
+                # optional diagnostic formatting itself cannot complete.
+                try:
+                    evidence = callback_exception_chain(error)
+                    with lock:
+                        callback["exceptions"] = evidence
+                except Exception:
+                    with lock:
+                        callback["diagnostic_failed"] = True
+                raise
+            with lock:
+                callback["completed"] = True
+            return result
+
+        return original_schedule(background_tasks, observed, task_id, *args, **kwargs)
 
     def timing(task_id, stage, *args, **kwargs):
         result = original_timing(task_id, stage, *args, **kwargs)
@@ -201,7 +255,8 @@ def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics
             "message": model_source_text(task.message)[:500], "state_events": state_events,
             "generation": task_generation(task), "hashes": hashes, "source_coverage": source_coverage,
             "continuation_calls": record["continuation_calls"], "waiting": record["waiting"],
-            "admissions": record["admissions"], "queue": read_queue_job(data, task_id), "stages": events}
+            "admissions": record["admissions"], "callback": record.get("callback"),
+            "queue": read_queue_job(data, task_id), "stages": events}
 
     @main.app.get("/_fixture/state")
     def state():

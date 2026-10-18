@@ -126,19 +126,7 @@ def _edition_state(kind: str, source_id: str):
     return {"text": original, "revision": hashlib.sha256(original.encode()).hexdigest(), "edited": False}
 
 @notes_router.get("/editions/{kind}/{source_id}")
-def get_edition(kind: str, source_id: str, reader_snapshot: bool = False, expected_generation: str = ""):
-    if reader_snapshot:
-        from ..generated_draft_reader import read_generated_draft, DraftSnapshotUnavailable
-        try:
-            if kind != "task":
-                raise DraftSnapshotUnavailable("task_ineligible")
-            return read_generated_draft(source_id, expected_generation, data_dir=DATA_DIR,
-                                        edition_path=_edition_path(kind, source_id))
-        except FileNotFoundError as exc:
-            raise HTTPException(404, "Source unavailable") from exc
-        except (OSError, ValueError, TypeError, KeyError) as exc:
-            reason = str(exc) if isinstance(exc, DraftSnapshotUnavailable) else "artifact_unavailable"
-            raise HTTPException(409, {"code": "reader_snapshot_unavailable", "reason": reason}) from exc
+def get_edition(kind: str, source_id: str):
     try:
         with _edition_lock:
             return _edition_state(kind, source_id)
