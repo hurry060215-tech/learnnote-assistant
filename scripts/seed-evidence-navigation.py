@@ -42,6 +42,11 @@ with wave.open(str(media), "wb") as output:
     output.writeframes(b"\0\0" * 16000 * 31)
 note, transcript = root / "note.md", root / "transcript.json"
 note_text = "# Synthetic source navigation 🧪\n\nFirst synthetic window.\n\nSecond synthetic window.\n\nFirst synthetic window.\n\nSecond synthetic window may imply an unverified conclusion [00:10 – 00:14].\n"
+if "--claim-follow" in sys.argv:
+    # Real mapped text in a tall paragraph, plus trailing space to avoid a
+    # document-bottom clamp masquerading as correct follow alignment.
+    note_text += "\n## Follow visibility fixture\n\nSynthetic caption 0. " + "Readable continuation " * 240 + ".\n"
+    note_text += "\n\n" + "\n\n".join(f"> Trailing reading space {index}." for index in range(24)) + "\n"
 if "--source-review" in sys.argv:
     note_text = "# 合成来源核对笔记\n\n## 正文\n\n" + "\n\n".join(
         f"**【待核对：仅定位到来源】** 第{i + 1}条合成表述，需核对出处。[00:12]"
@@ -106,5 +111,6 @@ for provider, page_url, selected_range in ((
         transcript_path=str(fallback_root / "transcript.json"), created_at=now_iso(), updated_at=now_iso()))
     fallback_tasks.append({"id": fallback_id, "provider": provider, "page_url": page_url, "claim_id": mapped["claims"][1]["claim_id"]})
 print(json.dumps({"task_id": task_id, "evidence_id": evidence.evidence_id, "card_id": card.card_id,
+    "oversized_claim_id": next((claim["claim_id"] for claim in claim_map["claims"] if claim["text"] == "Synthetic caption 0."), None),
     "claim_ids": [claim["claim_id"] for claim in claim_map["claims"]], "subtitle_task_id": no_media_id,
     "subtitle_claim_ids": [claim["claim_id"] for claim in no_media_map["claims"]], "fallback_tasks": fallback_tasks}))

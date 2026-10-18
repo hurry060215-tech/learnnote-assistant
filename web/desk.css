@@ -284,6 +284,9 @@ small,
 }
 .encoding-provenance-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 9px 12px; color: var(--muted); font-size: .88rem; }
 .document .source-evidence-target, #sourceContent .source-evidence-target, .document .note-claim-active { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--panel); }
+.document .note-claim-active {
+  scroll-margin-top: max(140px, calc(var(--source-sticky-top, 128px) + 12px));
+}
 .document h1 {
   font-size: clamp(24px, 2.1vw, 30px);
   font-weight: 700;

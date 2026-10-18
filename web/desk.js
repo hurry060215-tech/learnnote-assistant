@@ -17,7 +17,7 @@ import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=t
 import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-focus-20261016";
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
-import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
+import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js?v=claim-follow-visible-20261018";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
 import { installProductWorkspace } from "/web/desk-product.js?v=reader-standard-20261018";

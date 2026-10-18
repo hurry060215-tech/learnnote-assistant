@@ -98,7 +98,7 @@ class Element {
   querySelectorAll() { return this.children.flatMap(child => [child, ...child.querySelectorAll()]).filter(child => child.dataset.noteStart !== undefined && child.dataset.noteEnd !== undefined); }
   getBoundingClientRect() { return { top: 1000, bottom: 1100 }; }
   getClientRects() { return [1]; }
-  scrollIntoView() { this.scrolls++; }
+  scrollIntoView(options) { this.scrolls++; this.scrollOptions = options; }
 }
 function harness(readMap = async () => map) {
   const note = new Element(), container = new Element(), calls = [];
@@ -108,6 +108,8 @@ function harness(readMap = async () => map) {
   }
   const doc = { createElement: tag => new Element(tag), createTextNode: value => { const node = new Element(); node.textContent = value; return node; },
     activeElement: null, documentElement: { clientHeight: 500 }, getSelection: () => doc.selection };
+  doc.defaultView = { getComputedStyle: () => ({ scrollMarginTop: `${doc.margin ?? 140}px`,
+    getPropertyValue: name => name === "--source-sticky-top" ? `${doc.stickyTop ?? 125}px` : "" }) };
   let current = snapshot;
   const timeline = createClaimTimeline({ note, container, readMap, current: value => value === current,
     timestamp: value => `${value}s`, onOpen: (target, taskId) => calls.push([target.evidence_id, taskId]), document: doc });
@@ -141,6 +143,56 @@ test("playback highlights exact occurrences; scroll is opt-in and preserves keyb
   h.timeline.sync(11); assert.equal(firstBlock.scrolls, 1);
   h.timeline.sync(6); h.doc.selection = null; h.timeline.sync(11); assert.equal(firstBlock.scrolls, 2);
   h.timeline.sync(14); assert(!firstBlock.classes.has("note-claim-active")); assert(!secondBlock.classes.has("note-claim-active"));
+});
+
+// Real exported controller, synthetic geometry only; hosted Edge proves actual scrolling.
+for (const row of [
+  { name: "fully covered by sticky chrome", top: 20, bottom: 60, block: "center" },
+  { name: "partially covered by sticky chrome", top: 100, bottom: 150, block: "center" },
+  { name: "already unobscured inside comfort gutter", top: 126, bottom: 170 },
+  { name: "fully visible", top: 180, bottom: 230 },
+  { name: "above viewport", top: -60, bottom: -10, block: "center" },
+  { name: "below viewport", top: 480, bottom: 530, block: "center" },
+  { name: "short viewport with large chrome", top: 50, bottom: 90, height: 260, stickyTop: 180, margin: 192, block: "center" },
+  { name: "exact remaining-height fit", top: 50, bottom: 118, height: 260, stickyTop: 180, margin: 192, block: "center" },
+  { name: "oversized block", top: 50, bottom: 400, height: 260, stickyTop: 180, margin: 192, block: "start" },
+  { name: "computed heading margin governs fit", top: 50, bottom: 180, height: 260, stickyTop: 80, margin: 140, block: "start" },
+  { name: "no usable viewport", top: 20, bottom: 60, height: 192, stickyTop: 180, margin: 192 },
+  { name: "chrome exceeds viewport", top: 20, bottom: 60, height: 180, stickyTop: 180, margin: 192 },
+]) test(`note follow visible region: ${row.name}`, async () => {
+  const h = harness(); await h.timeline.load(snapshot);
+  const target = h.note.children[0];
+  target.getBoundingClientRect = () => ({ top: row.top, bottom: row.bottom });
+  h.doc.documentElement.clientHeight = row.height ?? 500;
+  h.doc.stickyTop = row.stickyTop ?? 125; h.doc.margin = row.margin ?? 140;
+  h.timeline.sync(6);
+  const follow = h.container.children[2].children[0]; follow.checked = true; follow.onchange();
+  h.timeline.sync(1);
+  assert.equal(target.scrolls, row.block ? 1 : 0);
+  if (row.block) assert.deepEqual(target.scrollOptions, { block: row.block, behavior: "instant" });
+  // Repeated time updates with the same active key must not fight manual scrolling.
+  target.getBoundingClientRect = () => ({ top: -500, bottom: -450 });
+  h.timeline.sync(2); assert.equal(target.scrolls, row.block ? 1 : 0);
+});
+
+for (const [name, protect] of [
+  ["follow disabled", h => { const follow = h.container.children[2].children[0]; follow.checked = false; follow.onchange(); }],
+  ["note keyboard focus", h => { h.doc.activeElement = h.note.children[0].children[0]; }],
+  ["selection anchor in note", h => { h.doc.selection = { isCollapsed: false, anchorNode: h.note.children[0] }; }],
+  ["selection focus in note", h => { h.doc.selection = { isCollapsed: false, focusNode: h.note.children[0] }; }],
+  ["hidden note", h => { h.note.hidden = true; }],
+  ["no rendered target", h => { h.note.children[0].getClientRects = () => []; }],
+  ["stale navigation", h => { h.invalidate(); }],
+  ["explicit scroll false", () => ({ scroll: false })],
+  ["focused source button", h => { h.timeline.sync(11, { scroll: false }); h.doc.activeElement = h.container.children[3].children[0].children[1]; }],
+]) test(`covered claim preserves ${name}`, async () => {
+  const h = harness(); await h.timeline.load(snapshot);
+  const target = h.note.children[0]; target.getBoundingClientRect = () => ({ top: 20, bottom: 60 });
+  h.timeline.sync(6);
+  const follow = h.container.children[2].children[0]; follow.checked = true; follow.onchange();
+  const options = protect(h), focused = h.doc.activeElement;
+  h.timeline.sync(1, options);
+  assert.equal(target.scrolls, 0); assert.equal(h.doc.activeElement, focused);
 });
 
 test("claim clicks keep all disjoint sources and reject stale callbacks after edit or reset", async () => {

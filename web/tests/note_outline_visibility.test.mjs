@@ -18,7 +18,7 @@ test("all outline-supported heading levels share the existing minimum and live s
     assert.equal(rules[0][1].trim(), ".document h2,\n.document h3,\n.document h4");
     assert.equal(rules[0][2].trim(), "scroll-margin-top: max(140px, calc(var(--source-sticky-top, 128px) + 12px));");
   }
-  assert.match(readFileSync(new URL("../index.html", import.meta.url), "utf8"), /desk\.css\?v=outline-clearance-20261018/);
+  assert.match(readFileSync(new URL("../index.html", import.meta.url), "utf8"), /desk\.css\?v=claim-follow-visible-20261018/);
 });
 
 const visible = () => ({

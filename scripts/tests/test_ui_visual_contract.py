@@ -24,7 +24,7 @@ class UiVisualContractTests(unittest.TestCase):
         workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         for event in ("pull_request", "push"):
             patterns = workflow["on"][event]["paths"]
-            for path in ("scripts/evidence-source-acceptance.cjs", "scripts/seed-evidence-navigation.py",
+            for path in ("scripts/evidence-source-acceptance.cjs", "scripts/claim-follow-visibility-acceptance.cjs", "scripts/seed-evidence-navigation.py",
                          "scripts/transcript-keyboard-acceptance.cjs", "scripts/timeline-playback-acceptance.cjs",
                          "scripts/timeline-native-zoom-acceptance.cjs", "scripts/timeline-native-zoom.ps1"):
                 self.assertTrue(any(fnmatchcase(path, pattern) for pattern in patterns), (event, path))
@@ -197,8 +197,8 @@ class UiVisualContractTests(unittest.TestCase):
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
         key = "update-coordination-20261017"
-        self.assertIn('src="/web/desk.js?v=reader-standard-20261018"', html)
-        self.assertIn('href="/web/desk.css?v=outline-clearance-20261018"', html)
+        self.assertIn('src="/web/desk.js?v=claim-follow-visible-20261018"', html)
+        self.assertIn('href="/web/desk.css?v=claim-follow-visible-20261018"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
         for module in ("data-migration.js", "data-migration-status.js"):
@@ -207,7 +207,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=reader-standard-20261018", html)
+        self.assertIn("desk.js?v=claim-follow-visible-20261018", html)
         self.assertIn('from "/web/reader-progress.js?v=native-anchor-20261017"', entry)
         self.assertNotIn('from "/web/reader-progress.js"', entry)
         self.assertIn('from "/web/reader-sections.js?v=source-preview-20261017"', entry)

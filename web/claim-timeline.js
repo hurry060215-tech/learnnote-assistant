@@ -121,7 +121,12 @@ export function createClaimTimeline({ note, container, readMap, current, onOpen,
     if (scroll && follow && target && !note.hidden && !note.contains(doc.activeElement) &&
         !(selection && !selection.isCollapsed && (note.contains(selection.anchorNode) || note.contains(selection.focusNode)))) {
       const bounds = target.getBoundingClientRect(), height = doc.documentElement.clientHeight;
-      if (target.getClientRects().length && (bounds.top < 0 || bounds.bottom > height)) target.scrollIntoView({ block: "center", behavior: "instant" });
+      const style = doc.defaultView?.getComputedStyle(target);
+      const stickyTop = Math.max(0, parseFloat(style?.getPropertyValue("--source-sticky-top")) || 0);
+      const margin = Math.max(stickyTop, parseFloat(style?.scrollMarginTop) || 0);
+      if (target.getClientRects().length && height > margin && (bounds.top < stickyTop || bounds.bottom > height)) {
+        target.scrollIntoView({ block: bounds.bottom - bounds.top <= height - margin ? "center" : "start", behavior: "instant" });
+      }
     }
   }
   async function load(snapshot) {

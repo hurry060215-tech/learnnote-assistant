@@ -3,6 +3,7 @@ const assert = require("node:assert/strict"), fs = require("node:fs"), path = re
 const { execFileSync } = require("node:child_process");
 const { runNativeZoomMatrix, waitForNativePreset } = require("./timeline-native-zoom-matrix.cjs");
 const { captureNativeViews } = require("./timeline-native-capture.cjs");
+const { assertClaimFollowVisibility } = require("./claim-follow-visibility-acceptance.cjs");
 
 function nativeFailureEvidence(action, error) {
   const allowed = new Set(["entered", "process-lookup", "forms-load", "native-type-compile", "owned-window-enumeration", "foreground", "drawing-load", "display-geometry", "owned-dwm-bounds", "maximize-owned-window", "read-maximized-bounds", "containment-check", "prepare-complete", "payload-built", "json-serialized", "output-emitted"]);
@@ -18,13 +19,13 @@ function nativeFailureEvidence(action, error) {
   return { action: ["reset", "90", "125", "150", "200", "prepare", "capture", "dismiss-translation"].includes(action) ? action : "unknown", code: ["ETIMEDOUT", "ENOENT", "EACCES", "EPERM"].includes(error.code) ? error.code : "native-call-failed", phases, stderr_truncated: stderr.length > 8192 };
 }
 
-async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
+async function assertNativeTimelineZoom({ base, taskId, claimId, oversizedClaimId, out }) {
   assert.equal(process.platform, "win32", "Native Edge zoom acceptance requires the hosted Windows runner");
   const { chromium } = require("playwright");
   const origin = new URL(base).origin;
   const server = await chromium.launchServer({ channel: "msedge", headless: false, args: ["--window-size=1440,1000"] });
   let ownedPid, browser, context, page, preparation, translationOffer, before, after, zoomCommand, report, failure;
-  const unexpected = [], errors = [], captures = [], zoomCases = [], nativeFailures = [];
+  const unexpected = [], errors = [], captures = [], zoomCases = [], nativeFailures = [], claimFollowVisibility = [];
   const nativeKey = (zoom, capturePath) => {
     // Preparation includes managed type compilation before any baseline metrics.
     // Actual zoom, capture, dismissal and restoration retain their action budget.
@@ -83,14 +84,18 @@ async function assertNativeTimelineZoom({ base, taskId, claimId, out }) {
     assert.equal(await page.locator("#player").evaluate(node => node.paused), true);
     assert.equal(await page.evaluate(() => document.activeElement?.dataset.cueIndex), "0");
     await captureNativeViews(page, { out, zoomed: after, nativeCapture: filename => nativeKey("capture", filename), reports: captures });
+    await assertClaimFollowVisibility(page, { claimId, oversizedClaimId, out, name: "follow-native-200",
+      records: claimFollowVisibility, capture: filename => nativeKey("capture", filename) });
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
     report = {passed:true,browser:browser.version(),method:"Owned Edge window Ctrl+0 then five Ctrl+Add keys",fresh_profile:true,extensions_loaded:false,viewport_emulation:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,keyboard_marker_seek:true,keyboard_virtual_cues:true,captures,visual_review_required:true,unexpected_requests:unexpected,page_errors:errors};
+    report.claim_follow_visibility = claimFollowVisibility;
     writeReport();
     return report;
   } catch (error) {
     failure = error;
     await page?.screenshot({path:path.join(out,"native-zoom-failure.png")}).catch(()=>{});
     report = {passed:false,preparation,translation_offer:translationOffer,before,after,additional_native_zoom_cases:zoomCases,zoom_command:zoomCommand,captures,native_failures:nativeFailures,error:String(error),unexpected_requests:unexpected,page_errors:errors};
+    report.claim_follow_visibility = claimFollowVisibility;
     writeFailureReport();
     throw error;
   } finally {

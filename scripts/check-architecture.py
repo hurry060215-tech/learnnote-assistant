@@ -230,7 +230,8 @@ def module_size_violations() -> list[str]:
     # +5 migration-only lines for wrapped paths and 44px native-dialog controls.
     # +6 scoped shared diagnostic-preview wrapping/scroll/touch rules; no new tokens.
     # +1 keeps h4 with the existing readable heading-offset selector list.
-    runtime_budget = 2310 + 17 + 64 + 5 + 6 + 1
+    # +3 scoped active-claim scroll margin lines reuse measured sticky clearance.
+    runtime_budget = 2310 + 17 + 64 + 5 + 6 + 1 + 3
     if runtime_lines > runtime_budget:
         violations.append(f"Runtime web CSS has {runtime_lines} lines; budget is {runtime_budget}")
     if legacy_lines > 23000:

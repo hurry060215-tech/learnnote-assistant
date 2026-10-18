@@ -223,6 +223,11 @@ color system. Playback preserves a focused virtual subtitle button and its scrol
 position; automatic following resumes after focus leaves only if Follow remains
 enabled. Current subtitle buttons expose `aria-current="time"` as well as the
 existing visible selection. Explicit Home/End/arrow navigation remains bounded.
+Opt-in note following clears the measured toolbar and reader strip without
+moving already unobscured claims. Its scoped scroll margin retains the 140px
+heading minimum and measured sticky height plus 12px. Fitting blocks center in
+that remaining space; oversized blocks show their start. No automatic scrolling
+occurs when the chrome leaves no usable space or note focus/selection is active.
 Transcript previews explicitly identify source sampling, possible gaps and
 truncation, never semantic keypoints. Failed summary and transcript-draft states
 surface the existing source panel beside retry; timestamp controls name their

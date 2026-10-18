@@ -4,10 +4,11 @@ const { execFileSync } = require("node:child_process");
 const { assertTranscriptKeyboardAcceptance } = require("./transcript-keyboard-acceptance.cjs");
 const { assertNativeTimelineZoom } = require("./timeline-native-zoom-acceptance.cjs");
 const { openVisibleTranscript, playbackTracksReady } = require("./timeline-playback-acceptance.cjs");
+const { assertClaimFollowVisibility } = require("./claim-follow-visibility-acceptance.cjs");
 async function main() {
   const { chromium } = require("playwright"), base = process.argv[2] || "http://127.0.0.1:8765";
   const out = path.resolve(process.argv[3] || "build/evidence-source-ui"); fs.mkdirSync(out, { recursive: true });
-  const fixture = JSON.parse(execFileSync("python", ["scripts/seed-evidence-navigation.py", "--source-page-fallbacks"], { encoding: "utf8" }));
+  const fixture = JSON.parse(execFileSync("python", ["scripts/seed-evidence-navigation.py", "--source-page-fallbacks", "--claim-follow"], { encoding: "utf8" }));
   const browser = await chromium.launch({ channel: "msedge", headless: true }), page = await browser.newPage();
   const interceptedProviderRequests = [], unexpectedRequests = [], origin = new URL(base).origin;
   await page.context().route("**/*", async route => {
@@ -20,6 +21,7 @@ async function main() {
   const errors = []; page.on("pageerror", error => errors.push(error.message)); page.setDefaultTimeout(15000);
   const api = async (route, options) => { const response = await page.request.fetch(new URL(route, base).href, options); assert(response.ok(), `${route}: ${response.status()} ${await response.text()}`); return response.json(); };
   let course, failure;
+  const claimFollowVisibility = [];
   const marker = id => page.locator(`#document .note-claim-marker[data-claim-id="${id}"]`);
   const seek = async time => {
     await page.locator("#player").evaluate((player, time) => { player.currentTime = time; }, time);
@@ -64,6 +66,10 @@ async function main() {
     assert.match(await page.locator("#sourceClaims").innerText(), /候选来源/);
     await page.locator('#sourceWindow figure[data-window-id="window-2"]').waitFor();
     await page.waitForFunction(() => { const image = document.querySelector("#sourceWindow img"); return image?.complete && image.naturalWidth === 480; });
+    for (const [name, width, height] of [["follow-desktop", 1440, 900], ["follow-mobile", 390, 844], ["follow-short", 1440, 240]]) {
+      await assertClaimFollowVisibility(page, { claimId: fixture.claim_ids[1], oversizedClaimId: fixture.oversized_claim_id,
+        out, name, viewport: { width, height }, short: name === "follow-short", records: claimFollowVisibility });
+    }
     await page.locator("#closeSource").click();
     await page.locator("#readerOptions > summary").click(); await page.locator("#moreTools").click(); await page.locator('[data-action="add-to-course"]').click();
     await page.locator(`[data-add-course="${course.id}"]`).click(); await page.locator('[data-action="course-review"]').click();
@@ -108,7 +114,7 @@ async function main() {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), "No horizontal overflow at 200% CSS zoom");
     await page.screenshot({ path: path.join(out, "claim-timeline-200-percent.png"), fullPage: true });
     await page.evaluate(() => document.body.style.zoom = "");
-    const nativeZoom = await assertNativeTimelineZoom({ base, taskId: fixture.task_id, claimId: fixture.claim_ids[1], out });
+    const nativeZoom = await assertNativeTimelineZoom({ base, taskId: fixture.task_id, claimId: fixture.claim_ids[1], oversizedClaimId: fixture.oversized_claim_id, out });
     await page.locator("#edit").click();
     assert.equal(await page.locator("#document .note-claim-marker").count(), 0);
     await page.locator("#noteText").fill("# Edited synthetic note\n\nThis revision has no matching saved claim spans.");
@@ -167,6 +173,7 @@ async function main() {
     const report = { passed: true, source_sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), browser: browser.version(), playback_window_follow: true, claim_note_follow: true, real_local_playback: true, playback_writes: playbackWrites, repeated_disjoint_intervals: true, edited_note_rejected: true, stale_map_navigation_rejected: true, subtitle_only_claim: true, question_shared_anchor: true, keyboard_focus_preserved: true, layouts, css_zoom_percent: 200, card_window_id: "window-2", card_timestamp: 10, asset_width: 480, page_errors: errors, native_webview_tested: false };
     report.centered_reading = centeredReading;
     report.transcript_keyboard = transcriptKeyboard;
+    report.claim_follow_visibility = claimFollowVisibility;
     report.native_browser_zoom = nativeZoom;
     report.subtitle_only_fallbacks = fallbackResults;
     report.intercepted_provider_requests = interceptedProviderRequests;
@@ -186,7 +193,7 @@ async function main() {
         active_claims: [...document.querySelectorAll('.note-claim-marker[aria-current="true"]')].map(node => node.dataset.claimId) };
     }).catch(() => null);
     await page.screenshot({ path: path.join(out, "failure.png"), fullPage: true }).catch(() => {});
-    try { fs.writeFileSync(path.join(out, "failure.json"), JSON.stringify({ error: String(error), state, page_errors: errors }, null, 2)); }
+    try { fs.writeFileSync(path.join(out, "failure.json"), JSON.stringify({ error: String(error), state, claim_follow_visibility: claimFollowVisibility, page_errors: errors }, null, 2)); }
     catch (writeError) { console.error("Evidence-source failure report could not be written:", writeError); }
     throw error;
   } finally {
