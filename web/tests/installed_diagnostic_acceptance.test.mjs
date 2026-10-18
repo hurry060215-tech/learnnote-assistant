@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -131,9 +132,9 @@ const hostSnapshot = (elapsed, visibleHost = false) => ({ elapsed_ms: elapsed, t
   nodes: [{ parent: -1, depth: 0, type: 50032, cls: '#32770', id: '', pruned: false },
     ...(visibleHost ? [{ parent: 0, depth: 1, type: 50003, cls: 'AppControlHost', id: 'FileNameControlHost', pruned: false }] : [])] });
 const hostObservation = () => ({ status: 'complete', snapshots: [hostSnapshot(5), hostSnapshot(260, true)],
-  phase: 'complete', reason: 'complete', elapsed_ms: 260, exception_type: null });
+  phase: 'complete', reason: 'complete', elapsed_ms: 260, exception_type: null, guard_failure: null });
 const unavailableObservation = (phase = 'guard-before', exception_type = 'runtime') => ({ status: 'unavailable', snapshots: [],
-  phase, reason: 'exception', elapsed_ms: 5, exception_type });
+  phase, reason: 'exception', elapsed_ms: 5, exception_type, guard_failure: ['guard-before', 'guard-after'].includes(phase) ? { reason: 'unclassified', facts: null } : null });
 function emitHostFailure(child, details) {
   child.line('PHASE:filename-host'); child.line('SUBPHASE:' + details.subphase); child.line('HOSTFAIL:' + JSON.stringify(details));
 }
@@ -176,7 +177,7 @@ test('every allowlisted observer failure remains secondary to the original nativ
   const exceptions = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
   const observations = phases.flatMap(phase => exceptions.map(type => unavailableObservation(phase, type)));
   observations.push({ ...unavailableObservation('guard-after'), status: 'partial', snapshots: [hostSnapshot(5)],
-    reason: 'budget', elapsed_ms: 1000, exception_type: null });
+    reason: 'budget', elapsed_ms: 1000, exception_type: null, guard_failure: null });
   observations.push({ ...unavailableObservation('initialization'), reason: 'unavailable', exception_type: null });
   for (const observation of observations) {
     validateHostObservation(observation);
@@ -354,10 +355,12 @@ test('native file equality reads stable exact UTF-8 bytes and retains the actual
 
 test('native dialog script is exact owned modern Save profile, fresh contained filename and one bounded invocation', () => {
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
-  assert.match(script, /CreationDate.ToUniversalTime\(\).Ticks.ToString\(\) -cne \$c.start/);
-  assert.match(script, /\[OwnedSave\]::GetWindow\(\$dialog,4\)/);
-  assert.match(script, /\[OwnedSave\]::Pid\(\$cursor\) -ne \$c.pid/);
-  assert.match(script, /GetForegroundWindow\(\) -ne \$dialog/);
+  const guards = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
+  assert.match(script, /installed-native-dialog-guards\.ps1/);
+  assert.match(guards, /CreationDate.ToUniversalTime\(\).Ticks.ToString\(\) -cne \$c.start/);
+  assert.match(guards, /\[OwnedSave\]::GetWindow\(\$dialog,4\)/);
+  assert.match(guards, /\[OwnedSave\]::Pid\(\$cursor\) -ne \$c.pid/);
+  assert.match(guards, /GetForegroundWindow\(\) -ne \$dialog/);
   assert.match(script, /AutomationId -ceq 'FileNameControlHost'/); assert.match(script, /ClassName -ceq 'AppControlHost'/);
   assert.match(script, /ClassName -ceq 'DUIViewWndClassName'/); assert.match(script, /AutomationId -ceq '1001'/);
   assert.match(script, /\[OwnedSave\]::GetDlgItem\(\$dialog,1\)/); assert.match(script, /AutomationId -cne '1'/);
@@ -377,7 +380,7 @@ test('Windows PowerShell parser validates the actual generated native helper wit
   const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$source=[Console]::In.ReadToEnd(); $tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors); if ($errors.Count) { throw "Native helper parse failed" }; Write-Output "PARSED"'],
-    { input: script + '\n' + observer + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: script + '\n' + observer + '\n' + ['guards', 'win32'].map(name => fs.readFileSync(new URL(`../../scripts/installed-native-dialog-${name}.ps1`, import.meta.url), 'utf8')).join('\n') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.equal(output.trim(), 'PARSED');
 });
 
@@ -447,4 +450,148 @@ test('installed helper uses actual shipped disclosure, cached response bytes and
   assert.match(source, /--startup-only/); assert.match(source, /previous-startup\.png/); assert.match(source, /installed-current-cancel-focus\.png/);
   assert.match(source, /当前运行版本：\$\{expectedVersion\}/);
   assert.doesNotMatch(source, /0\.2\.1[56]/);
+});
+
+const win32Observation = () => ({ status: 'complete', phase: 'complete', reason: 'complete', elapsed_ms: 5,
+  exception_type: null, guard_failure: null, truncated: false, nodes: [
+    { parent: -1, depth: 0, cls: '#32770', id: 0, pruned: false },
+    { parent: 0, depth: 1, cls: 'ComboBox', id: 1148, pruned: false },
+  ] });
+const guardFacts = () => Object.fromEntries([
+  ...['binding_matches', 'process_exists', 'process_name_matches', 'process_start_matches', 'root_exists', 'root_visible',
+    'root_pid_matches', 'root_ownerless', 'root_class_matches', 'root_title_matches', 'dialog_exists', 'dialog_visible',
+    'dialog_pid_matches', 'dialog_class_matches', 'visible_set_matches'].map(key => [key, true]),
+  ['foreground', 'dialog'], ['owner_chain', 'root'], ['visible_count', 2],
+]);
+
+test('guard reasons and identity facts reject arbitrary text, handles, fields and unbounded counts', () => {
+  for (const reason of ['process-identity', 'root-identity', 'foreground', 'dialog-identity', 'owner-process', 'owner-root', 'popup-set', 'unclassified']) {
+    const value = unavailableObservation(); value.guard_failure = { reason, facts: guardFacts() };
+    validateHostObservation(value);
+  }
+  const mutations = [value => { value.guard_failure.reason = 'PRIVATE_ERROR'; },
+    value => { value.guard_failure.Message = 'PRIVATE_ERROR'; }, value => { value.guard_failure.facts.foreground = 'HWND:123'; },
+    value => { value.guard_failure.facts.owner_chain = 'PRIVATE_TITLE'; }, value => { value.guard_failure.facts.visible_count = 65; },
+    value => { value.guard_failure.facts.process_start_matches = 'PRIVATE_DATE'; }, value => { value.guard_failure.facts.pid = 123; }];
+  for (const mutate of mutations) {
+    const value = unavailableObservation(); value.guard_failure = { reason: 'foreground', facts: guardFacts() };
+    mutate(value); assert.throws(() => validateHostObservation(value));
+  }
+});
+
+test('Win32 structure is bounded and cannot replace the original host rejection, including invalid metadata', async () => {
+  for (const invalid of [false, true]) {
+    const child = fakeChild(); let actions = 0;
+    const result = withNativeHelper(child, () => {
+      actions++; emitHostFailure(child, hostFailureDetails(0));
+      child.line('HOSTDIAG:' + JSON.stringify(unavailableObservation()));
+      child.line('WIN32DIAG:' + JSON.stringify(invalid ? { ...win32Observation(), title: 'PRIVATE_TITLE' } : win32Observation()));
+      child.line('{"native_dialog":true,"saved":true}'); child.end(0);
+    }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed'); assert.deepEqual(error.native_host_failure, hostFailureDetails(0));
+      assert.deepEqual(error.native_host_observation, unavailableObservation());
+      if (invalid) { assert.equal(error.native_win32_unavailable, true); assert.equal(error.native_win32_observation, undefined); }
+      else assert.deepEqual(error.native_win32_observation, win32Observation());
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    }); assert.equal(actions, 1);
+  }
+  for (const mutate of [value => { value.nodes[1].parent = 1; }, value => { value.nodes[1].depth = 9; },
+    value => { value.nodes[0].pruned = true; }, value => { value.nodes[1].cls = 'C:\\PRIVATE'; },
+    value => { value.nodes[1].id = 2147483648; }, value => { value.nodes[1].id = 1.5; },
+    value => { value.nodes[1].text = 'PRIVATE'; }, value => { value.nodes = Array(65).fill(value.nodes[0]); },
+    value => { value.status = 'unavailable'; }, value => { value.reason = 'budget'; },
+    value => { value.guard_failure = { reason: 'foreground', facts: null }; }]) {
+    const value = win32Observation(); mutate(value); assert.throws(() => validateWin32Observation(value));
+  }
+});
+
+test('Win32 evidence uses independent exact proof, only owned child structure, and retains the primary error', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-dialog-win32.ps1', import.meta.url), 'utf8');
+  assert.equal(source.match(/Assert-BoundDialog \$Binding/g).length, 2);
+  assert(source.indexOf('Assert-BoundDialog $Binding') < source.indexOf('GetWindow($winHandle,5)'));
+  for (const pattern of [/winNodes.Count -lt 64/, /winSeen.Count -lt 64/, /winEntry.depth -ge 8/, /ElapsedMilliseconds -lt 500/,
+    /Pid\(\$winChild\) -ne \$Binding.config.pid/, /GetParent\(\$winChild\) -ne \$winHandle/, /winNodes.Clear\(\)/]) assert.match(source, pattern);
+  assert.doesNotMatch(source, /GetWindowText|::Title|SendMessage|SendKeys|SetValue|\.Invoke\(|EnumWindows|EnumChildWindows|GetForegroundWindow|RootElement|GetDesktopWindow/);
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  assert.match(branch, /Get-OwnedDialogWin32Observation \$bound/); assert.match(branch, /throw \$original;/);
+  assert.doesNotMatch(branch, /SetValue|\.Invoke\(/);
+  const guards = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
+  assert.match(guards, /\$c=\$Binding.config; \$root=\$Binding.root; \$rootClass=\$Binding.rootClass; \$dialog=\$Binding.dialog/);
+  assert.equal(guards.match(/Stop-OwnedGuard '/g).length, 7);
+  assert.match(guards, /learnnote_guard_reason/);
+});
+
+test('Windows actual extracted guards execute inside observer scope and independently bound Win32 proof', { skip: process.platform !== 'win32' }, () => {
+  const generated = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  const start = generated.indexOf('} catch {\n $original=$_;') + '} catch {'.length;
+  const body = generated.slice(start, generated.indexOf("Stage 'filename-edit';", start)).replace(/}\s*$/, '');
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+    path.resolve('scripts/tests/native-guard-evidence-faults.ps1'), '-HostFailureBody', Buffer.from(body).toString('base64')], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true });
+  assert(!output.includes('PRIVATE')); assert(!output.includes('C:\\'));
+  const lines = output.trim().split(/\r?\n/);
+  for (const line of lines.slice(0, -1)) {
+    if (line.startsWith('HOSTFAIL:')) validateHostFailure(JSON.parse(line.slice(9)));
+    else if (line.startsWith('HOSTDIAG:')) validateHostObservation(JSON.parse(line.slice(9)));
+    else if (line.startsWith('WIN32DIAG:')) validateWin32Observation(JSON.parse(line.slice(10)));
+    else assert.fail('Unexpected native fixture output');
+  }
+  const { results, primary } = JSON.parse(lines.at(-1)); assert.equal(results.length, 35);
+  assert.deepEqual(primary, [{ mode: 'guard', preserved: true }, { mode: 'observer-load', preserved: true }, { mode: 'format', preserved: true }]);
+  const reasons = {
+    'process-missing': 'process-identity', 'process-name': 'process-identity', 'process-start': 'process-identity',
+    'root-gone': 'root-identity', 'root-hidden': 'root-identity', 'root-pid': 'root-identity', 'root-owner': 'root-identity', 'root-class': 'root-identity', 'root-title': 'root-identity',
+    'foreground-root': 'foreground', 'foreground-none': 'foreground', 'foreground-other': 'foreground',
+    'dialog-gone': 'dialog-identity', 'dialog-hidden': 'dialog-identity', 'dialog-pid': 'dialog-identity', 'dialog-class': 'dialog-identity',
+    'owner-process': 'owner-process', 'owner-missing': 'owner-root', 'owner-cycle': 'owner-root', 'popup-extra': 'popup-set', 'popup-missing': 'popup-set',
+    'binding-config': 'process-identity', 'binding-root': 'root-identity', 'binding-dialog': 'foreground', 'binding-runtime': 'unclassified', 'uia-guard-after': 'foreground',
+  };
+  for (const { mode, uia, win32, uia_reads, child_reads, forbidden_reads } of results) {
+    assert.doesNotThrow(() => validateHostObservation(uia), `${mode}: UIA schema`);
+    assert.doesNotThrow(() => validateWin32Observation(win32), `${mode}: Win32 schema`);
+    assert.equal(forbidden_reads, 0, `${mode}: no foreign/content/title read`);
+    if (reasons[mode]) {
+      assert.equal(uia.status, 'unavailable', mode); assert.equal(uia.reason, 'exception', mode);
+      assert.equal(uia.phase, mode === 'uia-guard-after' ? 'guard-after' : 'guard-before', mode);
+      assert.equal(uia.guard_failure.reason, reasons[mode], mode);
+      assert.equal(uia_reads, mode === 'uia-guard-after' ? 1 : 0, `${mode}: no property read before verified guard`);
+      assert.equal(uia.guard_failure.facts.binding_matches, !mode.startsWith('binding-'), mode);
+      if (!mode.startsWith('binding-')) {
+        assert.equal(win32.status, 'unavailable', mode); assert.equal(win32.phase, 'guard-before', mode);
+        assert.equal(win32.guard_failure.reason, reasons[mode], mode); assert.equal(child_reads, 0, mode);
+      } else {
+        // The independent proof uses originals, never the shadowed callback scope.
+        assert.equal(win32.status, 'complete', mode); assert.equal(win32.nodes.length, 4, mode);
+      }
+    } else {
+      assert.equal(uia.status, 'complete', mode); assert.equal(uia_reads, 2, mode);
+      if (mode === 'win-guard-after' || mode.startsWith('child-')) {
+        assert.equal(win32.status, 'unavailable', mode); assert.deepEqual(win32.nodes, [], mode);
+        assert.equal(win32.phase, mode === 'win-guard-after' ? 'guard-after' : 'children', mode);
+        if (mode === 'win-guard-after') assert.equal(win32.guard_failure.reason, 'foreground', mode);
+      } else {
+        assert.equal(win32.status, 'complete', mode);
+        if (mode === 'tree-limit') { assert.equal(win32.nodes.length, 64, mode); assert.equal(win32.truncated, true, mode); }
+        else if (mode === 'tree-depth') { assert.equal(win32.nodes.length, 9, mode); assert.equal(win32.truncated, true, mode); }
+        else if (mode === 'tree-budget') assert.equal(win32.reason, 'budget', mode);
+        else { assert.equal(win32.nodes.length, 4, mode); assert.equal(win32.nodes[2].pruned, true, mode); }
+        if (mode === 'class-private') assert.equal(win32.nodes[1].cls, '<redacted>', mode);
+      }
+    }
+  }
+});
+
+// Canonical SHA-256 of the two guard blocks at base 77d81144, before tagging.
+// This freezes predicate evaluation and rejection ordering, including short-circuiting.
+test('extracted action guards preserve the exact original predicates and evaluation order', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-dialog-guards.ps1', import.meta.url), 'utf8');
+  const original = source.slice(source.indexOf('function Assert-Process {'), source.indexOf('# Independent evidence proof'))
+    .replace(/Stop-OwnedGuard '[a-z-]+' ('[^']*')/g, 'throw $1').trim();
+  assert.equal(createHash('sha256').update(original).digest('hex'), '771f17736daa01cc218b923001ef0324e2c45c9768d6ed892ec5efd5e2b03510');
+  const ci = fs.readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const release = fs.readFileSync(new URL('../../.github/workflows/desktop-release.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(ci.slice(0, ci.indexOf('permissions:')), /paths(?:-ignore)?:/);
+  assert(ci.includes('Get-ChildItem web/tests/*.test.mjs'));
+  assert(release.includes('node web/tests/installed_diagnostic_acceptance.test.mjs'));
 });

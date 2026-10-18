@@ -18,10 +18,25 @@ function ConvertTo-SafeNativeException($Exception) {
   }
 }
 
-function Get-OwnedDialogObservation($Element, [int]$OwnedPid, [scriptblock]$Guard) {
+# The tagged exception may be wrapped by PowerShell. Inspect only fixed data
+# keys and allowlisted values, never Message, ErrorDetails or custom type names.
+function Get-SafeNativeGuardFailure($Record, [scriptblock]$Facts) {
+  $guardReason='unclassified'; $guardFacts=$null; $guardException=$Record.Exception
+  for ($guardDepth=0; $guardDepth -lt 4 -and $guardException; $guardDepth++) {
+    $tag=$guardException.Data['learnnote_guard_reason']
+    if ($tag -cin @('process-identity','root-identity','foreground','dialog-identity','owner-process','owner-root','popup-set')) {
+      $guardReason=$tag; break
+    }
+    $guardException=$guardException.InnerException
+  }
+  if ($Facts) { try { $guardFacts=& $Facts } catch { } }
+  return @{reason=$guardReason;facts=$guardFacts}
+}
+
+function Get-OwnedDialogObservation($Element, [int]$OwnedPid, [scriptblock]$Guard, [scriptblock]$FailureFacts) {
   $snapshots=[Collections.Generic.List[object]]::new()
   $clock=[Diagnostics.Stopwatch]::StartNew()
-  $phase='initialization'; $reason='unavailable'; $exceptionType=$null
+  $phase='initialization'; $reason='unavailable'; $exceptionType=$null; $guardFailure=$null
   try {
     $walker=[Windows.Automation.TreeWalker]::RawViewWalker
     $prune=@([Windows.Automation.ControlType]::List, [Windows.Automation.ControlType]::ListItem,
@@ -85,8 +100,9 @@ function Get-OwnedDialogObservation($Element, [int]$OwnedPid, [scriptblock]$Guar
     elseif ($clock.ElapsedMilliseconds -ge 1000) { $reason='budget' }
   } catch {
     $reason='exception'; $exceptionType=ConvertTo-SafeNativeException $_.Exception
+    if ($phase -in @('guard-before','guard-after')) { $guardFailure=Get-SafeNativeGuardFailure $_ $FailureFacts }
   } # Caller retains the original host rejection; evidence is optional.
-  return @{phase=$phase;reason=$reason;elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);exception_type=$exceptionType;
+  return @{phase=$phase;reason=$reason;elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);exception_type=$exceptionType;guard_failure=$guardFailure;
     status=$(if ($snapshots.Count -eq 2) { 'complete' } elseif ($snapshots.Count) { 'partial' } else { 'unavailable' });
     snapshots=@($snapshots.ToArray())}
 }

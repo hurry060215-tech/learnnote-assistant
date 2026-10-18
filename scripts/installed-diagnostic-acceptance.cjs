@@ -112,8 +112,49 @@ function validateHostFailure(value) {
   assert(!value.host_count_capped || value.host_count === 64);
   return value;
 }
+const GUARD_REASONS = ['process-identity', 'root-identity', 'foreground', 'dialog-identity', 'owner-process', 'owner-root', 'popup-set', 'unclassified'];
+const GUARD_FACT_BOOLEANS = ['binding_matches', 'process_exists', 'process_name_matches', 'process_start_matches',
+  'root_exists', 'root_visible', 'root_pid_matches', 'root_ownerless', 'root_class_matches', 'root_title_matches',
+  'dialog_exists', 'dialog_visible', 'dialog_pid_matches', 'dialog_class_matches', 'visible_set_matches'];
+function validateGuardFailure(value, expected) {
+  if (!expected) { assert.equal(value, null); return; }
+  exactKeys(value, ['reason', 'facts']); assert(GUARD_REASONS.includes(value.reason));
+  if (value.facts === null) return;
+  exactKeys(value.facts, [...GUARD_FACT_BOOLEANS, 'foreground', 'owner_chain', 'visible_count']);
+  for (const key of GUARD_FACT_BOOLEANS) assert(value.facts[key] === null || typeof value.facts[key] === 'boolean');
+  assert(['dialog', 'root', 'none', 'other', 'unavailable'].includes(value.facts.foreground));
+  assert(['root', 'foreign', 'missing', 'limit', 'unavailable'].includes(value.facts.owner_chain));
+  assert(value.facts.visible_count === null || Number.isInteger(value.facts.visible_count) && value.facts.visible_count >= 0 && value.facts.visible_count <= 64);
+}
+function validateWin32Observation(value) {
+  exactKeys(value, ['status', 'phase', 'reason', 'elapsed_ms', 'exception_type', 'guard_failure', 'truncated', 'nodes']);
+  assert(['complete', 'unavailable'].includes(value.status));
+  assert(['guard-before', 'children', 'guard-after', 'complete'].includes(value.phase));
+  assert(['complete', 'budget', 'exception'].includes(value.reason));
+  assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
+  assert(value.reason === 'exception' ? OBSERVER_EXCEPTIONS.includes(value.exception_type) : value.exception_type === null);
+  validateGuardFailure(value.guard_failure, value.reason === 'exception' && ['guard-before', 'guard-after'].includes(value.phase));
+  assert.equal(value.status === 'complete', value.phase === 'complete');
+  assert.equal(value.status === 'unavailable', value.reason === 'exception');
+  assert(value.reason !== 'budget' || value.elapsed_ms >= 500);
+  assert(typeof value.truncated === 'boolean'); assert(Array.isArray(value.nodes) && value.nodes.length <= 64);
+  if (value.status === 'unavailable') { assert.equal(value.nodes.length, 0); assert.equal(value.truncated, false); }
+  for (const [index, node] of value.nodes.entries()) {
+    exactKeys(node, ['parent', 'depth', 'cls', 'id', 'pruned']);
+    assert(Number.isInteger(node.parent) && node.parent >= -1 && node.parent < index);
+    assert(Number.isInteger(node.depth) && node.depth >= 0 && node.depth <= 8);
+    assert(node.parent === -1 ? index === 0 && node.depth === 0 : node.depth === value.nodes[node.parent].depth + 1);
+    assert(typeof node.cls === 'string' && (node.cls === '<redacted>' || /^[A-Za-z0-9_#.-]{0,64}$/.test(node.cls)));
+    assert(Number.isInteger(node.id) && node.id >= -2147483648 && node.id <= 2147483647);
+    assert(typeof node.pruned === 'boolean');
+    if (node.parent >= 0) assert.equal(value.nodes[node.parent].pruned, false);
+  }
+  return value;
+}
+
 function validateHostObservation(value) {
-  exactKeys(value, ['status', 'snapshots', 'phase', 'reason', 'elapsed_ms', 'exception_type']);
+  exactKeys(value, ['status', 'snapshots', 'phase', 'reason', 'elapsed_ms', 'exception_type', 'guard_failure']);
+  validateGuardFailure(value.guard_failure, value.reason === 'exception' && ['guard-before', 'guard-after'].includes(value.phase));
   assert(OBSERVER_PHASES.includes(value.phase));
   assert(['complete', 'exception', 'budget', 'unavailable'].includes(value.reason));
   assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
@@ -184,6 +225,7 @@ public static class OwnedSave {
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
+ [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr h);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder b, int n);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder b, int n);
  public static uint Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h,out p); return p; }
@@ -193,11 +235,8 @@ public static class OwnedSave {
 }
 '@;
 function Stage([string]$name) { [Console]::Out.WriteLine('PHASE:'+$name); [Console]::Out.Flush() }
+. (Join-Path (Split-Path $c.observer) 'installed-native-dialog-guards.ps1');
 Stage 'ownership';
-function Assert-Process {
- $p=Get-CimInstance Win32_Process -Filter "ProcessId = $($c.pid)";
- if (!$p -or $p.Name -ne 'LearnNote.exe' -or $p.CreationDate.ToUniversalTime().Ticks.ToString() -cne $c.start) { throw 'Owned app identity changed' }
-}
 function Assert-Destination {
  $dir=[IO.Path]::GetFullPath($c.directory); $file=[IO.Path]::GetFullPath($c.destination);
  if ($dir -notmatch '^[A-Za-z]:\\' -or [IO.Path]::GetFileName($dir) -notlike 'local-native-exports-*' -or
@@ -212,24 +251,6 @@ $roots=@($windows | Where-Object { [OwnedSave]::GetWindow($_,4) -eq [IntPtr]::Ze
 if ($roots.Count -ne 1 -or $windows.Count -ne 1) { throw 'Expected exactly one owned app root and no preexisting popup' }
 $root=[IntPtr]$roots[0]; $rootClass=[OwnedSave]::Class($root);
 if ([OwnedSave]::Title($root) -cne 'LearnNote - Video Learning Notes' -or ![OwnedSave]::Class($root).StartsWith('WindowsForms10.Window.')) { throw 'Unexpected owned app root' }
-function Assert-Root {
- Assert-Process;
- if (![OwnedSave]::IsWindow($root) -or ![OwnedSave]::IsWindowVisible($root) -or [OwnedSave]::Pid($root) -ne $c.pid -or
-  [OwnedSave]::GetWindow($root,4) -ne [IntPtr]::Zero -or [OwnedSave]::Class($root) -cne $rootClass -or [OwnedSave]::Title($root) -cne 'LearnNote - Video Learning Notes') { throw 'Owned app root changed' }
-}
-function Assert-Dialog([IntPtr]$dialog) {
- Assert-Root;
- if ([OwnedSave]::GetForegroundWindow() -ne $dialog) { throw 'Owned Save dialog is not foreground; no native input' }
- if (![OwnedSave]::IsWindow($dialog) -or ![OwnedSave]::IsWindowVisible($dialog) -or [OwnedSave]::Pid($dialog) -ne $c.pid -or [OwnedSave]::Class($dialog) -cne '#32770') { throw 'Owned Save dialog changed' }
- $cursor=[OwnedSave]::GetWindow($dialog,4); $reached=$false;
- for ($i=0; $i -lt 16 -and $cursor -ne [IntPtr]::Zero; $i++) {
-  if ([OwnedSave]::Pid($cursor) -ne $c.pid) { throw 'Save owner chain left the owned process' }
-  if ($cursor -eq $root) { $reached=$true; break }; $cursor=[OwnedSave]::GetWindow($cursor,4);
- }
- if (!$reached) { throw 'Save dialog is not owned by the exact app root' }
- $visible=@([OwnedSave]::Visible($c.pid));
- if ($visible.Count -ne 2 -or @($visible | Where-Object { $_ -ne $root -and $_ -ne $dialog }).Count) { throw 'Unexpected owned popup; no native input' }
-}
 function Assert-Control($node,$dialogElement) {
  if ($node.Current.ProcessId -ne $c.pid -or !$node.Current.IsEnabled -or $node.Current.IsOffscreen) { throw 'Native control ownership or visibility changed' }
  $cursor=$node; $reached=$false;
@@ -286,8 +307,12 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
   $details=@{subphase=$hostSubphase;host_count=$(if ($null -eq $hostCount) { $null } else { [Math]::Min(64,$hostCount) });host_count_capped=($null -ne $hostCount -and $hostCount -gt 64)};
   [Console]::Out.WriteLine('HOSTFAIL:'+($details | ConvertTo-Json -Compress)); [Console]::Out.Flush();
   . $c.observer;
-  $observation=Get-OwnedDialogObservation -Element $element -OwnedPid $c.pid -Guard { Assert-Dialog $dialog };
+  . (Join-Path (Split-Path $c.observer) 'installed-native-dialog-win32.ps1');
+  $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog};
+  $observation=Get-OwnedDialogObservation -Element $element -OwnedPid $c.pid -Guard { Assert-Dialog $dialog } -FailureFacts { Get-OwnedDialogIdentityFacts $bound };
   [Console]::Out.WriteLine('HOSTDIAG:'+($observation | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
+  $structure=Get-OwnedDialogWin32Observation $bound;
+  [Console]::Out.WriteLine('WIN32DIAG:'+($structure | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
  } catch { } # Evidence collection cannot replace the original rejection.
  throw $original;
 }
@@ -327,7 +352,7 @@ throw 'Native Save did not finish';`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}) {
-  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, captureInvalid = false, evidenceInvalid = false;
+  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
   const closed = new Promise(resolve => { closedResolve = resolve; });
@@ -360,6 +385,9 @@ async function withNativeHelper(child, action, timeouts = {}) {
       } else if (line.startsWith('HOSTDIAG:')) {
         try { assert(hostFailure && !hostObservation && line.length <= 32768); hostObservation = validateHostObservation(JSON.parse(line.slice(9))); }
         catch { evidenceInvalid = true; } // Keep the original native rejection, never raw metadata.
+      } else if (line.startsWith('WIN32DIAG:')) {
+        try { assert(hostFailure && !win32Observation && line.length <= 32768); win32Observation = validateWin32Observation(JSON.parse(line.slice(10))); }
+        catch { win32Invalid = true; }
       } else if (line === 'READY' && !ready) { ready = true; readyResolve(); }
       else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
     }
@@ -382,6 +410,8 @@ async function withNativeHelper(child, action, timeouts = {}) {
     if (nativePhase) failure.native_stage = nativePhase;
     if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
     if (hostObservation) failure.native_host_observation = hostObservation;
+    if (win32Observation) failure.native_win32_observation = win32Observation;
+    if (win32Invalid) failure.native_win32_unavailable = true;
     if (nativeCapture) failure.native_dialog_capture = nativeCapture;
     if (captureInvalid) failure.native_capture_unavailable = true;
     if (hostFailure && (!hostObservation || evidenceInvalid)) failure.native_observation_unavailable = true;
@@ -573,7 +603,7 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
-    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable']) {
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
     if (error.native_dialog_capture) {
@@ -597,5 +627,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });
