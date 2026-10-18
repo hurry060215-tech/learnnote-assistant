@@ -10,6 +10,10 @@ FORBIDDEN_PARTS = {"tests", "__pycache__", ".pytest_cache", ".venv", "node_modul
 REQUIRED_EXTENSION_FILES = {
     "manifest.json",
     "background.js",
+    "community-source.js",
+    "background-community.js",
+    "content-community.js",
+    "sidepanel-community.js",
     "capture-classification.js",
     "capture-ranking.js",
     "source-identity.js",

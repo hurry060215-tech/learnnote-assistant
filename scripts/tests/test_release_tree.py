@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +46,37 @@ class ReleaseTreeAuditTests(unittest.TestCase):
             self.populate_bundled_files(root)
             (root / "LearnNote.exe").write_bytes(b"exe")
             self.assertTrue(MODULE.audit_release_tree(root)["passed"])
+
+    def test_extension_allowlist_matches_actual_package_files(self):
+        source = (ROOT / "scripts/package-extension.ps1").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            block = re.search(r"\$files = @\((.*?)\)", text, re.S)
+            self.assertIsNotNone(block)
+            packaged = set(re.findall(r'"([^"\r\n]+)"', block.group(1)))
+            self.assertEqual(packaged, MODULE.REQUIRED_EXTENSION_FILES)
+            self.assertTrue(all((ROOT / "extension" / name).is_file() for name in packaged))
+
+    def test_missing_community_modules_and_unknown_extension_files_fail(self):
+        names = ("community-source.js", "background-community.js", "content-community.js", "sidepanel-community.js")
+        for name in names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                self.populate_extension(root)
+                self.populate_legal_files(root)
+                self.populate_bundled_files(root)
+                (root / "extension" / name).unlink()
+                result = MODULE.audit_release_tree(root)
+                self.assertFalse(result["passed"])
+                self.assertEqual([name], result["missing_extension"])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.populate_extension(root)
+            self.populate_legal_files(root)
+            self.populate_bundled_files(root)
+            (root / "extension/unexpected.js").write_text("", encoding="utf-8")
+            result = MODULE.audit_release_tree(root)
+            self.assertFalse(result["passed"])
+            self.assertEqual(["unexpected.js"], result["unexpected_extension"])
 
     def test_test_and_cache_files_fail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
