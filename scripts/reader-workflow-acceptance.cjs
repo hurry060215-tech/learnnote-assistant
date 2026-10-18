@@ -4,6 +4,201 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+// Synthetic bound endpoint transport only. The real binding/locking contract is
+// covered by backend tests; this scenario executes the shipped reader in Edge.
+async function verifyBoundCaptionPreview(browser, baseUrl, out) {
+  const base = new URL(baseUrl), id = "bound-caption-ui-fixture", otherId = "bound-caption-other";
+  assert(base.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(base.hostname));
+  assert(!base.username && !base.password && !base.search && !base.hash && ["/", "/web/index.html"].includes(base.pathname));
+  const digest = text => require("node:crypto").createHash("sha256").update(text).digest("hex");
+  const stamp = "2026-10-18T04:00:00Z", generation = "a".repeat(64);
+  const initial = { id, kind: "task", title: "合成验收：绑定字幕草稿", status: "running", phase: "transcribing",
+    control_generation: generation, retry_count: 0, source_identity: {}, source_task_id: "", learning_range: {},
+    transcript_path: "transcript.json", note_path: "", summary_source: "", options: {}, created_at: stamp, updated_at: stamp };
+  const other = { ...initial, id: otherId, title: "合成验收：另一个位置", status: "success", summary_source: "text-llm" };
+  const text = "# 合成验收：绑定字幕草稿\n\n> 字幕摘录草稿；不是模型总结，也不代表事实已核验。\n\n" +
+    Array.from({ length: 28 }, (_, i) => `## Reading section ${i + 1}\n\nSynthetic caption paragraph ${i + 1} preserves a readable position and selected prose.\n\n- \`00:${String(i).padStart(2, "0")}\` Synthetic timestamp excerpt.`).join("\n\n");
+  const empty = { text: "", revision: digest(""), edited: false }, edition = { text, revision: digest(text), edited: false };
+  const envelope = { ...edition, reader_snapshot: { schema_version: 1, task_id: id, control_generation: generation,
+    retry_count: 0, attempt_id: "a1b2c3d4e5f6", publication_sequence: 2, body_revision: edition.revision,
+    source_revision: "b".repeat(64), task_updated_at: stamp, title: initial.title, status: "running", artifact: "draft.md",
+    summary_source: "transcript-draft", summary_generated: false, verified: false, provisional: true } };
+  const report = { passed: false, transport: "Synthetic bound endpoint and EventSource; shipped reader/assets in Microsoft Edge",
+    backend_binding_proven: false, installed_windows_latency_proven: false, cases: [], pageErrors: [], unexpectedRequests: [], cleanupErrors: [] };
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block" });
+  let page, task, published, holdSelected, holdSnapshot, holdEdition, selectedHolds = [], listHolds = [], snapshotHolds = [], editionHolds = [];
+  let fastReads = 0, sourceReads = 0, reviewReads = 0, closing = false, primaryError;
+  const hold = (route, queue, value) => new Promise(resolve => queue.push(async (cancel = false) => {
+    try {
+      if (cancel) await route.abort("aborted");
+      else if (!route.request().failure()) await route.fulfill({ json: typeof value === "function" ? value() : value });
+    }
+    finally { resolve(); }
+  }));
+  const release = async queue => { for (const finish of queue.splice(0)) await finish(); };
+  try {
+    await context.addInitScript(({ id }) => {
+      const streams = []; let sequence = 0;
+      window.__captionDocumentEvents = 0;
+      window.addEventListener("learnnote:document", () => window.__captionDocumentEvents++);
+      window.EventSource = class extends EventTarget {
+        constructor(value) {
+          super(); const url = new URL(value, location.href);
+          if (url.origin !== location.origin || url.pathname !== `/api/tasks/${id}/events/stream`
+              || [...url.searchParams.keys()].join() !== "after" || !/^\d+$/.test(url.searchParams.get("after")))
+            throw new Error("Unexpected caption fixture stream");
+          this.closed = false; streams.push(this);
+        }
+        close() { this.closed = true; }
+      };
+      window.__emitCaption = name => {
+        const active = streams.filter(stream => !stream.closed);
+        for (const stream of active) stream.dispatchEvent(new MessageEvent(name, { lastEventId: String(++sequence), data: "{}" }));
+        return active.length;
+      };
+    }, { id });
+    await context.routeWebSocket("**/*", socket => { report.unexpectedRequests.push("WebSocket"); socket.close(); });
+    await context.route("**/*", async route => {
+      const request = route.request(), url = new URL(request.url()), pathname = url.pathname;
+      const json = value => route.fulfill({ json: value });
+      if (closing) return route.abort("aborted");
+      try {
+        if (url.origin !== base.origin) { report.unexpectedRequests.push(`External ${url.origin}${pathname}`); return await route.abort("blockedbyclient"); }
+        if (request.method() === "GET") {
+          if ((pathname === "/" || pathname.startsWith("/web/")) && (!url.search || /^\?v=[A-Za-z0-9-]+$/.test(url.search)
+              || (pathname === "/web/learning-spaces.js" && url.search === "?v=0.2.15"))) return await route.continue();
+          if (pathname === `/api/tasks/editions/task/${id}`) {
+            if (url.search) {
+              assert.equal(url.search, `?reader_snapshot=true&expected_generation=${generation}`, "Only the exact bound reader query is allowed");
+              fastReads++; return await (holdSnapshot ? hold(route, snapshotHolds, envelope) : json(envelope));
+            }
+            return await (holdEdition ? hold(route, editionHolds, () => edition) : json(published ? edition : empty));
+          }
+          if (pathname === `/api/tasks/${id}` && !url.search)
+            return await (holdSelected ? hold(route, selectedHolds, () => ({ task })) : json({ task }));
+          if (pathname === "/api/model/route" && url.search === "?transcriber=faster-whisper&whisper_model=small&visual_understanding=true")
+            return await json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });
+          if (pathname === "/api/library/materials" && url.search === "?limit=1000") return await json({ materials: [] });
+          if ([id, otherId].some(value => pathname === `/api/tasks/${value}/events`) && url.search === "?limit=500") return await json({ events: [] });
+          if (!url.search) {
+            if (pathname === "/api/tasks") return await (holdSelected ? hold(route, listHolds, () => ({ tasks: [task, other] })) : json({ tasks: [task, other] }));
+            if (pathname === `/api/tasks/editions/task/${otherId}`) return await json({ text: "# Other route", revision: digest("# Other route"), edited: true });
+            if (pathname.endsWith("/personal-review") && [id, otherId].some(value => pathname === `/api/tasks/editions/task/${value}/personal-review`)) {
+              reviewReads++; return await json({ status: "unmarked", note_revision: published ? edition.revision : empty.revision,
+                review_revision: "0".repeat(64), can_mark: false, source_scope: "reading_only", source_labels: [] });
+            }
+            if ([id, otherId].some(value => pathname === `/api/personal/task/${value}`)) return await json({ annotations: [] });
+            if ([id, otherId].some(value => pathname === `/api/tasks/${value}/qa`) || pathname === "/api/assistant/history") return await json({ items: [] });
+            if (["claims", "transcript", "media"].some(value => pathname === `/api/tasks/${id}/${value}`)) {
+              sourceReads++; report.unexpectedRequests.push(pathname); return await route.fulfill({ status: 409, json: { detail: "Source access is outside this reader scenario" } });
+            }
+            const startup = {
+              "/health": { ok: true, model_provider_presets: [] }, "/api/model/connection": { model: null, configured: false },
+              "/api/connections": { openrouter: { connected: false } }, "/api/assistant/skills": { skills: [], features: [] },
+              "/api/preferences": { task_options: { transcriber: "none", whisper_model: "small", content_mode: "text", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false, visual_understanding: false } },
+              "/api/update/status": { status: "up_to_date", preferences: { auto_check: false, auto_download: false } },
+            };
+            if (Object.hasOwn(startup, pathname)) return await json(startup[pathname]);
+          }
+        }
+        if (request.method() === "POST" && pathname === "/api/study/activity" && !url.search) {
+          const body = request.postDataJSON(); assert.equal(body.kind, "reading"); assert([`task:${id}`, `task:${otherId}`].includes(body.source_id));
+          return await json({ ok: true });
+        }
+        report.unexpectedRequests.push(`${request.method()} ${pathname}${url.search}`);
+        return await route.fulfill({ status: 501, json: { detail: "Unexpected caption fixture request" } });
+      } catch (error) { report.unexpectedRequests.push(error.message); await route.abort("failed").catch(() => {}); }
+    });
+    page = await context.newPage(); page.setDefaultTimeout(15000);
+    page.on("pageerror", error => report.pageErrors.push(error.message));
+    const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const emit = async name => assert.equal(await page.evaluate(value => window.__emitCaption(value), name), 1);
+    async function reset() {
+      task = { ...initial }; published = holdSelected = holdSnapshot = holdEdition = false;
+      await page.goto("about:blank"); // Force a new document, even when the preceding route has the same fragment.
+      await page.goto(`${base.origin}/#task/${id}`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(id => document.getElementById("document").dataset.readerSource === `task:${id}`, id); await settle();
+    }
+    async function preview() {
+      holdSelected = true;
+      const docs = await page.evaluate(() => window.__captionDocumentEvents), sources = sourceReads, reviews = reviewReads;
+      await emit("draft_ready");
+      await page.waitForFunction(() => document.getElementById("document").textContent.includes("Synthetic caption paragraph 28"));
+      assert(selectedHolds.length > 0, "Draft is readable before the selected GET is released");
+      assert.equal(await page.evaluate(() => window.__captionDocumentEvents), docs);
+      for (const key of ["noteActions", "readerStrip", "annotations", "aiAssistant"])
+        assert.equal(await page.locator(`#${key}`).evaluate(node => node.inert), true, key);
+      assert.equal(await page.locator("#document .time-link").count(), 0);
+      assert.equal(sourceReads, sources); assert.equal(reviewReads, reviews);
+      await page.evaluate(() => { document.getElementById("edit").click(); document.getElementById("source").click(); });
+      assert.equal(await page.locator("#editor").isVisible(), false); assert.equal(await page.locator("#sourcePanel").isVisible(), false);
+      const count = fastReads; for (let i = 0; i < 12; i++) await emit("task_updated"); await settle();
+      assert.equal(fastReads, count, "Accepted preview is not refetched during an event burst");
+      return docs;
+    }
+    for (const selection of ["prose", "timestamp"]) {
+      await reset(); const docs = await preview();
+      if (selection === "prose") await page.screenshot({ path: path.join(out, "bound-caption-preview.png"), animations: "disabled" });
+      const before = await page.evaluate(kind => {
+        const node = kind === "timestamp" ? document.querySelectorAll("#document code")[12] : document.querySelectorAll("#document p")[12];
+        window.__captionAnchor = kind === "timestamp" ? node.parentElement : node;
+        node.scrollIntoView({ block: "center" }); const range = document.createRange();
+        range.setStart(node.firstChild, 1); range.setEnd(node.firstChild, Math.min(20, node.firstChild.length));
+        const selected = getSelection(); selected.removeAllRanges(); selected.addRange(range);
+        return { text: String(selected), top: window.__captionAnchor.getBoundingClientRect().top };
+      }, selection);
+      const emptyRead = page.waitForResponse(response => new URL(response.url()).pathname === `/api/tasks/editions/task/${id}` && !new URL(response.url()).search);
+      holdSelected = false; await release(selectedHolds); await release(listHolds); await emptyRead; await settle();
+      assert.equal(await page.locator("#noteActions").evaluate(node => node.inert), true, "Exact provisional empty pair remains actionless");
+      assert.equal(await page.evaluate(() => window.__captionDocumentEvents), docs);
+      task = { ...task, note_path: "draft.md", summary_source: "transcript-draft", updated_at: "2026-10-18T04:00:01Z" }; published = true;
+      await emit("task_updated");
+      await page.waitForFunction(() => !document.getElementById("noteActions").inert && document.querySelector("#document .time-link")); await settle();
+      const after = await page.evaluate(() => ({ connected: window.__captionAnchor.isConnected, text: String(getSelection()),
+        top: window.__captionAnchor.getBoundingClientRect().top, docs: window.__captionDocumentEvents }));
+      assert(after.connected, "Unchanged source/body retains the anchor node"); assert.equal(after.text, before.text);
+      assert(Math.abs(after.top - before.top) < 2, "Unchanged source/body retains the reading position"); assert.equal(after.docs, docs + 1);
+      report.cases.push({ name: `same-source-${selection}`, before, after });
+      if (selection === "prose") await page.screenshot({ path: path.join(out, "bound-caption-reconciled.png"), animations: "disabled" });
+    }
+    await reset(); await preview();
+    task = { ...task, transcript_path: "enriched-transcript.json", note_path: "draft.md", summary_source: "transcript-draft" };
+    holdEdition = true; holdSelected = false; const enrichedRead = page.waitForRequest(request => new URL(request.url()).pathname === `/api/tasks/editions/task/${id}` && !new URL(request.url()).search);
+    await release(selectedHolds); await release(listHolds); await enrichedRead;
+    await page.waitForFunction(() => document.getElementById("document").textContent.includes("正在同步正文"));
+    assert(!(await page.locator("#document").textContent()).includes("Synthetic caption paragraph"), "Changed source retires preview before edition completion");
+    await page.screenshot({ path: path.join(out, "bound-caption-source-retired.png"), animations: "disabled" });
+    holdEdition = false; await release(editionHolds); await settle(); report.cases.push({ name: "source-enrichment-retired", selection_preservation_claimed: false });
+    await reset();
+    await page.locator(`#notes [data-id="${otherId}"]`).click(); await page.waitForFunction(() => document.getElementById("document").textContent.includes("Other route"));
+    holdEdition = true;
+    await page.locator(`#notes [data-id="${id}"]`).click(); await preview();
+    report.cases.push({ name: "previous-personal-edition-does-not-block-new-draft" });
+    holdEdition = holdSelected = false; await release(editionHolds); await release(selectedHolds); await release(listHolds); await settle();
+    await reset(); holdSelected = holdSnapshot = true;
+    const fastRequest = page.waitForRequest(request => new URL(request.url()).searchParams.get("reader_snapshot") === "true");
+    await emit("draft_ready"); await fastRequest;
+    await page.locator(`#notes [data-id="${otherId}"]`).click(); await page.waitForFunction(() => document.getElementById("document").textContent.includes("Other route"));
+    await page.locator(`#notes [data-id="${id}"]`).click(); await page.waitForFunction(id => document.getElementById("document").dataset.readerSource === `task:${id}`, id);
+    holdSnapshot = holdSelected = false; await release(snapshotHolds); await release(selectedHolds); await release(listHolds); await settle();
+    assert(!(await page.locator("#document").textContent()).includes("Synthetic caption paragraph"), "Away/back rejects an earlier fast response");
+    assert.equal(await page.locator("#noteActions").evaluate(node => node.inert), false); report.cases.push({ name: "away-back-rejects-old-preview" });
+    assert.deepEqual(report.pageErrors, []); assert.deepEqual(report.unexpectedRequests, []); report.passed = true;
+  } catch (error) { primaryError = error; report.error = error.stack || error.message; }
+  finally {
+    closing = true;
+    for (const queue of [selectedHolds, listHolds, snapshotHolds, editionHolds]) for (const finish of queue.splice(0)) {
+      try { await finish(true); } catch (error) { report.cleanupErrors.push(error.message); if (!primaryError) primaryError = error; }
+    }
+    try { await context.close(); } catch (error) { report.cleanupErrors.push(error.message); if (!primaryError) primaryError = error; }
+    report.passed = report.passed && !primaryError;
+    try { fs.writeFileSync(path.join(out, "bound-caption-result.json"), JSON.stringify(report, null, 2)); }
+    catch (error) { if (!primaryError) primaryError = error; }
+  }
+  if (primaryError) throw primaryError;
+  return report;
+}
+
 (async () => {
   const base = process.argv[2] || "http://127.0.0.1:18930";
   const out =
@@ -162,6 +357,7 @@ const os = require("node:os");
     assert.equal(r.request().method(), "POST");
     return r.fulfill({ json: { task_id: "summary-retry" } });
   });
+  let workflowError;
   try {
     await p.goto(base);
     await p.waitForSelector(".recent-note");
@@ -292,12 +488,14 @@ const os = require("node:os");
       animations: "disabled",
     });
     assert.deepEqual(errors, []);
+    const boundCaption = await verifyBoundCaptionPreview(browser, base, out);
     fs.writeFileSync(
       path.join(out, "result.json"),
       JSON.stringify(
         {
           passed: true,
           retryCalls,
+          bound_caption: { passed: boundCaption.passed, report: "bound-caption-result.json" },
           mediaRequests,
           errors,
           timing_cases: ["subtitle-skipped", "download-timed", "legacy-media-only", "detailed-stage-timings"],
@@ -308,8 +506,10 @@ const os = require("node:os");
       ),
     );
     console.log(JSON.stringify({ passed: true, out }));
-  } finally {
-    await browser.close();
+  } catch (error) { workflowError = error; throw error; }
+  finally {
+    try { await browser.close(); }
+    catch (error) { if (!workflowError) throw error; console.error("Reader browser cleanup failed:", error.message); }
   }
 })().catch((e) => {
   console.error(e);

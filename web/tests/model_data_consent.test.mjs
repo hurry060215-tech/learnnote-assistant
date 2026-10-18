@@ -102,7 +102,7 @@ test("actual desk start handler submits only after renewed review, bound to curr
       reviewTaskModelData: async request => { assert.equal(request.isCurrent(), true); assert.equal(request.options.llm_model, "fixture"); return scopes; } });
     vm.runInContext("let editionRequest = 0;"
       + desk.slice(desk.indexOf("function selectedSourceCurrent("), desk.indexOf("function selectedSnapshotCurrent("))
-      + desk.slice(desk.indexOf("function invalidateSelectedReads("), desk.indexOf("async function adoptSelectedSnapshot("))
+      + desk.slice(desk.indexOf("function readerSnapshotSource("), desk.indexOf("async function adoptSelectedSnapshot("))
       + handler, context);
     await target.onclick({ target: { closest: () => ({ dataset: { taskAction: "start" } }) } });
     assert.equal(calls.length, scopes ? 1 : 0);

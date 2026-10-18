@@ -192,12 +192,27 @@ class UiVisualContractTests(unittest.TestCase):
         for path in ("build/course-upgrade-synthetic-ui", "build/course-upgrade-ui"):
             self.assertIn(path, upload["with"]["path"])
 
+    def test_bound_caption_browser_scenario_is_required_once_with_retained_evidence(self) -> None:
+        script = (ROOT / "scripts/reader-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        self.assertEqual(script.count("await verifyBoundCaptionPreview(browser, base, out)"), 1)
+        for check in ("Draft is readable before the selected GET is released", "same-source-${selection}",
+                      "Exact provisional empty pair remains actionless", "source-enrichment-retired",
+                      "away-back-rejects-old-preview", "previous-personal-edition-does-not-block-new-draft",
+                      "Only the exact bound reader query is allowed", "await finish(true)",
+                      'url.search === "?transcriber=faster-whisper&whisper_model=small&visual_understanding=true"',
+                      'pathname === "/web/learning-spaces.js" && url.search === "?v=0.2.15"',
+                      'await page.goto("about:blank")', "await context.close()", "if (primaryError) throw primaryError", "bound-caption-result.json"):
+            self.assertIn(check, script)
+        workflow = yaml.load((ROOT / ".github/workflows/ui-visual.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        for event in ("pull_request", "push"):
+            self.assertEqual(workflow["on"][event]["paths"].count("scripts/reader-workflow-acceptance.cjs"), 1)
+
     def test_migration_and_coordinated_update_assets_keep_fresh_cache_keys(self) -> None:
         html = (ROOT / "web/index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
         key = "update-coordination-20261017"
-        self.assertIn('src="/web/desk.js?v=source-preview-20261017"', html)
+        self.assertIn('src="/web/desk.js?v=bound-draft-20261018"', html)
         self.assertIn('href="/web/desk.css?v=data-migration-20261017"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
@@ -207,15 +222,19 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=source-preview-20261017", html)
+        self.assertIn("desk.js?v=bound-draft-20261018", html)
         self.assertIn('from "/web/reader-progress.js?v=native-anchor-20261017"', entry)
         self.assertNotIn('from "/web/reader-progress.js"', entry)
         self.assertIn('from "/web/reader-sections.js?v=source-preview-20261017"', entry)
         self.assertIn('from "/web/desk-progress.js?v=source-preview-20261017"', entry)
         self.assertNotIn('from "/web/reader-sections.js"', entry)
-        self.assertIn("desk-tools.js?v=community-question-20261017", entry)
+        self.assertIn("desk-tools.js?v=bound-draft-20261018", entry)
         self.assertIn("model-data-consent.js?v=initial-focus-20261016", entry)
-        self.assertIn("desk-product.js?v=selected-refresh-20261017", entry)
+        self.assertIn("desk-product.js?v=bound-draft-20261018", entry)
+        product = (ROOT / "web/desk-product.js").read_text(encoding="utf-8")
+        for owner, module in ((entry, "desk-note-controls.js"), (entry, "personal-review.js"), (product, "desk-note-controls.js")):
+            self.assertIn(f'from "/web/{module}?v=bound-draft-20261018"', owner)
+            self.assertNotIn(f'from "/web/{module}"', owner)
 
 
 if __name__ == "__main__":

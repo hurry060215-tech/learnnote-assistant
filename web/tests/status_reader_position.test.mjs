@@ -79,3 +79,41 @@ test("a user cancellation remains authoritative when old running history arrives
   assert.equal(h.scroller.scrollTop, 1087);
   assert.equal(h.scrollWrites(), 0);
 });
+
+function claimsDisclosure(h) {
+  const elements = [];
+  h.context.document.createElement = tag => {
+    const element = { tag, children: [], dataset: {}, listeners: {}, isConnected: true,
+      append(...nodes) { this.children.push(...nodes); },
+      addEventListener(name, fn) { this.listeners[name] = fn; },
+      replaceChildren(...nodes) { this.children = nodes; } };
+    elements.push(element); return element;
+  };
+  h.panel.append = () => {};
+  h.state.selected.claim_evidence = { path: "claims.json" };
+  h.state.revision = "caption"; h.state.epoch = 1;
+  h.context.claimTimelineModel = () => { throw new Error("Preview must not project claims"); };
+  h.context.renderStatus(false);
+  return elements.find(element => element.className === "claim-evidence-details");
+}
+
+test("bound caption preview disables status evidence disclosure and blocks direct toggle reads", async () => {
+  const h = harness(); h.state.readerSnapshot = { provisional: true };
+  const details = claimsDisclosure(h); details.open = true;
+  assert.equal(details.inert, true);
+  await details.listeners.toggle();
+  assert.equal(h.pending.length, 0); assert.equal(details.dataset.loaded, undefined);
+});
+
+test("claims response started before preview cannot paint evidence or an error during preview", async () => {
+  for (const reject of [false, true]) {
+    const h = harness(); let resolve, fail;
+    h.context.api = () => new Promise((yes, no) => { resolve = yes; fail = no; });
+    const details = claimsDisclosure(h), body = details.children[1], original = body.textContent;
+    details.open = true; const pending = details.listeners.toggle();
+    h.state.readerSnapshot = { provisional: true };
+    if (reject) fail(new Error("Old source failure")); else resolve({});
+    await pending;
+    assert.equal(body.textContent, original); assert.equal(body.children.length, 0);
+  }
+});

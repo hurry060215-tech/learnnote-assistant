@@ -16,7 +16,7 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertLess(normalized.index(invocation), normalized.index('- name: Run release gate'))
             step = normalized.split('- name: Provision pinned media tools for real fixture contracts', 1)[1].split('- name: Run release gate', 1)[0]
             self.assertIn('timeout-minutes: 5', step)
-            self.assertNotIn('if:', step)
+            self.assertIn("if: env.CANDIDATE_ARTIFACT_ID == ''", step)
             self.assertNotIn('continue-on-error', step)
             retention = normalized.split('- name: Preserve reliability evidence', 1)[1].split('- name: Build portable desktop client', 1)[0]
             self.assertIn('if: always()', retention)
@@ -91,6 +91,51 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertNotIn('ACCEPTANCE_ONLY', gates)
             self.assertIn('python scripts/installed-upgrade-acceptance.py', gates)
             self.assertIn('throw "Installed diagnostic and saved-subtitle acceptance failed"', gates)
+
+    def test_retained_diagnostics_are_bounded_and_leave_installed_gates_mandatory(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        self.assertIn('candidate_artifact_id:', source)
+        self.assertIn('retained mode pins candidate source; harness uses dispatched SHA', source)
+        self.assertIn('inputs.candidate_artifact_id && github.sha || inputs.release_commit', source)
+        self.assertIn('Retained installers require acceptance-only manual diagnostics', source)
+        self.assertIn('Diagnostic harness must match the dispatched workflow source', source)
+        self.assertIn('actions: read', source)
+        for name in ('Install desktop dependencies', 'Provision pinned media tools for real fixture contracts',
+                     'Run release gate', 'Build portable desktop client', 'Package Windows release',
+                     'Identify installer candidate before installed tests',
+                     'Retain installer candidate for failure diagnosis', 'Package browser extension'):
+            self.assertIn(f"- name: {name}\n        if: env.CANDIDATE_ARTIFACT_ID == ''", source)
+        for name in ('Sign Windows executable', 'Sign Windows installer'):
+            self.assertIn(f"- name: {name}\n        if: env.CANDIDATE_ARTIFACT_ID == '' && env.SIGNING_CERT_BASE64 != ''", source)
+        self.assertIn("if: env.CANDIDATE_ARTIFACT_ID == ''\n        with:\n          name: LearnNote-release-assets", source)
+        fresh = source.split('- name: Smoke-test installed release', 1)[1].split('- name: Smoke-test upgrade', 1)[0]
+        self.assertNotIn('if:', fresh)
+        upgrade = source.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed', 1)[0]
+        self.assertIn("if: env.RELEASE_TAG != ''", upgrade)
+        self.assertNotIn('CANDIDATE_ARTIFACT_ID', upgrade)
+        self.assertLess(upgrade.index('$env:GH_TOKEN = ""'), upgrade.index('./scripts/test-upgrade-installer.ps1'))
+        restore = source.split('- name: Verify and restore retained diagnostic candidate', 1)[1].split('- name: Install retained', 1)[0]
+        self.assertIn('--source-commit "$env:RELEASE_COMMIT"', restore)
+        self.assertNotIn('pip install', restore)
+        dependencies = source.split('- name: Install retained diagnostic harness dependencies', 1)[1].split('- name: Provision', 1)[0]
+        for pin in (ROOT / 'backend/requirements.windows-py312.lock.txt').read_text(encoding='utf-8').splitlines():
+            if pin.split('==')[0] in ('requests', 'certifi', 'charset-normalizer', 'idna', 'urllib3'):
+                self.assertIn(pin, dependencies)
+        self.assertIn('npm ci', dependencies)
+        self.assertNotIn('GH_TOKEN', dependencies)
+        checks = source.split('- name: Check current retained diagnostic harness', 1)[1].split('- name: Provision', 1)[0]
+        self.assertIn("if: env.CANDIDATE_ARTIFACT_ID != ''", checks)
+        self.assertIn('scripts.tests.test_restore_installer_candidate scripts.tests.test_installed_release_workflow scripts.tests.test_installed_upgrade_acceptance.InstalledUpgradeTests', checks)
+        self.assertIn('node web/tests/installed_diagnostic_acceptance.test.mjs', checks)
+        self.assertNotIn('InstalledSourceRehearsalTests', checks)
+        self.assertIn('python -m unittest discover scripts/tests -p "test_*.py"', source)
+        installed_tests = (ROOT / 'scripts/tests/test_installed_upgrade_acceptance.py').read_text(encoding='utf-8')
+        self.assertIn('class InstalledSourceRehearsalTests(unittest.TestCase):', installed_tests)
+        self.assertIn('def test_real_api_saved_caption_retry_keeps_original_evidence(self):', installed_tests)
+        self.assertIn('throw "Current native diagnostic helper contracts failed"', checks)
+        self.assertLess(source.index('- name: Check current retained diagnostic harness'), source.index('- name: Smoke-test installed release'))
+        self.assertIn('build/release/retained-candidate/*.json', source)
+        self.assertNotIn('continue-on-error', source)
 
     def test_retention_is_always_top_level_synthetic_evidence_only(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')

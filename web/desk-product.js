@@ -2,7 +2,7 @@ import { assistantStream } from "/web/desk-chat-stream.js";
 import { createDraftStore } from "/web/desk-drafts.js";
 import { createAssistantConversations } from "/web/assistant-session.js";
 import { installSummaryVersions } from "/web/desk-summary-versions.js";
-import { createOutlineControls } from "/web/desk-note-controls.js";
+import { createOutlineControls } from "/web/desk-note-controls.js?v=bound-draft-20261018";
 import { installAssistantOperations } from "/web/assistant-operations.js";
 import { installAssistantRuns } from "/web/assistant-runs.js";
 import { api, escapeHtml as esc, timestamp, taskAsset } from "/web/desk-api.js";
@@ -748,6 +748,7 @@ export function installProductWorkspace(ctx) {
   document.body.append(outline);
   const outlineControls = createOutlineControls(outline);
   function updateReadingContext() {
+    if (state.readerSnapshot) return;
     const s = state.selected;
     readerNav.hidden = !s;
     if (!s) return;

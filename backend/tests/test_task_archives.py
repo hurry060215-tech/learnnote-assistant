@@ -101,6 +101,11 @@ def public_contract():
     # tested JSON format query. All prior routes and schemas remain frozen.
     operation = schema["paths"]["/api/tasks/{task_id}/exports/diagnostics"]["get"]
     operation["parameters"] = [p for p in operation["parameters"] if p["name"] != "format"]
+    # The explicit generated-caption reader adds exactly two optional queries,
+    # checked below. Freeze the ordinary edition contract and all other routes.
+    operation = schema["paths"]["/api/tasks/editions/{kind}/{source_id}"]["get"]
+    operation["parameters"] = [p for p in operation["parameters"]
+        if not (p["in"] == "query" and p["name"] in {"reader_snapshot", "expected_generation"})]
     return {
         "paths": {f"/api/tasks/{{task_id}}/exports/{name}": schema["paths"][f"/api/tasks/{{task_id}}/exports/{name}"] for name in EXPORTS},
         "openapi_sha256": digest(schema),
@@ -173,6 +178,15 @@ def archive_case(kind, rich, annotations=False, *, claim_map=None):
 
 
 class TaskArchiveContracts(unittest.TestCase):
+    def test_generated_reader_queries_are_explicit_optional_defaults(self):
+        operation = main.app.openapi()["paths"]["/api/tasks/editions/{kind}/{source_id}"]["get"]
+        self.assertEqual([p for p in operation["parameters"] if p["in"] == "query"], [
+            {"name": "reader_snapshot", "in": "query", "required": False,
+             "schema": {"type": "boolean", "default": False, "title": "Reader Snapshot"}},
+            {"name": "expected_generation", "in": "query", "required": False,
+             "schema": {"type": "string", "default": "", "title": "Expected Generation"}},
+        ])
+
     def test_complete_openapi_operation_order_and_task_schema_unchanged(self):
         self.assertEqual(public_contract(), json.loads(FIXTURE.read_text(encoding="utf-8"))["api"])
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -130,7 +130,10 @@ const hostFailureDetails = (count, subphase = 'match-count') => ({ subphase, hos
 const hostSnapshot = (elapsed, visibleHost = false) => ({ elapsed_ms: elapsed, truncated: false, foreign_nodes: 0,
   nodes: [{ parent: -1, depth: 0, type: 50032, cls: '#32770', id: '', pruned: false },
     ...(visibleHost ? [{ parent: 0, depth: 1, type: 50003, cls: 'AppControlHost', id: 'FileNameControlHost', pruned: false }] : [])] });
-const hostObservation = () => ({ status: 'complete', snapshots: [hostSnapshot(5), hostSnapshot(260, true)] });
+const hostObservation = () => ({ status: 'complete', snapshots: [hostSnapshot(5), hostSnapshot(260, true)],
+  phase: 'complete', reason: 'complete', elapsed_ms: 260, exception_type: null });
+const unavailableObservation = (phase = 'guard-before', exception_type = 'runtime') => ({ status: 'unavailable', snapshots: [],
+  phase, reason: 'exception', elapsed_ms: 5, exception_type });
 function emitHostFailure(child, details) {
   child.line('PHASE:filename-host'); child.line('SUBPHASE:' + details.subphase); child.line('HOSTFAIL:' + JSON.stringify(details));
 }
@@ -167,12 +170,69 @@ test('diagnostic capture failure, invalid content and timeouts preserve the orig
   }
 });
 
+
+test('every allowlisted observer failure remains secondary to the original native host rejection', async () => {
+  const phases = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after'];
+  const exceptions = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
+  const observations = phases.flatMap(phase => exceptions.map(type => unavailableObservation(phase, type)));
+  observations.push({ ...unavailableObservation('guard-after'), status: 'partial', snapshots: [hostSnapshot(5)],
+    reason: 'budget', elapsed_ms: 1000, exception_type: null });
+  observations.push({ ...unavailableObservation('initialization'), reason: 'unavailable', exception_type: null });
+  for (const observation of observations) {
+    validateHostObservation(observation);
+    const child = fakeChild(); let actions = 0;
+    const result = withNativeHelper(child, () => {
+      actions++; emitHostFailure(child, hostFailureDetails(0));
+      child.line('HOSTDIAG:' + JSON.stringify(observation)); child.end(1);
+    }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed');
+      assert.deepEqual(error.native_host_failure, hostFailureDetails(0));
+      assert.deepEqual(error.native_host_observation, observation); return true;
+    }); assert.equal(actions, 1);
+  }
+});
+
+test('Windows observer fault injection exercises the actual function with synthetic types only', { skip: process.platform !== 'win32' }, () => {
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+    path.resolve('scripts/tests/native-observer-faults.ps1')], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert(!output.includes('PRIVATE_')); assert(!output.includes('C:\\private'));
+  const cases = JSON.parse(output.trim());
+  for (const { mode, observation } of cases.results) {
+    validateHostObservation(observation);
+    if (mode === 'success') {
+      assert.equal(observation.status, 'complete'); assert.equal(observation.reason, 'complete');
+      assert.equal(observation.snapshots.length, 2);
+      for (const snapshot of observation.snapshots) {
+        assert.equal(snapshot.nodes.length, 3); assert.equal(snapshot.foreign_nodes, 0);
+        assert(snapshot.nodes[2].pruned); assert.equal(snapshot.nodes[2].cls, ''); assert.equal(snapshot.nodes[2].id, '');
+      }
+    } else if (mode === 'budget') {
+      assert.equal(observation.reason, 'budget'); assert.equal(observation.exception_type, null);
+      assert.equal(observation.status, 'partial'); assert.equal(observation.phase, 'guard-after');
+      assert(observation.elapsed_ms >= 1000);
+    } else {
+      assert.equal(observation.reason, 'exception');
+      const expected = mode === 'property' ? 'node-properties' : mode === 'guard-before-late' ? 'guard-before' : mode;
+      assert.equal(observation.phase, expected);
+      assert.equal(observation.snapshots.length, mode === 'guard-before-late' ? 1 : 0);
+    }
+  }
+  assert.equal(cases.results.length, 8);
+  assert.deepEqual(cases.exceptions, ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other']);
+});
+
 test('host metadata rejects unknown fields, paths, invalid ancestry and oversized primitive collections', () => {
   validateHostFailure(hostFailureDetails(0)); validateHostFailure({ ...hostFailureDetails(64), host_count_capped: true });
   for (const invalid of [{ ...hostFailureDetails(0), host_count: -1 }, { ...hostFailureDetails(0), host_count: 65 },
     { ...hostFailureDetails(0), host_count_capped: true }, { ...hostFailureDetails(0), subphase: 'other' }, { ...hostFailureDetails(0), Name: 'forbidden' }]) assert.throws(() => validateHostFailure(invalid));
-  validateHostObservation(hostObservation()); validateHostObservation({ status: 'unavailable', snapshots: [] });
-  const invalids = [value => { value.Name = 'forbidden'; }, value => { value.snapshots.push(hostSnapshot(500)); },
+  validateHostObservation(hostObservation()); validateHostObservation(unavailableObservation());
+  const invalids = [value => { value.Name = 'forbidden'; },
+    value => { value.phase = 'PRIVATE_TITLE'; }, value => { value.reason = 'C:\\private'; },
+    value => { value.elapsed_ms = -1; }, value => { value.elapsed_ms = 35001; }, value => { value.elapsed_ms = 0.5; },
+    value => { value.exception_type = 'PrivateException'; }, value => { value.reason = 'exception'; },
+    value => { value.reason = 'budget'; }, value => { value.reason = 'unavailable'; },
+    value => { delete value.phase; }, value => { value.snapshots.push(hostSnapshot(500)); },
     value => { value.snapshots[0].nodes[0].Value = 'forbidden'; }, value => { value.snapshots[0].nodes[0].cls = 'C:\\private'; },
     value => { value.snapshots[0].nodes[0].id = 'x'.repeat(65); }, value => { value.snapshots[0].nodes[0].parent = 0; },
     value => { value.snapshots[0].nodes[0].depth = 9; }, value => { value.snapshots[0].foreign_nodes = 64; },
@@ -192,6 +252,73 @@ test('failure observer is bounded, read-only, prunes content branches and checks
   assert.match(branch, /\. \$c.observer/); assert.match(branch, /-Guard \{ Assert-Dialog \$dialog \}/);
   assert.match(branch, /catch \{ \}/); assert.match(branch, /throw \$original;/);
   assert.doesNotMatch(branch, /SetValue|\.Invoke\(|Start-Sleep/);
+});
+
+
+const savedCapture = () => ({ status: 'saved', reason: 'captured', file: 'installed-current-md-native-dialog.png', width: 900, height: 600 });
+const unavailableCapture = () => ({ status: 'unavailable', reason: 'guard-after', file: null, width: null, height: null });
+test('native screenshot evidence is fixed-name metadata and never replaces host rejection', async () => {
+  for (const capture of [savedCapture(), unavailableCapture(), { ...savedCapture(), file: 'C:\\PRIVATE_PATH.png' }]) {
+    const child = fakeChild(); let actions = 0;
+    const result = withNativeHelper(child, () => {
+      actions++; child.line('PHASE:dialog-capture'); child.line('CAPTURE:' + JSON.stringify(capture));
+      emitHostFailure(child, hostFailureDetails(0)); child.end(1);
+    }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed'); assert.deepEqual(error.native_host_failure, hostFailureDetails(0));
+      if (capture.file?.includes('PRIVATE')) { assert.equal(error.native_capture_unavailable, true); assert.equal(error.native_dialog_capture, undefined); }
+      else assert.deepEqual(error.native_dialog_capture, capture);
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    }); assert.equal(actions, 1);
+  }
+  for (const capture of [savedCapture(), unavailableCapture()]) {
+    const child = fakeChild(); const result = withNativeHelper(child, () => {
+      child.line('PHASE:dialog-capture'); child.line('CAPTURE:' + JSON.stringify(capture));
+      child.line('{"native_dialog":true,"saved":true}'); child.end(0);
+    }); child.line('READY');
+    assert.deepEqual((await result).native_dialog_capture, capture);
+  }
+});
+
+test('native screenshot metadata rejects paths, raw errors, unexpected fields and unbounded dimensions', () => {
+  validateNativeCapture(savedCapture()); validateNativeCapture(unavailableCapture());
+  for (const change of [{ file: '../capture.png' }, { width: 4097 }, { height: 63 }, { width: 1.5 },
+    { reason: 'PRIVATE_ERROR' }, { Name: 'PRIVATE_NAME' }, { status: 'unavailable' }])
+    assert.throws(() => validateNativeCapture({ ...savedCapture(), ...change }));
+  assert.throws(() => validateNativeCapture({ ...unavailableCapture(), file: 'installed-current-md-native-dialog.png' }));
+});
+
+test('native screenshot is synthetic-only, exact-window, guarded before and after, and precedes host traversal', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8');
+  assert.match(source, /PrintWindow\(\$Dialog,\$dc,2\)/);
+  assert.match(source, /GetWindowRect\(\$Dialog,\[ref\]\$before\)/);
+  assert.match(source, /GetWindowRect\(\$Dialog,\[ref\]\$after\)/);
+  assert(source.indexOf("$phase='guard-before'; [void](& $Guard)") < source.indexOf('PrintWindow($Dialog,$dc,2)'));
+  assert(source.indexOf("$phase='guard-after'; [void](& $Guard)") > source.indexOf('PrintWindow($Dialog,$dc,2)'));
+  assert(source.indexOf("$phase='guard-after'") < source.indexOf('[IO.File]::Open'));
+  assert.match(source, /FileMode\]::CreateNew/); assert.match(source, /ReparsePoint/);
+  assert.doesNotMatch(source, /CopyFromScreen|GetDesktopWindow|GetForegroundWindow|SendKeys|SetValue|\.Invoke\(|RootElement/);
+  const config = { ...parseArgs(args), captureNativeDialog: true };
+  const script = nativeDialogScript(config, { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  assert(script.indexOf("Stage 'dialog-capture'") < script.indexOf("Stage 'filename-host'"));
+  assert(script.indexOf("Stage 'dialog-capture'") < script.indexOf('$element.FindAll'));
+  assert.match(script, /-Guard \{ Assert-Dialog \$dialog \}/);
+  nativeDialogCommand(script);
+  const directory = 'D:\\a\\learnnote-assistant\\learnnote-assistant\\build\\release\\installed-upgrade\\local-native-exports-123456';
+  nativeDialogCommand(nativeDialogScript({ ...config, ownedPid: 4294967295 }, { owned_start: '639278948132580890' },
+    directory, directory + '\\learnnote-diagnostics.json'));
+  const harness = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
+  assert.match(harness, /config.captureNativeDialog = syntheticVerified/);
+  assert.match(harness, /config.captureNativeDialog === true && !observeOnly/);
+});
+
+test('Windows screenshot rejects unowned output paths before native rendering', { skip: process.platform !== 'win32' }, () => {
+  const capture = fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8');
+  const script = capture + "\n$script:calls=0; $result=Save-OwnedDialogCapture -Dialog ([IntPtr]1) -Directory 'C:\\synthetic-unowned' -Destination 'C:\\learnnote-diagnostics.md' -Guard { $script:calls++ }; @{capture=$result;calls=$script:calls} | ConvertTo-Json -Compress";
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'],
+    { input: script, encoding: 'utf8', timeout: 15000, windowsHide: true });
+  const value = JSON.parse(output.trim()); validateNativeCapture(value.capture);
+  assert.equal(value.calls, 1); assert.equal(value.capture.status, 'unavailable'); assert.equal(value.capture.reason, 'destination');
 });
 
 test('native file equality reads stable exact UTF-8 bytes and retains the actual saved evidence', async () => {
@@ -235,7 +362,7 @@ test('Windows PowerShell parser validates the actual generated native helper wit
   const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$source=[Console]::In.ReadToEnd(); $tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors); if ($errors.Count) { throw "Native helper parse failed" }; Write-Output "PARSED"'],
-    { input: script + '\n' + observer, encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: script + '\n' + observer + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.equal(output.trim(), 'PARSED');
 });
 
@@ -247,7 +374,10 @@ test('Windows read-only observer redacts unsafe primitives and returns no eviden
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'],
     { input: script, encoding: 'utf8', timeout: 15000, windowsHide: true });
   const value = JSON.parse(output.trim());
-  assert.deepEqual(value.observation, { status: 'unavailable', snapshots: [] });
+  validateHostObservation(value.observation);
+  assert.equal(value.observation.status, 'unavailable'); assert.deepEqual(value.observation.snapshots, []);
+  assert.equal(value.observation.phase, 'guard-before'); assert.equal(value.observation.reason, 'exception');
+  assert.equal(value.observation.exception_type, 'runtime');
   assert.equal(value.safe, 'FileNameControlHost'); assert.equal(value.redacted, '<redacted>');
 });
 

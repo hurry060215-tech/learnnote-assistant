@@ -27,7 +27,7 @@ export function installPersonalReview({ state, api, refreshNote, document: doc =
   const refresh = $("refreshPersonalReview"), status = $("personalReviewState"), sources = $("personalReviewSources"), feedback = $("personalReviewFeedback");
   let sequence = 0, value = null, owner = null, busy = false, loading = false;
   function snapshot() {
-    if (!state.selected || state.editing || reader.querySelector("[data-progressive-reader]")
+    if (!state.selected || state.editing || state.readerSnapshot || reader.querySelector("[data-progressive-reader]")
         || reader.dataset.readerSource !== `${state.selected.kind}:${state.selected.id}`
         || reader.dataset.sourceRevision !== state.revision) return null;
     return { kind: state.selected.kind, id: state.selected.id, epoch: state.epoch,

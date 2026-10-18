@@ -73,7 +73,7 @@ async function cancellationProbe(close) {
     localPlayer: {cancelSeek() {}}, sourceCueCleanup: null, sourceCueRender: null, sourceWindowRender: null,
   });
   vm.runInContext('let sourceRequest = 0, editionRequest = 0;'
-    + desk.slice(desk.indexOf('function invalidateSelectedReads('), desk.indexOf('async function adoptSelectedSnapshot(')) + desk.slice(desk.indexOf('function closeSource('), desk.indexOf('let inlineSourceRequest'))
+    + desk.slice(desk.indexOf('function readerSnapshotSource('), desk.indexOf('async function adoptSelectedSnapshot(')) + desk.slice(desk.indexOf('function closeSource('), desk.indexOf('let inlineSourceRequest'))
     + desk.slice(desk.indexOf('async function openItem('), desk.indexOf('let editionRequest'))
     + desk.slice(desk.indexOf('let evidenceRequest = 0;'), desk.indexOf('async function drawReview()')), context);
   const pending = context.openEvidenceSource(two, 10);

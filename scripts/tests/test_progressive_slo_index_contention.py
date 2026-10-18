@@ -685,7 +685,8 @@ route_labels = {
 }
 readers = [(route, key, label) for route in fixture_routes() for key, label in route_labels.items()
            if getattr(route, 'path', '') == key[1] and key[0] in getattr(route, 'methods', ())]
-def edition(kind: str, source_id: str):
+def edition(kind: str, source_id: str, reader_snapshot: bool = False, expected_generation: str = ''):
+    assert reader_snapshot is False and expected_generation == ''
     assert storage.index_task(source_id) == 'synthetic artifact'
     return {'task_id': source_id}
 def task(task_id: str):

@@ -18,6 +18,8 @@ spec.loader.exec_module(runner)
 
 
 class InstalledUpgradeTests(unittest.TestCase):
+    """Installed harness contracts requiring only requests and the standard library."""
+
     def test_child_environment_excludes_release_and_provider_credentials(self):
         private = {'GH_TOKEN': 'private', 'GITHUB_TOKEN': 'private', 'SIGNING_CERT_BASE64': 'private',
                    'SIGNING_CERT_PASSWORD': 'private', 'LLM_API_KEY': 'private', 'OPENAI_API_KEY': 'private', 'HTTPS_PROXY': 'private', 'ACTIONS_RUNTIME_TOKEN': 'private', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'private', 'HF_TOKEN': 'private'}
@@ -111,6 +113,21 @@ class InstalledUpgradeTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             runner.verify_retry_diagnostic(value)
 
+    def test_report_write_does_not_replace_install_failure(self):
+        primary = RuntimeError('installer')
+        with TemporaryDirectory() as tmp, patch.object(runner, 'install', side_effect=primary), \
+                patch.object(runner, 'digest', return_value='hash'), \
+                patch.object(runner, 'write_json', side_effect=RuntimeError('report')), \
+                patch.object(runner, 'Path', side_effect=lambda value: Path(tmp) if value == 'D:/LearnNoteUpgradeSmoke' else Path(value)):
+            args = SimpleNamespace(previous_installer=Path('old.exe'), current_installer=Path('new.exe'), expected_previous_version='0.2.15', expected_current_version='0.2.16')
+            with self.assertRaises(RuntimeError) as caught:
+                runner.exercise(args, Path(tmp))
+            self.assertIs(caught.exception, primary)
+
+
+class InstalledSourceRehearsalTests(unittest.TestCase):
+    """Source-backend rehearsal; full release discovery retains this coverage."""
+
     def test_real_api_saved_caption_retry_keeps_original_evidence(self):
         # Source rehearsal only. Installed executable/UI evidence is a hosted gate.
         with TemporaryDirectory() as tmp:
@@ -184,17 +201,6 @@ uvicorn.run('app.main:app', host='127.0.0.1', port=int(os.environ['LEARNNOTE_BAC
                         try: api.session.close()
                         except BaseException as error: cleanup.append(error)
                     if cleanup and failure is None: raise cleanup[0]
-
-    def test_report_write_does_not_replace_install_failure(self):
-        primary = RuntimeError('installer')
-        with TemporaryDirectory() as tmp, patch.object(runner, 'install', side_effect=primary), \
-                patch.object(runner, 'digest', return_value='hash'), \
-                patch.object(runner, 'write_json', side_effect=RuntimeError('report')), \
-                patch.object(runner, 'Path', side_effect=lambda value: Path(tmp) if value == 'D:/LearnNoteUpgradeSmoke' else Path(value)):
-            args = SimpleNamespace(previous_installer=Path('old.exe'), current_installer=Path('new.exe'), expected_previous_version='0.2.15', expected_current_version='0.2.16')
-            with self.assertRaises(RuntimeError) as caught:
-                runner.exercise(args, Path(tmp))
-            self.assertIs(caught.exception, primary)
 
 
 if __name__ == '__main__':

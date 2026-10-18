@@ -10,7 +10,7 @@ import {
 import { timelineHtml, taskExplanation } from "/web/desk-progress.js?v=source-preview-20261017";
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
-import { installNoteEditor } from "/web/desk-note-controls.js";
+import { installNoteEditor } from "/web/desk-note-controls.js?v=bound-draft-20261018";
 import { installProfile } from "/web/desk-profile.js";
 import { createTaskEventHub } from "/web/desk-events.js";
 import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=timeline-navigation-20261016";
@@ -20,13 +20,13 @@ import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/eviden
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
-import { installProductWorkspace } from "/web/desk-product.js?v=selected-refresh-20261017";
-import { installTools } from "/web/desk-tools.js?v=community-question-20261017";
+import { installProductWorkspace } from "/web/desk-product.js?v=bound-draft-20261018";
+import { installTools } from "/web/desk-tools.js?v=bound-draft-20261018";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";
 import { annotationAnchorLabel, annotationStatusMessage, installAnnotationAnchors } from "/web/personal-anchors.js";
-import { installPersonalReview } from "/web/personal-review.js";
+import { installPersonalReview } from "/web/personal-review.js?v=bound-draft-20261018";
 import {
   api,
   escapeHtml as esc,
@@ -77,6 +77,7 @@ const claimTimeline = createClaimTimeline({
   onOpen: (evidence, taskId) => openClaimEvidence(evidence, taskId).catch(failure),
 });
 function loadClaimTimeline() {
+  if (state.readerSnapshot) { claimTimeline.reset(); return; }
   const selected = state.selected;
   if (!selected) { claimTimeline.reset(); return; }
   return claimTimeline.load({ kind: selected.kind, taskId: selected.id, epoch: state.epoch,
@@ -396,9 +397,102 @@ function selectedSnapshotCurrent(snapshot) {
     && !(state.selectedControlPending?.id === snapshot.id && state.selectedControlPending?.kind === snapshot.kind)
     && snapshot.version === claimMapVersion(state.selected);
 }
+// This lane admits only a server-bound initial caption draft. It does not
+// project sources: those controls stay unavailable until the normal read wins.
+function readerSnapshotSource(task) {
+  return JSON.stringify([task.control_generation, task.retry_count || 0, task.source_identity,
+    task.source_type, task.mode, task.source_task_id, task.learning_range, task.transcript_path, task.page_url,
+    task.screen_subtitles_media_sha256, task.media_path, task.source_media_path, task.range_media_ready,
+    task.media_integrity, localMediaSource(task)]);
+}
+function setReaderSnapshot(value) {
+  state.readerSnapshot = value;
+  for (const id of ["noteActions", "readerStrip", "annotations", "aiAssistant"]) if ($(id)) $(id).inert = Boolean(value);
+  for (const details of $("taskStatus").querySelectorAll(".claim-evidence-details")) {
+    details.inert = Boolean(value); if (value) details.open = false;
+  }
+  if (value) $("readerMetadata").textContent = "字幕摘录草稿 · 正文可读，来源与编辑正在同步";
+}
+function discardReaderSnapshot() {
+  if (!state.readerSnapshot) return;
+  setReaderSnapshot(null);
+  state.text = state.revision = "";
+  state.edition = null;
+  $("document").innerHTML = '<p class="muted">正在同步正文…</p>';
+  delete $("document").dataset.readerRevision;
+}
+function refreshReaderSnapshot(taskId) {
+  const eligible = () => state.selected?.kind === "task" && state.selected.id === taskId && !state.editing
+    && !state.readerSnapshot && !(state.edition?.edited && $("document").dataset.readerSource === `task:${taskId}`)
+    && !state.selectedControlPending && $("inlineSourceView").hidden
+    && !state.annotationSaving && !state.annotationEditingId && !$("annotationText").value.trim()
+    && !document.querySelector("dialog[open]") && $("assistantPanel").hidden
+    && ["queued", "running", "cancelling"].includes(state.selected.status)
+    && ["", "transcript-draft"].includes(state.selected.summary_source || "")
+    && /^[a-f0-9]{64}$/.test(state.selected.control_generation || "")
+    && !$("document").querySelector("[data-progressive-reader]")
+    && !(state.selected.summary_source === "transcript-draft" && state.edition?.text?.trim()
+      && $("document").dataset.readerSource === `task:${taskId}`);
+  if (!eligible()) return Promise.resolve();
+  let lane = state.readerSnapshotRefresh;
+  if (!lane || !selectedSourceCurrent(lane))
+    lane = state.readerSnapshotRefresh = { ...selectedSnapshot(), dirty: false, promise: null };
+  lane.dirty = true;
+  if (lane.promise) return lane.promise;
+  lane.promise = (async () => {
+    while (lane.dirty && state.readerSnapshotRefresh === lane && selectedSourceCurrent(lane) && eligible()) {
+      lane.dirty = false;
+      const snapshot = selectedSnapshot(), selected = state.selected, sourceKey = readerSnapshotSource(state.selected);
+      lane.controller = new AbortController();
+      try {
+        const edition = await api(`${sourcePath(selected)}?reader_snapshot=true&expected_generation=${encodeURIComponent(selected.control_generation)}`,
+          { signal: lane.controller.signal });
+        const bound = edition.reader_snapshot;
+        if (!bound || bound.schema_version !== 1 || bound.task_id !== taskId
+            || bound.control_generation !== selected.control_generation || bound.retry_count !== (selected.retry_count || 0)
+            || !/^[a-f0-9]{64}$/.test(bound.body_revision || "") || !/^[a-f0-9]{64}$/.test(bound.source_revision || "")
+            || bound.body_revision !== edition.revision || typeof edition.text !== "string" || !edition.text.trim()
+            || edition.edited !== false || !/^[a-f0-9]{12}$/.test(bound.attempt_id || "") || !Number.isSafeInteger(bound.publication_sequence) || bound.publication_sequence < 1
+            || typeof bound.title !== "string" || typeof bound.task_updated_at !== "string" || !bound.task_updated_at
+            || !["queued", "running", "cancelling"].includes(bound.status)
+            || bound.artifact !== "draft.md" || bound.summary_source !== "transcript-draft"
+            || bound.summary_generated !== false || bound.verified !== false || typeof bound.provisional !== "boolean") continue;
+        const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(edition.text)))]
+          .map(byte => byte.toString(16).padStart(2, "0")).join("");
+        if (digest !== bound.body_revision || !eligible() || !selectedSnapshotCurrent(snapshot) || sourceKey !== readerSnapshotSource(state.selected)) continue;
+        if (state.revision === edition.revision && $("document").dataset.readerSource === `task:${taskId}`) continue;
+        // Fence every older selected/list/edition response without cancelling
+        // the normal lane; its existing single reconciliation owns the handoff.
+        state.selectedRevision = (state.selectedRevision || 0) + 1;
+        editionRequest++;
+        closeSource(); claimTimeline.reset(); state.personalReview?.reset();
+        setReaderSnapshot({ ...bound, sourceKey });
+        state.text = edition.text; state.revision = edition.revision; state.edition = edition;
+        $("document").dataset.sourceRevision = edition.revision;
+        sectionReader.clear();
+        LearnNoteMarkdown.configure({ safeNoteMediaUrl: () => "" });
+        renderEditionStable($("document"), document.scrollingElement, `task:${taskId}`, `${edition.revision}::`, () => {
+          $("document").innerHTML = LearnNoteMarkdown.markdownToHtml(edition.text, { sourceOffsets: true });
+        });
+      } catch (error) {
+        if (error.status === 404 && selectedSnapshotCurrent(snapshot) && !state.editing)
+          showHome({ remember: false, check: false });
+        // Unavailable/changing snapshots never fall back or create retries.
+      }
+    }
+  })().finally(() => {
+    lane.promise = null;
+    if (lane.dirty && state.readerSnapshotRefresh === lane && selectedSourceCurrent(lane) && eligible())
+      return refreshReaderSnapshot(taskId);
+  });
+  return lane.promise;
+}
 function invalidateSelectedReads() {
   state.selectedRevision = (state.selectedRevision || 0) + 1;
   editionRequest++;
+  discardReaderSnapshot();
+  if (state.readerSnapshotRefresh) { state.readerSnapshotRefresh.dirty = false; state.readerSnapshotRefresh.controller?.abort(); }
+  state.readerSnapshotRefresh = null;
   if (state.selectedRefresh) { state.selectedRefresh.dirty = false; state.selectedRefresh.controller?.abort(); }
   state.selectedRefresh = null;
 }
@@ -407,12 +501,18 @@ async function adoptSelectedSnapshot(selected, snapshot, forceEdition = false) {
   const changed = claimMapVersion(selected) !== claimMapVersion(state.selected);
   const media = JSON.stringify(localMediaSource(selected));
   const mediaChanged = media !== JSON.stringify(localMediaSource(state.selected));
+  const preview = state.readerSnapshot;
+  const pendingPreview = preview?.provisional && selected.status === "running" && selected.note_path === ""
+    && selected.summary_source === "" && selected.updated_at === preview.task_updated_at;
+  const publishedDraft = /(?:^|[\\/])draft\.md$/.test(selected.note_path || "")
+    && selected.summary_source === "transcript-draft" && selected.status !== "success";
+  if (preview && (preview.sourceKey !== readerSnapshotSource(selected) || !(pendingPreview || publishedDraft))) discardReaderSnapshot();
   state.selected = selected;
   state.selectedRevision = (state.selectedRevision || 0) + 1;
   renderStatus();
   window.dispatchEvent(new CustomEvent("learnnote:metadata", { detail: { id: selected.id, kind: selected.kind, epoch: snapshot.epoch, control_generation: selected.control_generation } }));
   let conflict;
-  if ((changed || forceEdition) && !state.editing) {
+  if ((changed || forceEdition || state.readerSnapshot) && !state.editing) {
     claimTimeline.reset();
     conflict = await loadEdition(snapshot.epoch);
   } else if (!state.editing) state.personalReview?.load();
@@ -422,6 +522,7 @@ async function adoptSelectedSnapshot(selected, snapshot, forceEdition = false) {
   return conflict;
 }
 function refreshSelectedTask(taskId = state.selected?.id, reconciliation = false) {
+  if (!reconciliation) refreshReaderSnapshot(taskId);
   if (state.selected?.kind !== "task" || state.selected.id !== taskId || state.editing || state.selectedControlPending?.id === taskId) return Promise.resolve();
   let lane = state.selectedRefresh;
   if (!lane || !selectedSourceCurrent(lane)) {
@@ -551,17 +652,29 @@ async function loadEdition(epoch) {
   const selected = state.selected;
   const version = claimMapVersion(selected);
   const request = ++editionRequest;
+  const current = () => epoch === state.epoch && request === editionRequest && !state.editing
+    && state.selected?.id === selected.id && state.selected?.kind === selected.kind && claimMapVersion(state.selected) === version;
   const progressive = selected.kind === "task" && selected.options?.visual_understanding
     && ["running", "cancelling", "failed", "cancelled"].includes(selected.status)
     && (selected.artifact_status?.draft_available || selected.artifact_status?.partial_draft_available);
   const [edition, projection] = await Promise.all([
     api(sourcePath(selected)),
     progressive ? api(`/api/tasks/${encodeURIComponent(selected.id)}/partial-note`).catch(() => null) : null,
-  ]);
-  if (epoch !== state.epoch || request !== editionRequest || state.editing
-      || state.selected?.id !== selected.id || state.selected?.kind !== selected.kind
-      || claimMapVersion(state.selected) !== version) return;
+  ]).catch(error => {
+    if ([404, 409].includes(error.status) && current() && state.readerSnapshot) discardReaderSnapshot();
+    throw error;
+  });
+  if (!current()) return;
   if (sectionReader.retainableSnapshot(projection, selected, edition)) return "projection_conflict";
+  const preview = state.readerSnapshot;
+  if (preview?.provisional && selected.id === preview.task_id && selected.updated_at === preview.task_updated_at
+      && readerSnapshotSource(selected) === preview.sourceKey && selected.status === "running"
+      && selected.note_path === "" && selected.summary_source === "" && edition.text === "" && edition.edited === false)
+    return "projection_conflict";
+  if (preview) {
+    setReaderSnapshot(null);
+    window.dispatchEvent(new CustomEvent("learnnote:metadata", { detail: { id: selected.id, kind: selected.kind, epoch } }));
+  }
   state.text = edition.text;
   state.revision = edition.revision;
   state.edition = edition;
@@ -580,7 +693,28 @@ async function loadEdition(epoch) {
   const bodySource = selected.kind === "task" && selected.summary_source === "transcript-draft" ? "" : selected.summary_source || "";
   const rendered = renderEditionStable($("document"), document.scrollingElement, `${selected.kind}:${selected.id}`,
     `${edition.revision}:${bodySource}:${selected.metadata?.ocr_performed ? selected.metadata.source_revision : ""}`, renderNote);
-  if (!rendered) { loadClaimTimeline(); state.personalReview?.load(); }
+  if (!rendered) {
+    if (preview) {
+      const root = $("document"), selection = window.getSelection?.();
+      // Timestamp decoration replaces nodes, so retain even a selection inside
+      // a caption time; ordinary prose is never replaced during this handoff.
+      const offsets = selection?.rangeCount && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
+        ? [[selection.anchorNode, selection.anchorOffset], [selection.focusNode, selection.focusOffset]].map(([node, offset]) => {
+          const range = document.createRange(); range.selectNodeContents(root); range.setEnd(node, offset); return range.toString().length;
+        }) : null;
+      collapseSourceReviews(root); decorateSourceTimes(root);
+      if (offsets) {
+        const position = offset => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) { if (offset <= walker.currentNode.length) return [walker.currentNode, offset]; offset -= walker.currentNode.length; }
+        };
+        const anchor = position(offsets[0]), focus = position(offsets[1]);
+        if (anchor && focus) selection.setBaseAndExtent(...anchor, ...focus);
+      }
+      window.dispatchEvent(new Event("learnnote:document"));
+    }
+    loadClaimTimeline(); if (!preview) state.personalReview?.load();
+  }
 }
 function renderNote() {
   sectionReader.clear();
@@ -790,6 +924,7 @@ function renderTaskStatus(reload) {
   if (t.claim_evidence?.path) {
     const details = document.createElement("details");
     details.className = "claim-evidence-details";
+    details.inert = Boolean(state.readerSnapshot);
     const summary = document.createElement("summary");
     const quality = t.claim_evidence.quality || {};
     const locatedOnlyCount = Number(quality.located_only_count || 0);
@@ -808,12 +943,12 @@ function renderTaskStatus(reload) {
     body.textContent = "展开后读取本地映射；这里的支持表示可定位来源，不代表课程事实已经被外部验证。";
     details.append(body);
     details.addEventListener("toggle", async () => {
-      if (!details.open || details.dataset.loaded) return;
+      if (state.readerSnapshot || !details.open || details.dataset.loaded) return;
       details.dataset.loaded = "true";
       try {
         const epoch = state.epoch, revision = state.revision;
         const mapped = await api("/api/tasks/" + t.id + "/claims");
-        if (!details.isConnected || epoch !== state.epoch || revision !== state.revision || state.editing) return;
+        if (state.readerSnapshot || !details.isConnected || epoch !== state.epoch || revision !== state.revision || state.editing) return;
         const model = claimTimelineModel(mapped, { taskId: t.id, revision, text: state.text });
         if (!model) { body.textContent = "来源映射与当前笔记版本不一致，已停用旧定位。"; return; }
         const list = document.createElement("ol");
@@ -827,7 +962,7 @@ function renderTaskStatus(reload) {
             locate.type = "button";
             locate.textContent = `${claimSourceLabel(candidate)}`;
             locate.onclick = () => {
-              if (epoch !== state.epoch || revision !== state.revision || state.editing) return;
+              if (state.readerSnapshot || epoch !== state.epoch || revision !== state.revision || state.editing) return;
               openClaimEvidence(candidate, t.id).catch(failure);
             };
             item.append(locate);
@@ -836,7 +971,7 @@ function renderTaskStatus(reload) {
         }
         body.replaceChildren(list);
       } catch (error) {
-        body.textContent = error.message || "逐条来源暂时无法读取。";
+        if (!state.readerSnapshot) body.textContent = error.message || "逐条来源暂时无法读取。";
       }
     });
     panel.append(details);
@@ -900,6 +1035,7 @@ function closeSource({ cancelEvidence = true } = {}) {
 
 let inlineSourceRequest = 0;
 async function openInlineSource(seconds, sourceOverride = null, endSeconds = undefined) {
+  if (state.readerSnapshot) return;
   const request = ++inlineSourceRequest;
   let source = sourceOverride || state.selected;
   if (!source) return;
@@ -976,6 +1112,7 @@ $("backToSummary").onclick = () => {
 };
 
 async function openSource(seconds, sourceOverride = null, target = {}) {
+  if (state.readerSnapshot) return;
   const s = sourceOverride || state.selected;
   if (!s) return;
   const panel = $("sourcePanel"),
@@ -1206,6 +1343,7 @@ installNoteEditor({
   },
 });
 $("export").onclick = () => {
+  if (state.readerSnapshot) return;
   const blob = new Blob([state.editing ? $("noteText").value : state.text], {
     type: "text/markdown;charset=utf-8",
   });
@@ -1219,6 +1357,7 @@ $("export").onclick = () => {
 };
 $("annotationForm").onsubmit = async (e) => {
   e.preventDefault();
+  if (state.readerSnapshot) return;
   if (state.annotationAnchorLoading) { notice("正在核对字幕区间，请稍候再保存。"); return; }
   if (state.annotationSaving) return;
   const epoch = state.epoch,

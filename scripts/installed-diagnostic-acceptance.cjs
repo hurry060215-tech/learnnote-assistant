@@ -8,7 +8,9 @@ const { execFileSync, spawn } = require('node:child_process');
 const TIMEOUT = 15000, MAX_BYTES = 256 * 1024;
 const SYNTHETIC_TITLE = 'Synthetic rollback captions';
 const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
-const NATIVE_PHASES = ['ownership', 'destination', 'dialog-wait', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
+const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
+const OBSERVER_EXCEPTIONS = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
+const NATIVE_PHASES = ['ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
 
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
@@ -111,7 +113,15 @@ function validateHostFailure(value) {
   return value;
 }
 function validateHostObservation(value) {
-  exactKeys(value, ['status', 'snapshots']);
+  exactKeys(value, ['status', 'snapshots', 'phase', 'reason', 'elapsed_ms', 'exception_type']);
+  assert(OBSERVER_PHASES.includes(value.phase));
+  assert(['complete', 'exception', 'budget', 'unavailable'].includes(value.reason));
+  assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
+  assert(value.reason === 'exception' ? OBSERVER_EXCEPTIONS.includes(value.exception_type) : value.exception_type === null);
+  assert(value.phase !== 'complete' || value.reason === 'complete');
+  assert(value.reason !== 'complete' || value.phase === 'complete' && value.status === 'complete');
+  assert(value.reason !== 'budget' || value.elapsed_ms >= 1000);
+  assert(value.reason !== 'unavailable' || value.phase === 'initialization' && value.status === 'unavailable');
   assert(['complete', 'partial', 'unavailable'].includes(value.status));
   assert(Array.isArray(value.snapshots) && value.snapshots.length <= 2);
   for (const snapshot of value.snapshots) {
@@ -133,16 +143,32 @@ function validateHostObservation(value) {
       if (node.parent >= 0) assert.equal(snapshot.nodes[node.parent].pruned, false);
     }
   }
-  assert(value.status !== 'complete' || value.snapshots.length === 2);
+  assert(value.status !== 'complete' || value.snapshots.length === 2 && value.reason === 'complete');
   assert(value.status !== 'partial' || value.snapshots.length === 1);
   assert(value.status !== 'unavailable' || value.snapshots.length === 0);
+  return value;
+}
+
+function validateNativeCapture(value) {
+  exactKeys(value, ['status', 'reason', 'file', 'width', 'height']);
+  assert(['saved', 'unavailable'].includes(value.status));
+  assert(['captured', 'guard-before', 'destination', 'bounds', 'render', 'guard-after', 'persist', 'unavailable'].includes(value.reason));
+  if (value.status === 'saved') {
+    assert.equal(value.reason, 'captured');
+    assert(['installed-current-md-native-dialog.png', 'installed-current-json-native-dialog.png'].includes(value.file));
+    for (const key of ['width', 'height']) assert(Number.isInteger(value[key]) && value[key] >= 64 && value[key] <= 4096);
+  } else {
+    assert.notEqual(value.reason, 'captured'); assert.equal(value.file, null);
+    assert.equal(value.width, null); assert.equal(value.height, null);
+  }
   return value;
 }
 
 // Native common Save dialog only: no browser download override or global keys.
 function nativeDialogScript(config, binding, directory, destination, observeOnly = false) {
   const payload = Buffer.from(JSON.stringify({ pid: config.ownedPid, start: binding.owned_start,
-    directory, destination, observeOnly, observer: path.join(__dirname, 'installed-native-dialog-observation.ps1') })).toString('base64');
+    directory, destination, observeOnly,
+    capture: config.captureNativeDialog === true && !observeOnly, observer: path.join(__dirname, 'installed-native-dialog-observation.ps1') })).toString('base64');
   return String.raw`$ErrorActionPreference='Stop';
 $c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json;
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes;
@@ -229,6 +255,15 @@ do {
 } while ([DateTime]::UtcNow -lt $deadline);
 if ($c.observeOnly) { @{native_popup_absent=$true} | ConvertTo-Json -Compress; exit 0 }
 if ($dialog -eq [IntPtr]::Zero) { throw 'Owned Save dialog did not appear' }
+if ($c.capture) {
+ Stage 'dialog-capture';
+ $captureEvidence=@{status='unavailable';reason='unavailable';file=$null;width=$null;height=$null};
+ try {
+  . (Join-Path (Split-Path $c.observer) 'installed-native-dialog-capture.ps1');
+  $captureEvidence=Save-OwnedDialogCapture $dialog $c.directory $c.destination { Assert-Dialog $dialog };
+ } catch { } # Optional evidence; no input.
+ [Console]::Out.WriteLine('CAPTURE:'+($captureEvidence | ConvertTo-Json -Compress)); [Console]::Out.Flush();
+}
 $element=[Windows.Automation.AutomationElement]::FromHandle($dialog);
 $all=[Windows.Automation.Condition]::TrueCondition; $desc=[Windows.Automation.TreeScope]::Descendants;
 Stage 'filename-host'; $hostCount=$null; $hostSubphase='query';
@@ -292,7 +327,7 @@ throw 'Native Save did not finish';`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}) {
-  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, evidenceInvalid = false;
+  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
   const closed = new Promise(resolve => { closedResolve = resolve; });
@@ -319,6 +354,9 @@ async function withNativeHelper(child, action, timeouts = {}) {
           hostFailure.native_host_failure = details;
           nativeSubphase = hostFailure.native_host_failure.subphase;
         } catch { fail(new Error('Invalid native host failure metadata')); }
+      } else if (line.startsWith('CAPTURE:')) {
+        try { assert(ready && nativePhase === 'dialog-capture' && !nativeCapture); nativeCapture = validateNativeCapture(JSON.parse(line.slice(8))); }
+        catch { captureInvalid = true; } // Never retain paths or unvalidated pixel metadata.
       } else if (line.startsWith('HOSTDIAG:')) {
         try { assert(hostFailure && !hostObservation && line.length <= 32768); hostObservation = validateHostObservation(JSON.parse(line.slice(9))); }
         catch { evidenceInvalid = true; } // Keep the original native rejection, never raw metadata.
@@ -332,7 +370,7 @@ async function withNativeHelper(child, action, timeouts = {}) {
   child.once('close', code => {
     closedResolve();
     if (hostFailure) fail(hostFailure);
-    else if (code === 0 && ready && result) doneResolve(result);
+    else if (code === 0 && ready && result) doneResolve({ ...result, ...(nativeCapture ? { native_dialog_capture: nativeCapture } : {}), ...(captureInvalid ? { native_capture_unavailable: true } : {}) });
     else { const error = new Error('Owned native Save helper failed'); fail(error); }
   });
   try {
@@ -344,6 +382,8 @@ async function withNativeHelper(child, action, timeouts = {}) {
     if (nativePhase) failure.native_stage = nativePhase;
     if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
     if (hostObservation) failure.native_host_observation = hostObservation;
+    if (nativeCapture) failure.native_dialog_capture = nativeCapture;
+    if (captureInvalid) failure.native_capture_unavailable = true;
     if (hostFailure && (!hostObservation || evidenceInvalid)) failure.native_observation_unavailable = true;
     throw failure;
   }
@@ -416,7 +456,7 @@ async function main(args) {
   const report = { passed: false, synthetic_only: true, installed_ui: true, installed_api: true,
     api_mocked: false, browser_launched: false, native_app_closed: false, expected_version: expectedVersion,
     surface: 'owned installed WebView2 viewport', focus_scope: 'DOM focus within the owned app',
-    screenshots: [], checks: [], downloads: [], diagnostic_requests: 0, page_errors: 0, external_requests: 0,
+    screenshots: [], native_dialog_captures: [], checks: [], downloads: [], diagnostic_requests: 0, page_errors: 0, external_requests: 0,
     blocked_external_requests: 0, network_observation_scope: 'After attachment, before test navigation',
     cleanup: { disconnect: false, owned_app_alive: false, errors: [] } };
   let browser, page, binding, failure, syntheticVerified = false, nativeDirectory;
@@ -459,6 +499,7 @@ async function main(args) {
     await capture(config.startupOnly ? 'previous-startup.png' : 'installed-current-startup.png');
     report.checks.push('Installed bundled task reader displays the retained synthetic title and captions');
     if (!config.startupOnly) {
+      config.captureNativeDialog = syntheticVerified;
       report.phase = 'visible-diagnostic-disclosure';
       await page.locator('#taskStatus [data-task-action="diagnostics"]').click();
       const processing = page.locator('#toolsDialog[open]');
@@ -500,6 +541,11 @@ async function main(args) {
         const destination = path.join(nativeDirectory, `learnnote-diagnostics.${format}`);
         assert.equal(fs.existsSync(destination), false);
         const native = await nativeDialog(config, binding, nativeDirectory, destination, () => save.click());
+        if (native.native_dialog_capture) {
+          report.native_dialog_captures.push(native.native_dialog_capture);
+          if (native.native_dialog_capture.status === 'saved') report.screenshots.push(native.native_dialog_capture.file);
+        }
+        if (native.native_capture_unavailable) report.native_capture_unavailable = true;
         assert.equal(native.native_dialog, true); assert.equal(native.saved, true);
         report.downloads.push({ format, ...await assertSavedBytes(destination, expected) });
         assert.equal(report.diagnostic_requests, gets, 'Save must reuse the exact cached preview bytes');
@@ -530,6 +576,11 @@ async function main(args) {
     for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
+    if (error.native_dialog_capture) {
+      report.native_dialog_captures.push(error.native_dialog_capture);
+      if (error.native_dialog_capture.status === 'saved') report.screenshots.push(error.native_dialog_capture.file);
+    }
+    if (error.native_capture_unavailable) report.native_capture_unavailable = true;
     if (error.native_helper_cleanup_failed) report.native_helper_cleanup_failed = true;
     if (page && syntheticVerified) {
       try { await capture(config.startupOnly ? 'previous-startup-failure.png' : 'installed-current-diagnostic-failure.png'); }
@@ -546,5 +597,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

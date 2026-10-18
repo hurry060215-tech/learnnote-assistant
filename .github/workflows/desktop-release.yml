@@ -4,16 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       acceptance_only:
-        description: Run all build and installed acceptance gates without publishing a tag or release
+        description: Run acceptance without publishing (retained candidates are diagnostic-only)
         required: false
         default: false
         type: boolean
+      candidate_artifact_id:
+        description: Diagnostic only; reuse retained installer ID with acceptance_only and its exact release_commit/tag
+        required: false
+        type: string
       release_tag:
         description: Version tag to publish after validation (existing tag, or supply exact commit)
         required: false
         type: string
       release_commit:
-        description: Exact 40-character commit SHA for a new tag; leave empty for existing tags
+        description: Exact 40-character source SHA (retained mode pins candidate source; harness uses dispatched SHA)
         required: false
         type: string
   push:
@@ -21,6 +25,7 @@ on:
       - "v*"
 
 permissions:
+  actions: read
   contents: write
   id-token: write
   attestations: write
@@ -33,6 +38,7 @@ env:
   ORT_DISABLE_TELEMETRY: "1"
   HF_HUB_DISABLE_TELEMETRY: "1"
   ACCEPTANCE_ONLY: ${{ inputs.acceptance_only && 'true' || 'false' }}
+  CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
   RELEASE_COMMIT: ${{ inputs.release_commit }}
   RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
@@ -43,26 +49,30 @@ jobs:
       PYINSTALLER_CONFIG_DIR: D:\LearnNoteBuildCache\pyinstaller
       TMP: D:\LearnNoteBuildCache\temp
       TEMP: D:\LearnNoteBuildCache\temp
-      SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-      SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-      SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+      SIGNING_CERT_BASE64: ${{ !inputs.candidate_artifact_id && secrets.WINDOWS_SIGNING_CERT_BASE64 || '' }}
+      SIGNING_CERT_PASSWORD: ${{ !inputs.candidate_artifact_id && secrets.WINDOWS_SIGNING_CERT_PASSWORD || '' }}
+      SIGNING_TIMESTAMP_URL: ${{ !inputs.candidate_artifact_id && secrets.WINDOWS_SIGNING_TIMESTAMP_URL || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.release_commit || inputs.release_tag || github.ref }}
+          ref: ${{ inputs.candidate_artifact_id && github.sha || inputs.release_commit || inputs.release_tag || github.ref }}
       - name: Validate release source
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -and $env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid release tag" }
           $commit = git rev-parse HEAD
-          if ($env:RELEASE_COMMIT) {
+          if ($env:CANDIDATE_ARTIFACT_ID) {
+            if ($env:ACCEPTANCE_ONLY -ne 'true' -or $env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') { throw "Retained installers require acceptance-only manual diagnostics" }
+            if ($env:CANDIDATE_ARTIFACT_ID -notmatch '^[1-9][0-9]*$' -or $env:RELEASE_COMMIT -notmatch '^[0-9a-f]{40}$' -or -not $env:RELEASE_TAG) { throw "Retained diagnostics require artifact ID and exact candidate source commit/tag" }
+            if ($commit -ne $env:GITHUB_SHA) { throw "Diagnostic harness must match the dispatched workflow source" }
+          } elseif ($env:RELEASE_COMMIT) {
             if ($env:RELEASE_COMMIT -notmatch '^[0-9a-f]{40}$' -or $env:RELEASE_COMMIT -ne $commit -or -not $env:RELEASE_TAG) { throw "Exact release commit and version tag are required" }
           } elseif ($env:RELEASE_TAG) {
             $expected = git rev-parse "$env:RELEASE_TAG^{commit}"
             if ($LASTEXITCODE -ne 0 -or $expected -ne $commit) { throw "Checkout does not match the requested release tag" }
           }
           $version = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
-          if ($env:RELEASE_TAG -and "v$version" -ne $env:RELEASE_TAG) { throw "Release tag does not match client version" }
+          if (-not $env:CANDIDATE_ARTIFACT_ID -and $env:RELEASE_TAG -and "v$version" -ne $env:RELEASE_TAG) { throw "Release tag does not match client version" }
           "BUILD_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -73,6 +83,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install desktop dependencies
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         run: |
           python -m pip install -r backend/requirements.windows-py312.lock.txt
           if ($LASTEXITCODE -ne 0) { throw "Pinned Windows dependency installation failed" }
@@ -88,11 +99,37 @@ jobs:
           ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if (-not $compiler) { throw "Pinned Inno Setup 7.1.0 compiler was not found" }
           "LEARNNOTE_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify and restore retained diagnostic candidate
+        if: env.CANDIDATE_ARTIFACT_ID != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/restore-installer-candidate.py --artifact-id "$env:CANDIDATE_ARTIFACT_ID" --source-commit "$env:RELEASE_COMMIT" --release-tag "$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw "Retained candidate identity verification failed" }
+      - name: Install retained diagnostic harness dependencies
+        if: env.CANDIDATE_ARTIFACT_ID != ''
+        shell: pwsh
+        run: |
+          python -m pip install requests==2.34.2 certifi==2026.7.22 charset-normalizer==3.5.2 idna==3.20 urllib3==2.8.0
+          if ($LASTEXITCODE -ne 0) { throw "Installed harness dependency installation failed" }
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "Pinned installed-UI dependencies failed" }
+      - name: Check current retained diagnostic harness
+        if: env.CANDIDATE_ARTIFACT_ID != ''
+        shell: pwsh
+        run: |
+          python -m unittest scripts.tests.test_restore_installer_candidate scripts.tests.test_installed_release_workflow scripts.tests.test_installed_upgrade_acceptance.InstalledUpgradeTests
+          if ($LASTEXITCODE -ne 0) { throw "Retained candidate and installed harness contracts failed" }
+          node web/tests/installed_diagnostic_acceptance.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Current native diagnostic helper contracts failed" }
       - name: Provision pinned media tools for real fixture contracts
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         timeout-minutes: 5
         shell: pwsh
         run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools
       - name: Run release gate
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/release | Out-Null
@@ -116,11 +153,13 @@ jobs:
           name: release-reliability-${{ github.run_id }}
           path: |
             build/release/freshness.json
+            build/release/retained-candidate/*.json
             build/release/visual-media-tools/media-tools.json
             build/release/reliability/**/report.json
             build/release/reliability/*.log
           if-no-files-found: warn
       - name: Build portable desktop client
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         shell: pwsh
         run: |
           python scripts/generate-version-file.py build/learnnote-version.txt
@@ -142,7 +181,7 @@ jobs:
           python scripts/audit-release-tree.py dist/LearnNote --output build/release-tree-audit.json
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
       - name: Sign Windows executable
-        if: env.SIGNING_CERT_BASE64 != ''
+        if: env.CANDIDATE_ARTIFACT_ID == '' && env.SIGNING_CERT_BASE64 != ''
         shell: pwsh
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "learnnote-signing.pfx"
@@ -154,6 +193,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Remove-Item -LiteralPath $certificate -Force
       - name: Package Windows release
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         shell: pwsh
         run: |
           Compress-Archive -Path dist/LearnNote/* -DestinationPath LearnNote-Windows-x64.zip
@@ -162,7 +202,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Copy-Item dist-installer/LearnNote-Setup-x64.exe LearnNote-Setup-x64.exe
       - name: Sign Windows installer
-        if: env.SIGNING_CERT_BASE64 != ''
+        if: env.CANDIDATE_ARTIFACT_ID == '' && env.SIGNING_CERT_BASE64 != ''
         shell: pwsh
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "learnnote-signing.pfx"
@@ -174,6 +214,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Release build or signing command failed" }
           Remove-Item -LiteralPath $certificate -Force
       - name: Identify installer candidate before installed tests
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         shell: pwsh
         run: |
           $installer = Get-Item -LiteralPath LearnNote-Setup-x64.exe
@@ -189,6 +230,7 @@ jobs:
             installer_sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content -LiteralPath build/release/installer-candidate.json -Encoding utf8
       - name: Retain installer candidate for failure diagnosis
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-candidate-${{ github.run_id }}-${{ github.run_attempt }}
@@ -231,6 +273,7 @@ jobs:
           $previousInstaller = Join-Path $previousDir "LearnNote-Setup-x64.exe"
           $previousHash = (Get-FileHash -LiteralPath $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
           if ("sha256:$previousHash" -ne $previousAssets[0].digest) { throw "Previous installer digest mismatch" }
+          $env:GH_TOKEN = ""
           ./scripts/test-upgrade-installer.ps1 `
             -PreviousInstallerPath $previousInstaller `
             -CurrentInstallerPath "$PWD/LearnNote-Setup-x64.exe"
@@ -253,6 +296,7 @@ jobs:
             build/release/installed-upgrade/*.png
           if-no-files-found: warn
       - name: Package browser extension
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         shell: pwsh
         run: |
           $manifest = Get-Content extension/manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -276,6 +320,7 @@ jobs:
         with:
           subject-checksums: SHA256SUMS.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.CANDIDATE_ARTIFACT_ID == ''
         with:
           name: LearnNote-release-assets
           path: |
