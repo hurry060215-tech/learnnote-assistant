@@ -154,7 +154,7 @@ async function runInstalledFeatures(page, { origin, taskId, fixture, read, captu
     assert.equal(await page.locator('#pinSource').getAttribute('aria-pressed'), 'false');
     assert.equal(await page.locator('#player').evaluate(node => node.paused), true);
     await assertClaimFollowVisibility(page, { claimId: reading.claim_id, oversizedClaimId: reading.oversized_claim_id,
-      out, name: 'installed-follow-native-viewport', records: state.follow, listTextLimit: 4096 });
+      out, name: 'installed-follow-native-viewport', records: state.follow, listTextLimit: 4096, requireUniqueActiveClaim: true });
     for (const item of state.follow[0].cases) report.screenshots.push(item.capture);
     const previews = state.writes.filter(row => row.route === `/api/tasks/${taskId}/qa/preview`);
     const readingEvents = state.writes.filter(row => row.route === '/api/study/activity');

@@ -47,7 +47,7 @@ test("hosted geometry assertions distinguish actual center, visible no-scroll, o
   assert.throws(() => assertClaimFollowVisible(geometry({ top: 140, height: 40 }), "start"));
 });
 
-function fakeRun({ primary, badGeometry = false, reflow = false, captureFailure, cleanupFailure, reportFailure } = {}) {
+function fakeRun({ primary, badGeometry = false, reflow = false, captureFailure, cleanupFailure, reportFailure, requireUniqueActiveClaim = false, ambiguous = false } = {}) {
   const writes = [], calls = [], records = [], module = { exports: {} };
   vm.runInNewContext(fixture, { module, console: { error: () => {} }, require: name => name === "node:fs" ? {
     writeFileSync: (_path, text) => { calls.push("report"); writes.push(JSON.parse(text)); if (reportFailure) throw reportFailure; },
@@ -59,6 +59,7 @@ function fakeRun({ primary, badGeometry = false, reflow = false, captureFailure,
     setViewportSize: async value => { calls.push("viewport"); if (value === savedViewport && cleanupFailure) throw cleanupFailure; },
     keyboard: { press: async () => { checked = !checked; } },
     locator: selector => selector === "#followNote" ? { isChecked: async () => checked, focus: async () => { calls.push("focus follow"); } }
+      : selector === '#document .note-claim-marker[aria-current="true"]' ? { evaluateAll: async () => ambiguous ? ["earlier", "small"] : [time === 12 ? "small" : "large"] }
       : { evaluate: async (_fn, value) => { time = value; calls.push("seek"); } },
     waitForFunction: async () => {},
     evaluateHandle: async () => ({ evaluate: async () => { calls.push("restore focus"); }, dispose: async () => { calls.push("dispose"); } }),
@@ -78,7 +79,7 @@ function fakeRun({ primary, badGeometry = false, reflow = false, captureFailure,
       if (source.includes("scrollTo")) calls.push("restore scroll");
     },
   };
-  const run = () => module.exports.assertClaimFollowVisibility(page, { claimId: "small", oversizedClaimId: "large", out: "/fixture", name: "test", viewport: { width: 1440, height: 500 }, records });
+  const run = () => module.exports.assertClaimFollowVisibility(page, { claimId: "small", oversizedClaimId: "large", out: "/fixture", name: "test", viewport: { width: 1440, height: 500 }, records, requireUniqueActiveClaim });
   return { run, writes, calls, records };
 }
 
@@ -118,6 +119,16 @@ test("successful geometry cannot hide a cleanup or report failure", async () => 
   await assert.rejects(cleanup.run(), /viewport cleanup/); assert.equal(cleanup.writes[0].passed, false);
   const error = new Error("report write"), report = fakeRun({ reportFailure: error });
   await assert.rejects(report.run(), value => value === error); assert.equal(report.records[0].passed, false);
+});
+
+test("installed target identity rejects overlapping active claims before geometry and covers both fixed times", async () => {
+  const rejected = fakeRun({ requireUniqueActiveClaim: true, ambiguous: true });
+  await assert.rejects(rejected.run(), /unique active mapped claim/);
+  assert.deepEqual(Array.from(rejected.records[0].cases[0].activeClaimIds), ["earlier", "small"]);
+  assert.equal(rejected.records[0].cases[0].before, undefined);
+  const accepted = fakeRun({ requireUniqueActiveClaim: true }); await accepted.run();
+  assert.deepEqual(Array.from(accepted.records[0].cases, item => Array.from(item.activeClaimIds)), [["small"], ["small"], ["large"]]);
+  assert.equal(accepted.records[0].passed, true);
 });
 
 test("existing hosted owner covers desktop, mobile, short viewport and actual native zoom", () => {

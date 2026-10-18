@@ -68,7 +68,7 @@ async function seekClaim(page, time, claimId) {
   await settle(page);
 }
 
-async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, out, name, viewport, short = false, records = [], capture, listTextLimit = 1000 }) {
+async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, out, name, viewport, short = false, records = [], capture, listTextLimit = 1000, requireUniqueActiveClaim = false }) {
   assert(Number.isInteger(listTextLimit) && listTextLimit >= 1000 && listTextLimit <= 4096, "Synthetic source-list diagnostic bound");
   const report = { name, listTextLimit, trigger: "keyboard Follow activation on a populated paused-player claim", passed: false, cases: [], cleanupErrors: [] }; records.push(report);
   const savedViewport = page.viewportSize();
@@ -109,7 +109,16 @@ async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, ou
       const item = { kind }; report.cases.push(item);
       // Populate the real source list before positioning. Gap-to-active seeking
       // would resize that list above the note and confound the scroll decision.
-      await setFollow(false); await seekClaim(page, time, id); await follow.focus();
+      await setFollow(false); await seekClaim(page, time, id);
+      if (requireUniqueActiveClaim) {
+        // Read the shipped controller's activeClaims result, not a chosen marker
+        // alone: Follow intentionally targets the first active mapped block.
+        item.activeClaimIds = await page.locator('#document .note-claim-marker[aria-current="true"]')
+          .evaluateAll(nodes => nodes.map(node => node.dataset.claimId));
+        assert(item.activeClaimIds.length === 1 && item.activeClaimIds[0] === id,
+          "Synthetic follow target must be the unique active mapped claim");
+      }
+      await follow.focus();
       await place(id, kind !== "already-visible");
       item.before = await page.evaluate(readClaimFollowGeometry, { claimId: id, listTextLimit });
       assert(item.before.active && !item.before.follow && !item.before.sourcePinned);

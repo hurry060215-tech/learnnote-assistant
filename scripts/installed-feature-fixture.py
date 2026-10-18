@@ -10,7 +10,9 @@ import time
 TITLE = 'Synthetic installed reading'
 DEEP_HEADING = 'Synthetic deep heading'
 CUES = [
-    {'start': 0, 'end': 10, 'text': 'First synthetic source supports reading. Reading start. Synthetic deep heading. Follow visibility. Synthetic reading space. Synthetic trailing reading space.'},
+    # Distinct introductory vocabulary keeps the fixed follow times unambiguous
+    # through the real lexical candidate mapping, without changing its rules.
+    {'start': 0, 'end': 10, 'text': 'Opening context. Reading start. Synthetic deep heading. Follow visibility. Synthetic reading space. Synthetic trailing reading space.'},
     {'start': 10, 'end': 20, 'text': 'Second synthetic source supports the selected claim.'},
     {'start': 25, 'end': 28, 'text': 'Synthetic oversized caption ' + 'readable continuation ' * 170 + '.'},
     {'start': 28, 'end': 31, 'text': 'Readable continuation.'},

@@ -573,6 +573,33 @@ uvicorn.run('app.main:app', host='127.0.0.1', port=int(os.environ['LEARNNOTE_BAC
                     # cannot pass merely because these reads were adjacent.
                     time.sleep(1.05)
                     self.assertEqual(runner.features.retained_features(api, reading, ids['task_id']), feature_before)
+                    def timeline_fixture(reading):
+                        task_id = reading['task_id']
+                        return {'reading': reading,
+                                'edition': api.call('GET', f'/api/tasks/editions/task/{task_id}').json(),
+                                'mapped': api.call('GET', f'/api/tasks/{task_id}/claims').json()}
+                    timelines = {'corrected': timeline_fixture(reading)}
+                    # Recreate the exact ambiguous introduction from the failed
+                    # installed fixture through the same real import/model gate.
+                    old_intro = 'First synthetic source supports reading.'
+                    old_cues = [dict(cue) for cue in runner.features.CUES]
+                    old_cues[0]['text'] = old_cues[0]['text'].replace('Opening context.', old_intro, 1)
+                    old_note = runner.features.NOTE.replace('Opening context.', old_intro, 1)
+                    old_directory = Path(tmp) / 'ambiguous'; old_directory.mkdir()
+                    with patch.object(runner.features, 'CUES', old_cues), patch.object(runner.features, 'NOTE', old_note):
+                        old_media = runner.features.generate_media(old_directory, runner.safe_environment(os.environ))
+                        with runner.local_model(cues=old_cues, note=old_note) as (endpoint, calls):
+                            old_reading = runner.features.seed_reading(api, old_media, endpoint)
+                            self.assertEqual(len(calls), 1)
+                        timelines['ambiguous'] = timeline_fixture(old_reading)
+                    self.assertEqual(timelines['ambiguous']['edition']['revision'],
+                                     '399a0afcdb36a8bf0ab8f91c76a6e8d90930f27f52dc3c30d885075807cc47d9')
+                    selector = subprocess.run(['node', str(ROOT / 'scripts/tests/installed-feature-targets.mjs')],
+                        input=json.dumps(timelines), text=True, capture_output=True, check=False, timeout=15,
+                        env=runner.safe_environment(os.environ))
+                    self.assertEqual(selector.returncode, 0, selector.stderr)
+                    self.assertTrue(json.loads(selector.stdout)['passed'])
+                    print('Real API follow-target regression:', selector.stdout.strip())
                 except BaseException as error:
                     failure = error
                     raise

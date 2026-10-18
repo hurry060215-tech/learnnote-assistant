@@ -38,7 +38,7 @@ test('larger source-label capture is fixture-scoped and cannot change scrolling 
 });
 test('installed extension reuses geometry and never mocks API, changes CSS, launches a browser, or runs a model answer', () => {
   for (const source of sourceVariants('../../scripts/installed-reading-paging-acceptance.cjs')) {
-    for(const required of ['assertClaimFollowVisibility(page','assertOutlineHeadingVisible(geometry)','pagingViewportState','assert.equal(state.writes.length, 4)','/qa/preview','listTextLimit: 4096']) assert(source.includes(required));
+    for(const required of ['assertClaimFollowVisibility(page','assertOutlineHeadingVisible(geometry)','pagingViewportState','assert.equal(state.writes.length, 4)','/qa/preview','listTextLimit: 4096','requireUniqueActiveClaim: true']) assert(source.includes(required));
     assert.doesNotMatch(source,/\.route\(|route\.fulfill|addStyleTag|setViewportSize|chromium\.launch|#communityQuestionSend.*click/);
   }
 });
