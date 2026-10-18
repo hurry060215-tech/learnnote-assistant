@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.17 - Community paging and visible reading targets
+
+- Browse saved audience opinions beyond the first 500 items with bounded paging; retain filtering, selection and clear boundaries without automatically fetching more comments or sending them to a model.
+- Keep outline h2/h3/h4 jump targets below the measured sticky toolbar and utility strip while preserving the existing reading appearance.
+- Make opt-in playback follow use the unobscured reading region; leave visible claims in place and handle oversized targets without hiding the start beneath fixed controls.
+- Require the immutable 0.2.16 installer and its verified SHA256 for 0.2.16 → 0.2.17 installed upgrade acceptance. Retained 0.2.16 diagnostics continue to use their own 0.2.15 predecessor.
+- Release/install boundary: current-source tests and browser screenshots are not installed-package evidence. Same-commit gates, packaging, installed fresh/upgrade acceptance and uploaded-asset verification remain mandatory before publication; existing installations need the corresponding release package.
+- Known limits: historical 180-minute synthetic-caption runs exceeded the five-second post-transcript readability gate. Later complete 80-sample passes do not resolve that cross-run variance or establish fixed real-video processing time.
+- Real customer-video failures, real-model quality, four-hour real-video acceptance, Word/WPS layout and full platform acceptance remain unproved or incomplete. Windows builds are unsigned without signing credentials; macOS unsigned/unnotarized builds remain previews, and extension-store publication is independent.
+
 ## 0.2.16 - Safe diagnostics, subtitle retry and source context
 
 - Preview the exact allowlisted diagnostic bytes before explicit local save; share one report across Markdown, JSON and support archives, without automatic upload or sending. Keep unrecorded historical versions, request totals, usage and cost unknown.

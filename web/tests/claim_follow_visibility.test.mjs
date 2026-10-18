@@ -66,8 +66,10 @@ function fakeRun({ primary, badGeometry = false, reflow = false, captureFailure,
     evaluate: async (fn, arg) => {
       if (fn.name === "readClaimFollowGeometry") {
         if (++reads === 2 && primary) throw primary;
-        const height = arg === "large" ? 400 : 40;
-        const top = !checked ? (placed.covered ? 40 : 127) : arg === "large" ? 140 : placed.covered ? (badGeometry ? 100 : 300) : 127;
+        const { claimId, listTextLimit } = arg;
+        assert.equal(listTextLimit, 1000);
+        const height = claimId === "large" ? 400 : 40;
+        const top = !checked ? (placed.covered ? 40 : 127) : claimId === "large" ? 140 : placed.covered ? (badGeometry ? 100 : 300) : 127;
         return { ...geometry({ top, height, active: time !== 24 }), follow: checked, sourceHeight: checked && reflow ? 800 : 700 };
       }
       const source = String(fn);
@@ -110,6 +112,8 @@ test("source-list reflow cannot masquerade as a successful follow decision", asy
 test("successful geometry cannot hide a cleanup or report failure", async () => {
   const success = fakeRun(); await success.run();
   assert.equal(success.writes[0].passed, true); assert.equal(success.writes[0].cases.length, 3);
+  assert.equal(success.writes[0].cases[2].after.targetHeight, 400);
+  assert.equal(success.writes[0].cases[2].after.top, 140);
   const cleanup = fakeRun({ cleanupFailure: new Error("viewport cleanup") });
   await assert.rejects(cleanup.run(), /viewport cleanup/); assert.equal(cleanup.writes[0].passed, false);
   const error = new Error("report write"), report = fakeRun({ reportFailure: error });

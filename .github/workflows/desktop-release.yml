@@ -124,7 +124,7 @@ jobs:
           node web/tests/installed_diagnostic_acceptance.test.mjs
           if ($LASTEXITCODE -ne 0) { throw "Current native diagnostic helper contracts failed" }
       - name: Provision pinned media tools for real fixture contracts
-        if: env.CANDIDATE_ARTIFACT_ID == ''
+        if: env.CANDIDATE_ARTIFACT_ID == '' || env.RELEASE_TAG == 'v0.2.17'
         timeout-minutes: 5
         shell: pwsh
         run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools
@@ -254,14 +254,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $currentTag = $env:RELEASE_TAG
-          $previous = gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isDraft,isPrerelease,publishedAt |
-            ConvertFrom-Json |
-            Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
-            Sort-Object publishedAt -Descending |
-            Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw "Previous stable release lookup failed" }
+          # Pin reviewed upgrade paths independently of newer publications or retained diagnostics.
+          $requiredPreviousTag = switch ($currentTag) {
+            'v0.2.17' { 'v0.2.16' }
+            'v0.2.16' { 'v0.2.15' }
+            default { '' }
+          }
+          if ($requiredPreviousTag) {
+            $previous = [pscustomobject]@{ tagName = $requiredPreviousTag }
+          } else {
+            $previous = gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isDraft,isPrerelease,publishedAt |
+              ConvertFrom-Json |
+              Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
+              Sort-Object publishedAt -Descending |
+              Select-Object -First 1
+            if ($LASTEXITCODE -ne 0) { throw "Previous stable release lookup failed" }
+          }
           if (-not $previous) { throw "Previous stable release is required for installed upgrade acceptance" }
-          if ($currentTag -eq 'v0.2.16' -and $previous.tagName -ne 'v0.2.15') { throw "0.2.16 acceptance requires the immutable 0.2.15 installer" }
+          $previousMetadata = gh api "repos/${{ github.repository }}/releases/tags/$($previous.tagName)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Previous stable release metadata failed" }
+          if ($previousMetadata.tag_name -ne $previous.tagName -or $previousMetadata.draft -ne $false -or $previousMetadata.prerelease -ne $false) { throw "Previous release is not the requested published stable baseline" }
+          if ($requiredPreviousTag -and $previousMetadata.immutable -ne $true) { throw "Reviewed upgrade baseline must be an immutable release" }
+          $previousAssets = @($previousMetadata.assets | Where-Object { $_.name -eq "LearnNote-Setup-x64.exe" })
+          if ($previousAssets.Count -ne 1 -or $previousAssets[0].digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Previous installer has no unique SHA256 identity" }
           $previousDir = Join-Path $env:RUNNER_TEMP "previous-release"
           New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
           gh release download $previous.tagName `
@@ -269,10 +284,6 @@ jobs:
             --pattern "LearnNote-Setup-x64.exe" `
             --dir $previousDir
           if ($LASTEXITCODE -ne 0) { throw "Previous stable installer download failed" }
-          $previousMetadata = gh api "repos/${{ github.repository }}/releases/tags/$($previous.tagName)" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw "Previous stable release metadata failed" }
-          $previousAssets = @($previousMetadata.assets | Where-Object { $_.name -eq "LearnNote-Setup-x64.exe" })
-          if ($previousAssets.Count -ne 1 -or $previousAssets[0].digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Previous installer has no unique SHA256 identity" }
           $previousInstaller = Join-Path $previousDir "LearnNote-Setup-x64.exe"
           $previousHash = (Get-FileHash -LiteralPath $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
           if ("sha256:$previousHash" -ne $previousAssets[0].digest) { throw "Previous installer digest mismatch" }

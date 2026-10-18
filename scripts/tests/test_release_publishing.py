@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -35,6 +36,28 @@ class ReleasePublishingTests(unittest.TestCase):
         self.assertTrue(published.is_file(), "Publishing must use reviewed current-version notes")
         self.assertTrue(published.read_text(encoding="utf-8").startswith(f"# LearnNote v{current}\n"))
         self.assertIn(f"## {current} - ", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+
+    def test_current_version_reaches_sidepanel_readme_and_windows_resources(self):
+        notes = json.loads((ROOT / "web/release-notes.json").read_text(encoding="utf-8"))
+        current = notes["current"]
+        extension = notes["component_versions"]["extension"]
+        sidepanel = (ROOT / "extension/sidepanel.html").read_text(encoding="utf-8")
+        for name in ("sidepanel.css", "sidepanel.js"):
+            self.assertIn(f'{name}?v={extension}', sidepanel)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(f'本机后端 v{current} / 扩展 v{extension}', readme)
+        self.assertIn('docs/RELEASE_' + current.replace('.', '') + '.md', readme)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'version.txt'
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/generate-version-file.py'), str(output)],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            generated = output.read_text(encoding='utf-8')
+            numeric = tuple(int(value) for value in current.split('.')) + (0,)
+            for field in ('filevers', 'prodvers'):
+                self.assertIn(f'{field}={numeric}', generated)
+            for field in ('FileVersion', 'ProductVersion'):
+                self.assertIn(f"StringStruct('{field}', '{current}')", generated)
 
     def test_validation_checks_real_assets_and_never_invokes_github(self):
         pwsh = shutil.which("pwsh")

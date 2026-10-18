@@ -26,6 +26,25 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('version verification failed', helper)
         self.assertIn('Pinned visual media tools installation failed', helper)
 
+    def test_retained_0217_reuses_pinned_media_without_expanding_older_diagnostics(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            name = '- name: Provision pinned media tools for real fixture contracts'
+            step = normalized.split(name, 1)[1].split('- name: Run release gate', 1)[0]
+            condition = next(line.strip() for line in step.splitlines() if line.strip().startswith('if:'))
+            # Exact Boolean scope: all fresh builds, plus retained 0.2.17 only.
+            # Retained 0.2.16 and unknown future versions keep their old behavior.
+            self.assertEqual(condition, "if: env.CANDIDATE_ARTIFACT_ID == '' || env.RELEASE_TAG == 'v0.2.17'")
+            self.assertEqual(normalized.count(condition), 1)
+            self.assertLess(normalized.index('Retained installers require acceptance-only manual diagnostics'), normalized.index(name))
+            self.assertLess(normalized.index('Retained candidate identity verification failed'), normalized.index(name))
+            self.assertLess(normalized.index(name), normalized.index('- name: Smoke-test installed release'))
+            self.assertLess(normalized.index(name), normalized.index('python scripts/installed-upgrade-acceptance.py'))
+            self.assertIn('run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools', step)
+            self.assertNotIn('GH_TOKEN', step)
+            self.assertNotIn('continue-on-error', step)
+
     def test_installed_gate_preserves_prior_smoke_and_blocks_publication(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         for text in (source, source.replace('\n', '\r\n')):
@@ -43,9 +62,43 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertNotIn('continue-on-error', normalized)
             self.assertIn('throw "Previous stable release lookup failed"', normalized)
             self.assertIn('throw "Previous stable release is required for installed upgrade acceptance"', normalized)
-            self.assertIn("$previous.tagName -ne 'v0.2.15'", normalized)
             upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
             self.assertNotIn('exit 0', upgrade)
+
+    def test_reviewed_upgrade_baselines_do_not_drift_after_later_releases(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
+            selection = upgrade.split('$requiredPreviousTag = switch ($currentTag) {', 1)[1].split('          }', 1)[0]
+            self.assertEqual([line.strip() for line in selection.splitlines() if line.strip()], [
+                "'v0.2.17' { 'v0.2.16' }", "'v0.2.16' { 'v0.2.15' }", "default { '' }",
+            ])
+            pinned, fallback = upgrade.split('if ($requiredPreviousTag) {', 1)[1].split('} else {', 1)
+            self.assertIn('$previous = [pscustomobject]@{ tagName = $requiredPreviousTag }', pinned)
+            self.assertNotIn('gh release list', pinned)
+            self.assertIn('gh release list', fallback)
+            self.assertIn('--limit 20 --json tagName,isDraft,isPrerelease,publishedAt', fallback)
+            self.assertIn('-not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag', fallback)
+            # Validate identity, stable publication, immutable pins and a unique
+            # digest before downloading; downloaded bytes must then match it.
+            for guard in (
+                '$previousMetadata.tag_name -ne $previous.tagName',
+                '$previousMetadata.draft -ne $false',
+                '$previousMetadata.prerelease -ne $false',
+                '$requiredPreviousTag -and $previousMetadata.immutable -ne $true',
+                '$previousAssets.Count -ne 1',
+                "$previousAssets[0].digest -notmatch '^sha256:[0-9a-f]{64}$'",
+            ):
+                self.assertLess(upgrade.index(guard), upgrade.index('gh release download'))
+            self.assertIn('throw "Previous release is not the requested published stable baseline"', upgrade)
+            self.assertIn('throw "Reviewed upgrade baseline must be an immutable release"', upgrade)
+            self.assertIn('if ("sha256:$previousHash" -ne $previousAssets[0].digest) { throw "Previous installer digest mismatch" }', upgrade)
+            self.assertLess(upgrade.index('Previous installer digest mismatch'), upgrade.index('./scripts/test-upgrade-installer.ps1'))
+            self.assertIn("--expected-previous-version \"$($previous.tagName.TrimStart('v'))\"", upgrade)
+            self.assertIn("--expected-current-version \"$($currentTag.TrimStart('v'))\"", upgrade)
+            self.assertNotIn('ACCEPTANCE_ONLY', upgrade)
+            self.assertNotIn('CANDIDATE_ARTIFACT_ID', upgrade)
 
     def test_candidate_retention_is_source_bound_and_before_mandatory_tests(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
@@ -100,7 +153,7 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('Retained installers require acceptance-only manual diagnostics', source)
         self.assertIn('Diagnostic harness must match the dispatched workflow source', source)
         self.assertIn('actions: read', source)
-        for name in ('Install desktop dependencies', 'Provision pinned media tools for real fixture contracts',
+        for name in ('Install desktop dependencies',
                      'Run release gate', 'Build portable desktop client', 'Package Windows release',
                      'Identify installer candidate before installed tests',
                      'Retain installer candidate for failure diagnosis', 'Package browser extension'):

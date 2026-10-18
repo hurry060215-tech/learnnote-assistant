@@ -18,10 +18,11 @@ const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-val
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
   const [output, port, origin, taskId, pid] = args;
-  let startupOnly = false, expectedVersion, privateLocationEvidence = false;
+  let startupOnly = false, expectedVersion, featureFixture, privateLocationEvidence = false;
   for (let i = 5; i < args.length; i++) {
     if (args[i] === '--private-location-evidence' && !privateLocationEvidence) privateLocationEvidence = true;
     else if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
+    else if (args[i] === '--feature-fixture' && !featureFixture) featureFixture = args[++i];
     else if (args[i] === '--expected-version' && !expectedVersion) expectedVersion = args[++i];
     else throw new Error('Unknown or repeated acceptance option');
   }
@@ -34,7 +35,9 @@ function parseArgs(args) {
   assert(url.port && Number(url.port) !== Number(port), 'API and debug ports must be distinct');
   assert(/^[A-Za-z0-9_-]{1,128}$/.test(taskId), 'Invalid synthetic task ID');
   assert(output && !output.startsWith('--'), 'Output directory is required');
-  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
+  if (!startupOnly && expectedVersion === '0.2.17') assert(featureFixture && !featureFixture.startsWith('--'), '0.2.17 requires the old-installed feature fixture');
+  if (featureFixture) assert(expectedVersion === '0.2.17' && !startupOnly, 'Feature fixture is only for current 0.2.17 acceptance');
+  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
 }
 
 async function bounded(promise, label, timeout = TIMEOUT) {
@@ -852,6 +855,14 @@ async function main(args) {
       assert.equal(report.diagnostic_requests, 3); report.cancel_no_download_observation_ms = 1000;
       await capture('installed-current-cancel-focus.png');
       report.checks.push('Visible disclosure; MD/JSON consent reset; exact cached API/native-saved-file byte equality; Cancel has no download; focus returns to opener');
+    }
+    if (config.featureFixture) {
+      report.phase = 'installed-reading-and-paging';
+      const { runInstalledFeatures } = require('./installed-reading-paging-acceptance.cjs');
+      assert(fs.statSync(config.featureFixture).size <= 8192, 'Bounded synthetic feature manifest');
+      const fixture = JSON.parse(fs.readFileSync(config.featureFixture, 'utf8'));
+      await runInstalledFeatures(page, { origin: config.origin, taskId: config.taskId, fixture, read, capture, out: config.output, report });
+      report.checks.push('Old-installed 501 opinions remain bounded and selectable; local preview budgets and consent reset; bundled h4 and follow geometry clear actual sticky chrome');
     }
     assert.equal(report.page_errors, 0); assert.equal(report.external_requests, 0); assert.equal(report.blocked_external_requests, 0);
     report.passed = true; report.phase = 'complete';

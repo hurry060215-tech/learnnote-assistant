@@ -1,7 +1,8 @@
 /* Actual controller + shipped CSS; scrolling below is precondition setup only. */
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path");
 
-function readClaimFollowGeometry(claimId) {
+function readClaimFollowGeometry(input) {
+  const { claimId, listTextLimit = 1000 } = typeof input === "string" ? { claimId: input } : input;
   const marker = document.querySelector(`#document .note-claim-marker[data-claim-id="${claimId}"]`);
   const target = marker.closest("[data-note-start][data-note-end]"), style = getComputedStyle(target);
   const rect = target.getBoundingClientRect(), lines = [];
@@ -24,7 +25,7 @@ function readClaimFollowGeometry(claimId) {
     sourcePinned: document.querySelector("#sourcePanel").classList.contains("source-pinned"),
     sourceHidden: document.querySelector("#sourcePanel").hidden, editorHidden: document.querySelector("#editor").hidden,
     sourceHeight: document.querySelector("#sourcePanel").getBoundingClientRect().height,
-    claimListHeight: list.getBoundingClientRect().height, claimListText: list.textContent.slice(0, 1000), claimListTextLength: list.textContent.length,
+    claimListHeight: list.getBoundingClientRect().height, claimListText: list.textContent.slice(0, listTextLimit), claimListTextLength: list.textContent.length,
     focusedControl: document.activeElement?.id,
     noteFocused: document.querySelector("#document").contains(document.activeElement),
     selectionCollapsed: !getSelection() || getSelection().isCollapsed };
@@ -67,8 +68,9 @@ async function seekClaim(page, time, claimId) {
   await settle(page);
 }
 
-async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, out, name, viewport, short = false, records = [], capture }) {
-  const report = { name, trigger: "keyboard Follow activation on a populated paused-player claim", passed: false, cases: [], cleanupErrors: [] }; records.push(report);
+async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, out, name, viewport, short = false, records = [], capture, listTextLimit = 1000 }) {
+  assert(Number.isInteger(listTextLimit) && listTextLimit >= 1000 && listTextLimit <= 4096, "Synthetic source-list diagnostic bound");
+  const report = { name, listTextLimit, trigger: "keyboard Follow activation on a populated paused-player claim", passed: false, cases: [], cleanupErrors: [] }; records.push(report);
   const savedViewport = page.viewportSize();
   let saved, focused, failure;
   const screenshot = async filename => {
@@ -109,16 +111,16 @@ async function assertClaimFollowVisibility(page, { claimId, oversizedClaimId, ou
       // would resize that list above the note and confound the scroll decision.
       await setFollow(false); await seekClaim(page, time, id); await follow.focus();
       await place(id, kind !== "already-visible");
-      item.before = await page.evaluate(readClaimFollowGeometry, id);
+      item.before = await page.evaluate(readClaimFollowGeometry, { claimId: id, listTextLimit });
       assert(item.before.active && !item.before.follow && !item.before.sourcePinned);
       assert.equal(item.before.focusedControl, "followNote", "The checkbox is focused before positioning, never after it");
-      assert(item.before.claimListTextLength <= 1000, "Bounded synthetic source-list content must be fully recorded");
+      assert(item.before.claimListTextLength <= listTextLimit, "Bounded synthetic source-list content must be fully recorded");
       if (kind === "already-visible") assert(item.before.top >= item.before.headerBottom && item.before.bottom <= item.before.height);
       else assert(item.before.top > 0 && item.before.top < item.before.headerBottom,
         "Manual-scroll precondition must actually place the target inside the viewport behind sticky chrome");
       await page.keyboard.press("Space");
       await settle(page);
-      item.after = await page.evaluate(readClaimFollowGeometry, id);
+      item.after = await page.evaluate(readClaimFollowGeometry, { claimId: id, listTextLimit });
       assert.equal(item.after.claimListText, item.before.claimListText, "Follow re-evaluation retains the populated source-list content");
       assert.equal(item.after.claimListTextLength, item.before.claimListTextLength);
       assert(Math.abs(item.after.sourceHeight - item.before.sourceHeight) <= 1 &&

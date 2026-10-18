@@ -30,6 +30,9 @@ native = seed.native
 location_spec = importlib.util.spec_from_file_location('installed_download_location', ROOT / 'scripts/installed_download_location.py')
 location = importlib.util.module_from_spec(location_spec)
 location_spec.loader.exec_module(location)
+feature_spec = importlib.util.spec_from_file_location('installed_feature_fixture', ROOT / 'scripts/installed-feature-fixture.py')
+features = importlib.util.module_from_spec(feature_spec)
+feature_spec.loader.exec_module(features)
 
 
 def digest(path):
@@ -54,7 +57,10 @@ def installed_files(directory, expected, *, diagnostic_assets=False):
     assert release['current'] == expected
     assert manifest['version'] == release.get('component_versions', {}).get('extension', expected)
     files = [directory / 'LearnNote.exe', notes, extension]
-    for name in ['index.html', 'desk.js', 'task-diagnostic-export.js', 'task-diagnostic-export.css']:
+    assets = ['index.html', 'desk.js', 'task-diagnostic-export.js', 'task-diagnostic-export.css']
+    if expected == '0.2.17':
+        assets += ['desk.css', 'claim-timeline.js', 'community-browser.js', 'community-question.js']
+    for name in assets:
         path = directory / '_internal/web' / name
         if diagnostic_assets or path.exists():
             files.append(path)
@@ -240,10 +246,11 @@ def running(directory, data, output, phase, version, *, lifecycle=None):
 
 
 @contextmanager
-def local_model():
+def local_model(*, cues=None, note=None):
     """No external model. Capture only synthetic payload counts/hash, never headers."""
     calls = []
-    note = '# Synthetic rollback captions\n\n' + '\n\n'.join(c['text'] for c in seed.CUES)
+    cues = seed.CUES if cues is None else cues
+    note = note if note is not None else '# Synthetic rollback captions\n\n' + '\n\n'.join(c['text'] for c in cues)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -260,7 +267,7 @@ def local_model():
                 text = json.dumps(payload['messages'], ensure_ascii=False)
             except (ValueError, KeyError, TypeError):
                 self.send_error(400); return
-            if not all(c['text'] in text for c in seed.CUES) or 'image_url' in text or len(calls) >= 4:
+            if not all(c['text'] in text for c in cues) or 'image_url' in text or len(calls) >= 4:
                 self.send_error(400); return
             calls.append({'bytes': size, 'sha256': hashlib.sha256(raw).hexdigest(),
                           'saved_captions_present': True, 'images': False})
@@ -310,16 +317,21 @@ def verify_snapshot(path, expected):
     assert seed.inventory(path) == expected, 'Original stopped snapshot changed'
 
 
-def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None):
+def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None, feature_fixture=None):
     command = ['node', str(ROOT / 'scripts/installed-diagnostic-acceptance.cjs'),
                str(output), str(debug), origin, task_id, str(pid), '--expected-version', version,
                *(['--startup-only'] if startup_only else [])]
+    timeout = 180
+    if feature_fixture is not None:
+        assert version == '0.2.17' and not startup_only
+        command.extend(['--feature-fixture', str(feature_fixture)])
+        timeout = 300  # Existing 180s native Save gate plus bounded reading/paging checks.
     if location_evidence is None:
-        subprocess.run(command, check=True, timeout=180, env=safe_environment(os.environ))
+        subprocess.run(command, check=True, timeout=timeout, env=safe_environment(os.environ))
         return
     command.append('--private-location-evidence')
     try:
-        result = subprocess.run(command, check=False, timeout=180, env=safe_environment(os.environ), stdout=subprocess.PIPE, text=True)
+        result = subprocess.run(command, check=False, timeout=timeout, env=safe_environment(os.environ), stdout=subprocess.PIPE, text=True)
     except subprocess.TimeoutExpired as error:
         # Partial private stdout is never attached to an error or persisted.
         error.stdout = error.output = None
@@ -347,6 +359,10 @@ def exercise(args, output):
     failure = None
     location_evidence = None
     lifecycle = {}
+    feature_fixture = None
+    require_features = args.expected_current_version == '0.2.17'
+    if require_features:
+        assert args.expected_previous_version == '0.2.16', '0.2.17 acceptance requires the actual 0.2.16 baseline'
     try:
         report['installers'] = {name: digest(path) for name, path in [('previous', args.previous_installer), ('current', args.current_installer)]}
         report['previous_install_exit'] = install(args.previous_installer, directory)
@@ -361,6 +377,21 @@ def exercise(args, output):
             ids = seed.seed(api)
             api.call('POST', f'/api/personal/material/{ids["material_id"]}', json={'text': PRIVACY_SENTINEL})
             before = retained(api, ids)
+            if require_features:
+                media = features.generate_media(run, safe_environment(os.environ))
+                with local_model(cues=features.CUES, note=features.NOTE) as (endpoint, calls):
+                    reading = features.seed_reading(api, media, endpoint)
+                    assert len(calls) == 1, 'Synthetic reading seed must complete without a repair or retry'
+                    community = features.seed_community(api, ids['task_id'], endpoint)
+                feature_before = features.retained_features(api, reading, ids['task_id'])
+                report['feature_seed'] = {'reading': reading, 'community': community, 'loopback_model_calls': calls,
+                    'retained_sha256': feature_before, 'intentional_mutations': [
+                        'Old installed API local MP4 import and embedded-caption extraction',
+                        'Old installed API saved-caption text retry and one synthetic annotation',
+                        'Old installed API community enabled and 500+1 synthetic opinions',
+                        'Old installed API keyless loopback model metadata for local-only QA previews']}
+                feature_fixture = run / 'feature-fixture.json'
+                write_json(feature_fixture, {'reading': reading, 'community_task_id': ids['task_id']})
             run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_previous_version, startup_only=True)
         report['phases'].append('previous_exact_version_started_and_closed_normally')
         report['config_sha256'] = hashlib.sha256(config_before).hexdigest()
@@ -377,8 +408,13 @@ def exercise(args, output):
             assert retained(api, ids) == before, 'Upgraded app changed original retained evidence'
             transcript_path = Path(api.call('GET', f'/api/tasks/{ids["task_id"]}').json()['task']['transcript_path'])
             transcript_before = (digest(transcript_path), transcript_path.stat().st_mtime_ns)
+            if require_features:
+                assert features.retained_features(api, reading, ids['task_id']) == feature_before
             # Native WebView2, actual installed UI/API, no API response mocks.
-            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version, location_evidence=location_evidence)
+            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version, location_evidence=location_evidence, feature_fixture=feature_fixture)
+            if require_features:
+                assert features.retained_features(api, reading, ids['task_id']) == feature_before, 'Feature UI altered retained evidence'
+                report['feature_retention_verified'] = True
             assert retained(api, ids) == before, 'Read-only preview altered saved source'
             with local_model() as (endpoint, calls):
                 api.call('POST', f'/api/tasks/{ids["task_id"]}/retry-summary', json={
@@ -406,6 +442,9 @@ def exercise(args, output):
             diagnostic = api.call('GET', f'/api/tasks/{ids["task_id"]}/exports/diagnostics?format=json').json()
             report['retry_stages'] = verify_retry_diagnostic(diagnostic)
             report['diagnostic'] = diagnostic
+            if require_features:
+                assert features.retained_features(api, reading, ids['task_id']) == feature_before, 'Saved-caption retry altered independent feature data'
+                report['feature_retention_after_retry_verified'] = True
         report['phases'].append('current_exact_version_started_and_closed_normally')
         assert config.read_bytes() == config_before, 'Application changed preserved config'
         report['post_upgrade_inventory'] = seed.snapshot(data, run / 'post-upgrade-snapshot')

@@ -8,7 +8,7 @@ import stat
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -22,6 +22,43 @@ spec.loader.exec_module(runner)
 
 class InstalledUpgradeTests(unittest.TestCase):
     """Installed harness contracts requiring only requests and the standard library."""
+
+    def test_feature_gate_is_exact_version_and_extends_only_the_ui_envelope(self):
+        for fixture_path in (Path('/owned/feature-fixture.json'), PureWindowsPath('C:/owned/feature-fixture.json')):
+            with self.subTest(fixture_path=str(fixture_path)), patch.object(runner.subprocess, 'run') as child:
+                runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.17', feature_fixture=fixture_path)
+            self.assertEqual(child.call_args.kwargs['timeout'], 300)
+            self.assertEqual(child.call_args.args[0][-2:], ['--feature-fixture', str(fixture_path)])
+        with patch.object(runner.subprocess, 'run') as child:
+            runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.16')
+        self.assertEqual(child.call_args.kwargs['timeout'], 180)
+        for version, startup in [('0.2.16', False), ('0.2.17', True)]:
+            with patch.object(runner.subprocess, 'run') as child, self.assertRaises(AssertionError):
+                runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, version,
+                              startup_only=startup, feature_fixture=Path('/owned/feature-fixture.json'))
+            child.assert_not_called()
+
+    def test_community_seed_uses_old_supported_bounded_imports_and_no_model_dispatch(self):
+        api = Mock(origin='http://127.0.0.1:1234')
+        rows = [{'item_id': str(index), 'text': f'Synthetic installed opinion {index}.'} for index in range(1, 502)]
+        exports = iter([{'items': []}, {'items': rows}])
+        endpoint = 'http://127.0.0.1:1235/v1'
+        def request(method, route, **kwargs):
+            value = next(exports) if route.endswith('/export') else {'configured': True, 'model': {'base_url': endpoint}} if route == '/api/model/connection' else {}
+            return Mock(json=Mock(return_value=value))
+        api.call.side_effect = request
+        result = runner.features.seed_community(api, 'owned', endpoint)
+        imports = [call for call in api.call.call_args_list if call.args[0] == 'POST']
+        self.assertEqual([len(call.kwargs['json']['items']) for call in imports], [500, 1])
+        self.assertTrue(all(call.args[1] == '/api/tasks/owned/community-context' for call in imports))
+        self.assertEqual(result['count'], 501)
+        self.assertFalse(any('/page' in call.args[1] or '/qa/' in call.args[1] for call in api.call.call_args_list))
+
+    def test_media_fixture_requires_existing_tool_without_downloading(self):
+        with TemporaryDirectory() as tmp, patch.object(runner.features.shutil, 'which', return_value=None), patch.object(runner.features.subprocess, 'run') as run:
+            with self.assertRaisesRegex(AssertionError, 'Existing FFmpeg'):
+                runner.features.generate_media(Path(tmp), {'PATH': '/approved'})
+            run.assert_not_called()
 
     def test_child_environment_excludes_release_and_provider_credentials(self):
         private = {'GH_TOKEN': 'private', 'GITHUB_TOKEN': 'private', 'SIGNING_CERT_BASE64': 'private',
@@ -522,6 +559,20 @@ uvicorn.run('app.main:app', host='127.0.0.1', port=int(os.environ['LEARNNOTE_BAC
                     self.assertEqual((transcript.read_bytes(), transcript.stat().st_mtime_ns), original)
                     diagnostic = api.call('GET', f'/api/tasks/{ids["task_id"]}/exports/diagnostics?format=json').json()
                     runner.verify_retry_diagnostic(diagnostic)
+                    media = runner.features.generate_media(Path(tmp), runner.safe_environment(os.environ))
+                    with runner.local_model(cues=runner.features.CUES, note=runner.features.NOTE) as (endpoint, calls):
+                        reading = runner.features.seed_reading(api, media, endpoint)
+                        self.assertEqual(len(calls), 1)
+                        runner.features.seed_community(api, ids['task_id'], endpoint)
+                    feature_before = runner.features.retained_features(api, reading, ids['task_id'])
+                    first = api.call('GET', f'/api/tasks/{ids["task_id"]}/community-context/page?limit=500').json()
+                    last = api.call('GET', f'/api/tasks/{ids["task_id"]}/community-context/page', params={'limit': 500, 'cursor': first['next_cursor']}).json()
+                    self.assertEqual([first['returned_count'], last['returned_count']], [500, 1])
+                    self.assertEqual(first['total_count'], 501)
+                    # Cross a wall-clock second so accidental request-time fields
+                    # cannot pass merely because these reads were adjacent.
+                    time.sleep(1.05)
+                    self.assertEqual(runner.features.retained_features(api, reading, ids['task_id']), feature_before)
                 except BaseException as error:
                     failure = error
                     raise
