@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import threading
@@ -116,6 +117,38 @@ def installed_environment(data, port):
     return env
 
 
+def prepare_installed_profile(data, environment):
+    """Create only the owned synthetic Desktop required by the native Save shell.
+
+    The profile is a sibling of external data, never part of the preserved data
+    snapshot. No registry settings, real user folders or existing files change.
+    """
+    data = Path(data)
+    assert data.is_absolute(), 'Synthetic data path must be absolute'
+
+    def directory_info(path):
+        info = path.lstat()
+        assert stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode), 'Synthetic profile path is not a real directory'
+        assert not getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT, 'Synthetic profile path is a reparse point'
+        assert path.resolve(strict=True) == path, 'Synthetic profile path resolves elsewhere'
+        return info.st_dev, info.st_ino
+
+    root_identity = directory_info(data.parent)
+    data_identity = directory_info(data)
+    home = data.parent / (data.name + '-home')
+    expected = {'HOME': home, 'USERPROFILE': home, 'APPDATA': home / 'appdata', 'LOCALAPPDATA': home / 'localappdata'}
+    assert all(environment.get(key) == str(value) for key, value in expected.items()), 'Installed profile environment escaped the synthetic root'
+    identities = {}
+    for directory in (home, home / 'Desktop'):
+        try:
+            directory.lstat()
+        except FileNotFoundError:
+            directory.mkdir()  # One direct child only; never follow a missing parent.
+        identities[directory] = directory_info(directory)
+    assert directory_info(data.parent) == root_identity and directory_info(data) == data_identity, 'Synthetic profile root changed'
+    assert all(directory_info(path) == identity for path, identity in identities.items()), 'Synthetic profile directory changed'
+
+
 def verify_health(health, version, data):
     assert health['ok'] and health['app_version'] == version
     assert Path(health['data_paths']['root']).resolve() == data.resolve(), 'API root is not owned synthetic data'
@@ -166,6 +199,7 @@ def cleanup_owned(process, api):
 def running(directory, data, output, phase, version):
     port, debug_port = native.free_port(), native.free_port()
     env = installed_environment(data, port)
+    prepare_installed_profile(data, env)
     process = api = None
     failure = None
     with (output / f'{phase}.log').open('w', encoding='utf-8') as log:

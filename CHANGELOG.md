@@ -10,6 +10,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 - Repair tablet settings width and wrapped mobile action labels; preserve progressive reader continuity and admitted tasks during stale-list refreshes.
 - Retain explicit data-directory migration with stopped-source copy, validation and config-last activation. Existing unsigned macOS arm64 evidence is bounded; snapshot restoration is not newer-schema downgrade or credential transfer.
 - Release/install boundary: source changes do not update existing installations. Packaging, installation/upgrade checks and downloaded-asset verification must pass before publication; install the corresponding release to receive these changes.
+- Known latency limit: historical 180-minute synthetic-caption runs exceeded the five-second post-transcript readability gate. Later complete 80-sample passes do not establish that this cross-run variance is fixed; its specific cause remains unresolved.
 - Known limits: no claim that a particular real-video failure is fixed or that all open issues are complete. Real-model quality, four-hour real-video acceptance, Word/WPS layout and full platform acceptance remain incomplete. Windows unsigned builds and macOS preview/store boundaries remain unchanged.
 
 ## 0.2.15 - Progressive drafts, explicit review and clearer reading

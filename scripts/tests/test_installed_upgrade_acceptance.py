@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -54,11 +55,113 @@ class InstalledUpgradeTests(unittest.TestCase):
         with TemporaryDirectory() as tmp, patch.object(runner.subprocess, 'Popen', return_value=process), \
                 patch.object(runner.native, 'Api', side_effect=primary), \
                 patch.object(runner, 'cleanup_owned', return_value=[RuntimeError('secondary')]) as cleanup:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
             with self.assertRaises(RuntimeError) as caught:
-                with runner.running(Path(tmp), Path(tmp), Path(tmp), 'old', '0.2.15'):
+                with runner.running(root, data, root, 'old', '0.2.15'):
                     self.fail('unreachable')
             self.assertIs(caught.exception, primary)
             cleanup.assert_called_once_with(process, None)
+
+    def test_synthetic_desktop_exists_before_launch_without_changing_data(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'external-data'; data.mkdir()
+            (data / 'sentinel').write_bytes(b'unchanged')
+            before = runner.seed.inventory(data)
+            env = runner.installed_environment(data, 8765)
+            runner.prepare_installed_profile(data, env)
+            home = root / 'external-data-home'; desktop = home / 'Desktop'
+            self.assertTrue(desktop.is_dir())
+            self.assertEqual(env['HOME'], str(home)); self.assertEqual(env['USERPROFILE'], str(home))
+            (desktop / 'existing').write_bytes(b'preserved')
+            runner.prepare_installed_profile(data, env)
+            self.assertEqual((desktop / 'existing').read_bytes(), b'preserved')
+            self.assertEqual(runner.seed.inventory(data), before)
+            self.assertFalse((data / 'Desktop').exists())
+
+    def test_profile_rejects_environment_escape_before_creating_folders(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+            for key in ('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA'):
+                env = runner.installed_environment(data, 8765); env[key] = str(root / 'other')
+                with self.assertRaisesRegex(AssertionError, 'environment escaped'):
+                    runner.prepare_installed_profile(data, env)
+                self.assertFalse((root / 'data-home').exists())
+
+    def test_profile_rejects_existing_files(self):
+        for target_name in ('home', 'desktop'):
+            with self.subTest(target=target_name), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+                home = root / 'data-home'; target = home
+                if target_name == 'desktop': home.mkdir(); target = home / 'Desktop'
+                target.write_bytes(b'keep')
+                with self.assertRaisesRegex(AssertionError, 'real directory'):
+                    runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
+                self.assertEqual(target.read_bytes(), b'keep')
+
+    def test_profile_rejects_real_symlink_paths(self):
+        for target_name in ('home', 'desktop'):
+            with self.subTest(target=target_name), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+                home = root / 'data-home'; target = home
+                if target_name == 'desktop': home.mkdir(); target = home / 'Desktop'
+                outside = root / 'outside'; outside.mkdir()
+                try: target.symlink_to(outside, target_is_directory=True)
+                except OSError: self.skipTest('Host does not permit synthetic symlink creation')
+                with self.assertRaisesRegex(AssertionError, 'real directory|reparse point|resolves elsewhere'):
+                    runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
+                self.assertEqual(list(outside.iterdir()), [])
+
+    def test_profile_rejects_reparse_attribute_before_traversal(self):
+        for target_name in ('home', 'desktop'):
+            with self.subTest(target=target_name), TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve(); data = root / 'data'; data.mkdir(); home = root / 'data-home'; home.mkdir()
+                target = home
+                if target_name == 'desktop': target = home / 'Desktop'; target.mkdir()
+                original = Path.lstat
+                def info(path, *args, **kwargs):
+                    found = original(path, *args, **kwargs)
+                    if path == target:
+                        return SimpleNamespace(st_mode=found.st_mode, st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+                    return found
+                with patch.object(Path, 'lstat', info), self.assertRaisesRegex(AssertionError, 'reparse point'):
+                    runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
+                if target_name == 'home': self.assertFalse((home / 'Desktop').exists())
+                else: self.assertEqual(list(target.iterdir()), [])
+
+    def test_profile_rejects_identity_change_during_desktop_creation(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir(); home = root / 'data-home'; home.mkdir()
+            original = Path.mkdir
+            def create(path, *args, **kwargs):
+                if path == home / 'Desktop':
+                    home.rename(root / 'prior-home'); original(home)
+                return original(path, *args, **kwargs)
+            with patch.object(Path, 'mkdir', create), self.assertRaisesRegex(AssertionError, 'directory changed'):
+                runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
+
+    def test_profile_failure_prevents_any_installed_process_launch(self):
+        with TemporaryDirectory() as tmp, patch.object(runner.subprocess, 'Popen') as launch:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+            (root / 'data-home').write_bytes(b'not a directory')
+            with self.assertRaisesRegex(AssertionError, 'real directory'):
+                with runner.running(root, data, root, 'current', '0.2.16'):
+                    self.fail('unreachable')
+            launch.assert_not_called()
+
+    def test_profile_is_ready_before_both_old_and_new_process_launch(self):
+        primary = RuntimeError('synthetic launch boundary')
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve(); data = root / 'data'; data.mkdir()
+            def launch(*args, **kwargs):
+                self.assertEqual(kwargs['env']['USERPROFILE'], str(root / 'data-home'))
+                self.assertTrue((root / 'data-home/Desktop').is_dir())
+                raise primary
+            with patch.object(runner.subprocess, 'Popen', side_effect=launch) as child:
+                for phase, version in [('previous', '0.2.15'), ('current', '0.2.16')]:
+                    with self.assertRaises(RuntimeError) as caught:
+                        with runner.running(root, data, root, phase, version): self.fail('unreachable')
+                    self.assertIs(caught.exception, primary)
+                self.assertEqual(child.call_count, 2)
 
     def test_force_cleanup_is_failure_and_session_cleanup_is_independent(self):
         process = Mock(); process.poll.return_value = None
