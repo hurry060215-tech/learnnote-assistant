@@ -190,17 +190,53 @@ function validateHostObservation(value) {
   return value;
 }
 
-function validateNativeCapture(value) {
+function validateNativeCapture(value, surface = 'dialog') {
+  assert(['dialog', 'foreground'].includes(surface));
   exactKeys(value, ['status', 'reason', 'file', 'width', 'height']);
   assert(['saved', 'unavailable'].includes(value.status));
   assert(['captured', 'guard-before', 'destination', 'bounds', 'render', 'guard-after', 'persist', 'unavailable'].includes(value.reason));
   if (value.status === 'saved') {
     assert.equal(value.reason, 'captured');
-    assert(['installed-current-md-native-dialog.png', 'installed-current-json-native-dialog.png'].includes(value.file));
+    assert(['md', 'json'].map(format => `installed-current-${format}-native-${surface}.png`).includes(value.file));
     for (const key of ['width', 'height']) assert(Number.isInteger(value[key]) && value[key] >= 64 && value[key] <= 4096);
   } else {
     assert.notEqual(value.reason, 'captured'); assert.equal(value.file, null);
     assert.equal(value.width, null); assert.equal(value.height, null);
+  }
+  return value;
+}
+
+function validateForegroundEvidence(value) {
+  exactKeys(value, ['scope', 'status', 'phase', 'reason', 'elapsed_ms', 'exception_type', 'guard_failure', 'foreground_is_save', 'windows', 'capture']);
+  assert.equal(value.scope, 'read-only-owned-foreground');
+  assert(['complete', 'unavailable'].includes(value.status));
+  assert(['guard-before', 'capture', 'complete'].includes(value.phase));
+  assert(['complete', 'exception', 'capture-unavailable'].includes(value.reason));
+  assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
+  assert(value.reason === 'exception' ? OBSERVER_EXCEPTIONS.includes(value.exception_type) : value.exception_type === null);
+  validateGuardFailure(value.guard_failure, value.reason === 'exception');
+  validateNativeCapture(value.capture, 'foreground');
+  assert(Array.isArray(value.windows));
+  if (value.status === 'complete') {
+    assert.equal(typeof value.foreground_is_save, 'boolean');
+    assert.equal(value.phase, 'complete'); assert.equal(value.reason, 'complete'); assert.equal(value.capture.status, 'saved');
+    assert.deepEqual(value.windows.map(window => window.role), ['save', 'foreground']);
+    for (const window of value.windows) {
+      exactKeys(window, ['role', 'cls', 'owners']);
+      assert(typeof window.cls === 'string' && (window.cls === '<redacted>' || /^[A-Za-z0-9_#.-]{1,64}$/.test(window.cls)));
+      assert(Array.isArray(window.owners) && window.owners.length >= 1 && window.owners.length <= 16);
+      assert.equal(window.owners.at(-1), 'root');
+      assert(window.owners.slice(0, -1).every(role => ['save', 'foreground', 'other-owned'].includes(role) && role !== window.role));
+    }
+    assert.equal(value.windows[0].cls, '#32770');
+    if (value.foreground_is_save) {
+      assert.equal(value.windows[1].cls, value.windows[0].cls); assert.deepEqual(value.windows[1].owners, value.windows[0].owners);
+    }
+  } else {
+    assert.equal(value.foreground_is_save, null);
+    assert.notEqual(value.phase, 'complete'); assert.notEqual(value.reason, 'complete');
+    assert.equal(value.capture.status, 'unavailable'); assert.equal(value.windows.length, 0);
+    if (value.reason === 'capture-unavailable') assert.equal(value.phase, 'capture');
   }
   return value;
 }
@@ -313,6 +349,11 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
   [Console]::Out.WriteLine('HOSTDIAG:'+($observation | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
   $structure=Get-OwnedDialogWin32Observation $bound;
   [Console]::Out.WriteLine('WIN32DIAG:'+($structure | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
+  if ($c.capture) {
+   . (Join-Path (Split-Path $c.observer) 'installed-native-foreground-evidence.ps1');
+   $foregroundEvidence=Get-OwnedForegroundEvidence $bound $c.directory $c.destination;
+   [Console]::Out.WriteLine('FOREGROUND:'+($foregroundEvidence | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
+  }
  } catch { } # Evidence collection cannot replace the original rejection.
  throw $original;
 }
@@ -352,6 +393,7 @@ throw 'Native Save did not finish';`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}) {
+  let foregroundEvidence, foregroundInvalid = false;
   let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
@@ -388,6 +430,9 @@ async function withNativeHelper(child, action, timeouts = {}) {
       } else if (line.startsWith('WIN32DIAG:')) {
         try { assert(hostFailure && !win32Observation && line.length <= 32768); win32Observation = validateWin32Observation(JSON.parse(line.slice(10))); }
         catch { win32Invalid = true; }
+      } else if (line.startsWith('FOREGROUND:')) {
+        try { assert(hostFailure && !foregroundEvidence && line.length <= 8192); foregroundEvidence = validateForegroundEvidence(JSON.parse(line.slice(11))); }
+        catch { foregroundInvalid = true; }
       } else if (line === 'READY' && !ready) { ready = true; readyResolve(); }
       else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
     }
@@ -412,6 +457,8 @@ async function withNativeHelper(child, action, timeouts = {}) {
     if (hostObservation) failure.native_host_observation = hostObservation;
     if (win32Observation) failure.native_win32_observation = win32Observation;
     if (win32Invalid) failure.native_win32_unavailable = true;
+    if (foregroundEvidence) failure.native_foreground_evidence = foregroundEvidence;
+    if (foregroundInvalid) failure.native_foreground_unavailable = true;
     if (nativeCapture) failure.native_dialog_capture = nativeCapture;
     if (captureInvalid) failure.native_capture_unavailable = true;
     if (hostFailure && (!hostObservation || evidenceInvalid)) failure.native_observation_unavailable = true;
@@ -603,7 +650,7 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
-    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable']) {
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
     if (error.native_dialog_capture) {
@@ -611,6 +658,7 @@ async function main(args) {
       if (error.native_dialog_capture.status === 'saved') report.screenshots.push(error.native_dialog_capture.file);
     }
     if (error.native_capture_unavailable) report.native_capture_unavailable = true;
+    if (error.native_foreground_evidence?.capture.status === 'saved') report.screenshots.push(error.native_foreground_evidence.capture.file);
     if (error.native_helper_cleanup_failed) report.native_helper_cleanup_failed = true;
     if (page && syntheticVerified) {
       try { await capture(config.startupOnly ? 'previous-startup-failure.png' : 'installed-current-diagnostic-failure.png'); }
@@ -627,5 +675,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

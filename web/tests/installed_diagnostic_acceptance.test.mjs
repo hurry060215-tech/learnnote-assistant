@@ -8,7 +8,7 @@ import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -309,8 +309,8 @@ test('native screenshot is synthetic-only, exact-window, guarded before and afte
   assert.match(source, /PrintWindow\(\$Dialog,\$dc,2\)/);
   assert.match(source, /GetWindowRect\(\$Dialog,\[ref\]\$before\)/);
   assert.match(source, /GetWindowRect\(\$Dialog,\[ref\]\$after\)/);
-  assert(source.indexOf("$phase='guard-before'; [void](& $Guard)") < source.indexOf('PrintWindow($Dialog,$dc,2)'));
-  assert(source.indexOf("$phase='guard-after'; [void](& $Guard)") > source.indexOf('PrintWindow($Dialog,$dc,2)'));
+  assert(source.indexOf("$phase='guard-before'; [void](& $Guard $GuardContext)") < source.indexOf('PrintWindow($Dialog,$dc,2)'));
+  assert(source.indexOf("$phase='guard-after'; [void](& $Guard $GuardContext)") > source.indexOf('PrintWindow($Dialog,$dc,2)'));
   assert(source.indexOf("$phase='guard-after'") < source.indexOf('[IO.File]::Open'));
   assert.match(source, /FileMode\]::CreateNew/); assert.match(source, /ReparsePoint/);
   assert.doesNotMatch(source, /CopyFromScreen|GetDesktopWindow|GetForegroundWindow|SendKeys|SetValue|\.Invoke\(|RootElement/);
@@ -335,6 +335,20 @@ test('Windows screenshot rejects unowned output paths before native rendering', 
     { input: script, encoding: 'utf8', timeout: 15000, windowsHide: true });
   const value = JSON.parse(output.trim()); validateNativeCapture(value.capture);
   assert.equal(value.calls, 1); assert.equal(value.capture.status, 'unavailable'); assert.equal(value.capture.reason, 'destination');
+});
+
+test('Windows repeated captures reuse the exact loaded pixel type without invoking native methods', { skip: process.platform !== 'win32' }, () => {
+  const capture = fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8');
+  const definition = capture.match(/Add-Type @'\r?\n([\s\S]+?)\r?\n'@/)[1];
+  const script = "$ErrorActionPreference='Stop'; $source=[Console]::In.ReadToEnd(); " +
+    'function Load-PixelType([string]$text) { Add-Type -TypeDefinition $text }; ' +
+    'Load-PixelType $source; $first=[OwnedDialogPixels]; $assembly=$first.Assembly; ' +
+    'Load-PixelType $source; $second=[OwnedDialogPixels]; ' +
+    'if (![Object]::ReferenceEquals($first,$second) -or ![Object]::ReferenceEquals($assembly,$second.Assembly)) { throw "Pixel type was not reused" }; ' +
+    'if (!$second.GetMethod("PrintWindow") -or !$second.GetNestedType("RECT")) { throw "Pixel type contract missing" }; Write-Output "REUSED"';
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+    { input: definition, encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert.equal(output.trim(), 'REUSED');
 });
 
 test('native file equality reads stable exact UTF-8 bytes and retains the actual saved evidence', async () => {
@@ -380,7 +394,7 @@ test('Windows PowerShell parser validates the actual generated native helper wit
   const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$source=[Console]::In.ReadToEnd(); $tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors); if ($errors.Count) { throw "Native helper parse failed" }; Write-Output "PARSED"'],
-    { input: script + '\n' + observer + '\n' + ['guards', 'win32'].map(name => fs.readFileSync(new URL(`../../scripts/installed-native-dialog-${name}.ps1`, import.meta.url), 'utf8')).join('\n') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: script + '\n' + observer + '\n' + ['guards', 'win32'].map(name => fs.readFileSync(new URL(`../../scripts/installed-native-dialog-${name}.ps1`, import.meta.url), 'utf8')).join('\n') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-foreground-evidence.ps1', import.meta.url), 'utf8') + '\n' + fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8'), encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.equal(output.trim(), 'PARSED');
 });
 
@@ -603,4 +617,76 @@ test('extracted action guards preserve the exact original predicates and evaluat
   assert.doesNotMatch(ci.slice(0, ci.indexOf('permissions:')), /paths(?:-ignore)?:/);
   assert(ci.includes('Get-ChildItem web/tests/*.test.mjs'));
   assert(release.includes('node web/tests/installed_diagnostic_acceptance.test.mjs'));
+});
+
+const foregroundEvidence = () => ({ scope: 'read-only-owned-foreground', status: 'complete', phase: 'complete',
+  reason: 'complete', elapsed_ms: 25, exception_type: null, guard_failure: null, foreground_is_save: false,
+  windows: [{ role: 'save', cls: '#32770', owners: ['root'] }, { role: 'foreground', cls: '#32770', owners: ['save', 'root'] }],
+  capture: { ...savedCapture(), file: 'installed-current-md-native-foreground.png' } });
+
+test('owned foreground evidence has exact bounded topology and cannot replace the primary host rejection', async () => {
+  validateForegroundEvidence(foregroundEvidence());
+  for (const mutate of [v => { v.scope = 'input-approved'; }, v => { v.windows[0].title = 'PRIVATE'; },
+    v => { v.windows[0].cls = 'C:\\PRIVATE'; }, v => { v.windows[0].owners = Array(17).fill('root'); },
+    v => { v.windows[0].owners = ['root', 'root']; }, v => { v.windows[1].owners = ['foreground', 'root']; },
+    v => { v.windows[0].owners = ['PRIVATE']; }, v => { v.windows.push(v.windows[0]); },
+    v => { v.windows[0].hwnd = 123; }, v => { v.capture.file = savedCapture().file; },
+    v => { v.elapsed_ms = 35001; }, v => { v.status = 'unavailable'; }, v => { v.exception_type = 'PRIVATE'; },
+    v => { v.foreground_is_save = true; }, v => { v.foreground_is_save = 'PRIVATE'; }]) {
+    const value = foregroundEvidence(); mutate(value); assert.throws(() => validateForegroundEvidence(value));
+  }
+  for (const variant of ['valid', 'invalid', 'oversized']) {
+    const child = fakeChild();
+    const result = withNativeHelper(child, () => {
+      emitHostFailure(child, hostFailureDetails(0));
+      const value = foregroundEvidence(); if (variant !== 'valid') value.private = variant === 'oversized' ? 'x'.repeat(8200) : 'PRIVATE';
+      child.line('FOREGROUND:' + JSON.stringify(value)); child.end(1);
+    }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed'); assert.deepEqual(error.native_host_failure, hostFailureDetails(0));
+      if (variant === 'valid') assert.deepEqual(error.native_foreground_evidence, foregroundEvidence());
+      else { assert.equal(error.native_foreground_unavailable, true); assert.equal(error.native_foreground_evidence, undefined); }
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    });
+  }
+});
+
+test('foreground proof is read-only, independently bound, class/topology stable and clears failed evidence', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-foreground-evidence.ps1', import.meta.url), 'utf8');
+  assert.match(source, /\$step -lt 16/); assert.match(source, /HashSet\[IntPtr\]/);
+  assert.match(source, /Pid\(\$window\) -ne \$c.pid/); assert.match(source, /Pid\(\$cursor\) -ne \$c.pid/);
+  assert.match(source, /current.foreground_class -cne \$Proof.state.foreground_class/);
+  assert.match(source, /current\[\$key\]\[\$index\] -ne \$Proof.state\[\$key\]\[\$index\]/);
+  assert.match(source, /-GuardContext \$proof -Guard \{ param\(\$boundProof\) Assert-OwnedForegroundEvidence \$boundProof \}/);
+  assert.match(source, /if \(\$capture.status -eq 'saved'\)/);
+  assert.doesNotMatch(source, /::Title|GetWindowText|FindAll|EnumWindows|GetDesktopWindow|CopyFromScreen|SetForeground|SendMessage|SendKeys|SetValue|\.Invoke\(/);
+  const capture = fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8');
+  assert.equal(capture.match(/\[void\]\(& \$Guard \$GuardContext\)/g).length, 3);
+  assert.match(capture, /ValidateSet\('dialog','foreground'\)/);
+  assert(capture.indexOf("$phase='guard-after'") < capture.indexOf('[IO.File]::Open'));
+  const script = nativeDialogScript({ ...parseArgs(args), captureNativeDialog: true }, { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  assert.match(branch, /if \(\$c.capture\)/); assert.match(branch, /Get-OwnedForegroundEvidence \$bound \$c.directory \$c.destination/);
+  assert.match(branch, /throw \$original;/);
+});
+
+test('Windows actual foreground proof rejects ownership and capture races without pixels or native input', { skip: process.platform !== 'win32' }, () => {
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+    path.resolve('scripts/tests/native-foreground-evidence-faults.ps1')], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  assert(!output.includes('PRIVATE')); assert(!output.includes('C:\\'));
+  const { results } = JSON.parse(output.trim()); assert.equal(results.length, 31);
+  for (const { mode, evidence, captures, guards, persisted, forbidden } of results) {
+    assert.doesNotThrow(() => validateForegroundEvidence(evidence), mode); assert.equal(forbidden, 0, mode);
+    if (['success', 'sibling', 'foreground-save', 'private-class'].includes(mode)) {
+      assert.equal(evidence.status, 'complete', mode); assert.equal(captures, 1, mode); assert.equal(guards, 2, mode); assert.equal(persisted, 1, mode);
+      assert.equal(evidence.foreground_is_save, mode === 'foreground-save', mode);
+      assert.deepEqual(evidence.windows[1].owners, mode === 'sibling' || mode === 'foreground-save' ? ['root'] : ['save', 'root'], mode);
+      if (mode === 'private-class') assert.equal(evidence.windows[1].cls, '<redacted>', mode);
+    } else {
+      assert.equal(evidence.status, 'unavailable', mode); assert.deepEqual(evidence.windows, [], mode); assert.equal(persisted, 0, mode);
+      assert.equal(evidence.capture.file, null, mode);
+      if (mode.startsWith('race-') || mode.startsWith('capture-')) { assert.equal(captures, 1, mode); assert.equal(evidence.reason, 'capture-unavailable', mode); }
+      else { assert.equal(captures, 0, mode); assert.equal(evidence.phase, 'guard-before', mode); assert.equal(evidence.reason, 'exception', mode); }
+    }
+  }
 });
