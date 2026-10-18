@@ -136,6 +136,10 @@ test('proxy initialization failure is retained before readiness and never clicks
   assert.equal(actions, 0); assert.deepEqual(child.writes, []);
 });
 
+// Test-process ceiling for managed compilation and owned synthetic control setup only.
+// It never substitutes for the helper's native action, readback, or ownership deadlines.
+const SYNTHETIC_SETUP_TIMEOUT = 45000;
+
 function initializerFailureFixture(execute = execFileSync) {
   const bootstrap = nativeBootstrap();
   const method = bootstrap.match(/ \[System.Runtime.CompilerServices.MethodImpl[^]*?\n \}/)[0];
@@ -164,7 +168,7 @@ try { [OwnedSave]::InitializeAutomation(); $ready=$true } catch {
   // Managed synthetic setup only: no UIA assemblies, app, window discovery or input.
   // This fixture ceiling does not change any native action or reader deadline.
   return JSON.parse(execute('powershell.exe', nativeDialogCommand(script),
-    { encoding: 'utf8', timeout: 45000, windowsHide: true }).trim());
+    { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true }).trim());
 }
 
 test('initializer fixture has a separate setup budget without native actions or retries', () => {
@@ -193,8 +197,8 @@ test('Windows actual initializer propagates registration failure without retry o
   assert.deepEqual(initializerFailureFixture(), { calls: 1, ready: false, original: true });
 });
 
-test('Windows actual bootstrap exposes typed Value and Invoke patterns on owned synthetic WinForms controls', { skip: process.platform !== 'win32' }, () => {
-  const script = `$ErrorActionPreference='Stop';\n${nativeBootstrap()}
+function bootstrapPatternsFixture(execute = execFileSync, bootstrap = nativeBootstrap()) {
+  const script = `$ErrorActionPreference='Stop';\n${bootstrap}
 Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing;
 Add-Type -ReferencedAssemblies @([Windows.Forms.Form].Assembly.Location,[Drawing.Point].Assembly.Location) -TypeDefinition @'
 using System; using System.Threading; using System.Windows.Forms;
@@ -247,11 +251,76 @@ try {
 } catch { $failure=$_; throw } finally {
  try { [SyntheticProxyControls]::Stop() } catch { if (!$failure) { throw } }
 }`;
-  const output = execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', timeout: 15000, windowsHide: true });
+  const output = execute('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   const lines = output.trim().split(/\r?\n/);
   assert.equal(lines.shift(), 'PHASE:uia-initialization'); assert.equal(lines.length, 1);
-  assert.deepEqual(JSON.parse(lines[0]), { edit_type: 50004, button_type: 50000, value_pattern: true,
-    invoke_pattern: true, writable: true, synthetic_value: true, assembly_matches: true, owned: true, exact_handles: true });
+  return JSON.parse(lines[0]);
+}
+const bootstrapPatternFacts = { edit_type: 50004, button_type: 50000, value_pattern: true,
+  invoke_pattern: true, writable: true, synthetic_value: true, assembly_matches: true, owned: true, exact_handles: true };
+
+test('owned synthetic bootstrap setup preserves internal deadlines and never performs input or Save', () => {
+  const raw = nativeBootstrap().replace(/\r\n/g, '\n');
+  for (const bootstrap of [raw, raw.replace(/\n/g, '\r\n')]) {
+    let calls = 0;
+    assert.deepEqual(bootstrapPatternsFixture((file, command, options) => {
+      calls++; assert.equal(file, 'powershell.exe');
+      assert.deepEqual(command.slice(0, 4), ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand']);
+      assert.deepEqual(options, { encoding: 'utf8', timeout: 45000, windowsHide: true });
+      const script = Buffer.from(command[4], 'base64').toString('utf16le');
+      assert(script.includes(bootstrap));
+      assert.match(script, /ready\.WaitOne\(5000\)/); assert.match(script, /worker\.Join\(5000\)/);
+      assert.match(script, /worker\.IsBackground=true; worker\.SetApartmentState\(ApartmentState\.STA\)/);
+      assert.match(script, /GetCurrentPattern\(\[Windows\.Automation\.ValuePattern\]::Pattern\)/);
+      assert.match(script, /GetCurrentPattern\(\[Windows\.Automation\.InvokePattern\]::Pattern\)/);
+      assert.match(script, /\$ec.ProcessId -eq \$PID -and \$bc.ProcessId -eq \$PID/);
+      assert.match(script, /finally \{\r?\n try \{ \[SyntheticProxyControls\]::Stop\(\) \} catch \{ if \(!\$failure\) \{ throw \} \}/);
+      assert.doesNotMatch(script, /ShowDialog|\.Show\(|SendInput|SendKeys|\.Invoke\(|\.SetValue\(|SetFocus|ACTION_COMPLETE|WriteLine\('READY'\)|\[OwnedSave\]::(?:Visible|GetForegroundWindow|GetWindow|Title|Class|Pid)\(/);
+      return 'PHASE:uia-initialization\r\n' + JSON.stringify(bootstrapPatternFacts);
+    }, bootstrap), bootstrapPatternFacts);
+    assert.equal(calls, 1);
+    const failure = Object.assign(new Error('synthetic bootstrap setup deadline'), { code: 'ETIMEDOUT' }); calls = 0;
+    assert.throws(() => bootstrapPatternsFixture(() => { calls++; throw failure; }, bootstrap), error => error === failure);
+    assert.equal(calls, 1);
+  }
+});
+
+test('Windows actual bootstrap exposes typed Value and Invoke patterns on owned synthetic WinForms controls', { skip: process.platform !== 'win32' }, () => {
+  assert.deepEqual(bootstrapPatternsFixture(), bootstrapPatternFacts);
+});
+
+test('managed fixture process allowances stay separate from parsing and actual action budgets', () => {
+  const source = fs.readFileSync(new URL(import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const body = title => {
+    const start = source.indexOf("test('" + title + "'"); assert(start >= 0);
+    const end = source.indexOf('\ntest(', start + 1); return source.slice(start, end < 0 ? undefined : end);
+  };
+  for (const title of [
+    'Windows real dialog guards settle only transient readback popups without resending input',
+    'Windows Unicode input builder has the correct native ABI and literal down/up events without native input',
+    'Windows extracted control validation accepts only exact initial names and retains both targets through faults',
+    'Windows observer fault injection exercises the actual function with synthetic types only',
+    'Windows repeated captures reuse the exact loaded pixel type without invoking native methods',
+    'Windows actual extracted guards execute inside observer scope and independently bound Win32 proof',
+    'Windows actual foreground proof rejects ownership and capture races without pixels or native input',
+    'Windows calibration path classification and CreateNew reject unsafe return values and overwrites',
+  ]) assert.match(body(title), /timeout: SYNTHETIC_SETUP_TIMEOUT/);
+  for (const title of [
+    'Windows screenshot rejects unowned output paths before native rendering',
+    'Windows PowerShell parser validates the actual generated native helper without executing it',
+    'Windows read-only observer redacts unsafe primitives and returns no evidence after ownership rejection',
+  ]) { assert.match(body(title), /timeout: 15000/); assert(!body(title).includes('SYNTHETIC_SETUP_TIMEOUT')); }
+  const prepared = fs.readFileSync(new URL('./task_diagnostic_fixture.test.mjs', import.meta.url), 'utf8');
+  assert.match(prepared, /timeout: 15000, stdio: 'pipe'/); assert(!prepared.includes('SYNTHETIC_SETUP_TIMEOUT'));
+  const native = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
+  assert.match(native, /const TIMEOUT = 15000,/);
+  assert.match(native, /AddSeconds\(\$\(if \(\$c.observeOnly\) \{ 1 \} else \{ 15 \}\)\)/);
+  assert.match(native, /'native Save action', timeouts.action \?\? 30000/);
+  const controls = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8');
+  assert.match(controls, /ElapsedMilliseconds -ge 2000/);
+  const slo = fs.readFileSync(new URL('../../scripts/progressive-slo-api-acceptance.cjs', import.meta.url), 'utf8');
+  assert.match(slo, /cancelSeconds <= 2/); assert.match(slo, /passed: complete && latency <= 10 && after <= 5/);
+  for (const runtime of [native, controls, slo]) assert(!runtime.includes('SYNTHETIC_SETUP_TIMEOUT'));
 });
 
 test('native helper is reaped on click failure and preserves that failure if reap also fails', async () => {
@@ -423,7 +492,7 @@ test('only the typed final popup-set rejection can settle inside the existing fi
 
 test('Windows real dialog guards settle only transient readback popups without resending input', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1'), '-SettlingOnly'],
-    { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   assert(!output.includes('PRIVATE')); const { actions } = JSON.parse(output.trim()); assert.equal(actions.length, 34);
   for (const row of actions) {
     const phase = row.mode.startsWith('settle-phase-') ? row.mode.slice('settle-phase-'.length) : null;
@@ -470,7 +539,7 @@ $size=[Runtime.InteropServices.Marshal]::SizeOf([type][OwnedFilenameInput+INPUT]
 $text='A+{F4}é'; $inputs=[OwnedFilenameInput]::Build($text); if ($inputs.Length -ne $text.Length*2) {throw 'Count mismatch'};
 for($i=0;$i -lt $text.Length;$i++) { for($up=0;$up -lt 2;$up++) { $x=$inputs[$i*2+$up]; if($x.type -ne 1 -or $x.value.key.vk -ne 0 -or $x.value.key.scan -ne [int]$text[$i] -or $x.value.key.flags -ne 4+$up*2) {throw 'Literal Unicode mismatch'} } };
 foreach($bad in @('',('x'*1025),[string][char]0,[string][char]10,[string][char]27)) { $rejected=$false; try {[void][OwnedFilenameInput]::Build($bad)} catch {$rejected=$true}; if(!$rejected) {throw 'Unsafe input accepted'} }; 'PASS'`;
-    assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: 15000 }).trim(), 'PASS');
+    assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: SYNTHETIC_SETUP_TIMEOUT }).trim(), 'PASS');
   }
 });
 
@@ -504,7 +573,7 @@ test('synthetic popup extraction replaces only the observer clock in LF and CRLF
 
 test('Windows extracted control validation accepts only exact initial names and retains both targets through faults', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1')],
-    { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   assert(!output.includes('PRIVATE')); const parsed = JSON.parse(output.trim()), cases = parsed.validation; assert.equal(cases.length, 36);
   for (const row of cases) {
     const success = ['md-name', 'md-stem', 'json-name', 'json-stem'].includes(row.mode);
@@ -684,7 +753,7 @@ test('every allowlisted observer failure remains secondary to the original nativ
 
 test('Windows observer fault injection exercises the actual function with synthetic types only', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
-    path.resolve('scripts/tests/native-observer-faults.ps1')], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    path.resolve('scripts/tests/native-observer-faults.ps1')], { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   assert(!output.includes('PRIVATE_')); assert(!output.includes('C:\\private'));
   const cases = JSON.parse(output.trim());
   assert.deepEqual(cases.getter_probe, { member_null: true, member_caught: false, explicit_caught: true, reads: 2, throws: 2 });
@@ -835,7 +904,7 @@ test('Windows repeated captures reuse the exact loaded pixel type without invoki
     'if (![Object]::ReferenceEquals($first,$second) -or ![Object]::ReferenceEquals($assembly,$second.Assembly)) { throw "Pixel type was not reused" }; ' +
     'if (!$second.GetMethod("PrintWindow") -or !$second.GetNestedType("RECT")) { throw "Pixel type contract missing" }; Write-Output "REUSED"';
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-    { input: definition, encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: definition, encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   assert.equal(output.trim(), 'REUSED');
 });
 
@@ -1200,7 +1269,7 @@ test('Windows actual extracted guards execute inside observer scope and independ
   const start = generated.indexOf('} catch {\n $original=$_;') + '} catch {'.length;
   const body = generated.slice(start, generated.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');", start)).replace(/}\s*$/, '');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
-    path.resolve('scripts/tests/native-guard-evidence-faults.ps1'), '-HostFailureBody', Buffer.from(body).toString('base64')], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true });
+    path.resolve('scripts/tests/native-guard-evidence-faults.ps1'), '-HostFailureBody', Buffer.from(body).toString('base64')], { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, maxBuffer: 1024 * 1024, windowsHide: true });
   assert(!output.includes('PRIVATE')); assert(!output.includes('C:\\'));
   const lines = output.trim().split(/\r?\n/);
   for (const line of lines.slice(0, -1)) {
@@ -1330,7 +1399,7 @@ test('foreground proof is read-only, independently bound, class/topology stable 
 
 test('Windows actual foreground proof rejects ownership and capture races without pixels or native input', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
-    path.resolve('scripts/tests/native-foreground-evidence-faults.ps1')], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    path.resolve('scripts/tests/native-foreground-evidence-faults.ps1')], { encoding: 'utf8', timeout: SYNTHETIC_SETUP_TIMEOUT, windowsHide: true });
   assert(!output.includes('PRIVATE')); assert(!output.includes('C:\\'));
   const { results } = JSON.parse(output.trim()); assert.equal(results.length, 31);
   for (const { mode, evidence, captures, guards, persisted, forbidden } of results) {
@@ -1506,7 +1575,7 @@ try {
  'PASS'
 } finally { [IO.Directory]::Delete($root,$true) }`;
   // This source-only negative fixture never displays or acts on any dialog.
-  assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: 30000 }).trim(), 'PASS');
+  assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: SYNTHETIC_SETUP_TIMEOUT }).trim(), 'PASS');
 });
 
 test('calibration reuses exact native input and existing failure artifact retention', () => {
