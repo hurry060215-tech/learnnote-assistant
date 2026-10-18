@@ -63,6 +63,105 @@ class JavaScriptArchitectureTests(unittest.TestCase):
         self.assertTrue(any("dependency cycle" in error for error in errors))
         self.assertTrue(any("missing local script" in error for error in errors))
 
+    def test_template_interpolation_cycles_and_missing_files_fail_with_lf_and_crlf(self):
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                source = newline.join((
+                    'const text = `inert import("./fake.js")',
+                    '${import("./beta.js")}',
+                    '${import("./missing.js")}',
+                    '`;',
+                ))
+                specs, injections, errors = local_specifiers(js_tokens(source))
+                self.assertEqual(specs, [("./beta.js", 2, "import"), ("./missing.js", 3, "import")])
+                self.assertEqual((injections, errors), ([], []))
+                root = self.repository({
+                    "web/alpha.js": source,
+                    "web/beta.js": 'import("./alpha.js");',
+                })
+                self.assertEqual(javascript_violations(root), [
+                    "web/alpha.js imports missing local script web/missing.js",
+                    "JavaScript dependency cycle: web/alpha.js <-> web/beta.js",
+                ])
+
+    def test_nested_templates_and_expression_braces_preserve_every_import(self):
+        source = '''const text = `head ${(() => {
+            const object = {first: import("./first.js"), nested: {brace: "}"}};
+            return `nested ${({value: import("./second.js")}).value}
+                ${`deeper ${import("./third.js")}`}`;
+        })()} tail ${import("./fourth.js")}`;
+        import("./after.js");'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], [
+            "./first.js", "./second.js", "./third.js", "./fourth.js", "./after.js",
+        ])
+        self.assertEqual((injections, errors), ([], []))
+
+    def test_interpolation_strings_comments_and_regex_do_not_end_expression(self):
+        source = r'''const text = `${(() => {
+            const single = '} import("./fake-single.js")';
+            const double = "} import('./fake-double.js')";
+            const plain = `} import("./fake-template.js")`;
+            // } ` ${import("./fake-line.js")}
+            /* } ` ${import("./fake-block.js")} */
+            const pattern = /[{}]import\("\.\/fake-regex\.js"\)\`/;
+            return /}/.test(single) ? import("./real.js") : plain;
+        })()} import("./fake-tail.js")`;
+        const other = `${/[}]/.test("}") ? import("./other.js") : ""}`;'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], ["./real.js", "./other.js"])
+        self.assertEqual((injections, errors), ([], []))
+
+    def test_escaped_template_text_is_inert_and_even_backslashes_allow_interpolation(self):
+        source = r'''const text = String.raw`\${import("./fake.js")} \` still text`;
+        const live = `\\${import("./real.js")}`;
+        import(`./plain.js`);
+        import(`./\${literal}.js`);'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], ["./real.js", "./plain.js", "./${literal}.js"])
+        self.assertEqual((injections, errors), ([], []))
+
+    def test_computed_imports_in_templates_fail_without_inventing_paths(self):
+        source = '''const text = `${import("./" + name)}`;
+        import(`./${name}.js`);
+        import(`./${import("./real.js")}.js`);
+        const nested = `${import(`./${name}.js`)}`;'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], ["./real.js"])
+        self.assertEqual(injections, [])
+        self.assertEqual(len(errors), 4, errors)
+        self.assertTrue(all("computed import path is not auditable" in error for error in errors), errors)
+
+    def test_template_boundaries_preserve_injection_lists_and_division(self):
+        source = '''chrome.scripting.executeScript({
+            func: () => `inert ${({files: ["fake.js"]})}`,
+            files: ["content.js"]
+        });
+        const text = `${importScripts("helper.js")}`;
+        const fraction = `${1}` / 2;
+        const literalFraction = `1` / 2;
+        import("./after.js");'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], ["helper.js", "./after.js"])
+        self.assertEqual(injections, [["content.js"]])
+        self.assertEqual(errors, [])
+
+    def test_regex_operands_and_control_bodies_stay_inert_in_interpolations(self):
+        source = r'''const text = `${1 + /}import("fake-add.js")/.source}`;
+        const keywords = `${(() => {
+            if (ready && (enabled)) /}import("fake-if.js")/.test(value);
+            while (false) /}import("fake-while.js")/.test(value);
+            throw /}import("fake-throw.js")/;
+        })()}`;
+        const divided = `${(() => {
+            const values = [count++ / 2, count-- / 2, "return" / 2, object.if() / 2];
+            const properties = [object.in / 2, object?.return / 2, object.await / 2];
+            return import("./real.js");
+        })()}`;'''
+        specs, injections, errors = local_specifiers(js_tokens(source))
+        self.assertEqual([item[0] for item in specs], ["./real.js"])
+        self.assertEqual((injections, errors), ([], []))
+
     def test_nested_runtime_modules_are_resolved_but_test_fixtures_are_excluded(self):
         root = self.repository({
             "web/entry.js": 'import { value } from "./parts/value.mjs";',

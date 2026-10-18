@@ -24,12 +24,50 @@ class Token:
     line: int
 
 
+@dataclass
+class Template:
+    token_index: int
+    value: list[str]
+    depth: int | None = None  # None scans inert text; a number scans ${...}.
+    interpolated: bool = False
+
+
 def js_tokens(source: str) -> list[Token]:
     tokens = []
+    templates = []
+    parentheses, last_control_close = [], -1
     index, line = 0, 1
-    expression_prefix = {"=", "(", "[", "{", ",", ":", ";", "!", "?", "return", "=>", "&&", "||"}
+    expression_prefix = {
+        "=", "(", "[", "{", ",", ":", ";", "!", "?", "=>", "&&", "||",
+        "+", "-", "*", "/", "%", "&", "|", "^", "~", "<", ">",
+        "return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "yield", "await",
+    }
     while index < len(source):
         char = source[index]
+        if templates and templates[-1].depth is None:
+            template = templates[-1]
+            if char == "\\" and index + 1 < len(source):
+                template.value.append(source[index + 1])
+                line += source[index + 1] == "\n"
+                index += 2
+            elif char == "`":
+                if not template.interpolated:
+                    start = tokens[template.token_index]
+                    tokens[template.token_index] = Token("string", "".join(template.value), start.line)
+                else:
+                    tokens.append(Token("template", "", line))
+                templates.pop()
+                index += 1
+            elif source.startswith("${", index):
+                template.interpolated, template.depth = True, 0
+                # Keep each expression isolated and its braces balanced for consumers.
+                tokens.append(Token("punctuation", "{", line))
+                index += 2
+            else:
+                template.value.append(char)
+                line += char == "\n"
+                index += 1
+            continue
         if char.isspace():
             line += char == "\n"
             index += 1
@@ -40,7 +78,12 @@ def js_tokens(source: str) -> list[Token]:
             line += source[index:end].count("\n")
             index = end
             continue
-        if char in "\"'\x60":
+        if char == "`":
+            templates.append(Template(len(tokens), []))
+            tokens.append(Token("template", "", line))
+            index += 1
+            continue
+        if char in "\"'":
             start, token_line, quote = index, line, char
             index += 1
             value = []
@@ -54,9 +97,15 @@ def js_tokens(source: str) -> list[Token]:
             index = min(index + 1, len(source))
             line += source[start:index].count("\n")
             text = "".join(value)
-            tokens.append(Token("template" if quote == "\x60" and "\u0024{" in text else "string", text, token_line))
+            tokens.append(Token("string", text, token_line))
             continue
-        if char == "/" and (not tokens or tokens[-1].value in expression_prefix):
+        if char == "/" and (
+            not tokens or len(tokens) - 1 == last_control_close
+            or (
+                tokens[-1].kind in {"identifier", "punctuation"} and tokens[-1].value in expression_prefix
+                and (len(tokens) < 2 or tokens[-2].value not in {".", "?."})
+            )
+        ):
             start = index
             index += 1
             character_class = False
@@ -84,7 +133,23 @@ def js_tokens(source: str) -> list[Token]:
             tokens.append(Token("identifier", text, line))
             index += len(text)
             continue
-        value = source[index:index + 2] if source[index:index + 2] in {"=>", "&&", "||", "?."} else char
+        value = source[index:index + 2] if source[index:index + 2] in {"=>", "&&", "||", "?.", "++", "--"} else char
+        if value == "(":
+            parentheses.append(bool(
+                tokens and tokens[-1].kind == "identifier"
+                and tokens[-1].value in {"if", "while", "for", "with", "switch", "catch"}
+                and (len(tokens) < 2 or tokens[-2].value not in {".", "?."})
+            ))
+        elif value == ")" and parentheses and parentheses.pop():
+            last_control_close = len(tokens)
+        if templates and value in {"{", "}"}:
+            template = templates[-1]
+            if value == "{":
+                template.depth += 1
+            elif template.depth:
+                template.depth -= 1
+            else:
+                template.depth = None
         tokens.append(Token("punctuation", value, line))
         index += len(value)
     return tokens
