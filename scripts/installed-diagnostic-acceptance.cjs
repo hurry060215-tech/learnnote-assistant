@@ -7,6 +7,7 @@ const { createHash } = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
 const TIMEOUT = 15000, MAX_BYTES = 256 * 1024;
 const SYNTHETIC_TITLE = 'Synthetic rollback captions';
+const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
 const NATIVE_PHASES = ['ownership', 'destination', 'dialog-wait', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
 
 function parseArgs(args) {
@@ -96,10 +97,52 @@ function ownedRequest(url, origin) {
   catch { return false; }
 }
 
+// Accept only bounded structural diagnostics; native labels and values never cross this boundary.
+function exactKeys(value, keys) {
+  assert(value && typeof value === 'object' && !Array.isArray(value));
+  assert.deepEqual(Object.keys(value).sort(), [...keys].sort());
+}
+function validateHostFailure(value) {
+  exactKeys(value, ['subphase', 'host_count', 'host_count_capped']);
+  assert(HOST_SUBPHASES.includes(value.subphase));
+  assert(value.host_count === null || Number.isInteger(value.host_count) && value.host_count >= 0 && value.host_count <= 64);
+  assert(typeof value.host_count_capped === 'boolean');
+  assert(!value.host_count_capped || value.host_count === 64);
+  return value;
+}
+function validateHostObservation(value) {
+  exactKeys(value, ['status', 'snapshots']);
+  assert(['complete', 'partial', 'unavailable'].includes(value.status));
+  assert(Array.isArray(value.snapshots) && value.snapshots.length <= 2);
+  for (const snapshot of value.snapshots) {
+    exactKeys(snapshot, ['elapsed_ms', 'truncated', 'foreign_nodes', 'nodes']);
+    assert(Number.isInteger(snapshot.elapsed_ms) && snapshot.elapsed_ms >= 0 && snapshot.elapsed_ms <= 35000);
+    assert(typeof snapshot.truncated === 'boolean');
+    assert(Number.isInteger(snapshot.foreign_nodes) && snapshot.foreign_nodes >= 0 && snapshot.foreign_nodes <= 64);
+    assert(Array.isArray(snapshot.nodes) && snapshot.nodes.length + snapshot.foreign_nodes <= 64);
+    for (const [index, node] of snapshot.nodes.entries()) {
+      exactKeys(node, ['parent', 'depth', 'type', 'cls', 'id', 'pruned']);
+      assert(Number.isInteger(node.parent) && node.parent >= -1 && node.parent < index);
+      assert(Number.isInteger(node.depth) && node.depth >= 0 && node.depth <= 8);
+      assert(node.parent === -1 ? index === 0 && node.depth === 0 : node.depth === snapshot.nodes[node.parent].depth + 1);
+      assert(Number.isInteger(node.type) && node.type >= 50000 && node.type <= 50100);
+      for (const key of ['cls', 'id']) assert(typeof node[key] === 'string' &&
+        (node[key] === '<redacted>' || /^[A-Za-z0-9_#.-]{0,64}$/.test(node[key])));
+      assert(typeof node.pruned === 'boolean');
+      if (node.pruned) assert(node.cls === '' && node.id === '');
+      if (node.parent >= 0) assert.equal(snapshot.nodes[node.parent].pruned, false);
+    }
+  }
+  assert(value.status !== 'complete' || value.snapshots.length === 2);
+  assert(value.status !== 'partial' || value.snapshots.length === 1);
+  assert(value.status !== 'unavailable' || value.snapshots.length === 0);
+  return value;
+}
+
 // Native common Save dialog only: no browser download override or global keys.
 function nativeDialogScript(config, binding, directory, destination, observeOnly = false) {
   const payload = Buffer.from(JSON.stringify({ pid: config.ownedPid, start: binding.owned_start,
-    directory, destination, observeOnly })).toString('base64');
+    directory, destination, observeOnly, observer: path.join(__dirname, 'installed-native-dialog-observation.ps1') })).toString('base64');
   return String.raw`$ErrorActionPreference='Stop';
 $c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json;
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes;
@@ -188,16 +231,31 @@ if ($c.observeOnly) { @{native_popup_absent=$true} | ConvertTo-Json -Compress; e
 if ($dialog -eq [IntPtr]::Zero) { throw 'Owned Save dialog did not appear' }
 $element=[Windows.Automation.AutomationElement]::FromHandle($dialog);
 $all=[Windows.Automation.Condition]::TrueCondition; $desc=[Windows.Automation.TreeScope]::Descendants;
-Stage 'filename-host';
+Stage 'filename-host'; $hostCount=$null; $hostSubphase='query';
+try {
+[Console]::Out.WriteLine('SUBPHASE:'+$hostSubphase);
 $hosts=@($element.FindAll($desc,$all) | Where-Object {
  $_.Current.ControlType -eq [Windows.Automation.ControlType]::ComboBox -and $_.Current.AutomationId -ceq 'FileNameControlHost' -and $_.Current.ClassName -ceq 'AppControlHost'
 });
-if ($hosts.Count -ne 1) { throw 'Unsupported or ambiguous native filename host' }; $hostControl=$hosts[0]; Assert-Control $hostControl $element;
+$hostCount=$hosts.Count; $hostSubphase='match-count'; [Console]::Out.WriteLine('SUBPHASE:'+$hostSubphase);
+if ($hosts.Count -ne 1) { throw 'Unsupported or ambiguous native filename host' }; $hostControl=$hosts[0]; $hostSubphase='host-validation'; [Console]::Out.WriteLine('SUBPHASE:'+$hostSubphase); Assert-Control $hostControl $element;
+$hostSubphase='modern-ancestor'; [Console]::Out.WriteLine('SUBPHASE:'+$hostSubphase);
 $ancestor=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($hostControl); $modern=$false;
 for ($i=0; $i -lt 16 -and $ancestor -and ![Windows.Automation.Automation]::Compare($ancestor,$element); $i++) {
  if ($ancestor.Current.ClassName -ceq 'DUIViewWndClassName') { $modern=$true; break }; $ancestor=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($ancestor);
 }
 if (!$modern) { throw 'Unsupported native Save dialog layout' }
+} catch {
+ $original=$_;
+ try {
+  $details=@{subphase=$hostSubphase;host_count=$(if ($null -eq $hostCount) { $null } else { [Math]::Min(64,$hostCount) });host_count_capped=($null -ne $hostCount -and $hostCount -gt 64)};
+  [Console]::Out.WriteLine('HOSTFAIL:'+($details | ConvertTo-Json -Compress)); [Console]::Out.Flush();
+  . $c.observer;
+  $observation=Get-OwnedDialogObservation -Element $element -OwnedPid $c.pid -Guard { Assert-Dialog $dialog };
+  [Console]::Out.WriteLine('HOSTDIAG:'+($observation | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush();
+ } catch { } # Evidence collection cannot replace the original rejection.
+ throw $original;
+}
 Stage 'filename-edit';
 $edits=@($hostControl.FindAll($desc,$all) | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit -and $_.Current.ClassName -ceq 'Edit' -and $_.Current.AutomationId -ceq '1001' });
 if ($edits.Count -ne 1) { throw 'Ambiguous native filename edit' }; $edit=$edits[0]; Assert-Control $edit $element;
@@ -234,7 +292,7 @@ throw 'Native Save did not finish';`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}) {
-  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase;
+  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
   const closed = new Promise(resolve => { closedResolve = resolve; });
@@ -249,6 +307,21 @@ async function withNativeHelper(child, action, timeouts = {}) {
       const line = output.slice(0, index).trim(); output = output.slice(index + 1);
       if (line.startsWith('PHASE:')) {
         const phase = line.slice(6); if (NATIVE_PHASES.includes(phase)) nativePhase = phase; else fail(new Error('Unknown native helper phase'));
+      } else if (line.startsWith('SUBPHASE:')) {
+        const subphase = line.slice(9);
+        if (nativePhase === 'filename-host' && HOST_SUBPHASES.includes(subphase)) nativeSubphase = subphase;
+        else fail(new Error('Unknown native host subphase'));
+      } else if (line.startsWith('HOSTFAIL:')) {
+        try {
+          assert(ready && nativePhase === 'filename-host' && !hostFailure);
+          const details = validateHostFailure(JSON.parse(line.slice(9)));
+          hostFailure = new Error('Owned native Save helper failed');
+          hostFailure.native_host_failure = details;
+          nativeSubphase = hostFailure.native_host_failure.subphase;
+        } catch { fail(new Error('Invalid native host failure metadata')); }
+      } else if (line.startsWith('HOSTDIAG:')) {
+        try { assert(hostFailure && !hostObservation && line.length <= 32768); hostObservation = validateHostObservation(JSON.parse(line.slice(9))); }
+        catch { evidenceInvalid = true; } // Keep the original native rejection, never raw metadata.
       } else if (line === 'READY' && !ready) { ready = true; readyResolve(); }
       else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
     }
@@ -258,14 +331,22 @@ async function withNativeHelper(child, action, timeouts = {}) {
   child.once('error', () => { const error = new Error('Owned native helper could not start'); fail(error); });
   child.once('close', code => {
     closedResolve();
-    if (code === 0 && ready && result) doneResolve(result);
+    if (hostFailure) fail(hostFailure);
+    else if (code === 0 && ready && result) doneResolve(result);
     else { const error = new Error('Owned native Save helper failed'); fail(error); }
   });
   try {
     await bounded(Promise.race([readyPromise, done]), 'native helper readiness', timeouts.ready ?? TIMEOUT);
     const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
     return value;
-  } catch (error) { failure = error; if (nativePhase) error.native_stage = nativePhase; throw error; }
+  } catch (error) {
+    failure = hostFailure || error;
+    if (nativePhase) failure.native_stage = nativePhase;
+    if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
+    if (hostObservation) failure.native_host_observation = hostObservation;
+    if (hostFailure && (!hostObservation || evidenceInvalid)) failure.native_observation_unavailable = true;
+    throw failure;
+  }
   finally {
     try {
       if (child.exitCode === null) child.kill();
@@ -274,9 +355,15 @@ async function withNativeHelper(child, action, timeouts = {}) {
   }
 }
 
+function nativeDialogCommand(script) {
+  const args = ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+  // Every argument here is space-free; include the executable, spaces and final NUL.
+  assert(['powershell.exe', ...args].join(' ').length + 1 < 32767, 'Native helper exceeds Windows command-line limit');
+  return args;
+}
 function nativeDialog(config, binding, directory, destination, action, observeOnly = false) {
   const script = nativeDialogScript(config, binding, directory, destination, observeOnly);
-  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+  const child = spawn('powershell.exe', nativeDialogCommand(script),
     { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], timeout: 35000 });
   return withNativeHelper(child, action);
 }
@@ -440,6 +527,9 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable']) {
+      if (error[key] !== undefined) report[key] = error[key];
+    }
     if (error.native_helper_cleanup_failed) report.native_helper_cleanup_failed = true;
     if (page && syntheticVerified) {
       try { await capture(config.startupOnly ? 'previous-startup-failure.png' : 'installed-current-diagnostic-failure.png'); }
@@ -456,5 +546,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, nativeDialogScript, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

@@ -47,6 +47,30 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
             self.assertNotIn('exit 0', upgrade)
 
+    def test_candidate_retention_is_source_bound_and_before_mandatory_tests(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            order = [normalized.index(value) for value in (
+                '- name: Sign Windows installer', '- name: Identify installer candidate',
+                '- name: Retain installer candidate', '- name: Smoke-test installed release',
+                '- name: Smoke-test upgrade from previous release', '- name: Publish GitHub Release')]
+            self.assertEqual(order, sorted(order))
+            identify = normalized.split('- name: Identify installer candidate', 1)[1].split('- name: Retain installer candidate', 1)[0]
+            for field in ('source_commit = $env:BUILD_COMMIT', 'release_tag = $env:RELEASE_TAG',
+                          'run_id = $env:GITHUB_RUN_ID', 'run_attempt = $env:GITHUB_RUN_ATTEMPT',
+                          'acceptance_status = "pending"', 'installer_bytes = $installer.Length',
+                          '-Algorithm SHA256'):
+                self.assertIn(field, identify)
+            step = normalized.split('- name: Retain installer candidate', 1)[1].split('- name: Smoke-test installed release', 1)[0]
+            paths = step.split('path: |', 1)[1].split('if-no-files-found:', 1)[0].split()
+            self.assertEqual(paths, ['LearnNote-Setup-x64.exe', 'build/release/installer-candidate.json',
+                                     'build/release/freshness.json', 'build/release-tree-audit.json'])
+            self.assertIn('if-no-files-found: error', step)
+            self.assertIn('retention-days: 7', step)
+            self.assertNotIn('continue-on-error', step)
+            self.assertNotIn('gh release', step)
+
     def test_retention_is_always_top_level_synthetic_evidence_only(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         step = source.split('- name: Retain installed upgrade acceptance evidence', 1)[1].split('- name: Package browser extension', 1)[0]

@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, nativeDialogScript, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateHostObservation, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -126,6 +126,74 @@ test('native failures retain only an allowlisted phase and reject arbitrary diag
   wrong.line('PHASE:private-path-or-title'); await assert.rejects(rejected, /Unknown native helper phase/);
 });
 
+const hostFailureDetails = (count, subphase = 'match-count') => ({ subphase, host_count: count, host_count_capped: false });
+const hostSnapshot = (elapsed, visibleHost = false) => ({ elapsed_ms: elapsed, truncated: false, foreign_nodes: 0,
+  nodes: [{ parent: -1, depth: 0, type: 50032, cls: '#32770', id: '', pruned: false },
+    ...(visibleHost ? [{ parent: 0, depth: 1, type: 50003, cls: 'AppControlHost', id: 'FileNameControlHost', pruned: false }] : [])] });
+const hostObservation = () => ({ status: 'complete', snapshots: [hostSnapshot(5), hostSnapshot(260, true)] });
+function emitHostFailure(child, details) {
+  child.line('PHASE:filename-host'); child.line('SUBPHASE:' + details.subphase); child.line('HOSTFAIL:' + JSON.stringify(details));
+}
+
+test('host rejection records zero/multiple/provider failure separately; late matching evidence never retries Save', async () => {
+  for (const details of [hostFailureDetails(0), hostFailureDetails(2), hostFailureDetails(null, 'query'), hostFailureDetails(1, 'host-validation'), hostFailureDetails(1, 'modern-ancestor')]) {
+    const child = fakeChild(); let actions = 0;
+    const result = withNativeHelper(child, () => {
+      actions++; emitHostFailure(child, details); child.line('HOSTDIAG:' + JSON.stringify(hostObservation()));
+      // Even an erroneous success exit/result cannot turn the rejection into acceptance.
+      child.line('{"native_dialog":true,"saved":true}'); child.end(0);
+    }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed');
+      assert.deepEqual(error.native_host_failure, details); assert.equal(error.native_host_subphase, details.subphase);
+      assert.deepEqual(error.native_host_observation, hostObservation()); return true;
+    }); assert.equal(actions, 1);
+  }
+});
+
+test('diagnostic capture failure, invalid content and timeouts preserve the original host rejection', async () => {
+  for (const mode of ['missing', 'invalid', 'held']) {
+    const child = fakeChild();
+    const result = withNativeHelper(child, () => {
+      emitHostFailure(child, hostFailureDetails(0));
+      if (mode === 'invalid') child.line('HOSTDIAG:{"Name":"PRIVATE_TITLE","Value":"C:\\private"}');
+      if (mode !== 'held') child.end(1); else return new Promise(() => {});
+    }, { action: 5 }); child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed'); assert.equal(error.native_observation_unavailable, true);
+      assert.equal(error.native_host_observation, undefined); assert(!JSON.stringify(error).includes('PRIVATE_TITLE'));
+      return true;
+    }); if (mode === 'held') assert.equal(child.kills, 1);
+  }
+});
+
+test('host metadata rejects unknown fields, paths, invalid ancestry and oversized primitive collections', () => {
+  validateHostFailure(hostFailureDetails(0)); validateHostFailure({ ...hostFailureDetails(64), host_count_capped: true });
+  for (const invalid of [{ ...hostFailureDetails(0), host_count: -1 }, { ...hostFailureDetails(0), host_count: 65 },
+    { ...hostFailureDetails(0), host_count_capped: true }, { ...hostFailureDetails(0), subphase: 'other' }, { ...hostFailureDetails(0), Name: 'forbidden' }]) assert.throws(() => validateHostFailure(invalid));
+  validateHostObservation(hostObservation()); validateHostObservation({ status: 'unavailable', snapshots: [] });
+  const invalids = [value => { value.Name = 'forbidden'; }, value => { value.snapshots.push(hostSnapshot(500)); },
+    value => { value.snapshots[0].nodes[0].Value = 'forbidden'; }, value => { value.snapshots[0].nodes[0].cls = 'C:\\private'; },
+    value => { value.snapshots[0].nodes[0].id = 'x'.repeat(65); }, value => { value.snapshots[0].nodes[0].parent = 0; },
+    value => { value.snapshots[0].nodes[0].depth = 9; }, value => { value.snapshots[0].foreign_nodes = 64; },
+    value => { value.snapshots[1].nodes[0].pruned = true; }, value => { value.snapshots[0].nodes = Array(65).fill(value.snapshots[0].nodes[0]); }];
+  for (const mutate of invalids) { const value = hostObservation(); mutate(value); assert.throws(() => validateHostObservation(value)); }
+});
+
+test('failure observer is bounded, read-only, prunes content branches and checks ownership before and after every snapshot', () => {
+  const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
+  assert.match(observer, /sample -lt 2/); assert.match(observer, /walked -lt 64/); assert.match(observer, /entry.depth -ge 8/);
+  assert.match(observer, /ElapsedMilliseconds -lt 1000/); assert.match(observer, /\$queue.Count\+\$walked\) -lt 64/);
+  assert.match(observer, /\$node.Current.ProcessId -ne \$OwnedPid/); assert.equal(observer.match(/\[void\]\(& \$Guard\)/g).length, 2);
+  for (const type of ['List', 'ListItem', 'Tree', 'TreeItem', 'DataGrid', 'DataItem', 'Document']) assert(observer.includes(`ControlType]::${type}`));
+  assert.doesNotMatch(observer, /\.Current\.(?:Name|Value)|SetValue|\.Invoke\(|RootElement|GetWindowText|\.screenshot\(|CopyFromScreen|GetForegroundWindow/);
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
+  const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
+  assert.match(branch, /\. \$c.observer/); assert.match(branch, /-Guard \{ Assert-Dialog \$dialog \}/);
+  assert.match(branch, /catch \{ \}/); assert.match(branch, /throw \$original;/);
+  assert.doesNotMatch(branch, /SetValue|\.Invoke\(|Start-Sleep/);
+});
+
 test('native file equality reads stable exact UTF-8 bytes and retains the actual saved evidence', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installed-native-bytes-')), file = path.join(root, 'report.md');
   const bytes = Buffer.from('\ufeff# 安全报告\r\ncafé 日本語 🧭\n');
@@ -158,15 +226,29 @@ test('native dialog script is exact owned modern Save profile, fresh contained f
   assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke/);
   assert.match(script, /Current.Value -cne \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
   assert.doesNotMatch(script, /SendKeys|SendMessage|SetForegroundWindow|RootElement|\.Current.Name/);
-  assert(Buffer.from(script, 'utf16le').toString('base64').length < 30000, 'Encoded command must stay below the Windows command-line limit');
+  assert(['powershell.exe', ...nativeDialogCommand(script)].join(' ').length + 1 < 32767);
+  assert.throws(() => nativeDialogCommand('x'.repeat(13000)), /command-line limit/);
 });
 
 test('Windows PowerShell parser validates the actual generated native helper without executing it', { skip: process.platform !== 'win32' }, () => {
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
+  const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$source=[Console]::In.ReadToEnd(); $tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors); if ($errors.Count) { throw "Native helper parse failed" }; Write-Output "PARSED"'],
-    { input: script, encoding: 'utf8', timeout: 15000, windowsHide: true });
+    { input: script + '\n' + observer, encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert.equal(output.trim(), 'PARSED');
+});
+
+test('Windows read-only observer redacts unsafe primitives and returns no evidence after ownership rejection', { skip: process.platform !== 'win32' }, () => {
+  const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
+  const script = `Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes;\n${observer}\n` +
+    "$result=Get-OwnedDialogObservation -Element $null -OwnedPid 1 -Guard { throw 'synthetic ownership rejected' }; " +
+    "@{observation=$result;safe=(ConvertTo-SafeNativeToken 'FileNameControlHost');redacted=(ConvertTo-SafeNativeToken 'C:\\synthetic-private')} | ConvertTo-Json -Depth 8 -Compress";
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'],
+    { input: script, encoding: 'utf8', timeout: 15000, windowsHide: true });
+  const value = JSON.parse(output.trim());
+  assert.deepEqual(value.observation, { status: 'unavailable', snapshots: [] });
+  assert.equal(value.safe, 'FileNameControlHost'); assert.equal(value.redacted, '<redacted>');
 });
 
 test('cancel observation rejects downloads and preserves transport errors', async () => {
