@@ -151,7 +151,15 @@ let input='';process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end'
         second = self.wait(lambda: (state if len((state := self.task(task_id))["calls"]) == 3 else None), "later dispatch after second completion")
         partial = self.api(f"/api/tasks/{task_id}/partial-note")
         batches = [s for s in partial["sections"] if s["kind"] == "vision_batch"]
-        self.assertEqual(len(batches), 1); self.assertIn("Synthetic visual batch 2", batches[0]["markdown"])
+        evidence = json.dumps({"projection": {key: partial.get(key) for key in
+            ("status", "reason", "attempt_id", "revision", "source_revision", "generation_revision")},
+            "section_kinds": [section.get("kind") for section in partial["sections"][:8]],
+            "persisted_identity": second["partial"],
+            "calls": [{key: call.get(key) for key in ("batch", "state")} for call in second["calls"][:4]],
+            "recent_events": [{key: event.get(key) for key in ("event", "phase", "status")}
+                              for event in second["events"][-8:]]}, sort_keys=True)
+        self.assertEqual(len(batches), 1, evidence)
+        self.assertIn("Synthetic visual batch 2", batches[0]["markdown"])
         self.assertFalse(partial["verified"])
         self.assertEqual(partial["attempt_id"], initial["attempt_id"])
         self.assertEqual(partial["source_revision"], initial["source_revision"])
