@@ -688,7 +688,7 @@ readers = [(route, key, label) for route in fixture_routes() for key, label in r
 def edition(kind: str, source_id: str):
     assert storage.index_task(source_id) == 'synthetic artifact'
     return {'task_id': source_id}
-def task(task_id: str):
+def task(task_id: str, generation: str = ""):
     assert storage.index_task(task_id) == 'synthetic artifact'
     return {'task_id': task_id}
 def index(record, *, task_root=None):

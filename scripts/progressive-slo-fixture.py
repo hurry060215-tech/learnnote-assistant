@@ -142,7 +142,9 @@ def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics
     def timing(task_id, stage, *args, **kwargs):
         result = original_timing(task_id, stage, *args, **kwargs)
         if stage == "transcript":
-            register(task_id)["transcript_recorded"] = time.monotonic()
+            record = register(task_id)
+            record["transcript_recorded"] = time.monotonic()
+            record["transcript_generation"] = task_generation(storage.get_task(task_id))
         return result
 
     def recover(*args, **kwargs):
@@ -268,14 +270,29 @@ def configure_fixture(root, data, stack, *, resume=False, contention_diagnostics
         return snapshot(task_id)
 
     @main.app.post("/_fixture/tasks/{task_id}/visible")
-    def visible(task_id: str):
-        record = register(task_id)
-        if not record["waiting"] or record["transcript_recorded"] is None:
-            raise HTTPException(409, "Visible acknowledgement requires the held transcript draft")
+    def visible(task_id: str, generation: str = ""):
+        # Actual backend receipt, never browser-derived or backdated. Snapshot and
+        # continuation coordination are independent evidence, not receipt latency.
         received = time.monotonic()
+        record = register(task_id)
+        transcript = record["transcript_recorded"]
+        if transcript is None or transcript > received or record.get("transcript_generation") != generation:
+            raise HTTPException(409, "Visible acknowledgement requires this generation's transcript")
         state = snapshot(task_id)
+        current = storage.get_task(task_id)
+        queue = read_queue_job(data, task_id)
+        if (not re.fullmatch(r"[a-f0-9]{64}", generation)
+                or state["task_id"] != task_id or state["generation"] != generation
+                or state["status"] != "running" or current.status != "running"
+                or task_generation(current) != generation
+                or any(not job or job.get("task_id") != task_id or job.get("generation") != generation
+                       or job.get("state") != "running" or job.get("callback_finished") != 0
+                       for job in (state["queue"], queue))
+                or set(state["hashes"]) != {"transcript_path", "subtitle_path", "draft.md"}
+                or not any(event.get("event") == "draft_ready" for event in state["stages"])):
+            raise HTTPException(409, "Visible acknowledgement requires the current running published draft")
         completed = time.monotonic()
-        return {**state, "after_transcript_visible_ack_seconds": completed - record["transcript_recorded"],
+        return {**state, "after_transcript_visible_ack_seconds": received - transcript,
                 "visible_ack_snapshot_seconds": completed - received}
 
     @main.app.post("/_fixture/tasks/{task_id}/release")

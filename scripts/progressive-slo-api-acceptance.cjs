@@ -288,7 +288,8 @@ async function main(output = "build/progressive-slo-ui", contentionDiagnostics =
       timing_scope: contentionDiagnostics ? "Observer enabled; latency includes diagnostic overhead, not clean production latency" : "Observer disabled" },
     scope: { complete_reference_captions: true, final_summary: "deterministic adapter held until browser observation",
       measure: "Explicit /start submission through actual reader outline heading and source excerpt in viewport, including harness scroll and two animation frames",
-      post_transcript: "Same-backend-clock upper bound through browser visibility acknowledgement, including held-adapter coordination and local ACK transport",
+      post_transcript: "Same-backend-clock transcript-to-visibility-ACK handler receipt, including local ACK transport; snapshot duration and mandatory held-adapter proof are checked separately",
+      visibility_ack_contract: "receipt-before-held-proof-v2; measurement correction only, historical results unchanged",
       excluded: ["automatic release checks (fixture update preferences disabled)", "application boot", "source capture and deferred confirmation", "ASR", "media download", "vision", "provider latency", "semantic chapter quality", "fact verification", "queue contention"],
       warmth: "Fresh task/artifacts each sample; same initialized backend/browser context. OS/HTTP caches not forced cold; first task identified separately." } };
   let backend, browser, context, page, base, fixture, primaryError, stopObserving, trace, logBytes = 0;
@@ -405,10 +406,16 @@ async function main(output = "build/progressive-slo-ui", contentionDiagnostics =
     const geometry = await readerGeometry(id);
     const measured = { geometry, first_outline_seconds: await page.evaluate(() => (performance.now() - window.sloStart) / 1000) };
     phase("readable_measurement_returned");
-    if (record) { Object.assign(record, measured); save(); }
-    // Draft publication precedes adapter entry. Keep the first-readable clock,
-    // but include this coordination in the unchanged transcript-to-ACK bound.
+    if (record) Object.assign(record, measured);
+    // ACK actual readability before waiting for the independent held-adapter proof.
     const generation = generations.get(id);
+    const state = await api(`/_fixture/tasks/${id}/visible?generation=${generation}`, { method: "POST" }); phase("visible_ack_returned");
+    assert.equal(state.task_id, id); assert.equal(state.generation, generation);
+    assert.equal(state.status, "running");
+    if (record) {
+      Object.assign(record, { after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds,
+        visible_ack_snapshot_seconds: state.visible_ack_snapshot_seconds }); save();
+    }
     phase("held_continuation_wait_started");
     const held = await until(async () => {
       const current = await snapshot(id);
@@ -418,18 +425,18 @@ async function main(output = "build/progressive-slo-ui", contentionDiagnostics =
       assert.equal(current.queue?.task_id, id);
       assert.equal(current.queue?.state, "running"); assert.equal(current.queue?.callback_finished, 0);
       return current.waiting === true ? current : null;
-    }, "same-generation running continuation held before visibility ACK");
+    }, "same-generation running continuation held after visibility ACK and before release");
     phase("held_continuation_confirmed");
-    const state = await api(`/_fixture/tasks/${id}/visible`, { method: "POST" }); phase("visible_ack_returned");
     const nativeDraft = await until(() => report.native_sse.find(event => event.task_id === id && event.event === "draft_ready" && Number(event.id) > 0), "actual native draft_ready SSE");
     assert.equal(state.task_id, id); assert.equal(state.generation, held.generation);
     assert.deepEqual(state.hashes, held.hashes);
-    assert.equal(state.status, "running"); assert.equal(state.waiting, true);
+    assert.equal(held.status, "running"); assert.equal(held.waiting, true);
+    assert.deepEqual(state.source_coverage, held.source_coverage);
     assert.equal(Object.keys(state.hashes).length, 3);
     assert.deepEqual(state.source_coverage, { duration: minutes * 60, cue_count: minutes * 2,
       first_start: 0, last_end: minutes * 60, reference_cues_complete: true,
       section_count: minutes / 5, final_section_end: minutes * 60 });
-    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, visible_ack_snapshot_seconds: state.visible_ack_snapshot_seconds, phases: state.stages, source_coverage: state.source_coverage, native_draft_event: nativeDraft, state };
+    return { ...measured, after_transcript_visible_ack_seconds: state.after_transcript_visible_ack_seconds, visible_ack_snapshot_seconds: state.visible_ack_snapshot_seconds, phases: state.stages, source_coverage: state.source_coverage, native_draft_event: nativeDraft, state: held };
   }
   async function release(id, checkResponse = true) {
     await api(`/_fixture/tasks/${id}/release`, { method: "POST" });

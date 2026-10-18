@@ -11,7 +11,7 @@ const SYNTHETIC_TITLE = 'Synthetic rollback captions';
 const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
 const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
 const OBSERVER_EXCEPTIONS = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
-const NATIVE_PHASES = ['uia-initialization', 'ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
+const NATIVE_PHASES = ['uia-initialization', 'ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'filename-focus', 'filename-select', 'filename-type', 'filename-readback', 'save-focus', 'save-invoke', 'save-completion', 'cancel-observation'];
 const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-value-pattern', 'edit-initial-name', 'edit-host-binding', 'edit-host-value-pattern', 'edit-host-initial-name',
   'save-handle', 'save-control', 'save-profile', 'save-invoke-pattern', 'runtime-ids'];
 
@@ -282,7 +282,7 @@ function validateForegroundEvidence(value) {
   return value;
 }
 
-// Native common Save dialog only: no browser download override or global keys.
+// Native common Save dialog only; exact foreground edit proof precedes one Unicode input batch.
 // Initialize Framework defaults from a compiled frame before dynamic PowerShell UIA calls.
 function nativeDialogScript(config, binding, directory, destination, observeOnly = false) {
   const payload = Buffer.from(JSON.stringify({ pid: config.ownedPid, start: binding.owned_start,
@@ -407,6 +407,7 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
  throw $original;
 }
 . (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');
+Initialize-FilenameInput;
 function Assert-BoundControls {
  Assert-FilenameHostBinding;
  Assert-Control $edit $element; Assert-Control $button $element;
@@ -415,10 +416,10 @@ function Assert-BoundControls {
 }
 Stage 'filename-set';
 Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
-$hostValue.SetValue($c.destination);
-if ($hostValue.Current.Value -cne $c.destination -or $value.Current.Value -cne $c.destination) { throw 'Native filename readback differs' }
+Set-OwnedFilenameText;
 Stage 'save-invoke';
 Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
+Assert-FilenameInputFocus $button $buttonHandle;
 $invoke.Invoke();
 Stage 'save-completion';
 $deadline=[DateTime]::UtcNow.AddSeconds(10);

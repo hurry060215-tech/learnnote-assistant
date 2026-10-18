@@ -521,7 +521,8 @@ test("generation comes from existing payloads and metadata initialization preced
 async function visibilityAdmissionHarness(states, options = {}) {
   const vm = await import("node:vm");
   const source = fs.readFileSync(new URL("../../scripts/progressive-slo-api-acceptance.cjs", import.meta.url), "utf8");
-  const body = source.slice(source.indexOf("  async function visible("), source.indexOf("  async function release("));
+  const normalized = options.crlf ? source.replace(/\r?\n/g, "\r\n") : source;
+  const body = normalized.slice(normalized.indexOf("  async function visible("), normalized.indexOf("  async function release("));
   const generation = "a".repeat(64), calls = [], row = { minutes: 5, repetition: 1, status: "pending" };
   let reads = 0, clock = 1000, current;
   const state = patch => ({ task_id: "owned", status: "running", waiting: false, generation,
@@ -537,33 +538,43 @@ async function visibilityAdmissionHarness(states, options = {}) {
     page: { evaluate: async () => { calls.push("first-readable-clock"); return 1; } },
     save: () => { calls.push("checkpoint"); assert.equal(row.first_outline_seconds, 1); },
     snapshot: async id => {
-      assert.equal(id, "owned"); calls.push("snapshot"); clock += 100;
+      assert.equal(id, "owned"); calls.push("snapshot"); clock += options.proofDelay || 100;
       const patch = states[Math.min(reads++, states.length - 1)];
       if (patch instanceof Error) throw patch;
       current = state(patch); return current;
     },
     until: async check => { for (let i = 0; i < 3; i++) { const value = await check(); if (value) return value; } throw new Error("held continuation timed out"); },
-    api: async () => {
+    api: async (route, request) => {
+      assert.equal(route, `/_fixture/tasks/owned/visible?generation=${generation}`);
+      assert.equal(request.method, "POST");
       calls.push("ACK");
-      if (!current?.waiting) throw new Error("strict ACK 409 before held adapter");
       if (options.ackFailure) throw new Error("actual ACK failed");
-      return { ...current, ...options.ackPatch, after_transcript_visible_ack_seconds: clock / 1000, visible_ack_snapshot_seconds: .01 };
+      clock += options.ackDelay || 0;
+      const received = clock;
+      clock += options.snapshotDelay || 0;
+      return { ...state({}), ...options.ackPatch, after_transcript_visible_ack_seconds: received / 1000,
+        visible_ack_snapshot_seconds: (options.snapshotDelay || 0) / 1000 };
     },
   });
   const visible = vm.runInContext(`${body}; visible`, context);
   return { row, calls, run: () => visible("owned", 5, row), reads: () => reads };
 }
 
-test("actual visible flow records first readability once before waiting and strict ACK", async () => {
-  const h = await visibilityAdmissionHarness([{ waiting: false }, { waiting: true }]);
-  const result = await h.run();
-  assert.equal(h.row.first_outline_seconds, 1);
-  assert.equal(result.first_outline_seconds, 1);
-  assert.equal(result.after_transcript_visible_ack_seconds, 1.2, "Coordination stays inside the backend ACK upper bound");
-  assert.equal(h.calls.filter(call => call === "geometry").length, 1);
-  assert.equal(h.calls.filter(call => call === "first-readable-clock").length, 1);
-  assert(h.calls.indexOf("checkpoint") < h.calls.indexOf("snapshot"));
-  assert(h.calls.lastIndexOf("snapshot") < h.calls.indexOf("ACK"));
+test("actual visible flow ACKs readability before slow proof and snapshot, for LF and CRLF", async () => {
+  for (const crlf of [false, true]) {
+    const h = await visibilityAdmissionHarness([{ waiting: false }, { waiting: true }], { crlf, proofDelay: 13000, snapshotDelay: 6000 });
+    const result = await h.run();
+    assert.equal(h.row.first_outline_seconds, 1);
+    assert.equal(result.first_outline_seconds, 1);
+    assert.equal(result.after_transcript_visible_ack_seconds, 1, "Actual receipt excludes later evidence waits");
+    assert.equal(result.visible_ack_snapshot_seconds, 6);
+    assert.equal(result.state.waiting, true);
+    assert.equal(h.calls.filter(call => call === "geometry").length, 1);
+    assert.equal(h.calls.filter(call => call === "first-readable-clock").length, 1);
+    assert(h.calls.indexOf("checkpoint") < h.calls.indexOf("snapshot"));
+    assert(h.calls.indexOf("ACK") < h.calls.indexOf("held_continuation_wait_started"));
+    assert(h.calls.indexOf("ACK") < h.calls.indexOf("snapshot"));
+  }
 });
 
 test("actual visible flow rejects terminal or changed identity and retains the measured row", async () => {
@@ -577,13 +588,13 @@ test("actual visible flow rejects terminal or changed identity and retains the m
     await assert.rejects(h.run());
     assert.equal(h.row.first_outline_seconds, 1); assert(h.row.geometry);
     assert.equal(h.calls.filter(call => call === "geometry").length, 1);
-    assert.equal(h.calls.includes("ACK"), false);
+    assert.equal(h.calls.includes("ACK"), true);
   }
 });
 
 test("unavailable hold or failed ACK cannot erase readability or become a passing cohort", async () => {
   for (const options of [{}, { ackFailure: true }, ...[{ generation: "b".repeat(64) }, { task_id: "wrong" },
-    { status: "failed" }, { waiting: false }, { hashes: {} }].map(ackPatch => ({ ackPatch }))]) {
+    { status: "failed" }, { hashes: {} }, { source_coverage: {} }].map(ackPatch => ({ ackPatch }))]) {
     const h = await visibilityAdmissionHarness([{ waiting: Boolean(options.ackFailure || options.ackPatch) }], options);
     await assert.rejects(h.run());
     h.row.status = "fail";
@@ -592,6 +603,15 @@ test("unavailable hold or failed ACK cannot erase readability or become a passin
     assert.equal(summarize([h.row])[0].first_outline_p95_seconds, null);
     assert.equal(summarize([h.row])[0].passed, false);
   }
+});
+
+test("genuinely delayed ACK still fails the unchanged five-second cohort bound", async () => {
+  const h = await visibilityAdmissionHarness([{ waiting: true }], { ackDelay: 5001 });
+  const result = await h.run();
+  const rows = complete();
+  Object.assign(rows[0], result);
+  assert.equal(result.after_transcript_visible_ack_seconds, 6.001);
+  assert.equal(summarize(rows)[0].passed, false);
 });
 
 test("contention capture is explicit, bounded to two top-level snapshots and cannot replace failure", async () => {

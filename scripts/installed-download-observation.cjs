@@ -60,7 +60,7 @@ function downloadObservation(origin, clock = () => performance.now()) {
     report,
     active(format) { assert(['md', 'json', 'cancel'].includes(format)); active = format; },
     phase(phase) {
-      if (!closed && active && ['uia-initialization', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'native-ready', 'action-dispatch'].includes(phase)) stamp(phase);
+      if (!closed && active && ['uia-initialization', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'filename-focus', 'filename-select', 'filename-type', 'filename-readback', 'save-focus', 'save-invoke', 'save-completion', 'native-ready', 'action-dispatch'].includes(phase)) stamp(phase);
     },
     begin(event) {
       if (closed) return;

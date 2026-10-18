@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import sys
 import threading
 from unittest.mock import patch
@@ -45,6 +46,8 @@ def configure_fixture(root, data, stack):
     items = community.add_community_context(task.id, [
         {"kind": "comment", "text": "<img src=x onerror=alert(1)> 手动观点：我认为条件很重要。"},
         {"kind": "danmaku", "text": "关联观点：这个结论是否适用于所有情况？", "timestamp_seconds": 12, "source_uri": url}])["items"]
+    original_task = storage.get_task(task.id).model_dump(mode="json")
+    original_items = community.selected_community_items(task.id, [item["item_id"] for item in items])
     original = {"transcript.json": caption.read_bytes(), "note.md": note.read_bytes()}
     baseline = {p.relative_to(data).as_posix(): p.read_bytes() for p in data.rglob("*") if p.is_file()}
     state, release = {"calls": [], "mutations": [], "completion_active": 0}, threading.Event()
@@ -85,17 +88,50 @@ def configure_fixture(root, data, stack):
 
     @main.app.post("/_fixture/reset")
     def fixture_reset():
-        if state["completion_active"] or selected_opinion_qa._inflight:
-            from fastapi import HTTPException
-            raise HTTPException(409, "Wait for the active fixture request to settle")
-        for name, content in baseline.items():
-            (data / name).write_bytes(content)
-        restored = TranscriptResult.model_validate_json(original["transcript.json"])
-        transcript.segments = restored.segments
-        model_connections.save_selected_connection("custom", **route)
-        selected_opinion_qa._previews.clear()
-        release.clear(); state["calls"].clear(); state["mutations"].clear()
-        return {"ok": True}
+        # Match production capture/admission lock order so no new request can
+        # enter between the idle check and clearing its old preview tokens.
+        with storage.task_state_transaction(), community._lock, selected_opinion_qa._lock:
+            if state["completion_active"] or selected_opinion_qa._inflight:
+                from fastapi import HTTPException
+                raise HTTPException(409, "Wait for the active fixture request to settle")
+            # Reset only known fixture mutations. Never truncate live manifests,
+            # databases or leases, or silently erase an unexpected product write.
+            if storage.get_task(task.id).model_dump(mode="json") != original_task:
+                raise ValueError("Unexpected fixture task/control change")
+            if json.loads(caption.read_text(encoding="utf-8")) != transcript.model_dump(mode="json"):
+                raise ValueError("Unexpected fixture transcript change")
+            if note.read_bytes() != original["note.md"]:
+                raise ValueError("Unexpected fixture note change")
+            connection = sqlite3.connect(community._db_path().resolve().as_uri() + "?mode=rw", uri=True, timeout=30)
+            connection.row_factory = sqlite3.Row
+            try:
+                with connection:
+                    connection.execute("BEGIN IMMEDIATE")
+                    expected = {row["item_id"]: row for row in original_items}
+                    current = [dict(row) for row in connection.execute(
+                        "SELECT * FROM community_context_items LIMIT 3").fetchall()]
+                    if any(row != expected.get(row["item_id"]) for row in current):
+                        raise ValueError("Unexpected fixture opinion row/source/task scope")
+                    present = {row["item_id"] for row in current}
+                    for row in original_items:
+                        if row["item_id"] not in present:
+                            connection.execute(
+                                """INSERT INTO community_context_items
+                                   (item_id, schema_version, task_id, kind, text, timestamp_seconds,
+                                    author_label, source_uri, fingerprint, created_at)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                tuple(row[key] for key in ("item_id", "schema_version", "task_id", "kind", "text",
+                                                          "timestamp_seconds", "author_label", "source_uri", "fingerprint", "created_at")))
+            finally:
+                connection.close()
+            community.set_community_enabled(True)
+            restored = TranscriptResult.model_validate_json(original["transcript.json"])
+            storage.write_json(task.id, "transcript.json", restored.model_dump(mode="json"))
+            transcript.segments = restored.segments
+            model_connections.save_selected_connection("custom", **route)
+            selected_opinion_qa._previews.clear()
+            release.clear(); state["calls"].clear(); state["mutations"].clear()
+            return {"ok": True}
 
     @main.app.post("/_fixture/mutate")
     def fixture_mutate(payload: dict):
@@ -105,8 +141,9 @@ def configure_fixture(root, data, stack):
         elif action == "disable":
             community.set_community_enabled(False)
         elif action == "source_change":
-            transcript.segments[0].text += " 已改变"
-            caption.write_text(transcript.model_dump_json(), encoding="utf-8")
+            with storage.task_state_transaction():
+                transcript.segments[0].text += " 已改变"
+                storage.write_json(task.id, "transcript.json", transcript.model_dump(mode="json"))
         elif action == "model_change":
             model_connections.save_selected_connection("custom", base_url=route["base_url"], model="synthetic-changed")
         else:

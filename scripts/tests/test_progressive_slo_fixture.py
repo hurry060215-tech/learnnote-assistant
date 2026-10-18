@@ -1,4 +1,5 @@
 """Real loopback HTTP/worker contracts; these are not browser latency results."""
+import ast
 import json
 import os
 from pathlib import Path
@@ -163,7 +164,7 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.assertEqual(native["id"], frame["id"])
         self.assertEqual(self.state(task_id)["continuation_calls"], 0)
         with self.assertRaises(HTTPError) as rejected:
-            self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+            self.api(f"/_fixture/tasks/{task_id}/visible?generation={self.state(task_id)['generation']}", method="POST")
         self.assertEqual(rejected.exception.code, 409)
         self.api(f"/api/tasks/{task_id}/start", OPTIONS)
         before = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "held draft")
@@ -195,15 +196,17 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
                     break
         self.assertIn("event: draft_ready\n", frames)
         self.assertTrue(any(line.startswith("id: ") and int(line[4:]) > 0 for line in frames))
-        visible = self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+        visible = self.api(f"/_fixture/tasks/{task_id}/visible?generation={self.state(task_id)['generation']}", method="POST")
         self.assertGreaterEqual(visible["after_transcript_visible_ack_seconds"], 0)
         self.assertGreaterEqual(visible["visible_ack_snapshot_seconds"], 0)
-        self.assertLessEqual(visible["visible_ack_snapshot_seconds"], visible["after_transcript_visible_ack_seconds"])
         self.api(f"/api/tasks/{task_id}/cancel", method="POST")
         cancelled = self.wait(lambda: (state if (state := self.state(task_id))["status"] == "cancelled"
             and not state["waiting"] and state["queue"]["callback_finished"] else None), "cancel callback drain")
         self.assertEqual(cancelled["hashes"], before["hashes"])
         self.assertEqual(cancelled["continuation_calls"], 1)
+        with self.assertRaises(HTTPError) as rejected:
+            self.api(f"/_fixture/tasks/{task_id}/visible?generation={before['generation']}", method="POST")
+        self.assertEqual(rejected.exception.code, 409)
         with self.assertRaises(HTTPError) as rejected:
             self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
         self.assertEqual(rejected.exception.code, 409)
@@ -212,6 +215,10 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.assertNotEqual(retry["generation"], before["generation"])
         self.assertEqual(retry["hashes"], before["hashes"])
         self.assertEqual(retry["continuation_calls"], 2)
+        # An ACK from the original readable generation cannot survive retry.
+        with self.assertRaises(HTTPError) as rejected:
+            self.api(f"/_fixture/tasks/{task_id}/visible?generation={before['generation']}", method="POST")
+        self.assertEqual(rejected.exception.code, 409)
         old_pid = self.fixture["worker_pid"]
         self.stop()
         self.launch(resume=True)
@@ -251,15 +258,25 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
                 if line == "\n" and "event: draft_ready\n" in frames:
                     break
         self.assertIn("event: draft_ready\n", frames)
+        # The actual ACK succeeds while the deterministic summary barrier is closed.
+        visible = self.api(f"/_fixture/tasks/{task_id}/visible?generation={before['generation']}", method="POST")
+        self.assertFalse(visible["waiting"])
+        self.assertEqual(visible["continuation_calls"], 0)
+        self.assertEqual(visible["hashes"], before["hashes"])
+        self.assertFalse((self.data / "before-summary-release").exists())
+        for generation in ("", "b" * 64):
+            with self.assertRaises(HTTPError) as rejected:
+                self.api(f"/_fixture/tasks/{task_id}/visible?generation={generation}", method="POST")
+            self.assertEqual(rejected.exception.code, 409)
         with self.assertRaises(HTTPError) as rejected:
-            self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")
+            self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
         self.assertEqual(rejected.exception.code, 409)
         (self.data / "before-summary-release").write_text("release this test boundary")
         held = self.wait(lambda: (state if (state := self.state(task_id))["waiting"] else None), "real summary adapter entry")
         self.assertEqual(held["hashes"], before["hashes"])
         self.assertEqual(held["generation"], before["generation"])
         self.assertEqual(held["continuation_calls"], 1)
-        self.assertEqual(self.api(f"/_fixture/tasks/{task_id}/visible", method="POST")["status"], "running")
+        self.assertEqual(self.api(f"/_fixture/tasks/{task_id}/visible?generation={self.state(task_id)['generation']}", method="POST")["status"], "running")
         self.api(f"/_fixture/tasks/{task_id}/release", method="POST")
         self.wait(lambda: self.state(task_id)["status"] == "success" and self.state(task_id)["queue"]["callback_finished"], "test continuation drains")
 
@@ -334,3 +351,52 @@ eventId:input.frame.id,data:input.frame.data},new Map([['request-regression',sou
         self.assertEqual(resumed["forbidden_attempts"], state["forbidden_attempts"])
         self.assertEqual(resumed["network_diagnostics"], state["network_diagnostics"])
         self.assertFalse(self.api("/api/update/status")["check_due"])
+
+
+class VisibleReceiptContractTests(unittest.TestCase):
+    def test_actual_handler_receipt_excludes_slow_snapshot_and_rejects_stale_states(self):
+        # Execute the real endpoint body with deterministic clocks and snapshot
+        # barriers; no alternate implementation or calculated browser timestamp.
+        from types import SimpleNamespace
+        from fastapi import HTTPException
+        source = ast.parse((ROOT / "scripts/progressive-slo-fixture.py").read_text())
+        handler = next(node for node in ast.walk(source) if isinstance(node, ast.FunctionDef) and node.name == "visible")
+        handler.decorator_list = []
+        generation = "a" * 64
+        queue = {"task_id": "owned", "generation": generation, "state": "running", "callback_finished": 0}
+        state = {"task_id": "owned", "generation": generation, "status": "running", "queue": queue,
+                 "hashes": {"transcript_path": "t", "subtitle_path": "s", "draft.md": "d"},
+                 "stages": [{"event": "draft_ready"}], "waiting": False}
+        task = SimpleNamespace(status="running", generation=generation)
+        record = {"transcript_recorded": 10, "transcript_generation": generation}
+        clock = [11]
+        def snapshot(task_id):
+            self.assertEqual(clock[0], 11)
+            clock[0] += 13
+            return state
+        import re
+        context = {"time": SimpleNamespace(monotonic=lambda: clock[0]), "register": lambda _: record,
+                   "snapshot": snapshot, "storage": SimpleNamespace(get_task=lambda _: task),
+                   "read_queue_job": lambda *_: queue, "data": None, "task_generation": lambda value: value.generation,
+                   "re": re, "HTTPException": HTTPException}
+        exec(compile(ast.Module(body=[handler], type_ignores=[]), "actual-visible-handler", "exec"), context)
+        result = context["visible"]("owned", generation)
+        self.assertEqual(result["after_transcript_visible_ack_seconds"], 1)
+        self.assertEqual(result["visible_ack_snapshot_seconds"], 13)
+        self.assertFalse(result["waiting"])
+        # Real receipt later than five seconds remains late, even with cheap proof.
+        clock[0] = 16
+        context["snapshot"] = lambda _: state
+        self.assertEqual(context["visible"]("owned", generation)["after_transcript_visible_ack_seconds"], 6)
+        for patch in ({"status": "cancelled"}, {"generation": "b" * 64}):
+            old = dict(state); state.update(patch)
+            with self.assertRaises(HTTPException): context["visible"]("owned", generation)
+            state.clear(); state.update(old)
+        record["transcript_recorded"] = 17
+        with self.assertRaises(HTTPException): context["visible"]("owned", generation)
+        record["transcript_recorded"] = 10
+        task.generation = "b" * 64
+        with self.assertRaises(HTTPException): context["visible"]("owned", generation)
+        context["storage"].get_task = lambda _: (_ for _ in ()).throw(HTTPException(404, "deleted"))
+        with self.assertRaises(HTTPException) as deleted: context["visible"]("owned", generation)
+        self.assertEqual(deleted.exception.status_code, 404)

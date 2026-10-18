@@ -305,9 +305,9 @@ test('adjacent control validation keeps exact names, strict controls and action-
   assert.match(source, /if \(\$facts.control_valid -eq \$false\) \{ throw \}/);
   assert.match(source, /GetRuntimeId\(\) -join ','\) -cne \$binding.runtime/);
   assert.match(source, /throw \$original/); assert.match(script, /installed-native-save-controls.ps1/);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$hostValue.SetValue\(\$c.destination\)/);
-  assert.match(script, /Current.Value -cne \$c.destination/);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke\(\)/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nSet-OwnedFilenameText;/);
+  assert.match(source, /get_Value\(\) -cne \$c.destination/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke\(\)/);
   nativeDialogCommand(script);
   const originalValidation = text => {
     let canonical = text.replace(/\r\n/g, '\n');
@@ -327,7 +327,7 @@ test('adjacent control validation keeps exact names, strict controls and action-
   }
 });
 
-test('filename setter uses the exact parent ComboBox provider with independent inner-edit readback', () => {
+test('filename typing preserves exact native parent binding and independent inner-edit readback', () => {
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
   const source = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8');
   for (const text of [source.replace(/\r\n/g, '\n'), source.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')]) {
@@ -340,8 +340,46 @@ test('filename setter uses the exact parent ComboBox provider with independent i
     for (const predicate of ["[OwnedSave]::Class($filenameComboHandle) -cne 'ComboBox'", '[OwnedSave]::GetParent($filenameEditHandle) -ne $filenameComboHandle', '[OwnedSave]::GetDlgItem($filenameComboHandle,1001) -ne $filenameEditHandle', "($hostControl.GetRuntimeId() -join ',') -cne $filenameHostRuntime"]) assert(text.includes(predicate));
   }
   assert.match(script, /function Assert-BoundControls \{\n Assert-FilenameHostBinding;/);
-  assert.match(script, /\$hostValue.SetValue\(\$c.destination\);\nif \(\$hostValue.Current.Value -cne \$c.destination -or \$value.Current.Value -cne \$c.destination\)/);
+  assert.match(script, /Set-OwnedFilenameText;/);
+  assert.match(source, /get_Value\(\) -cne \$c.destination -or \$value.get_Current\(\).get_Value\(\) -cne \$c.destination/);
   assert.doesNotMatch(script, /\$value.SetValue|SendInput|SendKeys|CBN_EDITUPDATE|SetForegroundWindow/);
+});
+
+function filenameInputSource(text) {
+  const source = text.replace(/\r\n/g, '\n'), declaration = source.indexOf('function Initialize-FilenameInput {');
+  assert(declaration >= 0, 'Missing filename input declaration');
+  const marker = "  Add-Type -TypeDefinition @'\n", begin = source.indexOf(marker, declaration), end = source.indexOf("\n'@", begin);
+  assert(begin >= declaration && end > begin, 'Missing filename input source boundaries');
+  return source.slice(begin + marker.length, end);
+}
+
+test('true filename input requires full owned focus and selection before one Unicode batch and bound Save focus', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const text of [source, source.replace(/\n/g, '\r\n')]) {
+    assert.equal(filenameInputSource(text), filenameInputSource(source));
+    for (const mutated of [text.replace('function Initialize-FilenameInput {', 'function Missing {'), text.replace("  Add-Type -TypeDefinition @'", 'missing'), text.replace("'@", 'missing')]) assert.throws(() => filenameInputSource(mutated));
+  }
+  assert.match(source, /GetGUIThreadInfo\(0,ref info\) && info.active==dialog && info.focus==control/);
+  assert.match(source, /get_HasKeyboardFocus\(\)/); assert.match(source, /get_FocusedElement\(\)/);
+  assert.match(source, /\$selection.Count -ne 1 -or !\$selection\[0\].Compare\(\$range\)/);
+  assert.match(source, /Assert-FilenameInputFocus \$edit \$filenameEditHandle\n  Assert-FilenameFullSelection \$textPattern \$range \$initial\n  if \(\[OwnedFilenameInput\]::SendUnicode/);
+  assert.match(source, /-ne \$c.destination.Length\*2/); assert.match(source, /ElapsedMilliseconds -ge 2000/);
+  assert.equal((source.match(/\[OwnedFilenameInput\]::SendUnicode/g) || []).length, 1);
+  assert.match(source, /\$button.SetFocus\(\)/); assert.match(source, /Assert-FilenameInputFocus \$button \$buttonHandle/);
+  assert.doesNotMatch(source, /SendKeys|SetForegroundWindow|Clipboard|CBN_EDIT|keybd_event/);
+});
+
+test('Windows Unicode input builder has the correct native ABI and literal down/up events without native input', { skip: process.platform !== 'win32' }, () => {
+  const raw = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const text of [raw, raw.replace(/\n/g, '\r\n')]) {
+    const code = filenameInputSource(text);
+    const script = `$ErrorActionPreference='Stop'; Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(code).toString('base64')}')));
+$size=[Runtime.InteropServices.Marshal]::SizeOf([type][OwnedFilenameInput+INPUT]); if ($size -ne $(if ([IntPtr]::Size -eq 8) {40} else {28})) {throw 'INPUT ABI mismatch'};
+$text='A+{F4}é'; $inputs=[OwnedFilenameInput]::Build($text); if ($inputs.Length -ne $text.Length*2) {throw 'Count mismatch'};
+for($i=0;$i -lt $text.Length;$i++) { for($up=0;$up -lt 2;$up++) { $x=$inputs[$i*2+$up]; if($x.type -ne 1 -or $x.value.key.vk -ne 0 -or $x.value.key.scan -ne [int]$text[$i] -or $x.value.key.flags -ne 4+$up*2) {throw 'Literal Unicode mismatch'} } };
+foreach($bad in @('',('x'*1025),[string][char]0,[string][char]10,[string][char]27)) { $rejected=$false; try {[void][OwnedFilenameInput]::Build($bad)} catch {$rejected=$true}; if(!$rejected) {throw 'Unsafe input accepted'} }; 'PASS'`;
+    assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: 15000 }).trim(), 'PASS');
+  }
 });
 
 test('Windows extracted control validation accepts only exact initial names and retains both targets through faults', { skip: process.platform !== 'win32' }, () => {
@@ -378,14 +416,23 @@ test('Windows extracted control validation accepts only exact initial names and 
       if (row.mode === 'invoke-pattern') { assert.equal(row.original, true); assert.equal(observation.save.pattern_available, false); }
     }
   }
-  assert.equal(parsed.actions.length, 22);
+  assert.equal(parsed.actions.length, 56);
   for (const row of parsed.actions) {
     assert.equal(row.passed, row.mode === 'action-success', row.mode); assert.equal(row.edit_sets, 0, row.mode);
-    const readback = row.mode.endsWith('readback'), after = row.mode.startsWith('action-after-');
-    assert.equal(row.host_sets, row.passed || readback || after ? 1 : 0, row.mode);
+    const sent = ['action-success', 'action-host-readback', 'action-edit-readback', 'action-after-runtime', 'action-after-parent', 'action-partial-send', 'action-after-focus', 'action-save-focus'].includes(row.mode);
+    assert.equal(row.host_sets, 0, row.mode); assert.equal(row.unicode_sends, sent ? 1 : 0, row.mode);
     assert.equal(row.save_invokes, row.passed ? 1 : 0, row.mode);
-    assert.equal(row.destinations, row.passed ? 2 : readback || after ? 1 : 0, row.mode);
-    assert.equal(row.reason, row.passed ? 'complete' : readback ? 'readback' : 'binding', row.mode);
+    if (sent) { assert.equal(row.selections, 1, row.mode); assert(row.destinations >= 4, row.mode); }
+    if (row.mode === 'action-text-pattern') assert.equal(row.original, true);
+    const expected = row.passed ? 'complete' : row.mode.endsWith('readback') ? 'readback' :
+      ['action-text-pattern', 'action-selection-unsupported'].includes(row.mode) ? 'pattern' :
+      ['action-range-text', 'action-selection-zero', 'action-selection-two', 'action-selection-partial', 'action-selection-race'].includes(row.mode) ? 'selection' :
+      ['action-edit-readonly', 'action-host-readonly'].includes(row.mode) ? 'readonly' :
+      row.mode === 'action-modifier' ? 'modifier' : row.mode === 'action-partial-send' ? 'partial' :
+      ['action-native-focus', 'action-uia-focus', 'action-focus-element', 'action-focus-wrong', 'action-selection-focus-race', 'action-after-focus', 'action-save-focus'].includes(row.mode) ? 'focus' : 'binding';
+    assert.equal(row.reason, expected, row.mode);
+    if (row.mode === 'action-selection-race') assert.equal(row.selection_checks, 2);
+    if (row.mode.endsWith('readonly')) assert.equal(row.selection_checks, 1);
   }
 });
 
@@ -802,8 +849,8 @@ test('native dialog script is exact owned modern Save profile, fresh contained f
   assert.match(script, /\[IO.Path\]::GetDirectoryName\(\$file\) -cne \$dir/); assert.match(script, /ReparsePoint/);
   assert(script.includes("$dir -notmatch '^[A-Za-z]:\\\\'"));
   assert.equal(script.match(/\$invoke.Invoke\(\)/g).length, 1);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke/);
-  assert.match(script, /Current.Value -cne \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke/);
+  assert.match(script, /get_Value\(\) -cne \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
   assert.doesNotMatch(script, /SendKeys|SendMessage|SetForegroundWindow|RootElement|\.Current.Name/);
   nativeDialogCommand(nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md'));
   assert.throws(() => nativeDialogCommand('x'.repeat(13000)), /command-line limit/);
