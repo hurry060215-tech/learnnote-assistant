@@ -184,12 +184,36 @@ async function finishCalibration(report, primary, actions) {
   if (primary) throw primary;
   return report;
 }
-function realDirectory(directory) {
+function realDirectory(directory, io = fs) {
   for (let cursor = path.resolve(directory); ; cursor = path.dirname(cursor)) {
-    const stat = fs.lstatSync(cursor); assert(stat.isDirectory() && !stat.isSymbolicLink());
-    assert.equal(fs.realpathSync.native(cursor).toLowerCase(), cursor.toLowerCase());
+    const stat = io.lstatSync(cursor); assert(stat.isDirectory() && !stat.isSymbolicLink());
+    assert.equal(io.realpathSync.native(cursor).toLowerCase(), cursor.toLowerCase());
     if (path.dirname(cursor) === cursor) break;
   }
+}
+function assertRawWindowsDirectory(directory, run = execFileSync) {
+  if (process.platform !== 'win32') return;
+  const script = `$ErrorActionPreference='Stop'; $cursor=${quote(directory)};
+while ($true) {
+ $attributes=[IO.File]::GetAttributes($cursor);
+ if (!(($attributes -band [IO.FileAttributes]::Directory)) -or ($attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe temporary directory' }
+ $parent=[IO.Directory]::GetParent($cursor); if ($null -eq $parent) { break }; $cursor=$parent.FullName;
+}
+[Console]::Out.WriteLine('DIRECTORY_OK');`;
+  try {
+    assert.equal(run('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 1024 }).trim(), 'DIRECTORY_OK');
+  } catch { throw new Error('Unsafe calibration temporary directory'); }
+}
+function canonicalTempDirectory(directory = os.tmpdir(), io = fs, nativeProof = assertRawWindowsDirectory) {
+  const raw = path.resolve(directory);
+  // Check the original spelling before realpath can hide a junction or symbolic link.
+  for (let cursor = raw; ; cursor = path.dirname(cursor)) {
+    const stat = io.lstatSync(cursor); assert(stat.isDirectory() && !stat.isSymbolicLink());
+    if (path.dirname(cursor) === cursor) break;
+  }
+  nativeProof(raw); // One bounded Windows query also rejects other reparse-point kinds.
+  const canonical = io.realpathSync.native(raw); realDirectory(canonical, io);
+  return canonical;
 }
 function prepareOutput(output) {
   fs.mkdirSync(path.dirname(output), { recursive: true }); realDirectory(path.dirname(output));
@@ -201,7 +225,7 @@ async function runCalibration(output) {
   const report = { schema: 1, kind: 'standalone_winforms_save_calibration_not_installed_acceptance', passed: false, phase: 'compile', cases: [], captures: [] };
   let root, host, protocol, primary;
   try {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'learnnote-save-calibration-')); realDirectory(root);
+    root = fs.mkdtempSync(path.join(canonicalTempDirectory(), 'learnnote-save-calibration-')); realDirectory(root);
     fs.mkdirSync(path.join(root, 'initial'));
     const directory = fs.mkdtempSync(path.join(root, 'local-native-exports-'));
     const executable = compileHost(root);
@@ -251,4 +275,4 @@ async function runCalibration(output) {
     write: () => fs.writeFileSync(path.join(output, 'native-save-calibration-report.json'), JSON.stringify(report, null, 2) + '\n', { flag: 'wx' }),
   });
 }
-module.exports = { HOST_SOURCE, payload, validateCase, hostProtocol, compileHost, bindHost, finishCalibration, prepareOutput, runCalibration };
+module.exports = { HOST_SOURCE, payload, validateCase, hostProtocol, compileHost, bindHost, finishCalibration, assertRawWindowsDirectory, canonicalTempDirectory, prepareOutput, runCalibration };

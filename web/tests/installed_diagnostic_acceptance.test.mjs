@@ -305,13 +305,18 @@ test('adjacent control validation keeps exact names, strict controls and action-
   assert.match(source, /if \(\$facts.control_valid -eq \$false\) \{ throw \}/);
   assert.match(source, /GetRuntimeId\(\) -join ','\) -cne \$binding.runtime/);
   assert.match(source, /throw \$original/); assert.match(script, /installed-native-save-controls.ps1/);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$value.SetValue\(\$c.destination\)/);
+  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$hostValue.SetValue\(\$c.destination\)/);
   assert.match(script, /Current.Value -cne \$c.destination/);
   assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\n\$invoke.Invoke\(\)/);
   nativeDialogCommand(script);
   const originalValidation = text => {
-    const canonical = text.replace(/\r\n/g, '\n'), start = canonical.indexOf("Stage 'filename-edit';");
-    return canonical.slice(start, canonical.indexOf('} catch {', start))
+    let canonical = text.replace(/\r\n/g, '\n');
+    const addedStart = canonical.indexOf("$controlSubphase='edit-host-binding';"), addedEnd = canonical.indexOf("Stage 'save-button';", addedStart);
+    assert(addedStart >= 0 && addedEnd > addedStart);
+    canonical = canonical.slice(0, addedStart) + canonical.slice(addedEnd);
+    const start = canonical.indexOf("Stage 'filename-edit';"), end = canonical.indexOf('} catch {', start);
+    assert(start >= 0 && end > start);
+    return canonical.slice(start, end)
       .replace(/^\$controlSubphase='[^']*';\n/gm, '').replace(" $controlSubphase='edit-control';", '')
       .replace('!(Test-InitialNativeFilename $value.Current.Value $c.destination)', '$value.Current.Value -cne [IO.Path]::GetFileName($c.destination)');
   };
@@ -322,10 +327,27 @@ test('adjacent control validation keeps exact names, strict controls and action-
   }
 });
 
+test('filename setter uses the exact parent ComboBox provider with independent inner-edit readback', () => {
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  const source = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8');
+  for (const text of [source.replace(/\r\n/g, '\n'), source.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')]) {
+    assert.match(text, /\$hostValue=\$filenameCombo.GetCurrentPattern\(\[Windows.Automation.ValuePattern\]::Pattern\)/);
+    assert.match(text, /\$hostValue.Current.IsReadOnly -or !\(Test-InitialNativeFilename \$hostValue.Current.Value \$c.destination\)/);
+    assert(text.includes('$filenameComboHandle=[OwnedSave]::GetParent($filenameEditHandle);'));
+    assert(text.includes('$filenameCombo=[Windows.Automation.AutomationElement]::FromHandle($filenameComboHandle);'));
+    assert(text.includes('Assert-Control $filenameCombo $hostControl'));
+    assert(!text.includes('$hostControl.get_Current().get_NativeWindowHandle()'));
+    for (const predicate of ["[OwnedSave]::Class($filenameComboHandle) -cne 'ComboBox'", '[OwnedSave]::GetParent($filenameEditHandle) -ne $filenameComboHandle', '[OwnedSave]::GetDlgItem($filenameComboHandle,1001) -ne $filenameEditHandle', "($hostControl.GetRuntimeId() -join ',') -cne $filenameHostRuntime"]) assert(text.includes(predicate));
+  }
+  assert.match(script, /function Assert-BoundControls \{\n Assert-FilenameHostBinding;/);
+  assert.match(script, /\$hostValue.SetValue\(\$c.destination\);\nif \(\$hostValue.Current.Value -cne \$c.destination -or \$value.Current.Value -cne \$c.destination\)/);
+  assert.doesNotMatch(script, /\$value.SetValue|SendInput|SendKeys|CBN_EDITUPDATE|SetForegroundWindow/);
+});
+
 test('Windows extracted control validation accepts only exact initial names and retains both targets through faults', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1')],
     { encoding: 'utf8', timeout: 15000, windowsHide: true });
-  assert(!output.includes('PRIVATE')); const cases = JSON.parse(output.trim()); assert.equal(cases.length, 25);
+  assert(!output.includes('PRIVATE')); const parsed = JSON.parse(output.trim()), cases = parsed.validation; assert.equal(cases.length, 36);
   for (const row of cases) {
     const success = ['md-name', 'md-stem', 'json-name', 'json-stem'].includes(row.mode);
     assert.equal(row.passed, success, row.mode);
@@ -333,6 +355,11 @@ test('Windows extracted control validation accepts only exact initial names and 
     assert.equal(row.primary_preserved, true, row.mode);
     if (row.mode === 'format-fault') { assert.equal(row.metadata, null); continue; }
     validateControlFailure(row.metadata);
+    if (row.mode.startsWith('host-')) {
+      assert.equal(row.passed, false); assert.equal(row.primary_preserved, true, row.mode);
+      assert(['edit-host-binding', 'edit-host-value-pattern', 'edit-host-initial-name'].includes(row.metadata.subphase));
+      continue;
+    }
     const observation = row.metadata.observation;
     if (['edit-control', 'save-control', 'guard-before', 'guard-after', 'runtime-race', 'budget'].includes(row.mode)) {
       assert.equal(observation.status, 'unavailable', row.mode); assert.equal(observation.edit, null); assert.equal(observation.save, null);
@@ -350,6 +377,15 @@ test('Windows extracted control validation accepts only exact initial names and 
       if (row.mode === 'value-pattern') { assert.equal(row.original, true); assert.equal(observation.edit.pattern_available, false); assert.equal(observation.save.pattern_available, true); }
       if (row.mode === 'invoke-pattern') { assert.equal(row.original, true); assert.equal(observation.save.pattern_available, false); }
     }
+  }
+  assert.equal(parsed.actions.length, 22);
+  for (const row of parsed.actions) {
+    assert.equal(row.passed, row.mode === 'action-success', row.mode); assert.equal(row.edit_sets, 0, row.mode);
+    const readback = row.mode.endsWith('readback'), after = row.mode.startsWith('action-after-');
+    assert.equal(row.host_sets, row.passed || readback || after ? 1 : 0, row.mode);
+    assert.equal(row.save_invokes, row.passed ? 1 : 0, row.mode);
+    assert.equal(row.destinations, row.passed ? 2 : readback || after ? 1 : 0, row.mode);
+    assert.equal(row.reason, row.passed ? 'complete' : readback ? 'readback' : 'binding', row.mode);
   }
 });
 
@@ -1127,8 +1163,49 @@ test('calibration reports only exact returned-path categories and rejects ambigu
   assert(calibration.payload('md').length > 0); assert(calibration.payload('json').length > 0);
 });
 
+test('calibration accepts only a proven temporary-base alias and rejects raw links before canonicalization', () => {
+  const raw = path.resolve('ALIAS~1'), canonical = path.resolve('long temporary directory');
+  const ancestors = []; for (let cursor = raw; ; cursor = path.dirname(cursor)) { ancestors.push(cursor); if (path.dirname(cursor) === cursor) break; }
+  for (const mode of ['alias', 'link', 'not-directory', 'missing', 'reparse', 'native-failure']) {
+    const checked = new Set(); let canonicalReads = 0, nativeCalls = 0;
+    const io = {
+      lstatSync(file) {
+        checked.add(file); if (mode === 'missing' && file === raw) throw new Error('missing');
+        return { isDirectory: () => !(mode === 'not-directory' && file === raw), isSymbolicLink: () => mode === 'link' && file === path.dirname(raw) };
+      },
+      realpathSync: { native(file) {
+        canonicalReads++; assert(ancestors.every(item => checked.has(item))); assert.equal(nativeCalls, 1);
+        return file === raw ? canonical : file;
+      } },
+    };
+    const nativeProof = directory => {
+      nativeCalls++; assert.equal(directory, raw); assert(ancestors.every(item => checked.has(item))); assert.equal(canonicalReads, 0);
+      if (['reparse', 'native-failure'].includes(mode)) throw new Error('unsafe');
+    };
+    if (mode === 'alias') assert.equal(calibration.canonicalTempDirectory(raw, io, nativeProof), canonical);
+    else { assert.throws(() => calibration.canonicalTempDirectory(raw, io, nativeProof), undefined, mode); assert.equal(canonicalReads, 0, mode); }
+  }
+});
+
+test('Windows calibration temporary-base proof rejects reparse ancestors and failed attributes queries', { skip: process.platform !== 'win32' }, () => {
+  const canonical = calibration.canonicalTempDirectory(); assert.equal(canonical.toLowerCase(), fs.realpathSync.native(os.tmpdir()).toLowerCase());
+  const root = fs.mkdtempSync(path.join(canonical, 'calibration-alias-proof-'));
+  try {
+    const target = path.join(root, 'target'); fs.mkdirSync(target);
+    const link = path.join(root, 'junction'); fs.symlinkSync(target, link, 'junction');
+    assert.throws(() => calibration.canonicalTempDirectory(link));
+    assert.throws(() => calibration.assertRawWindowsDirectory(link), /Unsafe calibration temporary directory/);
+    assert.throws(() => calibration.assertRawWindowsDirectory(root, (file, args, options) => {
+      assert.equal(file, 'powershell.exe'); assert.equal(options.timeout, 10000); assert.equal(options.maxBuffer, 1024);
+      const script = Buffer.from(args.at(-1), 'base64').toString('utf16le');
+      assert(script.includes('[IO.FileAttributes]::ReparsePoint')); assert(script.includes('[IO.Directory]::GetParent($cursor)'));
+      throw new Error('private source error');
+    }), error => error.message === 'Unsafe calibration temporary directory');
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
 test('calibration evidence output refuses existing directories, files and links without overwriting', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-output-'));
+  const root = fs.mkdtempSync(path.join(calibration.canonicalTempDirectory(), 'calibration-output-'));
   try {
     const fresh = path.join(root, 'fresh'); calibration.prepareOutput(fresh);
     const marker = path.join(fresh, 'marker'); fs.writeFileSync(marker, 'prior evidence');
@@ -1137,6 +1214,7 @@ test('calibration evidence output refuses existing directories, files and links 
     const link = path.join(root, 'link'); fs.symlinkSync(fresh, link, process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => calibration.prepareOutput(link)); assert.throws(() => calibration.prepareOutput(path.join(link, 'child')));
     assert(!fs.existsSync(path.join(fresh, 'child')));
+    assert.throws(() => calibration.canonicalTempDirectory(link));
   } finally { fs.rmSync(root, { recursive: true }); }
 });
 

@@ -86,6 +86,30 @@ function Get-OwnedSaveControlEvidence($Context, [scriptblock]$DialogGuard, [scri
     elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);edit=$editFacts;save=$saveFacts}
 }
 
+# The editable ComboBox provider also notifies its parent of a value change.
+# Bind that provider to the already selected inner Edit; never substitute a target.
+function Assert-FilenameNativeHandles {
+  if ($filenameComboHandle -eq [IntPtr]::Zero -or $filenameEditHandle -eq [IntPtr]::Zero -or
+      ![OwnedSave]::IsWindow($filenameComboHandle) -or ![OwnedSave]::IsWindow($filenameEditHandle) -or
+      [OwnedSave]::Pid($filenameComboHandle) -ne $c.pid -or [OwnedSave]::Pid($filenameEditHandle) -ne $c.pid -or
+      [OwnedSave]::Class($filenameComboHandle) -cne 'ComboBox' -or [OwnedSave]::Class($filenameEditHandle) -cne 'Edit' -or
+      [OwnedSave]::GetDlgCtrlID($filenameEditHandle) -ne 1001 -or
+      [OwnedSave]::GetParent($filenameEditHandle) -ne $filenameComboHandle -or
+      [OwnedSave]::GetDlgItem($filenameComboHandle,1001) -ne $filenameEditHandle) { throw 'Bound filename ComboBox and Edit changed' }
+}
+function Assert-FilenameHostBinding {
+  Assert-Control $hostControl $element; Assert-Control $edit $hostControl; Assert-Control $filenameCombo $hostControl
+  Assert-FilenameNativeHandles
+  $properties=$hostControl.get_Current(); $comboProperties=$filenameCombo.get_Current(); $editProperties=$edit.get_Current()
+  if ($properties.get_ControlType() -ne [Windows.Automation.ControlType]::ComboBox -or
+      $properties.get_ClassName() -cne 'AppControlHost' -or $properties.get_AutomationId() -cne 'FileNameControlHost' -or
+      $comboProperties.get_ControlType() -ne [Windows.Automation.ControlType]::ComboBox -or
+      [IntPtr]$comboProperties.get_NativeWindowHandle() -ne $filenameComboHandle -or
+      [IntPtr]$editProperties.get_NativeWindowHandle() -ne $filenameEditHandle -or
+      !$filenameHostRuntime -or ($hostControl.GetRuntimeId() -join ',') -cne $filenameHostRuntime -or
+      !$filenameComboRuntime -or ($filenameCombo.GetRuntimeId() -join ',') -cne $filenameComboRuntime) { throw 'Bound filename ComboBox and Edit changed' }
+}
+
 # Dot-sourced into the existing helper scope; successful validation retains its original variables.
 $controlSubphase='edit-query'
 try {
@@ -98,6 +122,17 @@ $controlSubphase='edit-value-pattern';
 $value=$edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern);
 $controlSubphase='edit-initial-name';
 if ($value.Current.IsReadOnly -or !(Test-InitialNativeFilename $value.Current.Value $c.destination)) { throw 'Expected writable synthetic export filename' }
+$controlSubphase='edit-host-binding';
+$filenameEditHandle=[IntPtr]$edit.get_Current().get_NativeWindowHandle();
+$filenameComboHandle=[OwnedSave]::GetParent($filenameEditHandle);
+Assert-FilenameNativeHandles;
+$filenameCombo=[Windows.Automation.AutomationElement]::FromHandle($filenameComboHandle);
+$filenameHostRuntime=$hostControl.GetRuntimeId() -join ','; $filenameComboRuntime=$filenameCombo.GetRuntimeId() -join ',';
+Assert-FilenameHostBinding;
+$controlSubphase='edit-host-value-pattern';
+$hostValue=$filenameCombo.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern);
+$controlSubphase='edit-host-initial-name';
+if ($hostValue.Current.IsReadOnly -or !(Test-InitialNativeFilename $hostValue.Current.Value $c.destination)) { throw 'Expected writable synthetic filename ComboBox' }
 Stage 'save-button';
 $controlSubphase='save-handle';
 $buttonHandle=[OwnedSave]::GetDlgItem($dialog,1);

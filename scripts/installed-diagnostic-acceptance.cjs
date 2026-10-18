@@ -12,7 +12,7 @@ const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ances
 const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
 const OBSERVER_EXCEPTIONS = ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other'];
 const NATIVE_PHASES = ['uia-initialization', 'ownership', 'destination', 'dialog-wait', 'dialog-capture', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
-const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-value-pattern', 'edit-initial-name',
+const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-value-pattern', 'edit-initial-name', 'edit-host-binding', 'edit-host-value-pattern', 'edit-host-initial-name',
   'save-handle', 'save-control', 'save-profile', 'save-invoke-pattern', 'runtime-ids'];
 
 function parseArgs(args) {
@@ -408,14 +408,15 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
 }
 . (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');
 function Assert-BoundControls {
+ Assert-FilenameHostBinding;
  Assert-Control $edit $element; Assert-Control $button $element;
  if (($edit.GetRuntimeId() -join ',') -cne $editRuntime -or ($button.GetRuntimeId() -join ',') -cne $buttonRuntime -or
   [OwnedSave]::GetDlgItem($dialog,1) -ne $buttonHandle -or [OwnedSave]::GetParent($buttonHandle) -ne $dialog) { throw 'Bound native controls changed' }
 }
 Stage 'filename-set';
 Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
-$value.SetValue($c.destination);
-if ($value.Current.Value -cne $c.destination) { throw 'Native filename readback differs' }
+$hostValue.SetValue($c.destination);
+if ($hostValue.Current.Value -cne $c.destination -or $value.Current.Value -cne $c.destination) { throw 'Native filename readback differs' }
 Stage 'save-invoke';
 Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
 $invoke.Invoke();
