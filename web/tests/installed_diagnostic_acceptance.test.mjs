@@ -702,34 +702,52 @@ test('late passive attachment is detached after its bounded setup expires', asyn
   await new Promise(done => setTimeout(done, 10)); assert.equal(detached, 1); await observation.close();
 });
 
-test('actual native attempt retains the original failure and one expected-file sample before byte checking', async () => {
-  const source = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
-  const start = source.indexOf('        const observation = fileObservation(expected.length);');
-  const end = source.indexOf('        assert.equal(report.diagnostic_requests, gets,', start);
-  const run = new (Object.getPrototypeOf(async function() {}).constructor)('fileObservation', 'report', 'downloadObserver', 'format', 'expected', 'nativeDialog', 'config', 'binding', 'nativeDirectory', 'destination', 'save', 'assert', 'assertSavedBytes', source.slice(start, end));
-  const primary = new Error('native primary'); const report = { native_save_attempts: [], downloads: [] };
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-attempt-evidence-'));
-  try {
-    await assert.rejects(run(fileObservation, report, { active() {} }, 'md', Buffer.from('reviewed'), async () => { throw primary; }, {}, {}, root, path.join(root, 'missing'), {}, assert, assertSavedBytes), error => error === primary);
-    assert.equal(report.native_save_attempts.length, 1); const attempt = report.native_save_attempts[0];
-    assert.equal(attempt.native_dialog_completed, false); assert.equal(attempt.file.outcome, 'native_step_failed'); assert.equal(attempt.file.last.state, 'missing');
-    assert.equal(report.downloads.length, 0);
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+test('actual native attempt retains the original failure and one expected-file sample in LF and CRLF source', async () => {
+  const original = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  async function verify(raw) {
+    const source = raw.replace(/\r\n/g, '\n');
+    const start = source.indexOf('        const observation = fileObservation(expected.length);');
+    const end = source.indexOf('        assert.equal(report.diagnostic_requests, gets,', start);
+    assert(start >= 0 && end > start, 'Exact native-attempt source boundaries must exist');
+    const run = new (Object.getPrototypeOf(async function() {}).constructor)('fileObservation', 'report', 'downloadObserver', 'format', 'expected', 'nativeDialog', 'config', 'binding', 'nativeDirectory', 'destination', 'save', 'assert', 'assertSavedBytes', source.slice(start, end));
+    const primary = new Error('native primary'); const report = { native_save_attempts: [], downloads: [] };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-attempt-evidence-'));
+    try {
+      await assert.rejects(run(fileObservation, report, { active() {} }, 'md', Buffer.from('reviewed'), async () => { throw primary; }, {}, {}, root, path.join(root, 'missing'), {}, assert, assertSavedBytes), error => error === primary);
+      assert.equal(report.native_save_attempts.length, 1); const attempt = report.native_save_attempts[0];
+      assert.equal(attempt.native_dialog_completed, false); assert.equal(attempt.file.outcome, 'native_step_failed'); assert.equal(attempt.file.last.state, 'missing');
+      assert.equal(report.downloads.length, 0);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    assert.match(source, /assertSavedBytes\(destination, expected, 10000, observation\)/);
+    assert(source.indexOf('await downloadObserver.close()') < source.indexOf('await finish(report, failure'));
+  }
+  for (const newline of ['\n', '\r\n']) {
+    const raw = original.replace(/\n/g, newline); await verify(raw);
+    const mutated = raw.replace('if (!attempt.native_dialog_completed) { observation.sample(destination);', 'if (!attempt.native_dialog_completed) { throw new Error("mutated cleanup"); observation.sample(destination);');
+    assert.notEqual(mutated, raw); await assert.rejects(verify(mutated), { code: 'ERR_ASSERTION' });
+  }
   const observer = fs.readFileSync(new URL('../../scripts/installed-download-observation.cjs', import.meta.url), 'utf8');
   assert.doesNotMatch(observer, /setDownloadBehavior|Browser\.cancelDownload|saveAs|revokeObjectURL|readFile|readdir/);
-  assert.match(source, /assertSavedBytes\(destination, expected, 10000, observation\)/);
-  assert(source.indexOf('await downloadObserver.close()') < source.indexOf('await finish(report, failure'));
 });
 
-test('actual final cleanup still writes the original failure if passive-observer cleanup throws', async () => {
-  const source = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
-  const start = source.indexOf('    try { if (downloadObserver) await downloadObserver.close(); }');
-  const end = source.indexOf('\n  }\n}', start);
-  const run = new (Object.getPrototypeOf(async function() {}).constructor)('downloadObserver', 'report', 'failure', 'finish', 'browser', 'binding', 'verifyOwned', 'config', 'fs', 'path', source.slice(start, end));
-  const primary = new Error('original primary'); const report = { passed: false, cleanup: { errors: [] } }; let wrote = false;
-  await assert.rejects(run({ close() { throw new Error('observer secondary'); } }, report, primary, finish, undefined, undefined, () => {}, {}, { writeFileSync() { wrote = true; } }, { join() { return 'owned'; } }), error => error === primary);
-  assert(wrote); assert.equal(report.download_observation_cleanup_failed, true);
-  assert.equal(report.cleanup.disconnect, false); assert.equal(report.cleanup.owned_app_alive, false);
+test('actual final cleanup preserves the original failure in LF and CRLF source', async () => {
+  const original = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  async function verify(raw) {
+    const source = raw.replace(/\r\n/g, '\n');
+    const start = source.indexOf('    try { if (downloadObserver) await downloadObserver.close(); }');
+    const end = source.indexOf('\n  }\n}', start);
+    assert(start >= 0 && end > start, 'Exact final-cleanup source boundaries must exist');
+    const run = new (Object.getPrototypeOf(async function() {}).constructor)('downloadObserver', 'report', 'failure', 'finish', 'browser', 'binding', 'verifyOwned', 'config', 'fs', 'path', source.slice(start, end));
+    const primary = new Error('original primary'); const report = { passed: false, cleanup: { errors: [] } }; let wrote = false;
+    await assert.rejects(run({ close() { throw new Error('observer secondary'); } }, report, primary, finish, undefined, undefined, () => {}, {}, { writeFileSync() { wrote = true; } }, { join() { return 'owned'; } }), error => error === primary);
+    assert(wrote); assert.equal(report.download_observation_cleanup_failed, true);
+    assert.equal(report.cleanup.disconnect, false); assert.equal(report.cleanup.owned_app_alive, false);
+  }
+  for (const newline of ['\n', '\r\n']) {
+    const raw = original.replace(/\n/g, newline); await verify(raw);
+    const mutated = raw.replace('await finish(report, failure, {', 'await finish(report, new Error("mutated primary"), {');
+    assert.notEqual(mutated, raw); await assert.rejects(verify(mutated), { code: 'ERR_ASSERTION' });
+  }
 });
 
 test('native dialog script is exact owned modern Save profile, fresh contained filename and one bounded invocation', () => {
