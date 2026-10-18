@@ -1,23 +1,77 @@
 // Synthetic generated summary only. Model/provider requests are never needed.
-const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 
-(async () => {
+function readOutlineHeading(id) {
+  const heading = document.getElementById(id);
+  const box = node => {
+    const { top, right, bottom, left } = node.getBoundingClientRect();
+    return { top, right, bottom, left };
+  };
+  const headers = [...document.querySelectorAll(".toolbar, .reader-strip")]
+    .filter(node => node.getClientRects().length).map(box);
+  const range = document.createRange(); range.selectNodeContents(heading);
+  const text = [...range.getClientRects()].filter(rect => rect.width && rect.height).map(rect => ({
+    top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,
+    unobscured: heading.contains(document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2)),
+  }));
+  return { heading: box(heading), text, headerBottom: Math.max(0, ...headers.map(rect => rect.bottom)),
+    width: innerWidth, height: innerHeight, scrollY, scrollWidth: document.documentElement.scrollWidth,
+    scrollMargin: parseFloat(getComputedStyle(heading).scrollMarginTop),
+    stickyOffset: parseFloat(getComputedStyle(document.body).getPropertyValue("--source-sticky-top")),
+    editorHidden: document.querySelector("#editor").hidden, sourceHidden: document.querySelector("#sourcePanel").hidden };
+}
+
+function assertOutlineHeadingVisible(state) {
+  assert(state.heading.top >= state.headerBottom + 1, "Outline heading must clear sticky controls");
+  assert(state.heading.bottom <= state.height, "Outline heading must fit the viewport");
+  assert(state.text.length > 0, "Outline heading must contain rendered text");
+  for (const rect of state.text) {
+    assert(rect.top >= state.headerBottom && rect.bottom <= state.height && rect.left >= 0 && rect.right <= state.width,
+      "Every heading text line must be inside the unobscured viewport");
+    assert(rect.unobscured, "Heading text must pass actual point hit testing");
+  }
+  assert(state.scrollWidth <= state.width + 1, "Outline navigation must not introduce horizontal overflow");
+}
+
+async function waitForOutlineScroll(page, id) {
+  // Observe the app's own instant/smooth navigation. Never scroll or focus the
+  // destination here: Playwright auto-scrolling would hide the regression.
+  await page.evaluate(id => new Promise((resolve, reject) => {
+    let previous = NaN, stable = 0, frame;
+    const timer = setTimeout(() => { cancelAnimationFrame(frame); reject(new Error("Outline navigation did not settle at its scroll margin")); }, 10000);
+    const sample = () => {
+      const heading = document.getElementById(id), top = heading.getBoundingClientRect().top;
+      const aligned = Math.abs(top - parseFloat(getComputedStyle(heading).scrollMarginTop)) <= 1;
+      stable = aligned && Math.abs(scrollY - previous) < .1 ? stable + 1 : 0;
+      previous = scrollY;
+      if (stable >= 4) { clearTimeout(timer); resolve(); }
+      else frame = requestAnimationFrame(sample);
+    };
+    frame = requestAnimationFrame(sample);
+  }), id);
+}
+
+async function main() {
+  const { chromium } = require("playwright");
   const base = new URL(process.argv[2] || "http://127.0.0.1:8765");
   assert(base.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(base.hostname));
   const out = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), "learnnote-note-controls-"));
   fs.mkdirSync(out, { recursive: true });
   const browser = await chromium.launch({ channel: "msedge", headless: true });
+  const errors = [], writes = [], outlineNavigation = [];
+  const report = { passed: false, browser: browser.version(), native_browser_zoom_tested: false,
+    fixture: "synthetic summary, mocked edition writes", outlineNavigation };
+  let page, failure;
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
+    page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
     page.setDefaultTimeout(12000);
-    const errors = [], writes = [];
     page.on("pageerror", error => errors.push(error.message));
     const task = { id: "note-controls-fixture", kind: "task", title: "合成总结 · 目录与正文编辑", status: "success", phase: "completed", summary_source: "text-llm", options: {}, created_at: "2026-10-10T08:00:00Z", updated_at: "2026-10-10T08:01:00Z" };
-    const original = "# 合成总结\n\n" + Array.from({ length: 28 }, (_, i) => `## 第 ${i + 1} 节：这是用来验证自动换行和层级的合成章节标题\n\n合成内容，用于检查目录宽度、间距和编辑。\n\n### 核对步骤 ${i + 1}\n\n保留原始生成稿，另存个人修订。`).join("\n\n");
+    const deepHeading = "细节核对目标";
+    const original = "# 合成总结\n\n" + Array.from({ length: 28 }, (_, i) => `## 第 ${i + 1} 节：这是用来验证自动换行和层级的合成章节标题\n\n合成内容，用于检查目录宽度、间距和编辑。\n\n### 核对步骤 ${i + 1}\n\n保留原始生成稿，另存个人修订。${i === 13 ? `\n\n#### ${deepHeading}\n\n第四级标题后保留足够正文，不借助文档底部限制掩盖导航遮挡。` : ""}`).join("\n\n");
     let edition = { text: original, revision: "r0", edited: false }, releaseSave, saveStarted, holdSave = false, failSave = false;
     await page.route("**/api/tasks", route => route.fulfill({ json: { tasks: [task] } }));
     await page.route("**/api/library/materials?*", route => route.fulfill({ json: { materials: [] } }));
@@ -61,6 +115,65 @@ const os = require("node:os");
     assert.equal(await page.locator("#outlineGap").inputValue(), "0");
     await dialog.locator(".outline-tree button").nth(2).click();
     assert.equal(await dialog.isVisible(), false);
+
+    const headingId = await page.locator("#document h4").getAttribute("id");
+    const startHeading = "核对步骤 3";
+    const startHeadingId = await page.locator("#document").getByRole("heading", { name: startHeading, exact: true }).getAttribute("id");
+    const navigationState = await page.evaluate(() => ({ editorHidden: document.querySelector("#editor").hidden,
+      sourceHidden: document.querySelector("#sourcePanel").hidden }));
+    async function selectDeepHeading() {
+      // First navigate elsewhere through the same real control so the following
+      // smooth case cannot pass merely because its destination was already shown.
+      await page.locator("#openOutline").click();
+      await dialog.getByRole("button", { name: startHeading, exact: true }).click();
+      await waitForOutlineScroll(page, startHeadingId);
+      const beforeY = await page.evaluate(() => scrollY);
+      await page.locator("#openOutline").click();
+      await dialog.getByRole("button", { name: deepHeading, exact: true }).click();
+      assert.equal(await dialog.isVisible(), false);
+      await waitForOutlineScroll(page, headingId);
+      const geometry = await page.evaluate(readOutlineHeading, headingId);
+      assert(Math.abs(geometry.scrollY - beforeY) > 100, "Outline navigation must actually move to the deep heading");
+      return geometry;
+    }
+    // Fixture-only before state: restore the old h4 offset without changing any
+    // source/API data. Always remove it before testing the shipped stylesheet.
+    const oldHeadingStyle = await page.addStyleTag({ content: "#document h4 { scroll-margin-top: 0px; }" });
+    let oldOffsetFailure;
+    try {
+      report.outline_case = "old-offset-fixture-only";
+      const before = await selectDeepHeading();
+      outlineNavigation.push({ name: report.outline_case, production_styles: false, ...before });
+      assert.equal(before.scrollMargin, 0);
+      assert(before.text.some(rect => rect.top < before.headerBottom && !rect.unobscured), "Old h4 offset must reproduce text hidden behind sticky controls");
+      await page.screenshot({ path: path.join(out, "outline-h4-old-offset-fixture-only.png") });
+    } catch (error) { oldOffsetFailure = error; throw error; }
+    finally {
+      try { await oldHeadingStyle.evaluate(node => node.remove()); }
+      catch (cleanupError) {
+        report.old_offset_cleanup_error = String(cleanupError).slice(0, 1000);
+        if (!oldOffsetFailure) throw cleanupError;
+      }
+    }
+    for (const [width, height, sizing] of [[1440, 1000, "viewport"], [390, 844, "viewport"], [195, 422, "effective-200-percent-reflow-not-native-zoom"]]) {
+      await page.setViewportSize({ width, height });
+      for (const motion of ["reduce", "no-preference"]) {
+        const name = `outline-h4-${width}-${motion}`;
+        report.outline_case = name;
+        await page.emulateMedia({ reducedMotion: motion });
+        const geometry = await selectDeepHeading();
+        outlineNavigation.push({ name, sizing, motion, production_styles: true, ...geometry });
+        assertOutlineHeadingVisible(geometry);
+        assert(Math.abs(geometry.scrollMargin - Math.max(140, geometry.stickyOffset + 12)) <= 1,
+          "Heading offset must retain its minimum and follow measured chrome");
+        assert.equal(geometry.editorHidden, navigationState.editorHidden);
+        assert.equal(geometry.sourceHidden, navigationState.sourceHidden);
+        assert.equal(edition.text, original); assert.equal(writes.length, 0);
+        await page.screenshot({ path: path.join(out, `${name}.png`) });
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
 
     await page.locator("#edit").click();
     const draft = "# 合成总结\n\n## 已修订章节\n\n手动编辑后的总结正文。";
@@ -124,8 +237,25 @@ const os = require("node:os");
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await dialog.evaluate(node => getComputedStyle(node).animationName), "none");
     assert.deepEqual(errors, []);
-    const report = { passed: true, fixture: "synthetic summary, mocked edition writes", writes: writes.length, typography, effects, checks: ["TOC drag and keyboard width", "hidden settings, density and font persistence", "TOC navigation", "repeated Edit preserves draft", "formatting and rendered preview", "reading typography from editor", "typing during save", "save conflict retains draft and retries", "revision survives reload", "dark/mobile bounds", "rounded shadow and reduced-motion behavior"] };
-    fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(report, null, 2));
-  } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    Object.assign(report, { passed: true, typography, effects, checks: ["TOC drag and keyboard width", "hidden settings, density and font persistence", "TOC navigation", "h4 navigation clears sticky chrome after instant and smooth scrolling; old-offset fixture reproduces occlusion", "repeated Edit preserves draft", "formatting and rendered preview", "reading typography from editor", "typing during save", "save conflict retains draft and retries", "revision survives reload", "dark/mobile bounds", "rounded shadow and reduced-motion behavior"] });
+  } catch (error) {
+    failure = error; report.error = String(error).slice(0, 2000);
+    try {
+      if (page && !page.isClosed()) {
+        await page.screenshot({ path: path.join(out, "failure-current.png"), timeout: 2000 });
+        report.failure_screenshot = "failure-current.png";
+      }
+    } catch (captureError) { report.failure_screenshot_error = String(captureError).slice(0, 1000); }
+  } finally {
+    report.writes = writes.length;
+    report.errors = errors.slice(0, 20).map(error => String(error).slice(0, 1000));
+    try { await browser.close(); }
+    catch (closeError) { report.passed = false; report.cleanup_error = String(closeError).slice(0, 1000); failure ||= closeError; }
+    try { fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 2)); }
+    catch (reportError) { console.error("Note controls report could not be written:", reportError); failure ||= reportError; }
+  }
+  if (failure) throw failure;
+  console.log(JSON.stringify(report, null, 2));
+}
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { readOutlineHeading, assertOutlineHeadingVisible, waitForOutlineScroll };

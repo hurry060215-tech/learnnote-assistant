@@ -902,8 +902,9 @@ button:has(svg) {
   font-size: var(--reader-size, 17px);
 }
 .document h2,
-.document h3 {
-  scroll-margin-top: 140px;
+.document h3,
+.document h4 {
+  scroll-margin-top: max(140px, calc(var(--source-sticky-top, 128px) + 12px));
 }
 .annotations {
   max-width: var(--reader-width, 940px);

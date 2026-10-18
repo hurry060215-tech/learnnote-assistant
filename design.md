@@ -188,6 +188,8 @@ strip keeps source state and contents visible, with export, learning tools,
 typography, frame index, versions, and focus mode in a native “更多操作” disclosure.
 There is one edit entry. The disclosure closes on selection, outside pointer, or
 Escape; Escape returns focus, and dialog actions inherit a visible return target.
+Outline navigation keeps h2/h3/h4 below the measured toolbar and utility strip,
+with a 12px gutter and the existing 140px minimum heading scroll offset.
 The assistant's empty explanation and dismissible suggestions share the history
 surface. Sending begins a regular history; hidden/dismissed preference state is
 preserved. The composer has one 2px focus ring, never competing inner/outer rings.

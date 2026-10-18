@@ -198,7 +198,7 @@ class UiVisualContractTests(unittest.TestCase):
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
         key = "update-coordination-20261017"
         self.assertIn('src="/web/desk.js?v=reader-standard-20261018"', html)
-        self.assertIn('href="/web/desk.css?v=data-migration-20261017"', html)
+        self.assertIn('href="/web/desk.css?v=outline-clearance-20261018"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
         for module in ("data-migration.js", "data-migration-status.js"):
