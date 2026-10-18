@@ -136,7 +136,7 @@ test('proxy initialization failure is retained before readiness and never clicks
   assert.equal(actions, 0); assert.deepEqual(child.writes, []);
 });
 
-test('Windows actual initializer propagates registration failure without retry or readiness', { skip: process.platform !== 'win32' }, () => {
+function initializerFailureFixture(execute = execFileSync) {
   const bootstrap = nativeBootstrap();
   const method = bootstrap.match(/ \[System.Runtime.CompilerServices.MethodImpl[^]*?\n \}/)[0];
   const script = `$ErrorActionPreference='Stop'; Add-Type @'
@@ -161,8 +161,36 @@ try { [OwnedSave]::InitializeAutomation(); $ready=$true } catch {
  }
 }
 @{calls=[Windows.Automation.ClientSettings]::Calls;ready=$ready;original=$same} | ConvertTo-Json -Compress`;
-  const output = execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', timeout: 15000, windowsHide: true });
-  assert.deepEqual(JSON.parse(output.trim()), { calls: 1, ready: false, original: true });
+  // Managed synthetic setup only: no UIA assemblies, app, window discovery or input.
+  // This fixture ceiling does not change any native action or reader deadline.
+  return JSON.parse(execute('powershell.exe', nativeDialogCommand(script),
+    { encoding: 'utf8', timeout: 45000, windowsHide: true }).trim());
+}
+
+test('initializer fixture has a separate setup budget without native actions or retries', () => {
+  const expected = { calls: 1, ready: false, original: true }; let calls = 0;
+  assert.deepEqual(initializerFailureFixture((file, command, options) => {
+    calls++; assert.equal(file, 'powershell.exe');
+    assert.deepEqual(command.slice(0, 4), ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand']);
+    assert.deepEqual(options, { encoding: 'utf8', timeout: 45000, windowsHide: true });
+    const script = Buffer.from(command[4], 'base64').toString('utf16le');
+    assert.match(script, /public static class ClientSettings/);
+    assert.match(script, /Calls\+\+;[^\n]+throw Failure;/);
+    assert.equal(script.match(/\[OwnedSave\]::InitializeAutomation\(\)/g).length, 1);
+    assert.doesNotMatch(script, /Add-Type -AssemblyName|DllImport|AutomationElement|FromHandle|SendInput|SendKeys|\.Invoke\(|WriteLine\('READY'\)/);
+    return JSON.stringify(expected);
+  }), expected);
+  assert.equal(calls, 1);
+  const failure = Object.assign(new Error('synthetic setup deadline'), { code: 'ETIMEDOUT' }); calls = 0;
+  assert.throws(() => initializerFailureFixture(() => { calls++; throw failure; }), error => error === failure);
+  assert.equal(calls, 1);
+  const source = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
+  assert.match(source, /const TIMEOUT = 15000,/);
+  assert.match(source, /AddSeconds\(\$\(if \(\$c.observeOnly\) \{ 1 \} else \{ 15 \}\)\)/);
+});
+
+test('Windows actual initializer propagates registration failure without retry or readiness', { skip: process.platform !== 'win32' }, () => {
+  assert.deepEqual(initializerFailureFixture(), { calls: 1, ready: false, original: true });
 });
 
 test('Windows actual bootstrap exposes typed Value and Invoke patterns on owned synthetic WinForms controls', { skip: process.platform !== 'win32' }, () => {

@@ -515,3 +515,58 @@ def install(app, stack):
         raise
     stack.enter_context(local)
     return collector
+
+
+def install_cancellation_spans(app, stack, collector):
+    """Fixed lifecycle boundaries for the one-cancellation diagnostic only.
+
+    Reuse the bounded operation ring, clocks and drop counters. No SQL/runtime
+    interception: index_return ends after the original best-effort index call,
+    not a separately measured SQLite commit. Original exceptions/returns survive.
+    """
+    from app import storage, main, processor, processor_state, task_queue
+    local = ExitStack()
+    def wrap(function, label, identity=0, phase=None, predicate=None):
+        if any(check(target) for target in (function, inspect.unwrap(function)) for check in
+               (inspect.iscoroutinefunction, inspect.isgeneratorfunction, inspect.isasyncgenfunction)):
+            raise TypeError("fixture cancellation target must remain synchronous")
+        @functools.wraps(function)
+        def call(*args, **kwargs):
+            if predicate is not None and not predicate(args, kwargs):
+                return function(*args, **kwargs)
+            target = args[identity] if len(args) > identity else kwargs.get("task_id", "")
+            task_id = target.id if hasattr(target, "id") else target
+            with collector.operation(label, task_id, phase or ""):
+                return function(*args, **kwargs)
+        return call
+    def aliases(function, label, targets, **options):
+        replacement = wrap(function, label, **options)
+        for module, name in targets:
+            if getattr(module, name) is not function:
+                raise AssertionError("fixture cancellation alias mismatch")
+            local.enter_context(patch.object(module, name, replacement))
+    try:
+        aliases(storage.request_task_cancel, "cancel_request",
+                [(storage, "request_task_cancel"), (main, "request_task_cancel")])
+        aliases(processor_state.check_cancel, "worker_check",
+                [(processor_state, "check_cancel"), (processor, "_check_cancel")])
+        aliases(storage.mark_task_cancelled, "cancel_acknowledge",
+                [(storage, "mark_task_cancelled"), (processor_state, "mark_task_cancelled"),
+                 (processor, "mark_task_cancelled")])
+        for name, label in (("save_task", "manifest_save"), ("index_task", "index_return")):
+            local.enter_context(patch.object(storage, name, wrap(getattr(storage, name), label)))
+        local.enter_context(patch.object(task_queue.LocalTaskQueue, "set_state",
+            wrap(task_queue.LocalTaskQueue.set_state, "callback_finish", identity=1,
+                 predicate=lambda args, kwargs: kwargs.get("callback_finished") is True)))
+        found = False
+        for route in app.routes:
+            if getattr(route, "path", None) == "/api/tasks/{task_id}/cancel" and "POST" in getattr(route, "methods", ()):
+                local.enter_context(patch.object(route.dependant, "call",
+                    wrap(route.dependant.call, "cancel_handler")))
+                found = True
+        if not found:
+            raise AssertionError("fixture cancellation handler missing")
+    except BaseException:
+        local.close()
+        raise
+    stack.enter_context(local)

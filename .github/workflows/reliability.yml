@@ -10,6 +10,10 @@ on:
       - "scripts/progressive-slo-catalog-diagnostic.py"
       - "scripts/tests/test_progressive_slo_catalog_diagnostic.py"
       - "scripts/tests/test_catalog_diagnostic_workflow.py"
+      - "scripts/progressive-slo-cancel-diagnostic.py"
+      - "scripts/progressive-slo-contention.py"
+      - "scripts/tests/test_progressive_slo_cancel_diagnostic.py"
+      - "scripts/tests/test_cancel_diagnostic_workflow.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
       - "scripts/owned_process_tree_sample.py"
@@ -27,6 +31,10 @@ on:
       - "scripts/progressive-slo-catalog-diagnostic.py"
       - "scripts/tests/test_progressive_slo_catalog_diagnostic.py"
       - "scripts/tests/test_catalog_diagnostic_workflow.py"
+      - "scripts/progressive-slo-cancel-diagnostic.py"
+      - "scripts/progressive-slo-contention.py"
+      - "scripts/tests/test_progressive_slo_cancel_diagnostic.py"
+      - "scripts/tests/test_cancel_diagnostic_workflow.py"
       - "scripts/local-range-acceptance.py"
       - "scripts/tests/test_local_range_acceptance.py"
       - "scripts/owned_process_tree_sample.py"
@@ -40,6 +48,11 @@ on:
     inputs:
       catalog_profile:
         description: "Run the synthetic catalog diagnostic (not browser timing or release acceptance)"
+        type: boolean
+        default: false
+        required: false
+      cancel_diagnostic:
+        description: "Observe one HTTP cancellation after 80 synthetic tasks (no browser acceptance)"
         type: boolean
         default: false
         required: false
@@ -146,6 +159,13 @@ jobs:
         run: |
           python scripts/progressive-slo-catalog-diagnostic.py --output-dir build/reliability/catalog-native-diagnostic
           if ($LASTEXITCODE -ne 0) { throw "Synthetic catalog diagnostic failed" }
+      - name: Optional single cancellation diagnostic
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.cancel_diagnostic }}
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python scripts/progressive-slo-cancel-diagnostic.py --output-dir build/reliability/cancel-diagnostic
+          if ($LASTEXITCODE -ne 0) { throw "Synthetic cancellation diagnostic failed" }
       - name: Upload offline reliability evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -165,6 +185,7 @@ jobs:
             build/reliability/local-range/*.log
             build/reliability/progressive-outline/report.json
             build/reliability/catalog-native-diagnostic/report.json
+            build/reliability/cancel-diagnostic/report.json
           if-no-files-found: warn
           retention-days: 14
 

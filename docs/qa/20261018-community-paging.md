@@ -61,3 +61,33 @@ or credentials are added to diagnostics.
 These are synthetic acceptance results. They do not establish customer podcast
 quality, eliminate historical timing variance, close all of issue #158, or
 change the immutable v0.2.16 release. No rerun result erases the failures above.
+
+## Follow-on evidence at 715861a
+
+[UI run 39129979224](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39129979224)
+passed the main job and all 42 main reports. Independent inspection accepted all
+22 paging captures and the diagnostic/native/settings regression evidence. The
+previously incomplete 390px selection-state frame renders fully in this run;
+its older incomplete image remains retained without a proven cause. Main
+artifact `12138255828` SHA-256:
+`855ec2043d2eae34c7bb67c2fefd0a008d53fc51f3feb96012ea8892a6c6b5c8`.
+
+The separate reference job again failed cancellation/drain, now **9.0614 seconds
+versus 2 seconds**. All 80 readability samples passed: cohort p95 values were
+1.8316/2.3353/1.3504/3.3685 seconds and maximum visibility ACK was 2.7970 seconds.
+Joined visual continuation passed. Reference artifact `12137148714` SHA-256:
+`0a7934b3cb5836f844a40b16a5cfa145051d9725e85f2c14af74e2faaeb56f7e`.
+The bounded cancellation diagnostic documents the retained save-to-event span;
+no production performance change is established by these observations.
+
+[CI run 39129979242](https://github.com/hurry060215-tech/learnnote-assistant/actions/runs/39129979242)
+failed earlier in the existing Windows initializer exception-propagation test:
+its PowerShell process reached a 15-second timeout with empty output. The script
+compiles synthetic types, invokes one initializer and serializes three fields;
+it loads no UIA assemblies and opens no app or native dialog. Its follow-on
+fixture ceiling is 45 seconds, with one attempt and the original error/result
+assertions preserved. This separate managed setup budget does not change native
+Save/action deadlines, readback, cancellation or reader visibility limits. The
+empty output does not identify the timeout's cause. Windows execution of the
+adjustment remains pending; the later scripts suite and projection diagnostic
+were never reached in this CI run.

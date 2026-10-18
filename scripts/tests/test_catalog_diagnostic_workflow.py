@@ -20,7 +20,7 @@ class CatalogDiagnosticWorkflowTests(unittest.TestCase):
 
     def test_manual_boolean_is_opt_in_and_diagnostic_only(self):
         inputs = self.events["workflow_dispatch"]["inputs"]
-        self.assertEqual(set(inputs), {"catalog_profile"})
+        self.assertEqual(set(inputs), {"catalog_profile", "cancel_diagnostic"})
         option = inputs["catalog_profile"]
         self.assertEqual(option["type"], "boolean")
         self.assertIs(option["default"], False)
