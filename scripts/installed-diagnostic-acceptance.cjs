@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
+const { fileObservation, attachDownloadObservation } = require('./installed-download-observation.cjs');
 const TIMEOUT = 15000, MAX_BYTES = 256 * 1024;
 const SYNTHETIC_TITLE = 'Synthetic rollback captions';
 const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
@@ -533,24 +534,35 @@ function nativeDialog(config, binding, directory, destination, action, observeOn
   return withNativeHelper(child, action);
 }
 
-async function assertSavedBytes(file, expected, timeout = 10000) {
+async function assertSavedBytes(file, expected, timeout = 10000, observation) {
   assert(Buffer.isBuffer(expected) && expected.length > 0 && expected.length <= MAX_BYTES);
+  observation ||= fileObservation(expected.length);
   const deadline = Date.now() + timeout; let previous;
-  do {
-    try {
-      const stat = fs.lstatSync(file);
-      assert(stat.isFile() && !stat.isSymbolicLink(), 'Native saved output must be a regular file');
-      assert(stat.size <= expected.length, 'Native saved file exceeded reviewed byte length');
-      const stamp = `${stat.size}:${stat.mtimeMs}`;
-      if (stat.size === expected.length && previous === stamp) {
-        assert(fs.readFileSync(file).equals(expected), 'Native saved bytes differ from the reviewed API response');
-        return { bytes: expected.length, sha256: createHash('sha256').update(expected).digest('hex'), byte_equality: true, native_saved_file: true };
+  try {
+    do {
+      try {
+        const stat = fs.lstatSync(file); observation.stat(stat);
+        assert(stat.isFile() && !stat.isSymbolicLink(), 'Native saved output must be a regular file');
+        assert(stat.size <= expected.length, 'Native saved file exceeded reviewed byte length');
+        const stamp = `${stat.size}:${stat.mtimeMs}`;
+        if (stat.size === expected.length && previous === stamp) {
+          assert(fs.readFileSync(file).equals(expected), 'Native saved bytes differ from the reviewed API response');
+          observation.finish('verified');
+          return { bytes: expected.length, sha256: createHash('sha256').update(expected).digest('hex'), byte_equality: true, native_saved_file: true };
+        }
+        previous = stamp;
+      } catch (error) {
+        if (error.code !== 'ERR_ASSERTION') observation.error(error);
+        if (!['ENOENT', 'EBUSY', 'EACCES'].includes(error.code)) throw error;
       }
-      previous = stamp;
-    } catch (error) { if (!['ENOENT', 'EBUSY', 'EACCES'].includes(error.code)) throw error; }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  } while (Date.now() < deadline);
-  throw new Error('Native saved file did not stabilize at the reviewed byte length');
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
+    throw new Error('Native saved file did not stabilize at the reviewed byte length');
+  } catch (error) {
+    observation.finish('byte_check_failed');
+    try { error.native_file_observation = observation.report; } catch { /* Preserve the byte-check error. */ }
+    throw error;
+  }
 }
 
 async function noDownloadDuring(page, action) {
@@ -581,10 +593,10 @@ async function main(args) {
   const report = { passed: false, synthetic_only: true, installed_ui: true, installed_api: true,
     api_mocked: false, browser_launched: false, native_app_closed: false, expected_version: expectedVersion,
     surface: 'owned installed WebView2 viewport', focus_scope: 'DOM focus within the owned app',
-    screenshots: [], native_dialog_captures: [], checks: [], downloads: [], diagnostic_requests: 0, page_errors: 0, external_requests: 0,
+    screenshots: [], native_dialog_captures: [], checks: [], downloads: [], native_save_attempts: [], browser_download_events: 0, diagnostic_requests: 0, page_errors: 0, external_requests: 0,
     blocked_external_requests: 0, network_observation_scope: 'After attachment, before test navigation',
     cleanup: { disconnect: false, owned_app_alive: false, errors: [] } };
-  let browser, page, binding, failure, syntheticVerified = false, nativeDirectory;
+  let browser, page, binding, failure, downloadObserver, syntheticVerified = false, nativeDirectory;
   const read = route => readInstalledJSON(config.origin, route);
   const capture = async filename => {
     assert(syntheticVerified, 'No screenshot before exact synthetic task verification');
@@ -609,7 +621,7 @@ async function main(args) {
       report.blocked_external_requests++; await route.abort('blockedbyclient');
     });
     let downloads = 0;
-    page.on('download', () => downloads++);
+    page.on('download', () => { downloads++; report.browser_download_events = Math.min(1000, downloads); });
     page.on('pageerror', () => report.page_errors++);
     page.on('request', request => {
       const url = new URL(request.url());
@@ -625,6 +637,8 @@ async function main(args) {
     report.checks.push('Installed bundled task reader displays the retained synthetic title and captions');
     if (!config.startupOnly) {
       config.captureNativeDialog = syntheticVerified;
+      downloadObserver = await attachDownloadObservation(page, config.origin, bounded);
+      report.page_download_observation = downloadObserver.report;
       report.phase = 'visible-diagnostic-disclosure';
       await page.locator('#taskStatus [data-task-action="diagnostics"]').click();
       const processing = page.locator('#toolsDialog[open]');
@@ -665,20 +679,28 @@ async function main(args) {
         const gets = report.diagnostic_requests;
         const destination = path.join(nativeDirectory, `learnnote-diagnostics.${format}`);
         assert.equal(fs.existsSync(destination), false);
-        const native = await nativeDialog(config, binding, nativeDirectory, destination, () => save.click());
-        if (native.native_dialog_capture) {
-          report.native_dialog_captures.push(native.native_dialog_capture);
-          if (native.native_dialog_capture.status === 'saved') report.screenshots.push(native.native_dialog_capture.file);
+        const observation = fileObservation(expected.length);
+        const attempt = { format, native_dialog_completed: false, file: observation.report };
+        report.native_save_attempts.push(attempt); downloadObserver.active(format);
+        try {
+          const native = await nativeDialog(config, binding, nativeDirectory, destination, () => save.click());
+          if (native.native_dialog_capture) {
+            report.native_dialog_captures.push(native.native_dialog_capture);
+            if (native.native_dialog_capture.status === 'saved') report.screenshots.push(native.native_dialog_capture.file);
+          }
+          if (native.native_capture_unavailable) report.native_capture_unavailable = true;
+          assert.equal(native.native_dialog, true); assert.equal(native.saved, true);
+          attempt.native_dialog_completed = true;
+          report.downloads.push({ format, ...await assertSavedBytes(destination, expected, 10000, observation) });
+        } finally {
+          if (!attempt.native_dialog_completed) { observation.sample(destination); observation.finish('native_step_failed'); }
         }
-        if (native.native_capture_unavailable) report.native_capture_unavailable = true;
-        assert.equal(native.native_dialog, true); assert.equal(native.saved, true);
-        report.downloads.push({ format, ...await assertSavedBytes(destination, expected) });
         assert.equal(report.diagnostic_requests, gets, 'Save must reuse the exact cached preview bytes');
         assert.equal(await save.isDisabled(), true);
       }
       assert.equal(report.downloads.length, 2);
-      report.browser_download_events = downloads;
-      report.phase = 'cancel-and-focus';
+      report.browser_download_events = Math.min(1000, downloads);
+      report.phase = 'cancel-and-focus'; downloadObserver.active('cancel');
       await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
       assert(await opener.evaluate(node => document.activeElement === node), 'Escape restores the visible opener');
       await preview('md', () => opener.click());
@@ -713,6 +735,8 @@ async function main(args) {
       catch { report.failure_capture_unavailable = true; }
     }
   } finally {
+    try { if (downloadObserver) await downloadObserver.close(); }
+    catch { report.download_observation_cleanup_failed = true; }
     await finish(report, failure, {
       // connectOverCDP close disconnects only; never close the default context,
       // its pages, or issue Browser.close through CDP. Python owns normal WM_CLOSE.

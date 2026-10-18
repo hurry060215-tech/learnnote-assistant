@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
+import observationHelpers from '../../scripts/installed-download-observation.cjs';
+const { fileObservation, downloadObservation, attachDownloadObservation } = observationHelpers;
 
 const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
@@ -577,6 +579,157 @@ test('native file equality reads stable exact UTF-8 bytes and retains the actual
     await assert.rejects(assertSavedBytes(path.join(root, 'missing'), bytes, 5), /did not stabilize/);
     await assert.rejects(assertSavedBytes(root, bytes), /regular file/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('expected-file diagnostics distinguish missing, short, changing, busy and access denied without retaining paths', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installed-file-evidence-')), file = path.join(root, 'private-canary-name');
+  const bytes = Buffer.from('synthetic reviewed bytes');
+  try {
+    for (const [prepare, state] of [[() => {}, 'missing'], [() => fs.writeFileSync(file, 'short'), 'regular']]) {
+      prepare();
+      await assert.rejects(assertSavedBytes(file, bytes, 5), error => {
+        const evidence = error.native_file_observation;
+        assert.equal(evidence.outcome, 'byte_check_failed'); assert.equal(evidence.last.state, state);
+        assert.equal(evidence.last.length, state === 'missing' ? 'unknown' : 'short');
+        assert.equal(evidence.expected_bytes, bytes.length); assert(!JSON.stringify(evidence).includes(file)); return true;
+      });
+    }
+    fs.writeFileSync(file, bytes);
+    const original = fs.lstatSync;
+    try {
+      for (const code of ['EBUSY', 'EACCES', 'EIO']) {
+        const primary = Object.assign(new Error('private error-message canary'), { code });
+        fs.lstatSync = () => { throw primary; };
+        await assert.rejects(assertSavedBytes(file, bytes, 5), error => {
+          if (code === 'EIO') assert.equal(error, primary);
+          assert.equal(error.native_file_observation.last.state, { EBUSY: 'busy', EACCES: 'access_denied', EIO: 'other_io_error' }[code]);
+          assert(!JSON.stringify(error.native_file_observation).includes('canary')); return true;
+        });
+      }
+      const stat = original(file); let tick = 0;
+      fs.lstatSync = () => ({ ...stat, mtimeMs: ++tick, isFile: () => true, isSymbolicLink: () => false });
+      await assert.rejects(assertSavedBytes(file, bytes, 120), error => {
+        assert.equal(error.native_file_observation.last.length, 'exact');
+        assert.equal(error.native_file_observation.last.stable_with_previous, false); return true;
+      });
+    } finally { fs.lstatSync = original; }
+    const evidence = fileObservation(bytes.length);
+    await assertSavedBytes(file, bytes, 10000, evidence);
+    assert.equal(evidence.report.outcome, 'verified'); assert.equal(evidence.report.last.stable_with_previous, true);
+    fs.writeFileSync(file, Buffer.alloc(bytes.length));
+    await assert.rejects(assertSavedBytes(file, bytes), error => {
+      assert.match(error.message, /differ/); assert.equal(error.native_file_observation.last.length, 'exact'); return true;
+    });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('file observations are bounded, fixed-category and safe when diagnostic stat access fails', () => {
+  const observation = fileObservation(10);
+  for (let i = 0; i < 3000; ++i) observation.stat({ size: i % 2 ? 1e12 : 1, mtimeMs: i, isFile: () => true, isSymbolicLink: () => false });
+  assert.equal(observation.report.samples, 1000); assert.equal(observation.report.transitions.length, 12);
+  assert.equal(observation.report.counts_capped, true); assert.equal(observation.report.transitions_dropped, 1000); assert.equal(observation.report.last.bytes, 262145);
+  assert.equal(observation.report.last.bytes_capped, true);
+  observation.stat({ get size() { throw new Error('private-canary'); } });
+  assert.equal(observation.report.unavailable, true);
+  observation.error({ code: 'constructor', message: 'private-contents-canary' });
+  assert.equal(observation.report.last.state, 'other_io_error');
+  assert.doesNotMatch(JSON.stringify(observation.report), /canary|mtime|path|contents/);
+});
+
+test('passive download evidence correlates only owned Blob GUIDs, both formats and fixed terminal outcomes', () => {
+  const observation = downloadObservation('http://127.0.0.1:8765');
+  for (const [format, state] of [['md', 'completed'], ['json', 'canceled']]) {
+    observation.active(format);
+    observation.begin({ guid: `private-${format}`, url: 'blob:http://127.0.0.1:8765/private-url', suggestedFilename: `learnnote-diagnostics.${format}` });
+    observation.progress({ guid: `private-${format}`, state: 'inProgress', receivedBytes: 3, totalBytes: 20 });
+    observation.progress({ guid: `private-${format}`, state, receivedBytes: 20, totalBytes: 20 });
+  }
+  assert.deepEqual(observation.report.downloads.map(item => [item.format, item.expected_name_matches, item.state]), [['md', true, 'completed'], ['json', true, 'canceled']]);
+  observation.begin({ guid: 'foreign', url: 'blob:https://private.example/token', suggestedFilename: 'private-name' });
+  observation.progress({ guid: 'foreign', state: 'completed', receivedBytes: 10, totalBytes: 10 });
+  assert.equal(observation.report.ignored_events, 2);
+  assert.doesNotMatch(JSON.stringify(observation.report), /private|blob:|127\.0\.0\.1|guid|suggestedFilename/);
+  observation.active('cancel');
+  observation.begin({ guid: 'cancel-guid', url: 'blob:http://127.0.0.1:8765/private-url', suggestedFilename: 'private-name' });
+  observation.progress({ guid: 'cancel-guid', state: 'canceled', receivedBytes: 0, totalBytes: -1 });
+  assert.equal(observation.report.downloads[2].format, 'cancel'); assert.equal(observation.report.downloads[2].expected_name_matches, null);
+  assert.equal(observation.report.downloads[2].state, 'canceled'); assert.equal(observation.report.downloads[2].total_bytes, null);
+  observation.close(); const closed = JSON.stringify(observation.report);
+  observation.begin({}); observation.progress({}); assert.equal(JSON.stringify(observation.report), closed);
+});
+
+test('download metadata caps bytes, records and counts and rejects malformed/unbound events', () => {
+  const observation = downloadObservation('http://127.0.0.1:8765'); observation.active('md');
+  for (let i = 0; i < 2000; ++i) observation.begin({ guid: String(i), url: 'blob:http://127.0.0.1:8765/private', suggestedFilename: 'wrong-private-name' });
+  assert.equal(observation.report.downloads.length, 4); assert.equal(observation.report.begins, 1000); assert.equal(observation.report.dropped_downloads, 1000);
+  observation.progress({ guid: '0', state: 'completed', receivedBytes: 1e12, totalBytes: 1e12 });
+  assert.equal(observation.report.downloads[0].received_bytes, 262145); assert.equal(observation.report.downloads[0].bytes_capped, true);
+  for (const event of [null, {}, { guid: '0', state: 'private-status', receivedBytes: 1, totalBytes: 1 }, { guid: '0', state: 'completed', receivedBytes: NaN, totalBytes: -1 }]) observation.progress(event);
+  observation.begin({ guid: '0', url: 'blob:http://127.0.0.1:8765/private' });
+  observation.begin({ guid: 'oversized', url: 'x'.repeat(4097) });
+  assert(observation.report.invalid_events >= 4); assert.equal(observation.report.downloads[0].state, 'completed');
+  assert.equal(observation.report.downloads[0].expected_name_matches, false);
+  assert.doesNotMatch(JSON.stringify(observation.report), /private|NaN/);
+});
+
+test('passive attachment sends only Page.enable and retains outcomes when detach or setup fails', async () => {
+  const session = new EventEmitter(), commands = []; let detached = 0;
+  session.send = async command => { commands.push(command); }; session.detach = async () => { detached++; };
+  const page = { context: () => ({ newCDPSession: target => { assert.equal(target, page); return session; } }) };
+  const observation = await attachDownloadObservation(page, 'http://127.0.0.1:8765', bounded);
+  assert.deepEqual(commands, ['Page.enable']); observation.active('md');
+  session.emit('Page.downloadWillBegin', { guid: 'own', url: 'blob:http://127.0.0.1:8765/id', suggestedFilename: 'learnnote-diagnostics.md' });
+  session.emit('Page.downloadProgress', { guid: 'own', state: 'canceled', receivedBytes: 0, totalBytes: 20 });
+  await observation.close(); assert.equal(detached, 1); assert.equal(session.listenerCount('Page.downloadProgress'), 0);
+  assert.equal(observation.report.status, 'events_observed'); assert.equal(observation.report.downloads[0].state, 'canceled');
+  session.detach = async () => { throw new Error('private detach'); };
+  const empty = await attachDownloadObservation(page, 'http://127.0.0.1:8765', bounded); await empty.close();
+  assert.equal(empty.report.status, 'no_events_observed'); assert.equal(empty.report.detach_failed, true);
+  session.send = async () => { throw new Error('private enable'); };
+  const unavailable = await attachDownloadObservation(page, 'http://127.0.0.1:8765', bounded); await unavailable.close();
+  assert.equal(unavailable.report.status, 'unavailable'); assert.equal(unavailable.report.setup_failure, 'enable');
+  const missing = await attachDownloadObservation({ context() { throw new Error('private attach'); } }, 'http://127.0.0.1:8765', bounded);
+  await missing.close(); assert.equal(missing.report.setup_failure, 'attach');
+  assert.doesNotMatch(JSON.stringify([unavailable.report, missing.report]), /private/);
+});
+
+test('late passive attachment is detached after its bounded setup expires', async () => {
+  const session = new EventEmitter(); let resolve, detached = 0;
+  session.detach = async () => { detached++; };
+  const page = { context: () => ({ newCDPSession: () => new Promise(value => { resolve = value; }) }) };
+  const observation = await attachDownloadObservation(page, 'http://127.0.0.1:8765', (promise, label) => bounded(promise, label, 5));
+  assert.equal(observation.report.status, 'unavailable'); resolve(session);
+  await new Promise(done => setTimeout(done, 10)); assert.equal(detached, 1); await observation.close();
+});
+
+test('actual native attempt retains the original failure and one expected-file sample before byte checking', async () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('        const observation = fileObservation(expected.length);');
+  const end = source.indexOf('        assert.equal(report.diagnostic_requests, gets,', start);
+  const run = new (Object.getPrototypeOf(async function() {}).constructor)('fileObservation', 'report', 'downloadObserver', 'format', 'expected', 'nativeDialog', 'config', 'binding', 'nativeDirectory', 'destination', 'save', 'assert', 'assertSavedBytes', source.slice(start, end));
+  const primary = new Error('native primary'); const report = { native_save_attempts: [], downloads: [] };
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-attempt-evidence-'));
+  try {
+    await assert.rejects(run(fileObservation, report, { active() {} }, 'md', Buffer.from('reviewed'), async () => { throw primary; }, {}, {}, root, path.join(root, 'missing'), {}, assert, assertSavedBytes), error => error === primary);
+    assert.equal(report.native_save_attempts.length, 1); const attempt = report.native_save_attempts[0];
+    assert.equal(attempt.native_dialog_completed, false); assert.equal(attempt.file.outcome, 'native_step_failed'); assert.equal(attempt.file.last.state, 'missing');
+    assert.equal(report.downloads.length, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  const observer = fs.readFileSync(new URL('../../scripts/installed-download-observation.cjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(observer, /setDownloadBehavior|Browser\.cancelDownload|saveAs|revokeObjectURL|readFile|readdir/);
+  assert.match(source, /assertSavedBytes\(destination, expected, 10000, observation\)/);
+  assert(source.indexOf('await downloadObserver.close()') < source.indexOf('await finish(report, failure'));
+});
+
+test('actual final cleanup still writes the original failure if passive-observer cleanup throws', async () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-diagnostic-acceptance.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('    try { if (downloadObserver) await downloadObserver.close(); }');
+  const end = source.indexOf('\n  }\n}', start);
+  const run = new (Object.getPrototypeOf(async function() {}).constructor)('downloadObserver', 'report', 'failure', 'finish', 'browser', 'binding', 'verifyOwned', 'config', 'fs', 'path', source.slice(start, end));
+  const primary = new Error('original primary'); const report = { passed: false, cleanup: { errors: [] } }; let wrote = false;
+  await assert.rejects(run({ close() { throw new Error('observer secondary'); } }, report, primary, finish, undefined, undefined, () => {}, {}, { writeFileSync() { wrote = true; } }, { join() { return 'owned'; } }), error => error === primary);
+  assert(wrote); assert.equal(report.download_observation_cleanup_failed, true);
+  assert.equal(report.cleanup.disconnect, false); assert.equal(report.cleanup.owned_app_alive, false);
 });
 
 test('native dialog script is exact owned modern Save profile, fresh contained filename and one bounded invocation', () => {
