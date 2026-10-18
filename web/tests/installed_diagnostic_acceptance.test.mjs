@@ -198,27 +198,36 @@ test('Windows observer fault injection exercises the actual function with synthe
     path.resolve('scripts/tests/native-observer-faults.ps1')], { encoding: 'utf8', timeout: 15000, windowsHide: true });
   assert(!output.includes('PRIVATE_')); assert(!output.includes('C:\\private'));
   const cases = JSON.parse(output.trim());
-  for (const { mode, observation } of cases.results) {
-    validateHostObservation(observation);
+  assert.deepEqual(cases.getter_probe, { member_null: true, member_caught: false, explicit_caught: true, reads: 2, throws: 2 });
+  const getterFaults = ['property', 'process-id', 'control-type', 'type-id', 'class-name', 'automation-id'];
+  const invalidProperties = ['null-current', 'invalid-process', 'missing-type', 'invalid-type-id', 'null-class', 'null-id'];
+  for (const { mode, observation, reads } of cases.results) {
+    assert.doesNotThrow(() => validateHostObservation(observation), `${mode}: valid bounded observation`);
+    assert.equal(reads.throws, getterFaults.includes(mode) ? 1 : 0, `${mode}: actual CLR getter throw count`);
+    for (const field of ['hidden', 'pruned_class', 'pruned_id', 'forbidden']) assert.equal(reads[field], 0, `${mode}: ${field}`);
     if (mode === 'success') {
-      assert.equal(observation.status, 'complete'); assert.equal(observation.reason, 'complete');
-      assert.equal(observation.snapshots.length, 2);
+      assert.equal(observation.status, 'complete', mode); assert.equal(observation.reason, 'complete', mode);
+      assert.equal(observation.snapshots.length, 2, mode);
+      for (const field of ['root', 'host', 'pruned']) assert.equal(reads[field], 2, `${mode}: one Current read per node per snapshot`);
       for (const snapshot of observation.snapshots) {
-        assert.equal(snapshot.nodes.length, 3); assert.equal(snapshot.foreign_nodes, 0);
-        assert(snapshot.nodes[2].pruned); assert.equal(snapshot.nodes[2].cls, ''); assert.equal(snapshot.nodes[2].id, '');
+        assert.equal(snapshot.nodes.length, 3, mode); assert.equal(snapshot.foreign_nodes, 0, mode);
+        assert(snapshot.nodes[2].pruned, mode); assert.equal(snapshot.nodes[2].cls, '', mode); assert.equal(snapshot.nodes[2].id, '', mode);
       }
     } else if (mode === 'budget') {
-      assert.equal(observation.reason, 'budget'); assert.equal(observation.exception_type, null);
-      assert.equal(observation.status, 'partial'); assert.equal(observation.phase, 'guard-after');
-      assert(observation.elapsed_ms >= 1000);
+      assert.equal(observation.reason, 'budget', mode); assert.equal(observation.exception_type, null, mode);
+      assert.equal(observation.status, 'partial', mode); assert.equal(observation.phase, 'guard-after', mode);
+      assert(observation.elapsed_ms >= 1000, mode);
     } else {
-      assert.equal(observation.reason, 'exception');
-      const expected = mode === 'property' ? 'node-properties' : mode === 'guard-before-late' ? 'guard-before' : mode;
-      assert.equal(observation.phase, expected);
-      assert.equal(observation.snapshots.length, mode === 'guard-before-late' ? 1 : 0);
+      assert.equal(observation.reason, 'exception', `${mode}: reason`);
+      const propertyFailure = getterFaults.includes(mode) || invalidProperties.includes(mode);
+      const expected = propertyFailure ? 'node-properties' : mode === 'guard-before-late' ? 'guard-before' : mode;
+      assert.equal(observation.phase, expected, `${mode}: phase`);
+      assert.equal(observation.snapshots.length, mode === 'guard-before-late' ? 1 : 0, `${mode}: retained snapshots`);
+      assert.equal(observation.status, mode === 'guard-before-late' ? 'partial' : 'unavailable', `${mode}: status`);
+      if (propertyFailure) assert.equal(reads.root, 1, `${mode}: one Current read before rejection`);
     }
   }
-  assert.equal(cases.results.length, 8);
+  assert.equal(cases.results.length, 19);
   assert.deepEqual(cases.exceptions, ['element-unavailable', 'element-disabled', 'com', 'invalid-operation', 'method-invocation', 'runtime', 'other']);
 });
 
@@ -244,9 +253,15 @@ test('failure observer is bounded, read-only, prunes content branches and checks
   const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
   assert.match(observer, /sample -lt 2/); assert.match(observer, /walked -lt 64/); assert.match(observer, /entry.depth -ge 8/);
   assert.match(observer, /ElapsedMilliseconds -lt 1000/); assert.match(observer, /\$queue.Count\+\$walked\) -lt 64/);
-  assert.match(observer, /\$node.Current.ProcessId -ne \$OwnedPid/); assert.equal(observer.match(/\[void\]\(& \$Guard\)/g).length, 2);
+  assert.match(observer, /\$processId -ne \$OwnedPid/); assert.equal(observer.match(/\[void\]\(& \$Guard\)/g).length, 2);
+  assert.equal(observer.match(/\$node\.get_Current\(\)/g).length, 1);
+  for (const getter of ['ProcessId', 'ControlType', 'ClassName', 'AutomationId']) assert(observer.includes(`$current.get_${getter}()`));
+  assert.match(observer, /\$type\.get_Id\(\)/); assert.match(observer, /\$null -eq \$current/);
+  assert.match(observer, /\$processId -isnot \[int\]/); assert.match(observer, /\$typeId -isnot \[int\]/);
+  assert.match(observer, /\$className -isnot \[string\] -or \$automationId -isnot \[string\]/);
+  assert.doesNotMatch(observer, /\$node\.Current|\$current\.(?:ProcessId|ControlType|ClassName|AutomationId)\b/);
   for (const type of ['List', 'ListItem', 'Tree', 'TreeItem', 'DataGrid', 'DataItem', 'Document']) assert(observer.includes(`ControlType]::${type}`));
-  assert.doesNotMatch(observer, /\.Current\.(?:Name|Value)|SetValue|\.Invoke\(|RootElement|GetWindowText|\.screenshot\(|CopyFromScreen|GetForegroundWindow/);
+  assert.doesNotMatch(observer, /\.Current\.(?:Name|Value)|get_(?:Name|Value)\(|SetValue|\.Invoke\(|RootElement|GetWindowText|\.screenshot\(|CopyFromScreen|GetForegroundWindow/);
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\owned\local-native-exports-fresh', 'D:\owned\local-native-exports-fresh\learnnote-diagnostics.md');
   const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf("Stage 'filename-edit';"));
   assert.match(branch, /\. \$c.observer/); assert.match(branch, /-Guard \{ Assert-Dialog \$dialog \}/);

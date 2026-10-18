@@ -72,16 +72,48 @@ def normalize_anchor(anchor: dict | None) -> dict:
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 
 
+def _shared_read_descriptor(path):
+    """Windows read-only handle that permits an atomic writer to replace its name."""
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                       wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes, close.restype = [wintypes.HANDLE], wintypes.BOOL
+    # GENERIC_READ, SHARE_READ|WRITE|DELETE, OPEN_EXISTING, OPEN_REPARSE_POINT.
+    # Never request write/delete access or DELETE_ON_CLOSE. The existing
+    # descriptor identity checks reject a swapped reparse point before reading.
+    handle = create(str(path), 0x80000000, 0x1 | 0x2 | 0x4, None, 3, 0x00200000, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        # Ownership transfers only on success; fdopen/close then owns the handle.
+        return msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY | os.O_NOINHERIT)
+    except BaseException:
+        close(handle)
+        raise
+
+
 @contextmanager
-def _opened_artifact(task_id: str, value: str, directory: str = ""):
+def _opened_artifact(task_id: str, value: str, directory: str = "", *, share_delete: bool = False):
     """Check ownership, then bind validation and size limits to one descriptor."""
     source = None
     try:
         path = owned_task_artifact(task_id, value, directory=directory)
         if path is not None:
             expected = path.lstat()
-            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
-            source = os.fdopen(descriptor, "rb")
+            descriptor = (_shared_read_descriptor(path) if share_delete and os.name == "nt" else
+                          os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)))
+            try:
+                source = os.fdopen(descriptor, "rb")
+            except BaseException:
+                os.close(descriptor)
+                raise
             actual = os.fstat(source.fileno())
             if (not stat.S_ISREG(actual.st_mode) or actual.st_size > MAX_ARTIFACT_BYTES
                     or (expected.st_dev, expected.st_ino) != (actual.st_dev, actual.st_ino)

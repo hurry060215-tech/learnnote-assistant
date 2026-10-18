@@ -207,6 +207,18 @@ class UiVisualContractTests(unittest.TestCase):
         for event in ("pull_request", "push"):
             self.assertEqual(workflow["on"][event]["paths"].count("scripts/reader-workflow-acceptance.cjs"), 1)
 
+    def test_bound_caption_failure_retains_geometry_and_pixels_before_asserting(self) -> None:
+        script = (ROOT / "scripts/reader-workflow-acceptance.cjs").read_text(encoding="utf-8")
+        assertion = script.index('assert(Math.abs(after.top - before.top) < 2')
+        for marker in ('report.cases.push(evidence)', 'evidence.beforeSettled = await geometry()',
+                       'evidence.afterEmpty = await geometry()', 'evidence.after = await geometry()',
+                       'evidence.deltas =', 'bound-caption-${selection}-handoff.png'):
+            self.assertLess(script.index(marker), assertion)
+        self.assertIn('timestampRows:', script)
+        self.assertIn('rootDocumentTop:', script)
+        self.assertIn('evidence.screenshotError = error.message', script)
+        self.assertGreater(script.index('if (screenshotError) throw screenshotError'), assertion)
+
     def test_migration_and_coordinated_update_assets_keep_fresh_cache_keys(self) -> None:
         html = (ROOT / "web/index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")

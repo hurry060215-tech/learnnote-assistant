@@ -1,17 +1,18 @@
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from app import generated_draft_reader as reader, personal_reviews, storage
+from app import generated_draft_reader as reader, personal_anchors, personal_reviews, storage
 from app.models import TranscriptResult, TranscriptSegment
 from app.pipeline_progress import start_pipeline_attempt, write_progressive_draft
 from app.routers import notes
@@ -53,6 +54,46 @@ class GeneratedDraftReaderTests(unittest.TestCase):
         self.assertEqual(caught.exception.detail["code"], "reader_snapshot_unavailable")
         if reason:
             self.assertEqual(caught.exception.detail["reason"], reason)
+
+    @unittest.skipUnless(os.name == "nt", "Windows file-sharing contract")
+    def test_windows_opt_in_read_allows_atomic_replace_while_original_opener_blocks(self):
+        for name in ("task.json", "pipeline_metrics.json", "draft.md", "transcript.json"):
+            path = self.work / name
+            before = path.read_bytes()
+            with self.subTest(name=name):
+                with personal_anchors._opened_artifact(self.task.id, str(path)) as stream:
+                    self.assertIsNotNone(stream)
+                    with self.assertRaises(PermissionError):
+                        storage.atomic_write_text(path, "replacement")
+                    self.assertEqual(stream.read(), before)
+                self.assertEqual(path.read_bytes(), before)
+                with personal_anchors._opened_artifact(self.task.id, str(path), share_delete=True) as stream:
+                    self.assertIsNotNone(stream)
+                    storage.atomic_write_text(path, "replacement")
+                    self.assertEqual(stream.read(), before)
+                    self.assertFalse(os.get_inheritable(stream.fileno()))
+                self.assertEqual(path.read_bytes(), b"replacement")
+                path.write_bytes(before)
+
+    def test_publication_replaced_during_open_read_is_rejected_as_conflict(self):
+        original, replaced = reader._opened_artifact, False
+        @contextmanager
+        def replacing(task_id, value, **kwargs):
+            nonlocal replaced
+            self.assertIs(kwargs.get("share_delete"), True)
+            with original(task_id, value, **kwargs) as stream:
+                if Path(value).name == "pipeline_metrics.json" and not replaced:
+                    self.assertIsNotNone(stream)
+                    replaced = True
+                    metrics = json.loads(Path(value).read_bytes())
+                    metrics["draft"]["sequence"] += 1
+                    current = next(item for item in metrics["attempts"] if item["attempt_id"] == metrics["current_attempt_id"])
+                    current["draft"] = dict(metrics["draft"])
+                    storage.write_json(task_id, "pipeline_metrics.json", metrics)
+                yield stream
+        with patch.object(reader, "_opened_artifact", replacing):
+            self.rejected("snapshot_changed")
+        self.assertTrue(replaced)
 
     def test_http_contract_and_ordinary_response_are_independent(self):
         response = self.client.get(f"/api/tasks/editions/task/{self.task.id}",

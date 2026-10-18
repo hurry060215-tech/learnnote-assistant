@@ -113,6 +113,21 @@ async function verifyBoundCaptionPreview(browser, baseUrl, out) {
     page.on("pageerror", error => report.pageErrors.push(error.message));
     const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const emit = async name => assert.equal(await page.evaluate(value => window.__emitCaption(value), name), 1);
+    const geometry = () => page.evaluate(() => {
+      const root = document.getElementById("document"), anchor = window.__captionAnchor;
+      const box = node => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height }; };
+      const rootBox = box(root), anchorBox = box(anchor), scrollTop = document.scrollingElement.scrollTop;
+      return { connected: anchor.isConnected, text: String(getSelection()), top: anchorBox.top, docs: window.__captionDocumentEvents,
+        scrollTop, root: rootBox, anchor: anchorBox, withinRoot: anchorBox.top - rootBox.top,
+        rootDocumentTop: rootBox.top + scrollTop, anchorDocumentTop: anchorBox.top + scrollTop,
+        status: box(document.getElementById("taskStatus")), metadata: box(document.getElementById("readerStrip")),
+        // Fixed synthetic rows only: distinguish header movement from in-body timestamp decoration.
+        timestampRows: [...root.querySelectorAll("li")].slice(0, 14).map(node => {
+          const time = node.querySelector("code,.time-link"), style = time && getComputedStyle(time);
+          return { row: box(node), time: time && box(time), tag: time?.tagName,
+            font: style?.font, padding: style?.padding, border: style?.borderWidth };
+        }) };
+    });
     async function reset() {
       task = { ...initial }; published = holdSelected = holdSnapshot = holdEdition = false;
       await page.goto("about:blank"); // Force a new document, even when the preceding route has the same fragment.
@@ -147,18 +162,27 @@ async function verifyBoundCaptionPreview(browser, baseUrl, out) {
         const selected = getSelection(); selected.removeAllRanges(); selected.addRange(range);
         return { text: String(selected), top: window.__captionAnchor.getBoundingClientRect().top };
       }, selection);
+      const evidence = { name: `same-source-${selection}`, before };
+      report.cases.push(evidence); // Keep partial evidence even if the next contract fails.
+      await settle(); evidence.beforeSettled = await geometry();
       const emptyRead = page.waitForResponse(response => new URL(response.url()).pathname === `/api/tasks/editions/task/${id}` && !new URL(response.url()).search);
       holdSelected = false; await release(selectedHolds); await release(listHolds); await emptyRead; await settle();
+      evidence.afterEmpty = await geometry();
       assert.equal(await page.locator("#noteActions").evaluate(node => node.inert), true, "Exact provisional empty pair remains actionless");
       assert.equal(await page.evaluate(() => window.__captionDocumentEvents), docs);
       task = { ...task, note_path: "draft.md", summary_source: "transcript-draft", updated_at: "2026-10-18T04:00:01Z" }; published = true;
       await emit("task_updated");
       await page.waitForFunction(() => !document.getElementById("noteActions").inert && document.querySelector("#document .time-link")); await settle();
-      const after = await page.evaluate(() => ({ connected: window.__captionAnchor.isConnected, text: String(getSelection()),
-        top: window.__captionAnchor.getBoundingClientRect().top, docs: window.__captionDocumentEvents }));
+      const after = evidence.after = await geometry();
+      evidence.deltas = { setup: evidence.beforeSettled.top - before.top, empty: evidence.afterEmpty.top - evidence.beforeSettled.top,
+        handoff: after.top - evidence.afterEmpty.top, withinRoot: after.withinRoot - evidence.afterEmpty.withinRoot,
+        rootDocumentTop: after.rootDocumentTop - evidence.afterEmpty.rootDocumentTop, scrollTop: after.scrollTop - evidence.afterEmpty.scrollTop };
+      let screenshotError;
+      try { await page.screenshot({ path: path.join(out, `bound-caption-${selection}-handoff.png`), animations: "disabled" }); }
+      catch (error) { screenshotError = error; evidence.screenshotError = error.message; }
       assert(after.connected, "Unchanged source/body retains the anchor node"); assert.equal(after.text, before.text);
       assert(Math.abs(after.top - before.top) < 2, "Unchanged source/body retains the reading position"); assert.equal(after.docs, docs + 1);
-      report.cases.push({ name: `same-source-${selection}`, before, after });
+      if (screenshotError) throw screenshotError;
       if (selection === "prose") await page.screenshot({ path: path.join(out, "bound-caption-reconciled.png"), animations: "disabled" });
     }
     await reset(); await preview();

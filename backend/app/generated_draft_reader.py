@@ -25,7 +25,7 @@ def draft_source_revision(task: TaskRecord, transcript: TranscriptResult) -> str
 
 
 def _read(task_id: str, path: Path) -> bytes:
-    with _opened_artifact(task_id, str(path)) as stream:
+    with _opened_artifact(task_id, str(path), share_delete=True) as stream:
         if stream is None:
             raise DraftSnapshotUnavailable("artifact_unavailable")
         value = stream.read(MAX_ARTIFACT_BYTES + 1)

@@ -43,12 +43,26 @@ function Get-OwnedDialogObservation($Element, [int]$OwnedPid, [scriptblock]$Guar
       while ($queue.Count -gt 0 -and $walked -lt 64 -and $clock.ElapsedMilliseconds -lt 1000) {
         $entry=$queue.Dequeue(); $node=$entry.node; $walked++
         $phase='node-properties'
-        if ($node.Current.ProcessId -ne $OwnedPid) { $foreign++; continue }
-        $type=$node.Current.ControlType; $pruned=$type -in $prune
+        # Member syntax suppresses CLR getter exceptions in Windows PowerShell.
+        # Explicit accessors retain failures; capture Current once per visited node.
+        $current=$node.get_Current()
+        if ($null -eq $current) { throw [InvalidOperationException]::new('Unavailable current properties') }
+        $processId=$current.get_ProcessId()
+        if ($processId -isnot [int] -or $processId -le 0) { throw [InvalidOperationException]::new('Invalid process identifier') }
+        if ($processId -ne $OwnedPid) { $foreign++; continue }
+        $type=$current.get_ControlType()
+        if ($type -isnot [Windows.Automation.ControlType]) { throw [InvalidOperationException]::new('Invalid control type') }
+        $typeId=$type.get_Id()
+        if ($typeId -isnot [int] -or $typeId -lt 50000 -or $typeId -gt 50100) { throw [InvalidOperationException]::new('Invalid control identifier') }
+        $pruned=$type -in $prune
+        $className=''; $automationId=''
+        if (-not $pruned) {
+          $className=$current.get_ClassName(); $automationId=$current.get_AutomationId()
+          if ($className -isnot [string] -or $automationId -isnot [string]) { throw [InvalidOperationException]::new('Invalid structural token') }
+        }
         $index=$nodes.Count
-        $nodes.Add(@{parent=[int]$entry.parent;depth=[int]$entry.depth;type=[int]$type.Id;pruned=[bool]$pruned;
-          cls=$(if ($pruned) { '' } else { ConvertTo-SafeNativeToken $node.Current.ClassName });
-          id=$(if ($pruned) { '' } else { ConvertTo-SafeNativeToken $node.Current.AutomationId })})
+        $nodes.Add(@{parent=[int]$entry.parent;depth=[int]$entry.depth;type=$typeId;pruned=[bool]$pruned;
+          cls=(ConvertTo-SafeNativeToken $className);id=(ConvertTo-SafeNativeToken $automationId)})
         if ($pruned) { continue }
         if ($entry.depth -ge 8) { $truncated=$true; continue }
         $phase='first-child'
