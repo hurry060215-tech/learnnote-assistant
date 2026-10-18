@@ -82,6 +82,10 @@ jobs:
           ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if (-not $compiler) { throw "Pinned Inno Setup 7.1.0 compiler was not found" }
           "LEARNNOTE_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Provision pinned media tools for real fixture contracts
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools
       - name: Run release gate
         shell: pwsh
         run: |
@@ -106,6 +110,7 @@ jobs:
           name: release-reliability-${{ github.run_id }}
           path: |
             build/release/freshness.json
+            build/release/visual-media-tools/media-tools.json
             build/release/reliability/**/report.json
             build/release/reliability/*.log
           if-no-files-found: warn

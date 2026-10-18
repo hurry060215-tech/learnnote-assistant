@@ -6,6 +6,26 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class InstalledReleaseWorkflowTests(unittest.TestCase):
+    def test_release_provisions_existing_pinned_media_tools_before_real_fixtures(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        helper = (ROOT / 'scripts/install-visual-media-tools.ps1').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            invocation = './scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools'
+            self.assertEqual(normalized.count(invocation), 1)
+            self.assertLess(normalized.index(invocation), normalized.index('- name: Run release gate'))
+            step = normalized.split('- name: Provision pinned media tools for real fixture contracts', 1)[1].split('- name: Run release gate', 1)[0]
+            self.assertIn('timeout-minutes: 5', step)
+            self.assertNotIn('if:', step)
+            self.assertNotIn('continue-on-error', step)
+            retention = normalized.split('- name: Preserve reliability evidence', 1)[1].split('- name: Build portable desktop client', 1)[0]
+            self.assertIn('if: always()', retention)
+            self.assertIn('build/release/visual-media-tools/media-tools.json', retention)
+        self.assertIn('choco install ffmpeg --version=8.1.0', helper)
+        self.assertIn("@('ffmpeg', 'ffprobe')", helper)
+        self.assertIn('version verification failed', helper)
+        self.assertIn('Pinned visual media tools installation failed', helper)
+
     def test_installed_gate_preserves_prior_smoke_and_blocks_publication(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         for text in (source, source.replace('\n', '\r\n')):
