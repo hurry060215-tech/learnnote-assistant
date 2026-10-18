@@ -86,9 +86,101 @@ function Get-OwnedSaveControlEvidence($Context, [scriptblock]$DialogGuard, [scri
     elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);edit=$editFacts;save=$saveFacts}
 }
 
+# Action evidence records only comparisons made by the original guards. It never
+# retries an action or reads a raw value into the report. A failed predicate may
+# throw before its result exists, so null means not observed, never false.
+function Set-InputPredicate([string]$Name) {
+  if ($null -ne $script:inputFacts) { $script:inputFacts.predicate=$Name }
+}
+function Start-InputEvidence {
+  $script:inputClock=$null
+  $script:inputFacts=@{predicate='dialog-guard';expected_events=$c.destination.Length*2;sent_events=$null;
+    native_focus=$null;uia_focus=$null;uia_focused_element=$null;
+    readback_iterations=0;readback_elapsed_ms=$null;host_matches=$null;edit_matches=$null;readback_timeout=$false}
+}
+# Read-only class/owner relationships for the exact app's visible windows. No
+# arbitrary window is followed; every owner must have the bound PID and reach
+# the exact root. The count is capped at 64, retained entries at 8, depth at 16.
+function Get-InputPopupState($Binding, $Windows) {
+  $states=[Collections.Generic.List[object]]::new()
+  foreach ($window in $Windows) {
+    if (![OwnedSave]::IsWindow($window) -or ![OwnedSave]::IsWindowVisible($window) -or [OwnedSave]::Pid($window) -ne $Binding.config.pid) { throw 'Owned popup identity changed' }
+    $owners=[Collections.Generic.List[IntPtr]]::new(); $seen=[Collections.Generic.HashSet[IntPtr]]::new(); [void]$seen.Add($window)
+    $cursor=[OwnedSave]::GetWindow($window,4)
+    if ($window -eq $Binding.root -and $cursor -ne [IntPtr]::Zero) { throw 'Owned root owner changed' }
+    if ($window -ne $Binding.root) {
+      for ($depth=0; $depth -lt 16 -and $cursor -ne [IntPtr]::Zero; $depth++) {
+        if (![OwnedSave]::IsWindow($cursor) -or [OwnedSave]::Pid($cursor) -ne $Binding.config.pid -or !$seen.Add($cursor)) { throw 'Owned popup chain changed' }
+        $owners.Add($cursor); if ($cursor -eq $Binding.root) { break }; $cursor=[OwnedSave]::GetWindow($cursor,4)
+      }
+      if ($owners.Count -eq 0 -or $owners[$owners.Count-1] -ne $Binding.root) { throw 'Owned popup root not reached' }
+    }
+    $states.Add(@{handle=$window;cls=[OwnedSave]::Class($window);owners=$owners.ToArray()})
+  }
+  return $states.ToArray()
+}
+function Get-InputPopupTopology($Binding) {
+  $c=$Binding.config; $root=$Binding.root; $rootClass=$Binding.rootClass
+  $clock=[Diagnostics.Stopwatch]::StartNew(); $reason='exception'; $nodes=@(); $count=$null; $dropped=$null
+  try {
+    Assert-Root
+    $before=@([OwnedSave]::Visible($c.pid))
+    if ($before.Count -gt 64) { $reason='limit'; throw 'Owned popup count exceeded' }
+    $selected=@($before | Select-Object -First 8)
+    $first=@(Get-InputPopupState $Binding $selected)
+    if ($clock.ElapsedMilliseconds -ge 500) { $reason='budget'; throw 'Owned popup observation budget' }
+    $second=@(Get-InputPopupState $Binding $selected)
+    $after=@([OwnedSave]::Visible($c.pid)); Assert-Root
+    if ($before.Count -ne $after.Count -or (($before | Sort-Object) -join ',') -cne (($after | Sort-Object) -join ',')) { throw 'Owned popup set changed' }
+    for ($i=0; $i -lt $first.Count; $i++) {
+      if ($first[$i].handle -ne $second[$i].handle -or $first[$i].cls -cne $second[$i].cls -or
+          ($first[$i].owners -join ',') -cne ($second[$i].owners -join ',')) { throw 'Owned popup topology changed' }
+    }
+    if ($clock.ElapsedMilliseconds -ge 500) { $reason='budget'; throw 'Owned popup observation budget' }
+    $nodes=@($first | ForEach-Object {
+      $role=if ($_.handle -eq $Binding.root) { 'root' } elseif ($_.handle -eq $Binding.dialog) { 'save' } else { 'other-owned' }
+      $owners=@($_.owners | ForEach-Object { if ($_ -eq $Binding.root) { 'root' } elseif ($_ -eq $Binding.dialog) { 'save' } else { 'other-owned' } })
+      @{role=$role;cls=(ConvertTo-SafeNativeToken $_.cls);owners=$owners}
+    })
+    $count=$before.Count; $dropped=[Math]::Max(0,$count-8); $reason='complete'
+  } catch { $nodes=@(); $count=$null; $dropped=$null }
+  return @{status=$(if ($reason -ceq 'complete') {'complete'} else {'unavailable'});reason=$reason;
+    elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);count=$count;dropped=$dropped;nodes=$nodes}
+}
+
+function Write-InputFailure($Original) {
+  # Each diagnostic is independent; neither formatting nor capture can replace
+  # the exact original error. All capture input has its own before/after proof.
+  try {
+    . $c.observer
+    if ($script:inputClock) { $script:inputFacts.readback_elapsed_ms=[int][Math]::Min(35000,$script:inputClock.ElapsedMilliseconds) }
+    $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog}
+    $details=@{action=$script:inputFacts;exception_type=(ConvertTo-SafeNativeException $Original.Exception);
+      guard_failure=(Get-SafeNativeGuardFailure $Original { Get-OwnedDialogIdentityFacts $bound })}
+    [Console]::Out.WriteLine('INPUTFAIL:'+($details | ConvertTo-Json -Depth 6 -Compress)); [Console]::Out.Flush()
+  } catch { }
+  try {
+    . $c.observer
+    $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog}
+    $topology=Get-InputPopupTopology $bound
+    [Console]::Out.WriteLine('POPUPS:'+($topology | ConvertTo-Json -Depth 5 -Compress)); [Console]::Out.Flush()
+  } catch { }
+  if ($c.capture) {
+    try {
+      . $c.observer
+      . (Join-Path (Split-Path $c.observer) 'installed-native-dialog-capture.ps1')
+      . (Join-Path (Split-Path $c.observer) 'installed-native-foreground-evidence.ps1')
+      $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog}
+      $foregroundEvidence=Get-OwnedForegroundEvidence $bound $c.directory $c.destination
+      [Console]::Out.WriteLine('FOREGROUND:'+($foregroundEvidence | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush()
+    } catch { }
+  }
+}
+
 # The editable ComboBox provider also notifies its parent of a value change.
 # Bind that provider to the already selected inner Edit; never substitute a target.
 function Assert-FilenameNativeHandles {
+  Set-InputPredicate 'native-handles'
   if ($filenameComboHandle -eq [IntPtr]::Zero -or $filenameEditHandle -eq [IntPtr]::Zero -or
       ![OwnedSave]::IsWindow($filenameComboHandle) -or ![OwnedSave]::IsWindow($filenameEditHandle) -or
       [OwnedSave]::Pid($filenameComboHandle) -ne $c.pid -or [OwnedSave]::Pid($filenameEditHandle) -ne $c.pid -or
@@ -98,9 +190,14 @@ function Assert-FilenameNativeHandles {
       [OwnedSave]::GetDlgItem($filenameComboHandle,1001) -ne $filenameEditHandle) { throw 'Bound filename ComboBox and Edit changed' }
 }
 function Assert-FilenameHostBinding {
-  Assert-Control $hostControl $element; Assert-Control $edit $hostControl; Assert-Control $filenameCombo $hostControl
+  Set-InputPredicate 'host-control'; Assert-Control $hostControl $element
+  Set-InputPredicate 'edit-host-control'; Assert-Control $edit $hostControl
+  Set-InputPredicate 'combo-host-control'; Assert-Control $filenameCombo $hostControl
   Assert-FilenameNativeHandles
-  $properties=$hostControl.get_Current(); $comboProperties=$filenameCombo.get_Current(); $editProperties=$edit.get_Current()
+  Set-InputPredicate 'host-current'; $properties=$hostControl.get_Current()
+  Set-InputPredicate 'combo-current'; $comboProperties=$filenameCombo.get_Current()
+  Set-InputPredicate 'edit-current'; $editProperties=$edit.get_Current()
+  Set-InputPredicate 'host-profile-runtime'
   if ($properties.get_ControlType() -ne [Windows.Automation.ControlType]::ComboBox -or
       $properties.get_ClassName() -cne 'AppControlHost' -or $properties.get_AutomationId() -cne 'FileNameControlHost' -or
       $comboProperties.get_ControlType() -ne [Windows.Automation.ControlType]::ComboBox -or
@@ -148,43 +245,86 @@ public static class OwnedFilenameInput {
 '@
 }
 function Assert-FilenameInputFocus($node,[IntPtr]$handle) {
-  Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination
-  if (![OwnedFilenameInput]::Focused($dialog,$handle) -or !$node.get_Current().get_HasKeyboardFocus() -or
-      ![Windows.Automation.Automation]::Compare([Windows.Automation.AutomationElement]::get_FocusedElement(),$node)) { throw 'Bound filename input focus changed' }
+  $script:inputFacts.native_focus=$null; $script:inputFacts.uia_focus=$null; $script:inputFacts.uia_focused_element=$null
+  Set-InputPredicate 'dialog-guard'; Assert-Dialog $dialog
+  Set-InputPredicate 'bound-controls'; Assert-BoundControls
+  Set-InputPredicate 'destination'; Assert-Destination
+  # Preserve the original short-circuit order; never query a later focus fact
+  # after an earlier proof fails. Reset facts so they cannot refer to a prior check.
+  Set-InputPredicate 'native-focus'; $script:inputFacts.native_focus=[OwnedFilenameInput]::Focused($dialog,$handle)
+  if (!$script:inputFacts.native_focus) { throw 'Bound filename input focus changed' }
+  Set-InputPredicate 'uia-focus'; $script:inputFacts.uia_focus=$node.get_Current().get_HasKeyboardFocus()
+  if (!$script:inputFacts.uia_focus) { throw 'Bound filename input focus changed' }
+  Set-InputPredicate 'uia-focused-element'; $script:inputFacts.uia_focused_element=[Windows.Automation.Automation]::Compare([Windows.Automation.AutomationElement]::get_FocusedElement(),$node)
+  if (!$script:inputFacts.uia_focused_element) { throw 'Bound filename input focus changed' }
 }
 function Assert-FilenameFullSelection($textPattern,$range,[string]$initial) {
-  if ($value.get_Current().get_IsReadOnly() -or $hostValue.get_Current().get_IsReadOnly()) { throw 'Bound filename became read-only' }
-  $selection=@($textPattern.GetSelection())
-  if ($selection.Count -ne 1 -or !$selection[0].Compare($range) -or $selection[0].GetText(1024) -cne $initial -or
-      $value.get_Current().get_Value() -cne $initial) { throw 'Filename full selection differs' }
+  Set-InputPredicate 'edit-writable'
+  if ($value.get_Current().get_IsReadOnly()) { throw 'Bound filename became read-only' }
+  Set-InputPredicate 'combo-writable'
+  if ($hostValue.get_Current().get_IsReadOnly()) { throw 'Bound filename became read-only' }
+  Set-InputPredicate 'selection-query'; $selection=@($textPattern.GetSelection())
+  Set-InputPredicate 'selection-count'
+  if ($selection.Count -ne 1) { throw 'Filename full selection differs' }
+  Set-InputPredicate 'selection-range'
+  if (!$selection[0].Compare($range)) { throw 'Filename full selection differs' }
+  Set-InputPredicate 'selection-text'
+  if ($selection[0].GetText(1024) -cne $initial) { throw 'Filename full selection differs' }
+  Set-InputPredicate 'selection-value'
+  if ($value.get_Current().get_Value() -cne $initial) { throw 'Filename full selection differs' }
 }
 function Set-OwnedFilenameText {
   Stage 'filename-focus'
-  $textPattern=$edit.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+  Set-InputPredicate 'text-pattern'; $textPattern=$edit.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+  Set-InputPredicate 'selection-support'
   if ($textPattern.SupportedTextSelection -ne [Windows.Automation.SupportedTextSelection]::Single) { throw 'Filename selection pattern unavailable' }
-  Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination; $edit.SetFocus()
+  Set-InputPredicate 'dialog-guard'; Assert-Dialog $dialog
+  Set-InputPredicate 'bound-controls'; Assert-BoundControls
+  Set-InputPredicate 'destination'; Assert-Destination
+  Set-InputPredicate 'edit-focus'; $edit.SetFocus()
   Assert-FilenameInputFocus $edit $filenameEditHandle
   Stage 'filename-select'
-  $range=$textPattern.DocumentRange; $initial=$value.get_Current().get_Value()
-  if (!(Test-InitialNativeFilename $initial $c.destination) -or $range.GetText(1024) -cne $initial) { throw 'Filename text range differs' }
-  $range.Select(); Assert-FilenameInputFocus $edit $filenameEditHandle
+  Set-InputPredicate 'document-range'; $range=$textPattern.DocumentRange
+  Set-InputPredicate 'initial-value'; $initial=$value.get_Current().get_Value()
+  Set-InputPredicate 'initial-name'
+  if (!(Test-InitialNativeFilename $initial $c.destination)) { throw 'Filename text range differs' }
+  Set-InputPredicate 'initial-range'
+  if ($range.GetText(1024) -cne $initial) { throw 'Filename text range differs' }
+  Set-InputPredicate 'select-range'; $range.Select(); Assert-FilenameInputFocus $edit $filenameEditHandle
   Assert-FilenameFullSelection $textPattern $range $initial
   Stage 'filename-type'
   Assert-FilenameInputFocus $edit $filenameEditHandle
   Assert-FilenameFullSelection $textPattern $range $initial
-  if ([OwnedFilenameInput]::SendUnicode($dialog,$filenameEditHandle,$c.destination) -ne $c.destination.Length*2) { throw 'Native filename input was incomplete' }
+  Set-InputPredicate 'send-unicode'; $script:inputFacts.sent_events=[OwnedFilenameInput]::SendUnicode($dialog,$filenameEditHandle,$c.destination)
+  Set-InputPredicate 'send-count'
+  if ($script:inputFacts.sent_events -ne $c.destination.Length*2) { throw 'Native filename input was incomplete' }
   Stage 'filename-readback'
-  $clock=[Diagnostics.Stopwatch]::StartNew()
+  $clock=[Diagnostics.Stopwatch]::StartNew(); $script:inputClock=$clock
   do {
+    $script:inputFacts.readback_iterations=[Math]::Min(1000,$script:inputFacts.readback_iterations+1)
+    $script:inputFacts.host_matches=$null; $script:inputFacts.edit_matches=$null
     Assert-FilenameInputFocus $edit $filenameEditHandle
-    if ($hostValue.get_Current().get_Value() -ceq $c.destination -and $value.get_Current().get_Value() -ceq $c.destination) { break }
-    if ($clock.ElapsedMilliseconds -ge 2000) { throw 'Native filename readback differs' }
+    Set-InputPredicate 'host-readback'; $script:inputFacts.host_matches=$hostValue.get_Current().get_Value() -ceq $c.destination
+    if ($script:inputFacts.host_matches) {
+      Set-InputPredicate 'edit-readback'; $script:inputFacts.edit_matches=$value.get_Current().get_Value() -ceq $c.destination
+      if ($script:inputFacts.edit_matches) { break }
+    }
+    Set-InputPredicate 'readback-timeout'
+    if ($clock.ElapsedMilliseconds -ge 2000) { $script:inputFacts.readback_timeout=$true; throw 'Native filename readback differs' }
     Start-Sleep -Milliseconds 25 # Conditional readback wait only; never resend input.
   } while ($true)
+  $script:inputFacts.readback_elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds); $script:inputClock=$null
   Stage 'save-focus'
-  Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination; $button.SetFocus()
+  Set-InputPredicate 'dialog-guard'; Assert-Dialog $dialog
+  Set-InputPredicate 'bound-controls'; Assert-BoundControls
+  Set-InputPredicate 'destination'; Assert-Destination
+  Set-InputPredicate 'save-focus'; $button.SetFocus()
   Assert-FilenameInputFocus $button $buttonHandle
-  if ($hostValue.get_Current().get_Value() -cne $c.destination -or $value.get_Current().get_Value() -cne $c.destination) { throw 'Native filename readback differs' }
+  $script:inputFacts.host_matches=$null; $script:inputFacts.edit_matches=$null
+  Set-InputPredicate 'save-host-readback'; $script:inputFacts.host_matches=$hostValue.get_Current().get_Value() -ceq $c.destination
+  if (!$script:inputFacts.host_matches) { throw 'Native filename readback differs' }
+  Set-InputPredicate 'save-edit-readback'; $script:inputFacts.edit_matches=$value.get_Current().get_Value() -ceq $c.destination
+  if (!$script:inputFacts.edit_matches) { throw 'Native filename readback differs' }
 }
 
 # Dot-sourced into the existing helper scope; successful validation retains its original variables.

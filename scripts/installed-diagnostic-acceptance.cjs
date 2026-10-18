@@ -116,6 +116,53 @@ function validateHostFailure(value) {
   assert(!value.host_count_capped || value.host_count === 64);
   return value;
 }
+const INPUT_PREDICATES = ['dialog-guard', 'bound-controls', 'destination', 'native-handles', 'host-control', 'edit-host-control', 'combo-host-control',
+  'host-current', 'combo-current', 'edit-current', 'host-profile-runtime', 'edit-control', 'save-control', 'bound-runtime',
+  'native-focus', 'uia-focus', 'uia-focused-element', 'edit-writable', 'combo-writable', 'selection-query', 'selection-count', 'selection-range', 'selection-text', 'selection-value',
+  'text-pattern', 'selection-support', 'edit-focus', 'document-range', 'initial-value', 'initial-name', 'initial-range', 'select-range',
+  'send-unicode', 'send-count', 'host-readback', 'edit-readback', 'readback-timeout', 'save-focus', 'save-host-readback', 'save-edit-readback',
+  'invoke', 'completion-root', 'completion-popups', 'completion-timeout'];
+const INPUT_PHASES = ['filename-set', 'filename-focus', 'filename-select', 'filename-type', 'filename-readback', 'save-focus', 'save-invoke', 'save-completion'];
+function validateInputPopups(value) {
+  exactKeys(value, ['status', 'reason', 'elapsed_ms', 'count', 'dropped', 'nodes']);
+  assert(['complete', 'unavailable'].includes(value.status)); assert(['complete', 'exception', 'limit', 'budget'].includes(value.reason));
+  assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
+  assert(Array.isArray(value.nodes) && value.nodes.length <= 8);
+  if (value.status === 'unavailable') {
+    assert.notEqual(value.reason, 'complete'); assert.equal(value.count, null); assert.equal(value.dropped, null); assert.equal(value.nodes.length, 0);
+  } else {
+    assert.equal(value.reason, 'complete'); assert(Number.isInteger(value.count) && value.count >= 0 && value.count <= 64);
+    assert.equal(value.nodes.length, Math.min(8, value.count)); assert.equal(value.dropped, Math.max(0, value.count - 8));
+    for (const node of value.nodes) {
+      exactKeys(node, ['role', 'cls', 'owners']); assert(['root', 'save', 'other-owned'].includes(node.role));
+      assert(typeof node.cls === 'string' && (node.cls === '<redacted>' || /^[A-Za-z0-9_#.-]{0,64}$/.test(node.cls)));
+      assert(Array.isArray(node.owners) && node.owners.length <= 16);
+      if (node.role === 'root') assert.equal(node.owners.length, 0);
+      else { assert.equal(node.owners.at(-1), 'root'); assert(node.owners.slice(0, -1).every(role => ['save', 'other-owned'].includes(role))); }
+    }
+  }
+  return value;
+}
+function validateInputFailure(value) {
+  exactKeys(value, ['action', 'exception_type', 'guard_failure']);
+  assert(OBSERVER_EXCEPTIONS.includes(value.exception_type)); validateGuardFailure(value.guard_failure, true);
+  const action = value.action;
+  const bools = ['native_focus', 'uia_focus', 'uia_focused_element', 'host_matches', 'edit_matches'];
+  exactKeys(action, ['predicate', 'expected_events', 'sent_events', 'readback_iterations', 'readback_elapsed_ms', 'readback_timeout', ...bools]);
+  assert(INPUT_PREDICATES.includes(action.predicate));
+  assert(Number.isInteger(action.expected_events) && action.expected_events > 0 && action.expected_events <= 2048 && action.expected_events % 2 === 0);
+  assert(action.sent_events === null || Number.isInteger(action.sent_events) && action.sent_events >= 0 && action.sent_events <= action.expected_events);
+  assert(Number.isInteger(action.readback_iterations) && action.readback_iterations >= 0 && action.readback_iterations <= 1000);
+  assert(action.readback_elapsed_ms === null || Number.isInteger(action.readback_elapsed_ms) && action.readback_elapsed_ms >= 0 && action.readback_elapsed_ms <= 35000);
+  assert(typeof action.readback_timeout === 'boolean');
+  for (const key of bools) assert(action[key] === null || typeof action[key] === 'boolean');
+  if (action.readback_timeout) {
+    assert.equal(action.predicate, 'readback-timeout'); assert(action.readback_elapsed_ms >= 2000);
+    assert(action.readback_iterations > 0); assert(!(action.host_matches && action.edit_matches));
+  }
+  if (action.readback_iterations > 0) assert.equal(action.sent_events, action.expected_events);
+  return value;
+}
 function validateControlFailure(value) {
   exactKeys(value, ['subphase', 'observation']); assert(CONTROL_SUBPHASES.includes(value.subphase));
   const observation = value.observation;
@@ -410,31 +457,44 @@ if (!$modern) { throw 'Unsupported native Save dialog layout' }
 Initialize-FilenameInput;
 function Assert-BoundControls {
  Assert-FilenameHostBinding;
- Assert-Control $edit $element; Assert-Control $button $element;
+ Set-InputPredicate 'edit-control'; Assert-Control $edit $element;
+ Set-InputPredicate 'save-control'; Assert-Control $button $element;
+ Set-InputPredicate 'bound-runtime';
  if (($edit.GetRuntimeId() -join ',') -cne $editRuntime -or ($button.GetRuntimeId() -join ',') -cne $buttonRuntime -or
   [OwnedSave]::GetDlgItem($dialog,1) -ne $buttonHandle -or [OwnedSave]::GetParent($buttonHandle) -ne $dialog) { throw 'Bound native controls changed' }
 }
+Start-InputEvidence;
+try {
 Stage 'filename-set';
-Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
+Set-InputPredicate 'dialog-guard'; Assert-Dialog $dialog;
+Set-InputPredicate 'bound-controls'; Assert-BoundControls;
+Set-InputPredicate 'destination'; Assert-Destination;
 Set-OwnedFilenameText;
 Stage 'save-invoke';
-Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
+Set-InputPredicate 'dialog-guard'; Assert-Dialog $dialog;
+Set-InputPredicate 'bound-controls'; Assert-BoundControls;
+Set-InputPredicate 'destination'; Assert-Destination;
 Assert-FilenameInputFocus $button $buttonHandle;
-$invoke.Invoke();
+Set-InputPredicate 'invoke'; $invoke.Invoke();
+} catch { $original=$_; try { Write-InputFailure $original } catch { }; throw $original }
 Stage 'save-completion';
+try {
 $deadline=[DateTime]::UtcNow.AddSeconds(10);
 do {
- Assert-Root; $popups=@([OwnedSave]::Visible($c.pid) | Where-Object { $_ -ne $root });
+ Set-InputPredicate 'completion-root'; Assert-Root;
+ Set-InputPredicate 'completion-popups'; $popups=@([OwnedSave]::Visible($c.pid) | Where-Object { $_ -ne $root });
  if (@($popups | Where-Object { $_ -ne $dialog }).Count) { throw 'Unexpected confirmation or security popup; no further input' }
  if ($popups.Count -eq 0) { @{native_dialog=$true;saved=$true} | ConvertTo-Json -Compress; exit 0 }
  Start-Sleep -Milliseconds 50;
 } while ([DateTime]::UtcNow -lt $deadline);
-throw 'Native Save did not finish';`;
+Set-InputPredicate 'completion-timeout'; throw 'Native Save did not finish';
+} catch { $original=$_; try { Write-InputFailure $original } catch { }; throw $original }`;
 }
 
 async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}) {
   const observed = phase => { try { onPhase(phase); } catch { } }; // Optional receipt evidence only.
   let controlFailure, controlInvalid = false;
+  let inputFailure, actionFailure, inputEvidence, inputPopups, inputFailed = false, inputInvalid = false, inputPopupsInvalid = false;
   let foregroundEvidence, foregroundInvalid = false;
   let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
@@ -472,6 +532,17 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
           assert.equal(details.subphase.startsWith('edit-'), nativePhase === 'filename-edit');
           controlFailure.native_control_failure = details;
         } catch { controlInvalid = true; fail(new Error('Invalid native control failure metadata')); }
+      } else if (line.startsWith('INPUTFAIL:')) {
+        const staged = ready && INPUT_PHASES.includes(nativePhase);
+        if (staged) inputFailure ||= new Error('Owned native Save helper failed');
+        try {
+          assert(staged && !inputFailed && line.length <= 8192);
+          inputEvidence = validateInputFailure(JSON.parse(line.slice(10)));
+        } catch { inputInvalid = true; inputEvidence = undefined; }
+        inputFailed = true; // Failed evidence never changes the primary native rejection.
+      } else if (line.startsWith('POPUPS:')) {
+        try { assert(inputFailed && !inputPopups && !inputPopupsInvalid && line.length <= 8192); inputPopups = validateInputPopups(JSON.parse(line.slice(7))); }
+        catch { inputPopupsInvalid = true; inputPopups = undefined; }
       } else if (line.startsWith('CAPTURE:')) {
         try { assert(ready && nativePhase === 'dialog-capture' && !nativeCapture); nativeCapture = validateNativeCapture(JSON.parse(line.slice(8))); }
         catch { captureInvalid = true; } // Never retain paths or unvalidated pixel metadata.
@@ -482,7 +553,7 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
         try { assert(hostFailure && !win32Observation && line.length <= 32768); win32Observation = validateWin32Observation(JSON.parse(line.slice(10))); }
         catch { win32Invalid = true; }
       } else if (line.startsWith('FOREGROUND:')) {
-        try { assert(hostFailure && !foregroundEvidence && line.length <= 8192); foregroundEvidence = validateForegroundEvidence(JSON.parse(line.slice(11))); }
+        try { assert((hostFailure || inputFailed) && !foregroundEvidence && line.length <= 8192); foregroundEvidence = validateForegroundEvidence(JSON.parse(line.slice(11))); }
         catch { foregroundInvalid = true; }
       } else if (line === 'READY' && !ready) { ready = true; observed('native-ready'); readyResolve(); }
       else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
@@ -495,16 +566,25 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
     closedResolve();
     if (hostFailure) fail(hostFailure);
     else if (controlFailure) fail(controlFailure);
-    else if (code === 0 && ready && result) doneResolve({ ...result, ...(nativeCapture ? { native_dialog_capture: nativeCapture } : {}), ...(captureInvalid ? { native_capture_unavailable: true } : {}) });
+    else if (inputFailure) fail(inputFailure);
+    else if (code === 0 && ready && result && !inputFailed) doneResolve({ ...result, ...(nativeCapture ? { native_dialog_capture: nativeCapture } : {}), ...(captureInvalid ? { native_capture_unavailable: true } : {}) });
     else { const error = new Error('Owned native Save helper failed'); fail(error); }
   });
   try {
     await bounded(Promise.race([readyPromise, done]), 'native helper readiness', timeouts.ready ?? TIMEOUT);
-    const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; observed('action-dispatch'); return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
+    const acting = Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; observed('action-dispatch'); return action(); })
+      .then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })
+      .catch(error => { actionFailure = error; throw error; });
+    const [value] = await bounded(Promise.all([done, acting]), 'native Save action', timeouts.action ?? 30000);
     return value;
   } catch (error) {
-    failure = hostFailure || controlFailure || error;
+    failure = hostFailure || controlFailure || actionFailure || inputFailure || error;
+    if (inputFailure && !actionFailure && error.message === 'Timed out: native Save action') failure.native_input_observation_timed_out = true;
     if (controlInvalid) failure.native_control_observation_unavailable = true;
+    if (inputEvidence) failure.native_input_failure = inputEvidence;
+    if (inputInvalid) failure.native_input_observation_unavailable = true;
+    if (inputPopups) failure.native_input_popups = inputPopups;
+    if (inputPopupsInvalid) failure.native_input_popups_unavailable = true;
     if (nativePhase) failure.native_stage = nativePhase;
     if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
     if (hostObservation) failure.native_host_observation = hostObservation;
@@ -739,7 +819,7 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
-    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable', 'native_control_failure', 'native_control_observation_unavailable']) {
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable', 'native_control_failure', 'native_control_observation_unavailable', 'native_input_failure', 'native_input_observation_unavailable', 'native_input_popups', 'native_input_popups_unavailable', 'native_input_observation_timed_out']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
     if (error.native_dialog_capture) {
@@ -768,5 +848,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

@@ -10,7 +10,7 @@ import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 import observationHelpers from '../../scripts/installed-download-observation.cjs';
 const { fileObservation, downloadObservation, attachDownloadObservation } = observationHelpers;
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded, emitLocationEvidence } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded, emitLocationEvidence } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -305,9 +305,9 @@ test('adjacent control validation keeps exact names, strict controls and action-
   assert.match(source, /if \(\$facts.control_valid -eq \$false\) \{ throw \}/);
   assert.match(source, /GetRuntimeId\(\) -join ','\) -cne \$binding.runtime/);
   assert.match(source, /throw \$original/); assert.match(script, /installed-native-save-controls.ps1/);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nSet-OwnedFilenameText;/);
-  assert.match(source, /get_Value\(\) -cne \$c.destination/);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke\(\)/);
+  assert.match(script.replace(/Set-InputPredicate '[^']+'; /g, ''), /Assert-Dialog \$dialog;\nAssert-BoundControls;\nAssert-Destination;\nSet-OwnedFilenameText;/);
+  assert.match(source, /get_Value\(\) -ceq \$c.destination/);
+  assert.match(script.replace(/Set-InputPredicate '[^']+'; /g, ''), /Assert-Dialog \$dialog;\nAssert-BoundControls;\nAssert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke\(\)/);
   nativeDialogCommand(script);
   const originalValidation = text => {
     let canonical = text.replace(/\r\n/g, '\n');
@@ -341,7 +341,8 @@ test('filename typing preserves exact native parent binding and independent inne
   }
   assert.match(script, /function Assert-BoundControls \{\n Assert-FilenameHostBinding;/);
   assert.match(script, /Set-OwnedFilenameText;/);
-  assert.match(source, /get_Value\(\) -cne \$c.destination -or \$value.get_Current\(\).get_Value\(\) -cne \$c.destination/);
+  assert.match(source, /host_matches=\$hostValue.get_Current\(\).get_Value\(\) -ceq \$c.destination/);
+  assert.match(source, /edit_matches=\$value.get_Current\(\).get_Value\(\) -ceq \$c.destination/);
   assert.doesNotMatch(script, /\$value.SetValue|SendInput|SendKeys|CBN_EDITUPDATE|SetForegroundWindow/);
 });
 
@@ -361,8 +362,9 @@ test('true filename input requires full owned focus and selection before one Uni
   }
   assert.match(source, /GetGUIThreadInfo\(0,ref info\) && info.active==dialog && info.focus==control/);
   assert.match(source, /get_HasKeyboardFocus\(\)/); assert.match(source, /get_FocusedElement\(\)/);
-  assert.match(source, /\$selection.Count -ne 1 -or !\$selection\[0\].Compare\(\$range\)/);
-  assert.match(source, /Assert-FilenameInputFocus \$edit \$filenameEditHandle\n  Assert-FilenameFullSelection \$textPattern \$range \$initial\n  if \(\[OwnedFilenameInput\]::SendUnicode/);
+  assert.match(source, /\$selection.Count -ne 1\) \{ throw 'Filename full selection differs' \}/);
+  assert.match(source, /!\$selection\[0\].Compare\(\$range\)\) \{ throw 'Filename full selection differs' \}/);
+  assert.match(source, /Assert-FilenameInputFocus \$edit \$filenameEditHandle\n  Assert-FilenameFullSelection \$textPattern \$range \$initial\n  Set-InputPredicate 'send-unicode'; \$script:inputFacts.sent_events=\[OwnedFilenameInput\]::SendUnicode/);
   assert.match(source, /-ne \$c.destination.Length\*2/); assert.match(source, /ElapsedMilliseconds -ge 2000/);
   assert.equal((source.match(/\[OwnedFilenameInput\]::SendUnicode/g) || []).length, 1);
   assert.match(source, /\$button.SetFocus\(\)/); assert.match(source, /Assert-FilenameInputFocus \$button \$buttonHandle/);
@@ -416,14 +418,35 @@ test('Windows extracted control validation accepts only exact initial names and 
       if (row.mode === 'invoke-pattern') { assert.equal(row.original, true); assert.equal(observation.save.pattern_available, false); }
     }
   }
-  assert.equal(parsed.actions.length, 56);
+  assert.equal(parsed.actions.length, 100);
   for (const row of parsed.actions) {
     assert.equal(row.passed, row.mode === 'action-success', row.mode); assert.equal(row.edit_sets, 0, row.mode);
-    const sent = ['action-success', 'action-host-readback', 'action-edit-readback', 'action-after-runtime', 'action-after-parent', 'action-partial-send', 'action-after-focus', 'action-save-focus'].includes(row.mode);
+    if (row.mode !== 'action-success' && row.mode !== 'action-format-fault') { validateInputFailure(row.metadata); validateInputPopups(row.popups); assert(row.metadata.action.predicate); }
+    else assert.equal(row.metadata, null);
+    const extra = row.mode.startsWith('action-after-guard-') || ['action-after-edit-control','action-after-save-control','action-after-destination','action-after-uia-focus','action-after-uia-fault','action-after-focused-element','action-after-focused-fault','action-after-host-current','action-after-edit-current','action-after-host-value','action-after-edit-value','action-save-host-value','action-save-edit-value','action-invoke-fault','action-format-fault'].includes(row.mode);
+    const sent = extra || ['action-success', 'action-host-readback', 'action-edit-readback', 'action-after-runtime', 'action-after-parent', 'action-partial-send', 'action-after-focus', 'action-save-focus'].includes(row.mode);
     assert.equal(row.host_sets, 0, row.mode); assert.equal(row.unicode_sends, sent ? 1 : 0, row.mode);
-    assert.equal(row.save_invokes, row.passed ? 1 : 0, row.mode);
+    assert.equal(row.save_invokes, row.passed || row.mode === 'action-invoke-fault' ? 1 : 0, row.mode);
     if (sent) { assert.equal(row.selections, 1, row.mode); assert(row.destinations >= 4, row.mode); }
     if (row.mode === 'action-text-pattern') assert.equal(row.original, true);
+    if (extra) {
+      if (row.mode.startsWith('action-after-guard-')) {
+        assert.equal(row.original, true); assert.equal(row.metadata.action.predicate, 'dialog-guard');
+        assert.equal(row.metadata.guard_failure.reason, row.mode.slice('action-after-guard-'.length));
+        assert.equal(row.metadata.action.readback_iterations, 1); assert.equal(row.metadata.action.host_matches, null);
+      }
+      if (row.metadata) {
+        const expectedPredicates = { 'action-after-edit-control': 'edit-host-control', 'action-after-save-control': 'save-control',
+          'action-after-destination': 'destination', 'action-after-uia-focus': 'uia-focus', 'action-after-uia-fault': 'uia-focus',
+          'action-after-focused-element': 'uia-focused-element', 'action-after-focused-fault': 'uia-focused-element',
+          'action-after-host-current': 'host-readback', 'action-after-edit-current': 'edit-readback', 'action-after-host-value': 'host-readback', 'action-after-edit-value': 'edit-readback',
+          'action-save-host-value': 'save-host-readback', 'action-save-edit-value': 'save-edit-readback', 'action-invoke-fault': 'invoke' };
+        if (expectedPredicates[row.mode]) assert.equal(row.metadata.action.predicate, expectedPredicates[row.mode], row.mode);
+        assert.equal(row.metadata.action.sent_events, row.metadata.action.expected_events); assert.equal(row.metadata.action.readback_timeout, false);
+        if (!['action-after-uia-focus','action-after-focused-element','action-save-host-value','action-save-edit-value'].includes(row.mode)) assert.equal(row.original, true, row.mode);
+      } else assert.equal(row.original, true, row.mode);
+      continue;
+    }
     const expected = row.passed ? 'complete' : row.mode.endsWith('readback') ? 'readback' :
       ['action-text-pattern', 'action-selection-unsupported'].includes(row.mode) ? 'pattern' :
       ['action-range-text', 'action-selection-zero', 'action-selection-two', 'action-selection-partial', 'action-selection-race'].includes(row.mode) ? 'selection' :
@@ -433,6 +456,26 @@ test('Windows extracted control validation accepts only exact initial names and 
     assert.equal(row.reason, expected, row.mode);
     if (row.mode === 'action-selection-race') assert.equal(row.selection_checks, 2);
     if (row.mode.endsWith('readonly')) assert.equal(row.selection_checks, 1);
+    if (row.mode.endsWith('readback')) {
+      assert.equal(row.metadata.action.readback_timeout, true); assert(row.metadata.action.readback_elapsed_ms >= 2000);
+      assert.equal(row.metadata.action.host_matches, row.mode === 'action-edit-readback');
+      assert.equal(row.metadata.action.edit_matches, row.mode === 'action-edit-readback' ? false : null);
+    }
+  }
+  assert.equal(parsed.popups.length, 23);
+  for (const row of parsed.popups) {
+    const observation = validateInputPopups(row.observation);
+    const success = ['popup-success', 'popup-truncated', 'popup-unsafe-class'].includes(row.mode);
+    assert.equal(observation.status, success ? 'complete' : 'unavailable', row.mode);
+    if (success) {
+      assert.equal(row.root_calls, 2); assert.equal(observation.count, row.mode === 'popup-truncated' ? 10 : 3);
+      assert.equal(observation.dropped, row.mode === 'popup-truncated' ? 2 : 0);
+      assert.equal(observation.nodes[2].cls, row.mode === 'popup-unsafe-class' ? '<redacted>' : 'Auto-Suggest');
+      assert.deepEqual(observation.nodes[2].owners, ['save', 'root']);
+    } else assert.deepEqual(observation.nodes, [], row.mode);
+    if (row.mode === 'popup-foreign') assert.equal(row.class_calls, 2, 'Foreign popup class is never read');
+    if (row.mode === 'popup-limit') assert.equal(row.class_calls, 0);
+    assert(!JSON.stringify(observation).includes('PRIVATE'));
   }
 });
 
@@ -849,8 +892,8 @@ test('native dialog script is exact owned modern Save profile, fresh contained f
   assert.match(script, /\[IO.Path\]::GetDirectoryName\(\$file\) -cne \$dir/); assert.match(script, /ReparsePoint/);
   assert(script.includes("$dir -notmatch '^[A-Za-z]:\\\\'"));
   assert.equal(script.match(/\$invoke.Invoke\(\)/g).length, 1);
-  assert.match(script, /Assert-Dialog \$dialog; Assert-BoundControls; Assert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke/);
-  assert.match(script, /get_Value\(\) -cne \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
+  assert.match(script.replace(/Set-InputPredicate '[^']+'; /g, ''), /Assert-Dialog \$dialog;\nAssert-BoundControls;\nAssert-Destination;\nAssert-FilenameInputFocus \$button \$buttonHandle;\n\$invoke.Invoke/);
+  assert.match(script, /get_Value\(\) -ceq \$c.destination/); assert.match(script, /ACTION_COMPLETE/);
   assert.doesNotMatch(script, /SendKeys|SendMessage|SetForegroundWindow|RootElement|\.Current.Name/);
   nativeDialogCommand(nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md'));
   assert.throws(() => nativeDialogCommand('x'.repeat(13000)), /command-line limit/);
@@ -1339,4 +1382,106 @@ test('Windows standalone SaveFileDialog returns the exact full UIA destination a
   for (const item of report.cases) {
     assert.equal(item.returned_path, 'requested'); assert.equal(item.sha256, createHash('sha256').update(calibration.payload(item.format)).digest('hex'));
   }
+});
+
+const inputFailureEvidence = () => ({ action: { predicate: 'dialog-guard', expected_events: 120, sent_events: 120,
+  native_focus: null, uia_focus: null, uia_focused_element: null, readback_iterations: 1, readback_elapsed_ms: 12,
+  host_matches: null, edit_matches: null, readback_timeout: false }, exception_type: 'invalid-operation',
+  guard_failure: { reason: 'popup-set', facts: null } });
+const inputPopupEvidence = () => ({ status: 'complete', reason: 'complete', elapsed_ms: 12, count: 3, dropped: 0,
+  nodes: [{ role: 'root', cls: 'WindowsForms10.Window.1', owners: [] }, { role: 'save', cls: '#32770', owners: ['root'] },
+    { role: 'other-owned', cls: 'Auto-Suggest', owners: ['save', 'root'] }] });
+
+test('action evidence validates every bounded primitive and refuses raw values, names, paths and malformed counts', () => {
+  validateInputFailure(inputFailureEvidence()); validateInputPopups(inputPopupEvidence());
+  for (const mutate of [v => { v.raw = 'PRIVATE'; }, v => { v.exception_type = 'PRIVATE'; }, v => { v.guard_failure.reason = 'PRIVATE'; },
+    v => { v.action.predicate = 'PRIVATE'; }, v => { v.action.Value = 'PRIVATE'; }, v => { v.action.native_focus = 'true'; },
+    v => { v.action.expected_events = 2049; }, v => { v.action.expected_events = 121; }, v => { v.action.sent_events = 121; },
+    v => { v.action.sent_events = -1; }, v => { v.action.readback_iterations = 1001; }, v => { v.action.readback_iterations = 1.5; },
+    v => { v.action.readback_elapsed_ms = 35001; }, v => { v.action.readback_elapsed_ms = -1; }, v => { v.action.readback_timeout = true; },
+    v => { v.action.sent_events = 119; }]) {
+    const value = inputFailureEvidence(); mutate(value); assert.throws(() => validateInputFailure(value));
+  }
+  const timeout = inputFailureEvidence(); Object.assign(timeout.action, { predicate: 'readback-timeout', readback_timeout: true,
+    readback_elapsed_ms: 2000, host_matches: true, edit_matches: false }); validateInputFailure(timeout);
+  timeout.action.edit_matches = true; assert.throws(() => validateInputFailure(timeout));
+  for (const mutate of [v => { v.raw = 'PRIVATE'; }, v => { v.reason = 'PRIVATE'; }, v => { v.nodes[2].cls = 'C:\\PRIVATE'; },
+    v => { v.nodes[2].Title = 'PRIVATE'; }, v => { v.nodes[2].owners = ['foreign', 'root']; }, v => { v.nodes[2].owners = []; },
+    v => { v.nodes[0].owners = ['root']; }, v => { v.nodes[2].owners = Array(17).fill('root'); }, v => { v.nodes.push(v.nodes[2]); },
+    v => { v.count = 65; }, v => { v.count = -1; }, v => { v.dropped = 1; }, v => { v.elapsed_ms = 35001; }, v => { v.status = 'unavailable'; }]) {
+    const value = inputPopupEvidence(); mutate(value); assert.throws(() => validateInputPopups(value));
+  }
+  for (const reason of ['exception', 'limit', 'budget']) validateInputPopups({ status: 'unavailable', reason, elapsed_ms: 500, count: null, dropped: null, nodes: [] });
+});
+
+test('native action failure preserves primary errors with valid, invalid, duplicate or failed evidence and owned capture', async () => {
+  for (const mode of ['valid', 'invalid', 'duplicate', 'oversized', 'popup-invalid', 'popup-duplicate', 'capture-invalid', 'action-error']) {
+    const child = fakeChild(), primary = new Error('Original synthetic action rejection'); let actions = 0;
+    const run = withNativeHelper(child, () => {
+      actions++; child.line('PHASE:filename-readback');
+      const value = inputFailureEvidence(); if (mode === 'invalid') value.action.Value = 'PRIVATE';
+      child.line('INPUTFAIL:' + (mode === 'oversized' ? 'x'.repeat(8193) : JSON.stringify(value)));
+      if (mode === 'duplicate') child.line('INPUTFAIL:' + JSON.stringify(value));
+      const popups = inputPopupEvidence(); if (mode === 'popup-invalid') popups.nodes[2].cls = 'PRIVATE_PATH/C';
+      child.line('POPUPS:' + JSON.stringify(popups)); if (mode === 'popup-duplicate') child.line('POPUPS:' + JSON.stringify(popups));
+      const foreground = foregroundEvidence(); if (mode === 'capture-invalid') foreground.capture.file = 'PRIVATE_PATH';
+      child.line('FOREGROUND:' + JSON.stringify(foreground));
+      if (mode === 'action-error') throw primary;
+      child.line('{"native_dialog":true,"saved":true}'); child.end(0); // Evidence cannot turn a rejection into success.
+    }); child.line('READY');
+    await assert.rejects(run, error => {
+      assert.equal(error.message, mode === 'action-error' ? primary.message : 'Owned native Save helper failed');
+      if (mode === 'action-error') assert.equal(error, primary);
+      assert.equal(error.native_stage, 'filename-readback');
+      if (['invalid', 'duplicate', 'oversized'].includes(mode)) { assert.equal(error.native_input_failure, undefined); assert.equal(error.native_input_observation_unavailable, true); }
+      else assert.deepEqual(error.native_input_failure, inputFailureEvidence());
+      if (mode.startsWith('popup-')) { assert.equal(error.native_input_popups, undefined); assert.equal(error.native_input_popups_unavailable, true); }
+      else assert.deepEqual(error.native_input_popups, inputPopupEvidence());
+      if (mode === 'capture-invalid') assert.equal(error.native_foreground_unavailable, true);
+      else assert.deepEqual(error.native_foreground_evidence, foregroundEvidence());
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    }); assert.equal(actions, 1); assert(child.kills <= 1);
+  }
+});
+
+test('action diagnostics reuse independently guarded capture and bounded topology without new input or stderr retention', () => {
+  const raw = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const text of [raw, raw.replace(/\n/g, '\r\n')]) {
+    const start = text.indexOf('function Write-InputFailure('), end = text.indexOf('# The editable ComboBox provider', start);
+    assert(start >= 0 && end > start); const body = text.slice(start, end);
+    assert.match(body, /Get-SafeNativeGuardFailure \$Original/); assert.match(body, /Get-OwnedDialogIdentityFacts \$bound/);
+    assert.match(body, /Get-OwnedForegroundEvidence \$bound \$c.directory \$c.destination/);
+    assert.doesNotMatch(body, /\.Message|ErrorDetails|\.Value|SetFocus|SendUnicode|\.Invoke\(|Start-Sleep/);
+    assert.match(text, /\$before.Count -gt 64/); assert.match(text, /Select-Object -First 8/); assert.match(text, /\$depth -lt 16/);
+    assert.match(text, /ElapsedMilliseconds -ge 500/); assert.match(text, /\$nodes=@\(\); \$count=\$null; \$dropped=\$null/);
+    assert.match(text, /\$first\[\$i\].cls -cne \$second\[\$i\].cls/);
+  }
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  assert.equal((script.match(/\$original=\$_; try \{ Write-InputFailure \$original \} catch \{ \}; throw \$original/g) || []).length, 2);
+  assert.equal((script.match(/\$invoke.Invoke\(\)/g) || []).length, 1); nativeDialogCommand(script);
+});
+
+
+test('known native action rejection remains primary through every staged payload/duplicate/stall combination', async () => {
+  const payloads = { valid: JSON.stringify(inputFailureEvidence()), schema: '{}', syntax: '{', oversized: 'x'.repeat(8193) };
+  for (const staged of [false, true]) for (const rejectedAction of [false, true])
+    for (const first of Object.keys(payloads)) for (const second of [null, ...Object.keys(payloads)]) {
+      const label = JSON.stringify({ staged, rejectedAction, first, second });
+      const child = fakeChild(), primary = new Error('Actual synthetic click failure');
+      const run = withNativeHelper(child, () => {
+        child.line('PHASE:' + (staged ? 'filename-readback' : 'dialog-wait'));
+        child.line('INPUTFAIL:' + payloads[first]); if (second) child.line('INPUTFAIL:' + payloads[second]);
+        child.stderr.emit('data', Buffer.from('PRIVATE_native_error_and_path'));
+        if (rejectedAction) throw primary;
+        // Native reporting never finishes. No retry; the existing watchdog reaps it.
+      }, { action: 10, exit: 20 }); child.line('READY');
+      await assert.rejects(run, error => {
+        assert.equal(error.message, rejectedAction ? primary.message : staged ? 'Owned native Save helper failed' : 'Timed out: native Save action', label);
+        if (rejectedAction) assert.equal(error, primary, label);
+        assert.equal(error.native_input_observation_timed_out, staged && !rejectedAction ? true : undefined, label);
+        if (staged && first === 'valid' && second === null) assert.deepEqual(error.native_input_failure, inputFailureEvidence(), label);
+        else { assert.equal(error.native_input_failure, undefined, label); assert.equal(error.native_input_observation_unavailable, true, label); }
+        assert(!JSON.stringify(error).includes('PRIVATE'), label); return true;
+      }); assert.equal(child.kills, 1, label);
+    }
 });
