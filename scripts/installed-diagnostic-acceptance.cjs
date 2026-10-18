@@ -124,23 +124,53 @@ const INPUT_PREDICATES = ['dialog-guard', 'bound-controls', 'destination', 'nati
   'invoke', 'completion-root', 'completion-popups', 'completion-timeout'];
 const INPUT_PHASES = ['filename-set', 'filename-focus', 'filename-select', 'filename-type', 'filename-readback', 'save-focus', 'save-invoke', 'save-completion'];
 function validateInputPopups(value) {
-  exactKeys(value, ['status', 'reason', 'elapsed_ms', 'count', 'dropped', 'nodes']);
-  assert(['complete', 'unavailable'].includes(value.status)); assert(['complete', 'exception', 'limit', 'budget'].includes(value.reason));
+  exactKeys(value, ['status', 'reason', 'elapsed_ms', 'count', 'dropped', 'set_stable', 'nodes']);
+  assert(['complete', 'partial', 'unavailable'].includes(value.status));
+  assert(['complete', 'root-before', 'root-after', 'enumeration', 'limit', 'budget', 'set-changed'].includes(value.reason));
   assert(Number.isInteger(value.elapsed_ms) && value.elapsed_ms >= 0 && value.elapsed_ms <= 35000);
   assert(Array.isArray(value.nodes) && value.nodes.length <= 8);
   if (value.status === 'unavailable') {
-    assert.notEqual(value.reason, 'complete'); assert.equal(value.count, null); assert.equal(value.dropped, null); assert.equal(value.nodes.length, 0);
+    assert(['root-before', 'root-after', 'enumeration', 'limit'].includes(value.reason));
+    assert.equal(value.count, null); assert.equal(value.dropped, null); assert.equal(value.set_stable, null); assert.equal(value.nodes.length, 0);
   } else {
-    assert.equal(value.reason, 'complete'); assert(Number.isInteger(value.count) && value.count >= 0 && value.count <= 64);
+    assert.equal(typeof value.set_stable, 'boolean');
+    assert.equal(value.status, value.reason === 'complete' ? 'complete' : 'partial');
+    assert(['complete', 'budget', 'set-changed'].includes(value.reason));
+    assert.equal(value.set_stable, value.reason !== 'set-changed');
+    assert(Number.isInteger(value.count) && value.count >= 0 && value.count <= 64);
     assert.equal(value.nodes.length, Math.min(8, value.count)); assert.equal(value.dropped, Math.max(0, value.count - 8));
     for (const node of value.nodes) {
-      exactKeys(node, ['role', 'cls', 'owners']); assert(['root', 'save', 'other-owned'].includes(node.role));
-      assert(typeof node.cls === 'string' && (node.cls === '<redacted>' || /^[A-Za-z0-9_#.-]{0,64}$/.test(node.cls)));
-      assert(Array.isArray(node.owners) && node.owners.length <= 16);
-      if (node.role === 'root') assert.equal(node.owners.length, 0);
-      else { assert.equal(node.owners.at(-1), 'root'); assert(node.owners.slice(0, -1).every(role => ['save', 'other-owned'].includes(role))); }
+      exactKeys(node, ['role', 'reason', 'pid_matches', 'visible', 'cls', 'owner_category', 'owners', 'pixel_eligible']);
+      assert(['root', 'save', 'same-process'].includes(node.role));
+      assert(['verified', 'window-dead', 'window-hidden', 'window-foreign', 'window-replaced', 'exception', 'budget'].includes(node.reason));
+      assert(['root', 'root-changed', 'ownerless', 'owner-foreign', 'owner-cycle', 'owner-dead', 'owner-limit', 'unavailable'].includes(node.owner_category));
+      for (const key of ['pid_matches', 'visible']) assert(node[key] === null || typeof node[key] === 'boolean');
+      assert(Array.isArray(node.owners) && node.owners.length <= 16 && node.owners.every(role => ['root', 'save', 'same-process'].includes(role)));
+      assert.equal(typeof node.pixel_eligible, 'boolean');
+      if (node.reason === 'verified') {
+        assert.equal(node.pid_matches, true); assert.equal(node.visible, true);
+        assert(typeof node.cls === 'string' && (node.cls === '<redacted>' || node.cls === 'Auto-Suggest Dropdown' || /^[A-Za-z0-9_#.-]{0,64}$/.test(node.cls)));
+        assert.notEqual(node.owner_category, 'unavailable');
+        if (node.role === 'root') assert.equal(node.owners.length, 0);
+        else if (node.owner_category === 'root') assert.equal(node.owners.at(-1), 'root');
+        if (node.owner_category !== 'root') assert(!node.owners.includes('root'));
+        assert.equal(node.pixel_eligible, node.role === 'same-process' && node.owner_category === 'root');
+      } else {
+        assert.equal(node.cls, null); assert.equal(node.owner_category, 'unavailable'); assert.equal(node.owners.length, 0); assert.equal(node.pixel_eligible, false);
+        if (node.reason === 'window-foreign') { assert.equal(node.pid_matches, false); assert.equal(node.visible, null); }
+        else if (node.reason === 'window-hidden') { assert.equal(node.pid_matches, true); assert.equal(node.visible, false); }
+        else { assert.equal(node.pid_matches, null); assert.equal(node.visible, null); }
+      }
     }
   }
+  return value;
+}
+function validateInputPopupCapture(value, topology) {
+  exactKeys(value, ['node_index', 'slot', 'capture']);
+  assert(Number.isInteger(value.node_index) && value.node_index >= 0 && value.node_index < 8);
+  assert(Number.isInteger(value.slot) && value.slot >= 1 && value.slot <= 3);
+  assert(topology?.nodes[value.node_index]?.pixel_eligible === true);
+  validateNativeCapture(value.capture, `popup${value.slot}`);
   return value;
 }
 function validateInputFailure(value) {
@@ -279,14 +309,14 @@ function validateHostObservation(value) {
 }
 
 function validateNativeCapture(value, surface = 'dialog') {
-  assert(['dialog', 'foreground'].includes(surface));
+  assert(['dialog', 'foreground', 'popup1', 'popup2', 'popup3'].includes(surface));
   exactKeys(value, ['status', 'reason', 'file', 'width', 'height']);
   assert(['saved', 'unavailable'].includes(value.status));
   assert(['captured', 'guard-before', 'destination', 'bounds', 'render', 'guard-after', 'persist', 'unavailable'].includes(value.reason));
   if (value.status === 'saved') {
     assert.equal(value.reason, 'captured');
     assert(['md', 'json'].map(format => `installed-current-${format}-native-${surface}.png`).includes(value.file));
-    for (const key of ['width', 'height']) assert(Number.isInteger(value[key]) && value[key] >= 64 && value[key] <= 4096);
+    for (const key of ['width', 'height']) assert(Number.isInteger(value[key]) && value[key] >= (surface.startsWith('popup') ? 1 : 64) && value[key] <= 4096);
   } else {
     assert.notEqual(value.reason, 'captured'); assert.equal(value.file, null);
     assert.equal(value.width, null); assert.equal(value.height, null);
@@ -495,7 +525,7 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
   const observed = phase => { try { onPhase(phase); } catch { } }; // Optional receipt evidence only.
   let controlFailure, controlInvalid = false;
   let inputFailure, actionFailure, inputEvidence, inputPopups, inputFailed = false, inputInvalid = false, inputPopupsInvalid = false;
-  let foregroundEvidence, foregroundInvalid = false;
+  let foregroundEvidence, foregroundInvalid = false, popupCaptures = [], popupCaptureInvalid = false;
   let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase, nativeSubphase, hostFailure, hostObservation, nativeCapture, win32Observation, win32Invalid = false, captureInvalid = false, evidenceInvalid = false;
   const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
@@ -543,6 +573,13 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
       } else if (line.startsWith('POPUPS:')) {
         try { assert(inputFailed && !inputPopups && !inputPopupsInvalid && line.length <= 8192); inputPopups = validateInputPopups(JSON.parse(line.slice(7))); }
         catch { inputPopupsInvalid = true; inputPopups = undefined; }
+      } else if (line.startsWith('POPUPCAPTURE:')) {
+        try {
+          assert(inputFailure && inputPopups && !popupCaptureInvalid && line.length <= 2048 && popupCaptures.length < 3);
+          const capture = validateInputPopupCapture(JSON.parse(line.slice(13)), inputPopups);
+          assert.equal(capture.slot, popupCaptures.length + 1);
+          assert(!popupCaptures.some(item => item.node_index === capture.node_index)); popupCaptures.push(capture);
+        } catch { popupCaptureInvalid = true; popupCaptures = []; }
       } else if (line.startsWith('CAPTURE:')) {
         try { assert(ready && nativePhase === 'dialog-capture' && !nativeCapture); nativeCapture = validateNativeCapture(JSON.parse(line.slice(8))); }
         catch { captureInvalid = true; } // Never retain paths or unvalidated pixel metadata.
@@ -585,6 +622,8 @@ async function withNativeHelper(child, action, timeouts = {}, onPhase = () => {}
     if (inputInvalid) failure.native_input_observation_unavailable = true;
     if (inputPopups) failure.native_input_popups = inputPopups;
     if (inputPopupsInvalid) failure.native_input_popups_unavailable = true;
+    if (popupCaptures.length && !inputPopupsInvalid) failure.native_input_popup_captures = popupCaptures;
+    if (popupCaptureInvalid) failure.native_input_popup_captures_unavailable = true;
     if (nativePhase) failure.native_stage = nativePhase;
     if (nativePhase === 'filename-host' && nativeSubphase) failure.native_host_subphase = nativeSubphase;
     if (hostObservation) failure.native_host_observation = hostObservation;
@@ -819,7 +858,7 @@ async function main(args) {
   } catch (error) {
     failure = error; report.failure = error.message;
     if (error.native_stage) report.native_failure_stage = error.native_stage;
-    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable', 'native_control_failure', 'native_control_observation_unavailable', 'native_input_failure', 'native_input_observation_unavailable', 'native_input_popups', 'native_input_popups_unavailable', 'native_input_observation_timed_out']) {
+    for (const key of ['native_host_subphase', 'native_host_failure', 'native_host_observation', 'native_observation_unavailable', 'native_win32_observation', 'native_win32_unavailable', 'native_foreground_evidence', 'native_foreground_unavailable', 'native_control_failure', 'native_control_observation_unavailable', 'native_input_failure', 'native_input_observation_unavailable', 'native_input_popups', 'native_input_popups_unavailable', 'native_input_popup_captures', 'native_input_popup_captures_unavailable', 'native_input_observation_timed_out']) {
       if (error[key] !== undefined) report[key] = error[key];
     }
     if (error.native_dialog_capture) {
@@ -848,5 +887,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateInputPopupCapture, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

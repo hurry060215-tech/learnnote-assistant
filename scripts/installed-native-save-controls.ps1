@@ -98,54 +98,108 @@ function Start-InputEvidence {
     native_focus=$null;uia_focus=$null;uia_focused_element=$null;
     readback_iterations=0;readback_elapsed_ms=$null;host_matches=$null;edit_matches=$null;readback_timeout=$false}
 }
-# Read-only class/owner relationships for the exact app's visible windows. No
-# arbitrary window is followed; every owner must have the bound PID and reach
-# the exact root. The count is capped at 64, retained entries at 8, depth at 16.
-function Get-InputPopupState($Binding, $Windows) {
-  $states=[Collections.Generic.List[object]]::new()
-  foreach ($window in $Windows) {
-    if (![OwnedSave]::IsWindow($window) -or ![OwnedSave]::IsWindowVisible($window) -or [OwnedSave]::Pid($window) -ne $Binding.config.pid) { throw 'Owned popup identity changed' }
-    $owners=[Collections.Generic.List[IntPtr]]::new(); $seen=[Collections.Generic.HashSet[IntPtr]]::new(); [void]$seen.Add($window)
-    $cursor=[OwnedSave]::GetWindow($window,4)
-    if ($window -eq $Binding.root -and $cursor -ne [IntPtr]::Zero) { throw 'Owned root owner changed' }
-    if ($window -ne $Binding.root) {
-      for ($depth=0; $depth -lt 16 -and $cursor -ne [IntPtr]::Zero; $depth++) {
-        if (![OwnedSave]::IsWindow($cursor) -or [OwnedSave]::Pid($cursor) -ne $Binding.config.pid -or !$seen.Add($cursor)) { throw 'Owned popup chain changed' }
-        $owners.Add($cursor); if ($cursor -eq $Binding.root) { break }; $cursor=[OwnedSave]::GetWindow($cursor,4)
-      }
-      if ($owners.Count -eq 0 -or $owners[$owners.Count-1] -ne $Binding.root) { throw 'Owned popup root not reached' }
+# Read-only exact-process window observations: count <=64, entries <=8, owners <=16.
+# The 500 ms observation budget is cooperative; the existing process watchdog remains.
+# Same-process structural evidence is distinct from root-owned pixel eligibility.
+# Never invoke an action guard or read a title/value while identifying extra windows.
+function Get-InputPopupState($Binding, [IntPtr]$Window) {
+  $state=@{handle=$Window;exists=$false;visible=$null;pid_matches=$null;cls=$null;owners=@();owner_category='unavailable';reason='exception'}
+  $state.exists=[OwnedSave]::IsWindow($Window)
+  if (!$state.exists) { $state.reason='window-dead'; return $state }
+  $state.pid_matches=([OwnedSave]::Pid($Window) -eq $Binding.config.pid)
+  if (!$state.pid_matches) { $state.reason='window-foreign'; return $state }
+  $state.visible=[OwnedSave]::IsWindowVisible($Window)
+  if (!$state.visible) { $state.reason='window-hidden'; return $state }
+  # Class is a bounded primitive of this verified same-PID HWND, not pixel permission.
+  $state.cls=[OwnedSave]::Class($Window)
+  if ([string]::IsNullOrEmpty($state.cls)) { throw 'Window class unavailable' }
+  $owners=[Collections.Generic.List[IntPtr]]::new(); $seen=[Collections.Generic.HashSet[IntPtr]]::new(); [void]$seen.Add($Window)
+  $cursor=[OwnedSave]::GetWindow($Window,4)
+  if ($Window -eq $Binding.root) {
+    $state.owner_category=if ($cursor -eq [IntPtr]::Zero) { 'root' } else { 'root-changed' }
+  } else {
+    $state.owner_category='owner-limit'
+    for ($depth=0; $depth -lt 16; $depth++) {
+      if ($cursor -eq [IntPtr]::Zero) { $state.owner_category='ownerless'; break }
+      if (![OwnedSave]::IsWindow($cursor)) { $state.owner_category='owner-dead'; break }
+      if ([OwnedSave]::Pid($cursor) -ne $Binding.config.pid) { $state.owner_category='owner-foreign'; break }
+      if (!$seen.Add($cursor)) { $state.owner_category='owner-cycle'; break }
+      $owners.Add($cursor)
+      if ($cursor -eq $Binding.root) { $state.owner_category='root'; break }
+      $cursor=[OwnedSave]::GetWindow($cursor,4)
     }
-    $states.Add(@{handle=$window;cls=[OwnedSave]::Class($window);owners=$owners.ToArray()})
   }
-  return $states.ToArray()
+  $state.owners=$owners.ToArray(); $state.reason='verified'; return $state
 }
-function Get-InputPopupTopology($Binding) {
+function Test-InputPopupState($First, $Second) {
+  foreach ($key in @('handle','exists','visible','pid_matches','cls','owner_category','reason')) {
+    if ($First[$key] -cne $Second[$key]) { return $false }
+  }
+  return (($First.owners -join ',') -ceq ($Second.owners -join ','))
+}
+function Get-InputPopupTopology($Binding, $Proofs=$null) {
   $c=$Binding.config; $root=$Binding.root; $rootClass=$Binding.rootClass
-  $clock=[Diagnostics.Stopwatch]::StartNew(); $reason='exception'; $nodes=@(); $count=$null; $dropped=$null
+  $clock=[Diagnostics.Stopwatch]::StartNew(); $reason='root-before'; $nodes=@(); $count=$null; $dropped=$null; $stable=$null
+  $candidates=[Collections.Generic.List[object]]::new()
+  if ($null -ne $Proofs) { $Proofs.Clear() }
   try {
     Assert-Root
-    $before=@([OwnedSave]::Visible($c.pid))
+    $reason='enumeration'; $before=@([OwnedSave]::Visible($c.pid))
     if ($before.Count -gt 64) { $reason='limit'; throw 'Owned popup count exceeded' }
-    $selected=@($before | Select-Object -First 8)
-    $first=@(Get-InputPopupState $Binding $selected)
-    if ($clock.ElapsedMilliseconds -ge 500) { $reason='budget'; throw 'Owned popup observation budget' }
-    $second=@(Get-InputPopupState $Binding $selected)
-    $after=@([OwnedSave]::Visible($c.pid)); Assert-Root
-    if ($before.Count -ne $after.Count -or (($before | Sort-Object) -join ',') -cne (($after | Sort-Object) -join ',')) { throw 'Owned popup set changed' }
-    for ($i=0; $i -lt $first.Count; $i++) {
-      if ($first[$i].handle -ne $second[$i].handle -or $first[$i].cls -cne $second[$i].cls -or
-          ($first[$i].owners -join ',') -cne ($second[$i].owners -join ',')) { throw 'Owned popup topology changed' }
+    $count=$before.Count; $dropped=[Math]::Max(0,$count-8)
+    foreach ($window in @($before | Select-Object -First 8)) {
+      $role=if ($window -eq $root) { 'root' } elseif ($window -eq $Binding.dialog) { 'save' } else { 'same-process' }
+      $node=@{role=$role;reason='exception';pid_matches=$null;visible=$null;cls=$null;owner_category='unavailable';owners=@();pixel_eligible=$false}
+      try {
+        if ($clock.ElapsedMilliseconds -ge 500) { $node.reason='budget' }
+        else {
+          $first=Get-InputPopupState $Binding $window; $second=Get-InputPopupState $Binding $window
+          if (!(Test-InputPopupState $first $second)) { $node.reason='window-replaced' }
+          else {
+            $node.reason=$first.reason; $node.pid_matches=$first.pid_matches; $node.visible=$first.visible
+            $node.cls=if ($first.cls -ceq 'Auto-Suggest Dropdown') { 'Auto-Suggest Dropdown' } elseif ($null -ne $first.cls) { ConvertTo-SafeNativeToken $first.cls } else { $null }
+            $node.owner_category=$first.owner_category
+            $node.owners=@($first.owners | ForEach-Object { if ($_ -eq $root) {'root'} elseif ($_ -eq $Binding.dialog) {'save'} else {'same-process'} })
+            $node.pixel_eligible=($role -ceq 'same-process' -and $first.reason -ceq 'verified' -and $first.owner_category -ceq 'root')
+            if ($node.pixel_eligible) { $candidates.Add(@{index=$nodes.Count;binding=$Binding;state=$first}) }
+          }
+        }
+      } catch { $node=@{role=$role;reason='exception';pid_matches=$null;visible=$null;cls=$null;owner_category='unavailable';owners=@();pixel_eligible=$false} } # Keep verified peers.
+      $nodes+=,$node
     }
-    if ($clock.ElapsedMilliseconds -ge 500) { $reason='budget'; throw 'Owned popup observation budget' }
-    $nodes=@($first | ForEach-Object {
-      $role=if ($_.handle -eq $Binding.root) { 'root' } elseif ($_.handle -eq $Binding.dialog) { 'save' } else { 'other-owned' }
-      $owners=@($_.owners | ForEach-Object { if ($_ -eq $Binding.root) { 'root' } elseif ($_ -eq $Binding.dialog) { 'save' } else { 'other-owned' } })
-      @{role=$role;cls=(ConvertTo-SafeNativeToken $_.cls);owners=$owners}
-    })
-    $count=$before.Count; $dropped=[Math]::Max(0,$count-8); $reason='complete'
-  } catch { $nodes=@(); $count=$null; $dropped=$null }
-  return @{status=$(if ($reason -ceq 'complete') {'complete'} else {'unavailable'});reason=$reason;
-    elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);count=$count;dropped=$dropped;nodes=$nodes}
+    $reason='enumeration'; $after=@([OwnedSave]::Visible($c.pid))
+    $reason='root-after'; Assert-Root
+    $stable=($before.Count -eq $after.Count -and (($before | Sort-Object) -join ',') -ceq (($after | Sort-Object) -join ','))
+    $reason=if (!$stable) {'set-changed'} elseif ($clock.ElapsedMilliseconds -ge 500) {'budget'} else {'complete'}
+    if ($null -ne $Proofs) { foreach ($proof in $candidates) { $Proofs.Add($proof) } }
+  } catch { $nodes=@(); $count=$null; $dropped=$null; $stable=$null }
+  return @{status=$(if ($null -eq $count) {'unavailable'} elseif ($reason -ceq 'complete') {'complete'} else {'partial'});reason=$reason;
+    elapsed_ms=[int][Math]::Min(35000,$clock.ElapsedMilliseconds);count=$count;dropped=$dropped;set_stable=$stable;nodes=$nodes}
+}
+function Assert-InputPopupCapture($Proof) {
+  $c=$Proof.binding.config; $root=$Proof.binding.root; $rootClass=$Proof.binding.rootClass
+  Assert-Root
+  # This independent foreground proof has no exact visible-window-count predicate.
+  Assert-OwnedForegroundEvidence $Proof.foreground
+  $current=Get-InputPopupState $Proof.binding $Proof.state.handle
+  if ($current.reason -cne 'verified' -or $current.owner_category -cne 'root' -or
+      !(Test-InputPopupState $Proof.state $current)) { throw 'Owned extra-window capture identity changed' }
+  Assert-Root
+}
+function Write-InputPopupCaptures($Binding, $Proofs, [string]$Directory, [string]$Destination) {
+  $slot=0
+  foreach ($proof in @($Proofs | Select-Object -First 3)) {
+    $slot++; $capture=@{status='unavailable';reason='guard-before';file=$null;width=$null;height=$null}
+    try {
+      $foreground=[OwnedSave]::GetForegroundWindow()
+      $proof.foreground=@{binding=$Binding;foreground=$foreground;state=(Get-OwnedForegroundState $Binding $foreground)}
+      $capture=Save-OwnedDialogCapture -Dialog $proof.state.handle -Directory $Directory -Destination $Destination `
+        -Surface ('popup'+$slot) -GuardContext $proof -Guard { param($boundProof) Assert-InputPopupCapture $boundProof }
+    } catch { }
+    try {
+      [Console]::Out.WriteLine('POPUPCAPTURE:'+(@{node_index=$proof.index;slot=$slot;capture=$capture} | ConvertTo-Json -Depth 5 -Compress)); [Console]::Out.Flush()
+    } catch { }
+  }
 }
 
 function Write-InputFailure($Original) {
@@ -162,7 +216,8 @@ function Write-InputFailure($Original) {
   try {
     . $c.observer
     $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog}
-    $topology=Get-InputPopupTopology $bound
+    $popupProofs=[Collections.Generic.List[object]]::new()
+    $topology=Get-InputPopupTopology $bound $popupProofs
     [Console]::Out.WriteLine('POPUPS:'+($topology | ConvertTo-Json -Depth 5 -Compress)); [Console]::Out.Flush()
   } catch { }
   if ($c.capture) {
@@ -171,6 +226,7 @@ function Write-InputFailure($Original) {
       . (Join-Path (Split-Path $c.observer) 'installed-native-dialog-capture.ps1')
       . (Join-Path (Split-Path $c.observer) 'installed-native-foreground-evidence.ps1')
       $bound=@{config=@{pid=$c.pid;start=$c.start};root=$root;rootClass=$rootClass;dialog=$dialog}
+      if ($popupProofs) { Write-InputPopupCaptures $bound $popupProofs $c.directory $c.destination }
       $foregroundEvidence=Get-OwnedForegroundEvidence $bound $c.directory $c.destination
       [Console]::Out.WriteLine('FOREGROUND:'+($foregroundEvidence | ConvertTo-Json -Depth 8 -Compress)); [Console]::Out.Flush()
     } catch { }

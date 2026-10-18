@@ -10,7 +10,7 @@ import acceptance from '../../scripts/installed-diagnostic-acceptance.cjs';
 import observationHelpers from '../../scripts/installed-download-observation.cjs';
 const { fileObservation, downloadObservation, attachDownloadObservation } = observationHelpers;
 
-const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded, emitLocationEvidence } = acceptance;
+const { parseArgs, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateInputPopupCapture, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, bounded, emitLocationEvidence } = acceptance;
 const args = ['output', '19223', 'http://127.0.0.1:8765', 'synthetic-task', '123', '--expected-version', '0.2.16'];
 const task = { id: 'synthetic-task', title: 'Synthetic rollback captions', handoff_id: 'native-rollback-synthetic-caption',
   page_url: 'https://example.com/synthetic-rollback', status: 'success', summary_source: 'subtitle-extract' };
@@ -462,20 +462,41 @@ test('Windows extracted control validation accepts only exact initial names and 
       assert.equal(row.metadata.action.edit_matches, row.mode === 'action-edit-readback' ? false : null);
     }
   }
-  assert.equal(parsed.popups.length, 23);
+  assert.equal(parsed.popups.length, 48);
   for (const row of parsed.popups) {
-    const observation = validateInputPopups(row.observation);
-    const success = ['popup-success', 'popup-truncated', 'popup-unsafe-class'].includes(row.mode);
-    assert.equal(observation.status, success ? 'complete' : 'unavailable', row.mode);
-    if (success) {
-      assert.equal(row.root_calls, 2); assert.equal(observation.count, row.mode === 'popup-truncated' ? 10 : 3);
-      assert.equal(observation.dropped, row.mode === 'popup-truncated' ? 2 : 0);
-      assert.equal(observation.nodes[2].cls, row.mode === 'popup-unsafe-class' ? '<redacted>' : 'Auto-Suggest');
-      assert.deepEqual(observation.nodes[2].owners, ['save', 'root']);
-    } else assert.deepEqual(observation.nodes, [], row.mode);
-    if (row.mode === 'popup-foreign') assert.equal(row.class_calls, 2, 'Foreign popup class is never read');
-    if (row.mode === 'popup-limit') assert.equal(row.class_calls, 0);
-    assert(!JSON.stringify(observation).includes('PRIVATE'));
+    const o = validateInputPopups(row.observation);
+    const unavailable = ['popup-limit', 'popup-process-race'].includes(row.mode);
+    assert.equal(o.status, unavailable ? 'unavailable' : ['popup-budget', 'popup-last-budget', 'popup-set-race'].includes(row.mode) ? 'partial' : 'complete', row.mode);
+    if (unavailable) { assert.deepEqual(o.nodes, []); assert.equal(row.proof_count, 0); continue; }
+    assert.equal(row.root_calls, 2); assert.equal(o.count, row.mode === 'popup-truncated' ? 10 : row.mode === 'popup-mixed' ? 4 : 3);
+    assert.equal(o.dropped, row.mode === 'popup-truncated' ? 2 : 0);
+    const node = o.nodes[2];
+    const owners = { 'popup-ownerless': 'ownerless', 'popup-mixed': 'ownerless', 'popup-owner-foreign': 'owner-foreign',
+      'popup-owner-dead': 'owner-dead', 'popup-owner-limit': 'owner-limit', 'popup-cycle': 'owner-cycle' };
+    const reasons = { 'popup-hidden': 'window-hidden', 'popup-foreign': 'window-foreign', 'popup-dead': 'window-dead',
+      'popup-owner-race': 'window-replaced', 'popup-class-race': 'window-replaced', 'popup-class-fault': 'exception', 'popup-budget': 'budget' };
+    assert.equal(node.reason, reasons[row.mode] || 'verified', row.mode);
+    if (!reasons[row.mode]) {
+      assert.equal(node.cls, row.mode === 'popup-spaced-class' ? 'Auto-Suggest Dropdown' : row.mode === 'popup-unsafe-class' || row.mode.startsWith('popup-spaced-') ? '<redacted>' : 'Auto-Suggest', row.mode);
+      assert.equal(node.owner_category, owners[row.mode] || 'root');
+      assert.equal(node.pixel_eligible, !owners[row.mode]);
+    }
+    if (row.mode === 'popup-last-budget') { assert.equal(o.reason, 'budget'); assert(o.elapsed_ms >= 500); assert(o.nodes.every(node => node.reason === 'verified')); assert.equal(row.proof_count, 1); }
+    if (row.mode === 'popup-mixed') { assert.equal(row.proof_count, 1); assert.equal(o.nodes[3].pixel_eligible, true); }
+    if (row.mode === 'popup-foreign') assert.equal(row.class_calls, 4, 'Foreign popup class is never read');
+    if (row.mode === 'popup-set-race') { assert.equal(o.set_stable, false); assert.equal(o.nodes[2].cls, 'Auto-Suggest'); }
+    assert(!JSON.stringify(o).includes('PRIVATE'));
+  }
+  assert.equal(parsed.captures.length, 14);
+  for (const row of parsed.captures) {
+    validateInputPopups(row.topology);
+    assert.equal(row.captures.length, row.mode === 'popup-truncated' ? 3 : 1);
+    assert.equal(row.capture_calls, row.captures.length);
+    for (const entry of row.captures) {
+      validateInputPopupCapture(entry, row.topology);
+      assert.equal(entry.capture.status, row.mode.startsWith('popup-capture-') ? 'unavailable' : 'saved', row.mode);
+    }
+    if (row.mode === 'popup-mixed') assert.equal(row.captures[0].node_index, 3, 'Ownerless peer is never captured');
   }
 });
 
@@ -1172,7 +1193,7 @@ test('foreground proof is read-only, independently bound, class/topology stable 
   assert.doesNotMatch(source, /::Title|GetWindowText|FindAll|EnumWindows|GetDesktopWindow|CopyFromScreen|SetForeground|SendMessage|SendKeys|SetValue|\.Invoke\(/);
   const capture = fs.readFileSync(new URL('../../scripts/installed-native-dialog-capture.ps1', import.meta.url), 'utf8');
   assert.equal(capture.match(/\[void\]\(& \$Guard \$GuardContext\)/g).length, 3);
-  assert.match(capture, /ValidateSet\('dialog','foreground'\)/);
+  assert.match(capture, /ValidateSet\('dialog','foreground','popup1','popup2','popup3'\)/);
   assert(capture.indexOf("$phase='guard-after'") < capture.indexOf('[IO.File]::Open'));
   const script = nativeDialogScript({ ...parseArgs(args), captureNativeDialog: true }, { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
   const branch = script.slice(script.indexOf('} catch {\n $original=$_;'), script.indexOf(". (Join-Path (Split-Path $c.observer) 'installed-native-save-controls.ps1');"));
@@ -1388,9 +1409,11 @@ const inputFailureEvidence = () => ({ action: { predicate: 'dialog-guard', expec
   native_focus: null, uia_focus: null, uia_focused_element: null, readback_iterations: 1, readback_elapsed_ms: 12,
   host_matches: null, edit_matches: null, readback_timeout: false }, exception_type: 'invalid-operation',
   guard_failure: { reason: 'popup-set', facts: null } });
-const inputPopupEvidence = () => ({ status: 'complete', reason: 'complete', elapsed_ms: 12, count: 3, dropped: 0,
-  nodes: [{ role: 'root', cls: 'WindowsForms10.Window.1', owners: [] }, { role: 'save', cls: '#32770', owners: ['root'] },
-    { role: 'other-owned', cls: 'Auto-Suggest', owners: ['save', 'root'] }] });
+const popupNode = (role, cls, owners) => ({ role, cls, owners, reason: 'verified', pid_matches: true, visible: true,
+  owner_category: 'root', pixel_eligible: role === 'same-process' });
+const inputPopupEvidence = () => ({ status: 'complete', reason: 'complete', elapsed_ms: 12, count: 3, dropped: 0, set_stable: true,
+  nodes: [popupNode('root', 'WindowsForms10.Window.1', []), popupNode('save', '#32770', ['root']),
+    popupNode('same-process', 'Auto-Suggest', ['save', 'root'])] });
 
 test('action evidence validates every bounded primitive and refuses raw values, names, paths and malformed counts', () => {
   validateInputFailure(inputFailureEvidence()); validateInputPopups(inputPopupEvidence());
@@ -1411,7 +1434,7 @@ test('action evidence validates every bounded primitive and refuses raw values, 
     v => { v.count = 65; }, v => { v.count = -1; }, v => { v.dropped = 1; }, v => { v.elapsed_ms = 35001; }, v => { v.status = 'unavailable'; }]) {
     const value = inputPopupEvidence(); mutate(value); assert.throws(() => validateInputPopups(value));
   }
-  for (const reason of ['exception', 'limit', 'budget']) validateInputPopups({ status: 'unavailable', reason, elapsed_ms: 500, count: null, dropped: null, nodes: [] });
+  for (const reason of ['root-before', 'root-after', 'enumeration', 'limit']) validateInputPopups({ status: 'unavailable', reason, elapsed_ms: 500, count: null, dropped: null, set_stable: null, nodes: [] });
 });
 
 test('native action failure preserves primary errors with valid, invalid, duplicate or failed evidence and owned capture', async () => {
@@ -1454,7 +1477,10 @@ test('action diagnostics reuse independently guarded capture and bounded topolog
     assert.doesNotMatch(body, /\.Message|ErrorDetails|\.Value|SetFocus|SendUnicode|\.Invoke\(|Start-Sleep/);
     assert.match(text, /\$before.Count -gt 64/); assert.match(text, /Select-Object -First 8/); assert.match(text, /\$depth -lt 16/);
     assert.match(text, /ElapsedMilliseconds -ge 500/); assert.match(text, /\$nodes=@\(\); \$count=\$null; \$dropped=\$null/);
-    assert.match(text, /\$first\[\$i\].cls -cne \$second\[\$i\].cls/);
+    assert.match(text, /'handle','exists','visible','pid_matches','cls','owner_category','reason'/);
+    assert.match(text, /Test-InputPopupState \$first \$second/);
+    assert.match(text, /Select-Object -First 3/);
+    assert.match(text, /Assert-InputPopupCapture \$boundProof/);
   }
   const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
   assert.equal((script.match(/\$original=\$_; try \{ Write-InputFailure \$original \} catch \{ \}; throw \$original/g) || []).length, 2);
@@ -1484,4 +1510,79 @@ test('known native action rejection remains primary through every staged payload
         assert(!JSON.stringify(error).includes('PRIVATE'), label); return true;
       }); assert.equal(child.kills, 1, label);
     }
+});
+
+
+test('per-window primitives remain distinct from pixel eligibility and reject malformed private evidence', () => {
+  for (const category of ['ownerless', 'owner-foreign', 'owner-cycle', 'owner-dead', 'owner-limit']) {
+    const topology = inputPopupEvidence(); Object.assign(topology.nodes[2], { owner_category: category, owners: [], pixel_eligible: false });
+    validateInputPopups(topology);
+    assert.throws(() => validateInputPopupCapture({ node_index: 2, slot: 1, capture: unavailableCapture() }, topology));
+  }
+  for (const reason of ['window-dead', 'window-hidden', 'window-foreign', 'window-replaced', 'exception', 'budget']) {
+    const topology = inputPopupEvidence(); Object.assign(topology.nodes[2], { reason, cls: null, owners: [], owner_category: 'unavailable', pixel_eligible: false,
+      pid_matches: reason === 'window-foreign' ? false : reason === 'window-hidden' ? true : null, visible: reason === 'window-hidden' ? false : null });
+    validateInputPopups(topology); assert.equal(topology.nodes[0].cls, 'WindowsForms10.Window.1');
+  }
+  for (const change of [{ pixel_eligible: false }, { owner_category: 'PRIVATE' }, { reason: 'PRIVATE' }, { pid_matches: false },
+    { visible: null }, { cls: null }, { role: 'foreign' }, { hwnd: 123 }, { owner_category: 'ownerless' }]) {
+    const topology = inputPopupEvidence(); Object.assign(topology.nodes[2], change); assert.throws(() => validateInputPopups(topology));
+  }
+  const changed = inputPopupEvidence(); Object.assign(changed, { status: 'partial', reason: 'set-changed', set_stable: false }); validateInputPopups(changed);
+  const maximum = inputPopupEvidence(); maximum.count = 64; maximum.dropped = 56;
+  maximum.nodes = Array.from({ length: 8 }, () => popupNode('same-process', 'x'.repeat(64), [...Array(15).fill('same-process'), 'root']));
+  validateInputPopups(maximum); assert(JSON.stringify(maximum).length < 8192);
+  const capture = { node_index: 2, slot: 1, capture: { status: 'saved', reason: 'captured', file: 'installed-current-json-native-popup1.png', width: 300, height: 1 } };
+  validateInputPopupCapture(capture, inputPopupEvidence());
+  for (const mutate of [v => { v.slot = 4; }, v => { v.node_index = 8; }, v => { v.node_index = 1; }, v => { v.raw = 'PRIVATE'; },
+    v => { v.capture.file = '../PRIVATE.png'; }, v => { v.capture.file = 'installed-current-json-native-popup2.png'; },
+    v => { v.capture.width = 4097; }, v => { v.capture.height = 0; }, v => { v.capture.height = 1.5; }]) {
+    const bad = structuredClone(capture); mutate(bad); assert.throws(() => validateInputPopupCapture(bad, inputPopupEvidence()));
+  }
+});
+
+test('extra-window capture protocol is bounded, staged and preserves primary native failure through malformed or stalled evidence', async () => {
+  for (const mode of ['valid', 'unavailable', 'private', 'duplicate', 'ineligible', 'wrong-slot', 'oversized', 'excess', 'before-topology', 'out-of-phase', 'stall']) {
+    const child = fakeChild(); const topology = inputPopupEvidence();
+    for (let i = 0; i < 2; i++) topology.nodes.push(popupNode('same-process', 'Popup', ['root'])); topology.count = topology.nodes.length;
+    const entries = [1, 2, 3].map(slot => ({ node_index: slot + 1, slot, capture: mode === 'unavailable' ? unavailableCapture() :
+      { status: 'saved', reason: 'captured', file: `installed-current-md-native-popup${slot}.png`, width: 300, height: 40 } }));
+    const result = withNativeHelper(child, () => {
+      child.line('PHASE:' + (mode === 'out-of-phase' ? 'filename-host' : 'filename-readback')); child.line('INPUTFAIL:' + JSON.stringify(inputFailureEvidence()));
+      if (mode !== 'before-topology') child.line('POPUPS:' + JSON.stringify(topology));
+      if (mode === 'private') entries[0].capture.file = 'PRIVATE/path';
+      if (mode === 'ineligible') entries[0].node_index = 0;
+      if (mode === 'wrong-slot') entries[0].slot = 2;
+      child.line('POPUPCAPTURE:' + (mode === 'oversized' ? 'x'.repeat(2049) : JSON.stringify(entries[0])));
+      if (mode === 'duplicate') child.line('POPUPCAPTURE:' + JSON.stringify(entries[0]));
+      else for (const entry of entries.slice(1)) child.line('POPUPCAPTURE:' + JSON.stringify(entry));
+      if (mode === 'excess') child.line('POPUPCAPTURE:' + JSON.stringify(entries[2]));
+      if (mode !== 'stall') child.end(1);
+    }, { ready: 50, action: 10, exit: 20 });
+    child.line('READY');
+    await assert.rejects(result, error => {
+      assert.equal(error.message, 'Owned native Save helper failed', mode);
+      if (['valid', 'unavailable', 'stall'].includes(mode)) assert.deepEqual(error.native_input_popup_captures, entries);
+      else { assert.equal(error.native_input_popup_captures, undefined); assert.equal(error.native_input_popup_captures_unavailable, true); }
+      if (mode === 'stall') assert.equal(error.native_input_observation_timed_out, true);
+      assert(!JSON.stringify(error).includes('PRIVATE')); return true;
+    }); assert(child.kills <= 1);
+  }
+});
+
+
+test('only the exact documented spaced popup class survives diagnostic parsing; shared redaction and action selectors stay separate', () => {
+  const topology = inputPopupEvidence(); topology.nodes[2].cls = 'Auto-Suggest Dropdown'; validateInputPopups(topology);
+  for (const cls of ['Auto-Suggest DropDown', 'auto-Suggest Dropdown', ' Auto-Suggest Dropdown', 'Auto-Suggest Dropdown ',
+    'PRIVATE Auto-Suggest Dropdown', 'Auto-Suggest Dropdown/PRIVATE', 'Auto-Suggest Dropdown\\PRIVATE', 'Auto-Suggest Dropdown\nPRIVATE', 'Auto-Suggest Dropdown\0']) {
+    topology.nodes[2].cls = cls; assert.throws(() => validateInputPopups(topology));
+  }
+  const observer = fs.readFileSync(new URL('../../scripts/installed-native-dialog-observation.ps1', import.meta.url), 'utf8');
+  assert(!observer.includes('Auto-Suggest Dropdown'));
+  const controls = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8');
+  assert.match(controls, /\$first.cls -ceq 'Auto-Suggest Dropdown'/);
+  const actionStart = controls.indexOf('# The editable ComboBox provider'); assert(actionStart > 0);
+  assert(!controls.slice(actionStart).includes('Auto-Suggest Dropdown'));
+  const script = nativeDialogScript(parseArgs(args), { owned_start: '123456' }, 'D:\\owned\\local-native-exports-fresh', 'D:\\owned\\local-native-exports-fresh\\learnnote-diagnostics.md');
+  assert(!script.includes('Auto-Suggest Dropdown'));
 });

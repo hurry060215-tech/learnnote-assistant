@@ -1,7 +1,7 @@
-# Synthetic installed-acceptance evidence only: exact already-bound dialog HWND.
+# Synthetic installed-acceptance evidence only: exact independently verified HWND.
 # PrintWindow renders that window alone; never capture the desktop or send input.
 function Save-OwnedDialogCapture([IntPtr]$Dialog, [string]$Directory, [string]$Destination, [scriptblock]$Guard,
-  [ValidateSet('dialog','foreground')][string]$Surface='dialog', $GuardContext=$null) {
+  [ValidateSet('dialog','foreground','popup1','popup2','popup3')][string]$Surface='dialog', $GuardContext=$null) {
   $phase='guard-before'; $bitmap=$null; $graphics=$null; $memory=$null; $stream=$null
   try {
     [void](& $Guard $GuardContext)
@@ -15,7 +15,10 @@ function Save-OwnedDialogCapture([IntPtr]$Dialog, [string]$Directory, [string]$D
         [IO.Path]::GetDirectoryName($destinationPath) -cne $directoryPath -or
         [IO.Path]::GetFileName($destinationPath) -cnotin @('learnnote-diagnostics.md','learnnote-diagnostics.json') -or
         $filename -cnotin @('installed-current-md-native-dialog.png','installed-current-json-native-dialog.png',
-          'installed-current-md-native-foreground.png','installed-current-json-native-foreground.png') -or
+          'installed-current-md-native-foreground.png','installed-current-json-native-foreground.png',
+          'installed-current-md-native-popup1.png','installed-current-json-native-popup1.png',
+          'installed-current-md-native-popup2.png','installed-current-json-native-popup2.png',
+          'installed-current-md-native-popup3.png','installed-current-json-native-popup3.png') -or
         !(Test-Path -LiteralPath $directoryPath -PathType Container) -or !(Test-Path -LiteralPath $outputPath -PathType Container) -or
         ((Get-Item -LiteralPath $directoryPath).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
         ((Get-Item -LiteralPath $outputPath).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
@@ -36,7 +39,8 @@ public static class OwnedDialogPixels {
     $phase='bounds'; $before=[OwnedDialogPixels+RECT]::new()
     if (![OwnedDialogPixels]::GetWindowRect($Dialog,[ref]$before)) { throw 'Capture bounds unavailable' }
     $width=$before.Right-$before.Left; $height=$before.Bottom-$before.Top
-    if ($width -lt 64 -or $width -gt 4096 -or $height -lt 64 -or $height -gt 4096) { throw 'Capture bounds rejected' }
+    $minimum=if ($Surface -like 'popup*') { 1 } else { 64 }
+    if ($width -lt $minimum -or $width -gt 4096 -or $height -lt $minimum -or $height -gt 4096) { throw 'Capture bounds rejected' }
     $phase='render'
     $bitmap=[Drawing.Bitmap]::new($width,$height,[Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $graphics=[Drawing.Graphics]::FromImage($bitmap); $dc=$graphics.GetHdc()

@@ -14,11 +14,11 @@ namespace System.Windows.Automation {
  public class AutomationElement { public static SyntheticNode FocusedElement { get { if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-fault") throw SyntheticState.Failure; if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-element") return SyntheticState.Save; return SyntheticState.Mode=="action-focus-element" ? SyntheticState.Save : SyntheticState.Focus==3 ? SyntheticState.Edit : SyntheticState.Save; } } public static SyntheticNode FromHandle(IntPtr h) { return h.ToInt32()==4 ? SyntheticState.Combo : SyntheticState.Save; } }
 }
 public static class SyntheticState {
- public static string Mode; public static bool Diagnostic; public static int ValueReads, SavePatterns, HostSets, EditSets, SaveInvokes, UnicodeSends, Focus, Selections, FocusChecks, SelectionChecks, VisibleCalls, ClassCalls;
+ public static string Mode; public static bool Diagnostic; public static int ValueReads, SavePatterns, HostSets, EditSets, SaveInvokes, UnicodeSends, Focus, Selections, FocusChecks, SelectionChecks, VisibleCalls, ClassCalls, PopupClassCalls;
  public static readonly Exception Failure=new InvalidOperationException("PRIVATE_original");
  public static SyntheticNode Host, Combo, Edit, Save;
  public static void Reset(string mode, string value) {
-  Failure.Data.Clear(); Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0;
+  Failure.Data.Clear(); Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0; PopupClassCalls=0;
   Host=new SyntheticNode(5); Combo=new SyntheticNode(4); Edit=new SyntheticNode(3); Save=new SyntheticNode(2);
   Edit.Pattern.Info.Value=value; Edit.Pattern.Info.IsReadOnly=mode=="readonly";
   Combo.Pattern.Info.Value=mode=="host-name" ? "wrong.md" : value; Combo.Pattern.Info.IsReadOnly=mode=="host-readonly";
@@ -109,26 +109,38 @@ public static class OwnedFilenameInput {
 public static class OwnedSave {
  public static IntPtr[] Visible(uint pid) {
   SyntheticState.VisibleCalls++;
-  int count=SyntheticState.Mode=="popup-limit" ? 65 : SyntheticState.Mode=="popup-truncated" ? 10 : 3;
+  int count=SyntheticState.Mode=="popup-limit" ? 65 : SyntheticState.Mode=="popup-truncated" ? 10 : SyntheticState.Mode=="popup-mixed" ? 4 : 3;
   if(SyntheticState.Mode=="popup-set-race" && SyntheticState.VisibleCalls>1) count=2;
   var list=new IntPtr[count]; list[0]=new IntPtr(10); list[1]=new IntPtr(1); for(int i=2;i<count;i++) list[i]=new IntPtr(9+i); return list;
  }
  public static bool IsWindowVisible(IntPtr h) { return SyntheticState.Mode!="popup-hidden" || h.ToInt32()!=11; }
  public static IntPtr GetWindow(IntPtr h,int flag) {
   if(h.ToInt32()==10) return IntPtr.Zero;
+  if(SyntheticState.Mode=="popup-ownerless" && h.ToInt32()==11 || SyntheticState.Mode=="popup-mixed" && h.ToInt32()==11) return IntPtr.Zero;
   if(SyntheticState.Mode=="popup-cycle" && h.ToInt32()==11) return h;
-  if(SyntheticState.Mode=="popup-owner-race" && h.ToInt32()==11 && SyntheticState.ClassCalls>=3) return new IntPtr(10);
+  if((SyntheticState.Mode=="popup-owner-foreign" || SyntheticState.Mode=="popup-owner-dead") && h.ToInt32()==11) return new IntPtr(99);
+  if(SyntheticState.Mode=="popup-owner-limit" && h.ToInt32()>=11) return new IntPtr(h.ToInt32()+1);
+  if(SyntheticState.Mode=="popup-owner-race" && h.ToInt32()==11 && SyntheticState.PopupClassCalls>1) return new IntPtr(10);
   return new IntPtr(h.ToInt32()==1 ? 10 : 1);
  }
  public static IntPtr GetDlgItem(IntPtr h,int id) { if (h.ToInt32()==4 && id==1001) return new IntPtr(SyntheticState.Mode=="host-wrong-edit" || SyntheticState.Mode=="action-wrong-edit" ? 9 : 3); return SyntheticState.Mode=="save-missing" ? IntPtr.Zero : new IntPtr(2); }
  public static IntPtr GetParent(IntPtr h) { if (h.ToInt32()==3) return new IntPtr(SyntheticState.Mode=="host-parent" || SyntheticState.Mode=="action-parent" || (SyntheticState.Mode=="action-after-parent" && SyntheticState.UnicodeSends>0) ? 9 : 4); return new IntPtr(SyntheticState.Mode=="save-parent" ? 9 : 1); }
- public static bool IsWindow(IntPtr h) { return true; } public static int Pid(IntPtr h) { return (h.ToInt32()==4 && SyntheticState.Mode=="host-owner") || (h.ToInt32()==11 && SyntheticState.Mode=="popup-foreign") ? 999 : 111; }
+ public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
+ public static bool IsWindow(IntPtr h) { return !(SyntheticState.Mode=="popup-owner-dead" && h.ToInt32()==99 || SyntheticState.Mode=="popup-dead" && h.ToInt32()==11); } public static int Pid(IntPtr h) { return (h.ToInt32()==4 && SyntheticState.Mode=="host-owner") || (h.ToInt32()==11 && SyntheticState.Mode=="popup-foreign") || (h.ToInt32()==99 && SyntheticState.Mode=="popup-owner-foreign") ? 999 : 111; }
  public static string Class(IntPtr h) {
   if(SyntheticState.Mode.StartsWith("popup-")) {
    SyntheticState.ClassCalls++;
    if(SyntheticState.Mode=="popup-budget" && SyntheticState.ClassCalls==1) Thread.Sleep(510);
    if(h.ToInt32()==10) return "WindowsForms10.Window.1"; if(h.ToInt32()==1) return "#32770";
-   return SyntheticState.Mode=="popup-unsafe-class" ? "PRIVATE class" : SyntheticState.Mode=="popup-class-race" && SyntheticState.ClassCalls>3 ? "Changed" : "Auto-Suggest";
+   SyntheticState.PopupClassCalls++;
+   if(SyntheticState.Mode=="popup-last-budget" && SyntheticState.PopupClassCalls==1) Thread.Sleep(510);
+   if(SyntheticState.Mode=="popup-class-fault") throw SyntheticState.Failure;
+   if(SyntheticState.Mode=="popup-spaced-class") return "Auto-Suggest Dropdown";
+   if(SyntheticState.Mode=="popup-spaced-case") return "Auto-Suggest DropDown";
+   if(SyntheticState.Mode=="popup-spaced-prefix") return "PRIVATE Auto-Suggest Dropdown";
+   if(SyntheticState.Mode=="popup-spaced-path") return "Auto-Suggest Dropdown/PRIVATE";
+   if(SyntheticState.Mode=="popup-spaced-newline") return "Auto-Suggest Dropdown\nPRIVATE";
+   return SyntheticState.Mode=="popup-unsafe-class" ? "PRIVATE class" : SyntheticState.Mode=="popup-class-race" && SyntheticState.PopupClassCalls>1 ? "Changed" : "Auto-Suggest";
   }
   return h.ToInt32()==4 ? (SyntheticState.Mode=="host-class" ? "WrongClass" : "ComboBox") : h.ToInt32()==3 ? "Edit" : "Button"; }
  public static int GetDlgCtrlID(IntPtr h) { return h.ToInt32()==3 ? 1001 : 1; }
@@ -269,13 +281,49 @@ foreach ($newline in @('lf','crlf')) {
   $start=$raw.IndexOf('function Set-InputPredicate('); $end=$raw.IndexOf('# The editable ComboBox provider',$start)
   if ($start -lt 0 -or $end -le $start) { throw 'Missing evidence source boundaries' }
   Invoke-Expression $raw.Substring($start,$end-$start)
-  foreach ($mode in @('popup-success','popup-truncated','popup-limit','popup-hidden','popup-foreign','popup-cycle','popup-set-race','popup-owner-race','popup-class-race','popup-unsafe-class','popup-process-race','popup-budget')) {
-    if ($newline -ceq 'crlf' -and $mode -ceq 'popup-budget') { continue }
+  foreach ($mode in @('popup-success','popup-truncated','popup-limit','popup-hidden','popup-foreign','popup-dead','popup-ownerless','popup-owner-foreign','popup-owner-dead','popup-owner-limit','popup-cycle','popup-mixed','popup-set-race','popup-owner-race','popup-class-race','popup-class-fault','popup-unsafe-class','popup-process-race','popup-budget','popup-last-budget','popup-spaced-class','popup-spaced-case','popup-spaced-prefix','popup-spaced-path','popup-spaced-newline')) {
+    if ($newline -ceq 'crlf' -and $mode -cin @('popup-budget','popup-last-budget')) { continue }
     [SyntheticState]::Reset($mode,'learnnote-diagnostics.md'); $script:rootCalls=0
     function Assert-Root { $script:rootCalls++; if ([SyntheticState]::Mode -ceq 'popup-process-race' -and $script:rootCalls -gt 1) { throw [SyntheticState]::Failure } }
     $bound=@{config=@{pid=111;start='123'};root=[IntPtr]10;rootClass='WindowsForms10.Window.1';dialog=[IntPtr]1}
-    $snapshot=Get-InputPopupTopology $bound
-    $popupResults.Add(@{mode=$mode;newline=$newline;observation=$snapshot;root_calls=$script:rootCalls;class_calls=[SyntheticState]::ClassCalls})
+    $proofs=[Collections.Generic.List[object]]::new()
+    $snapshot=Get-InputPopupTopology $bound $proofs
+    $popupResults.Add(@{mode=$mode;newline=$newline;observation=$snapshot;root_calls=$script:rootCalls;class_calls=[SyntheticState]::ClassCalls;proof_count=$proofs.Count})
   }
 }
-@{validation=@($results.ToArray());actions=@($actionResults.ToArray());popups=@($popupResults.ToArray())} | ConvertTo-Json -Depth 8 -Compress
+$captureResults=[Collections.Generic.List[object]]::new()
+foreach ($newline in @('lf','crlf')) {
+  $raw=[IO.File]::ReadAllText((Join-Path $root 'installed-native-save-controls.ps1')).Replace("`r`n","`n")
+  if ($newline -ceq 'crlf') { $raw=$raw.Replace("`n","`r`n") }
+  $start=$raw.IndexOf('function Set-InputPredicate('); $end=$raw.IndexOf('# The editable ComboBox provider',$start)
+  if ($start -lt 0 -or $end -le $start) { throw 'Missing evidence source boundaries' }
+  Invoke-Expression $raw.Substring($start,$end-$start)
+foreach ($mode in @('popup-success','popup-mixed','popup-truncated','popup-capture-owner-race','popup-capture-root-race','popup-capture-foreground-race','popup-capture-render-fault')) {
+  [SyntheticState]::Reset($mode,'learnnote-diagnostics.md'); $script:captureCalls=0; $script:rootRace=$false; $script:foregroundRace=$false
+  function Assert-Root { if ($script:rootRace) { throw [SyntheticState]::Failure } }
+  function Get-OwnedForegroundState($binding,$foreground) { return @{synthetic=$true} }
+  function Assert-OwnedForegroundEvidence($proof) { if ($script:foregroundRace) { throw [SyntheticState]::Failure } }
+  function Save-OwnedDialogCapture($Dialog,$Directory,$Destination,$Surface,$Guard,$GuardContext) {
+    $script:captureCalls++
+    try {
+      & $Guard $GuardContext
+      if ($mode -ceq 'popup-capture-owner-race') { [SyntheticState]::Mode='popup-ownerless' }
+      if ($mode -ceq 'popup-capture-root-race') { $script:rootRace=$true }
+      if ($mode -ceq 'popup-capture-foreground-race') { $script:foregroundRace=$true }
+      if ($mode -ceq 'popup-capture-render-fault') { throw [SyntheticState]::Failure }
+      & $Guard $GuardContext
+      return @{status='saved';reason='captured';file=('installed-current-md-native-'+$Surface+'.png');width=300;height=40}
+    } catch { return @{status='unavailable';reason='guard-after';file=$null;width=$null;height=$null} }
+  }
+  $bound=@{config=@{pid=111;start='123'};root=[IntPtr]10;rootClass='WindowsForms10.Window.1';dialog=[IntPtr]1}
+  $proofs=[Collections.Generic.List[object]]::new(); $snapshot=Get-InputPopupTopology $bound $proofs
+  $console=[Console]::Out; $output=[IO.StringWriter]::new()
+  try { [Console]::SetOut($output); Write-InputPopupCaptures $bound $proofs 'synthetic' 'synthetic' }
+  finally { [Console]::SetOut($console) }
+  $entries=@($output.ToString().Trim() -split "`r?`n" | Where-Object { $_ } | ForEach-Object {
+    if (!$_.StartsWith('POPUPCAPTURE:')) { throw 'Unexpected capture output' }; $_.Substring(13) | ConvertFrom-Json
+  }); $output.Dispose()
+  $captureResults.Add(@{mode=$mode;newline=$newline;topology=$snapshot;captures=$entries;capture_calls=$script:captureCalls})
+}
+}
+@{validation=@($results.ToArray());actions=@($actionResults.ToArray());popups=@($popupResults.ToArray());captures=@($captureResults.ToArray())} | ConvertTo-Json -Depth 8 -Compress
