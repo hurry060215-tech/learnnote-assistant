@@ -38,7 +38,7 @@ test("held actual-preview route always releases and unroutes after primary failu
     page.start(); page.upstream.resolve({ exact: "real local response" }); await started(); throw primary;
   });
   await assert.rejects(work, error => error === primary); await page.settled();
-  assert.deepEqual(page.calls, ["installed", "unrouted", "fulfilled"]);
+  assert.deepEqual(page.calls, ["installed", "fulfilled", "unrouted"]);
 });
 test("route cleanup failure preserves primary and still releases held response", async () => {
   const page = heldPage({ unrouteError: Error("route cleanup failed") }), primary = Error("assertion failed");
@@ -142,4 +142,40 @@ test("paging viewport evidence rejects status hidden by the sticky header or cli
     status.getBoundingClientRect = () => rect(350, 390); controls.getBoundingClientRect = () => rect(790, 878);
     assert.equal(pagingViewportState(dialog).controls_visible, false);
   } finally { global.innerWidth = before.width; global.innerHeight = before.height; }
+});
+
+
+test("held route fulfills before unroute can continue the outstanding request", async () => {
+  const calls = [], upstream = deferred(); let handler, pending, handled = false, fulfillCount = 0;
+  const page = {
+    async route(url, fn) { handler = fn; },
+    async unroute() { calls.push("unroute"); if (!handled) { handled = true; calls.push("continued-by-removal"); } },
+  };
+  const response = { exact: "captured real response" };
+  const result = await withHeldPreview(page, "/page", async started => {
+    pending = handler({
+      fetch: () => upstream.promise,
+      request: () => ({ failure: () => null }),
+      fulfill: async options => {
+        // Protocol dispatch need not complete in the release promise's microtask.
+        await new Promise(resolve => setImmediate(resolve));
+        if (handled) throw Error("Route is already handled!");
+        assert.equal(options.response, response); handled = true; fulfillCount++; calls.push("fulfill");
+      },
+    });
+    upstream.resolve(response); await started(); return "obsolete response discarded by the product";
+  });
+  await pending;
+  assert.equal(result, "obsolete response discarded by the product");
+  assert.equal(fulfillCount, 1); assert.deepEqual(calls, ["fulfill", "unroute"]);
+});
+
+test("settlement failure still removes the route and preserves a primary failure", async () => {
+  const page = heldPage({ fulfillError: Error("Route is already handled!") });
+  const primary = Error("original UI assertion");
+  await assert.rejects(withHeldPreview(page, "/page", async started => {
+    page.start(); page.upstream.resolve({}); await started(); throw primary;
+  }), error => error === primary && error.cleanupErrors.length === 1
+    && /already handled/.test(error.cleanupErrors[0].message));
+  await page.settled(); assert.deepEqual(page.calls, ["installed", "fulfilled", "unrouted"]);
 });

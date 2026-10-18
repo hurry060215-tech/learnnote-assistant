@@ -72,10 +72,11 @@ async function withHeldPreview(page, url, action) {
   } catch (error) { primaryError = error; throw error; }
   finally {
     held.resolve();
-    await cleanupFixture({ route: () => installed && page.unroute(url, handler), settle: async () => {
+    // Removing an in-flight Playwright handler may continue its route. Settle first.
+    await cleanupFixture({ settle: async () => {
       if (intercepted) await bounded(settled.promise, "obsolete preview discarded", 15000);
       if (settleError) throw settleError;
-    } }, primaryError);
+    }, route: () => installed && page.unroute(url, handler) }, primaryError);
   }
 }
 async function stopFixtureProcess(backend, timeout = 5000) {
