@@ -49,6 +49,9 @@ def member_content(content):
 
 def public_contract():
     schema = copy.deepcopy(main.app.openapi())
+    # #158 adds one independently tested read-only bounded paging endpoint.
+    # Preserve every legacy operation and all stored/exported schema bytes.
+    schema["paths"].pop("/api/tasks/{task_id}/community-context/page")
     # #151 adds exactly this independently tested endpoint/model. Preserve the
     # frozen pre-extraction contract for every pre-existing operation/schema;
     # arbitrary new or changed routes must still fail this comparison.

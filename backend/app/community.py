@@ -383,11 +383,15 @@ def list_community_context(task_id: str, limit: int = 500) -> dict[str, object]:
             ).fetchall()
         finally:
             connection.close()
+    return community_context_projection(task_id, rows, bool(community_settings()["enabled"]))
+
+
+def community_context_projection(task_id: str, rows, enabled: bool) -> dict[str, object]:
     groups = _perspective_groups([dict(row) for row in rows])
     return {
         "schema_version": COMMUNITY_CONTEXT_SCHEMA_VERSION,
         "task_id": str(task_id or "")[:128],
-        "enabled": bool(community_settings()["enabled"]),
+        "enabled": enabled,
         "groups": groups,
         "grouping": "local_keyword_hints_not_factual_classification",
         "author_identity_exposed": False,

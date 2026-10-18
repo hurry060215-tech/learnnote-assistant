@@ -4,7 +4,7 @@ const { EventEmitter } = require("node:events");
 const { spawnSync } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 const vm = require("node:vm");
-const { browserLaunchOptions, navigateHome, answerViewportState, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture } = require("../community-question-api-acceptance.cjs");
+const { pagingViewportState, browserLaunchOptions, navigateHome, answerViewportState, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture } = require("../community-question-api-acceptance.cjs");
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function heldPage({ unrouteError, fulfillError, aborted = false } = {}) {
   const calls = [], upstream = deferred(); let handler, work;
@@ -125,4 +125,21 @@ test("lifecycle helpers import without Playwright installed", () => {
   `;
   const result = spawnSync(process.execPath, ["-e", probe], { encoding: "utf8", timeout: 10000 });
   assert.equal(result.status, 0, result.stderr || result.error?.message || result.stdout);
+});
+
+
+test("paging viewport evidence rejects status hidden by the sticky header or clipped controls", () => {
+  const before = { width: global.innerWidth, height: global.innerHeight };
+  global.innerWidth = 390; global.innerHeight = 844;
+  const rect = (top, bottom) => ({ top, bottom, left: 38, right: 352, width: 314, height: bottom - top });
+  const controls = { getBoundingClientRect: () => rect(400, 488) };
+  const status = { nextElementSibling: controls, getBoundingClientRect: () => rect(350, 390) };
+  const dialog = { getBoundingClientRect: () => ({ top: 42, bottom: 802, left: 18, right: 372 }),
+    querySelector: selector => selector === ":scope > header" ? { getBoundingClientRect: () => rect(42, 125) } : status };
+  try {
+    assert.deepEqual(pagingViewportState(dialog), { status_visible: true, controls_visible: true });
+    status.getBoundingClientRect = () => rect(80, 110); assert.equal(pagingViewportState(dialog).status_visible, false);
+    status.getBoundingClientRect = () => rect(350, 390); controls.getBoundingClientRect = () => rect(790, 878);
+    assert.equal(pagingViewportState(dialog).controls_visible, false);
+  } finally { global.innerWidth = before.width; global.innerHeight = before.height; }
 });

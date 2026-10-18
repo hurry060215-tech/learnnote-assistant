@@ -23,6 +23,8 @@ MODULE_SIZE_LIMITS = {
     "backend/app/diagnostic_report.py": 220,  # Read-only content-free report projection.
     "backend/app/diagnostic_fields.py": 60,  # Import-free shared document/report fields.
     "backend/app/community.py": 480,
+    "backend/app/community_paging.py": 110,  # Bounded read-only snapshot paging.
+    "web/community-browser.js": 110,  # One page plus source-bound controls.
     "backend/app/selected_opinion_sources.py": 190,
     "backend/app/selected_opinion_qa.py": 230,
     "backend/app/routers/selected_opinion_qa.py": 75,

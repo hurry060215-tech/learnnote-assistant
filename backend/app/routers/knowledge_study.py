@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from .community_capture import community_capture_router
 from ..community import add_community_context, clear_all_community_context, clear_community_context, community_settings, delete_community_item, list_community_context, sample_community_context, set_community_enabled
+from ..community_paging import community_page_source, list_community_page
 from ..document_exports import DocumentExportUnavailable, build_docx_export, build_html_export, build_pdf_export, build_structured_export, normalize_export_options
 from ..embeddings import embedding_status
 from ..knowledge import add_evidence, answer_from_evidence, evidence_by_ids, evidence_for_task, extract_import_text_with_metadata, preserve_raw_import, redecode_evidence, remove_evidence, search_evidence
@@ -568,6 +569,25 @@ def api_task_community_context(task_id: str, limit: int = 500) -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": "task_not_found", "message": "任务不存在。"}) from exc
     return list_community_context(task_id, min(limit, 2000))
+
+
+@task_study_router.get("/{task_id}/community-context/page")
+def api_task_community_page(task_id: str, limit: int = 500, cursor: str = "") -> dict:
+    try:
+        task = get_task(task_id)
+        result = list_community_page(task, limit, cursor)
+        # Do not hold the task lock during SQLite waits or acquire it under the community lock.
+        if community_page_source(get_task(task_id)) != community_page_source(task):
+            raise ValueError("community_page_changed")
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(404, {"code": "task_not_found", "message": "任务不存在。"}) from exc
+    except ValueError as exc:
+        code = str(exc)
+        messages = {"community_page_changed": (409, "观点、来源或启用状态已变化，请刷新列表后继续。"),
+                    "community_page_unavailable": (503, "本地观点暂时无法读取，请稍后刷新列表。") }
+        status, message = messages.get(code, (422, "分页范围无效，请刷新列表。"))
+        raise HTTPException(status, {"code": code, "message": message}) from exc
 
 
 @task_study_router.get("/{task_id}/community-context/export")

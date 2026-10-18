@@ -34,6 +34,18 @@ function answerViewportState(dialog) {
   return { label_visible: visible(label), answer_visible: visible(answer),
     unverified_label: Boolean(label?.textContent.includes("整体未经事实验证")) };
 }
+function pagingViewportState(dialog) {
+  const frame = dialog.getBoundingClientRect(), header = dialog.querySelector(":scope > header").getBoundingClientRect();
+  const status = dialog.querySelector("#communityPageStatus"), controls = status?.nextElementSibling;
+  const visible = node => {
+    if (!node) return false;
+    const box = node.getBoundingClientRect();
+    return box.width > 0 && box.height > 0 && box.top >= Math.max(0, frame.top, header.bottom)
+      && box.bottom <= Math.min(innerHeight, frame.bottom) && box.left >= Math.max(0, frame.left)
+      && box.right <= Math.min(innerWidth, frame.right);
+  };
+  return { status_visible: visible(status), controls_visible: visible(controls) };
+}
 async function unexpectedDialog(dialog, report) {
   report.errors.push(`Unexpected ${dialog.type()} dialog: ${dialog.message()}`);
   try { await dialog.dismiss(); } catch (error) { report.errors.push(`Dialog dismissal failed: ${error.message}`); }
@@ -84,6 +96,123 @@ async function finishFixture({ browser, backend, out, report, write = fs.writeFi
   catch (error) { if (failure) failure.reportError = error; else failure = error; }
   if (failure) throw failure;
 }
+async function exerciseCommunityPaging({ page, base, task, fixture, api, open, expand, capture, readState, report }) {
+  // Only this already-isolated synthetic task is seeded, via the shipped import API.
+  const initial = await api(task + "/community-context");
+  assert.equal(initial.items.length, 2);
+  await api("/api/study/community/settings", { method: "PUT", data: { enabled: true } });
+  await api(task + "/community-context", { method: "POST", data: { items: Array.from({ length: 499 }, (_, index) => ({ text: `合成分页观点 ${index + 1}，只用于本机测试。` })) } });
+  const beforeCalls = (await readState()).count;
+  const rows = () => page.locator("#communityRows blockquote");
+  const count = text => page.locator("#communityPageStatus").getByText(text);
+  async function first() { await open(); await count(/1–500.*501|1–500.*502/).waitFor(); }
+  async function advance() { await page.locator("#communityNext").focus(); await page.keyboard.press("Enter"); }
+  async function expectedConfirm(action, message) {
+    const listeners = page.listeners("dialog"); page.removeAllListeners("dialog");
+    const decision = deferred();
+    const handler = async dialog => {
+      try { assert.equal(dialog.type(), "confirm"); assert.equal(dialog.message(), message); await dialog.accept(); decision.resolve(); }
+      catch (error) { await dialog.dismiss(); decision.resolve(error); }
+    };
+    page.on("dialog", handler);
+    try { await action(); const error = await bounded(decision.promise, "explicit synthetic delete confirmation", 10000); if (error) throw error; }
+    finally { page.off("dialog", handler); for (const listener of listeners) page.on("dialog", listener); }
+  }
+  await first(); assert.equal(await rows().count(), 500);
+  await page.locator("#communityText").fill("保留的未提交合成观点");
+  await expand(); await page.locator("#communityQuestionText").fill("仅本页的合成问题");
+  await page.locator(`[data-opinion-id="${fixture.item_ids[0]}"]`).check();
+  await page.locator("#communityQuestionPreview").click(); await page.locator("#communityQuestionConsent").waitFor();
+  await page.locator("#communityQuestionConsent").check();
+  await capture("paging-first", "#communityPageStatus");
+  await advance(); await count(/501–501.*501/).waitFor();
+  assert.equal(await rows().count(), 1);
+  assert.equal(await page.locator("#communityQuestionConsent").count(), 0);
+  assert.equal(await page.locator("#communityQuestionText").inputValue(), "");
+  assert.equal(await page.locator("[data-opinion-id]:checked").count(), 0);
+  assert.equal(await page.locator("#communityText").inputValue(), "保留的未提交合成观点");
+  assert(await page.locator("#communityNext").isDisabled());
+  assert(await page.locator("#communityPageStatus").evaluate(node => document.activeElement === node));
+  const lastId = await page.locator("#communityRows [data-item-id]").getAttribute("data-item-id");
+  assert.deepEqual(await page.locator("#toolsDialog").evaluate(pagingViewportState), { status_visible: true, controls_visible: true });
+  await capture("paging-501", "#communityPageStatus");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#communityPrevious").focus(); await page.keyboard.press("Enter"); await count(/1–500.*501/).waitFor();
+  assert.deepEqual(await page.locator("#toolsDialog").evaluate(pagingViewportState), { status_visible: true, controls_visible: true });
+  assert(await page.locator("#communityPageStatus").evaluate(node => document.activeElement === node));
+  await advance(); await count(/501–501.*501/).waitFor();
+  assert.deepEqual(await page.locator("#toolsDialog").evaluate(pagingViewportState), { status_visible: true, controls_visible: true });
+  assert(await page.locator("#communityPageStatus").evaluate(node => document.activeElement === node));
+  await capture("paging-keyboard-390", "#communityPageStatus", { widths: [390] });
+  await expand(); await page.locator("#communityQuestionText").fill("第501条的独立合成问题");
+  await page.locator(`[data-opinion-id="${lastId}"]`).check();
+  const reviewedResponse = await completedAction(page, "POST", base + task + "/qa/preview", () => page.locator("#communityQuestionPreview").click());
+  const reviewed = await reviewedResponse.json();
+  assert.deepEqual(reviewed.selected_item_ids, [lastId]);
+  assert.equal(reviewed.limits.opinion_items, 20); assert.equal(reviewed.limits.opinion_characters, 20000);
+  assert.equal(reviewed.limits.original_source_items, 24); assert.equal(reviewed.limits.original_source_characters, 12000);
+  await page.locator("#communityPrevious").focus(); await page.keyboard.press("Enter"); await count(/1–500.*501/).waitFor();
+  assert.equal(await page.locator("#communityQuestionConsent").count(), 0);
+  assert.equal((await api(task + "/community-context/export")).items.length, 501);
+  // Failed mutations retain the page and leave a working explicit refresh.
+  for (const action of ["toggle", "delete", "clear", "import"]) {
+    const url = action === "toggle" ? `${base}/api/study/community/settings` : `${base}${task}/community-context**`;
+    const method = action === "toggle" ? "PUT" : action === "import" ? "POST" : "DELETE";
+    const failure = `Synthetic ${action} unavailable`;
+    const reject = route => route.request().method() === method
+      ? route.fulfill({ status: action === "delete" ? 404 : 503, contentType: "application/json", body: JSON.stringify({ detail: { message: failure } }) }) : route.continue();
+    await page.route(url, reject);
+    try {
+      if (action === "toggle") await page.locator('[data-action="toggle-community"]').click();
+      if (action === "delete") await expectedConfirm(() => page.locator("#communityRows [data-item-id]").first().click(), "删除这条社区观点？");
+      if (action === "clear") await expectedConfirm(() => page.locator('[data-action="clear-community"]').click(), "清空当前任务的社区观点？");
+      if (action === "import") { await page.locator("#communityText").fill("合成失败导入"); await page.locator("#communityForm button").click(); }
+      await count(new RegExp(`${failure}.*刷新列表`)).waitFor();
+      assert.deepEqual(await page.locator("#toolsDialog").evaluate(pagingViewportState), { status_visible: true, controls_visible: true });
+      assert(await page.locator("#communityPageStatus").evaluate(node => document.activeElement === node));
+      assert.equal(await rows().count(), 500); assert(!(await page.locator("#communityRefresh").isDisabled()));
+    } finally { await page.unroute(url, reject); }
+    await page.locator("#communityRefresh").click(); await count(/1–500.*501/).waitFor();
+  }
+  // An outside insert invalidates the current cursor; no implicit retry or merge.
+  await api(task + "/community-context", { method: "POST", data: { items: [{ text: "另一请求保存的合成观点" }] } });
+  await advance(); await count(/已变化.*刷新列表/).waitFor();
+  assert.equal(await rows().count(), 0); assert(await page.locator("#communityNext").isDisabled());
+  await capture("paging-stale", "#communityPageStatus");
+  await page.locator("#communityRefresh").click(); await count(/1–500.*502/).waitFor();
+  // Held real page responses cannot resurrect after close, home navigation or layer revocation.
+  for (const action of ["close", "navigation", "disable"]) {
+    await withHeldPreview(page, `${base}${task}/community-context/page?**`, async started => {
+      await advance(); await started();
+      if (action === "close") await page.locator("[data-close-tool]").click();
+      if (action === "navigation") await navigateHome(page);
+      if (action === "disable") { await page.locator('[data-action="toggle-community"]').click(); await page.locator('[data-action="toggle-community"][data-enabled="false"]').waitFor(); }
+    });
+    if (action === "disable") {
+      assert.equal(await page.locator("#communityQuestionForm").count(), 0);
+      await capture("paging-disabled", "#communityPageStatus");
+      await page.locator('[data-action="toggle-community"]').click(); await count(/1–500.*502/).waitFor();
+    } else {
+      assert.equal(await page.locator("#toolsDialog").evaluate(node => node.open), false);
+      if (action === "navigation") { await page.goto(`${base}/#task/${fixture.task_id}`); await page.locator("#document h1").waitFor(); }
+      await first();
+    }
+  }
+  await advance(); await count(/501–502.*502/).waitFor();
+  await expectedConfirm(() => page.locator(`#communityRows [data-item-id="${lastId}"]`).click(), "删除这条社区观点？");
+  await count(/1–500.*501/).waitFor();
+  assert(!(await api(task + "/community-context/export")).items.some(item => item.item_id === lastId));
+  await page.locator("#communityText").fill("从分页窗口新保存的合成观点"); await page.locator("#communityForm button").click();
+  await count(/1–500.*502/).waitFor();
+  assert.equal((await api(task + "/community-context/export")).items.length, 502);
+  assert.equal((await readState()).count, beforeCalls, "Paging and exact previews do not call a model");
+  await expectedConfirm(() => page.locator('[data-action="clear-community"]').click(), "清空当前任务的社区观点？");
+  await count(/尚未保存/).waitFor(); assert.equal(await rows().count(), 0);
+  assert.equal(await page.locator("#communityQuestionForm").count(), 0);
+  await capture("paging-empty", "#communityPageStatus");
+  report.checks.push("Actual bounded paging:501 accessible/selectable/deletable, unchanged QA budgets, page-local consent reset, keyboard Previous/Next, preserved import draft, full export, all mutation failures recover, stale409 explicit refresh, late close/navigation/revocation guards, save and empty states; no added model call");
+}
+
 async function main() {
   const { chromium } = require("playwright");
   const out = path.resolve(process.argv[2] || "build/community-question-ui"); fs.mkdirSync(out, { recursive: true });
@@ -170,6 +299,9 @@ async function main() {
         });
         assert(!geometry.overflow && geometry.left >= 0 && geometry.right <= geometry.width + 1, JSON.stringify(geometry));
         assert(geometry.controls.every(height => height >= 44));
+        if (name.startsWith("paging-")) {
+          assert.deepEqual(await page.locator("#toolsDialog").evaluate(pagingViewportState), { status_visible: true, controls_visible: true });
+        }
         if (answerBody) {
           const visible = await page.locator("#toolsDialog").evaluate(answerViewportState);
           assert(visible.label_visible && visible.answer_visible && visible.unverified_label, JSON.stringify(visible));
@@ -276,6 +408,7 @@ async function main() {
     assert.equal(final.persistence?.no_history_or_run_files, true, JSON.stringify(final.persistence));
     assert.equal(final.persistence?.no_mixed_output_persisted, true, JSON.stringify(final.persistence));
     report.checks.push("Actual server revocation: item deletion, layer disable, source bytes and saved model mutations reject preview admission and held final completion; persistence families unchanged");
+    await exerciseCommunityPaging({ page, base, task, fixture, api, open, expand, capture, readState, report });
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external_requests, []); report.passed = true;
   } catch (error) {
     primaryError = error; report.error = String(error.stack || error);
@@ -289,4 +422,4 @@ async function main() {
   if (primaryError) throw primaryError;
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { until, browserLaunchOptions, navigateHome, answerViewportState, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture };
+module.exports = { exerciseCommunityPaging, pagingViewportState, until, browserLaunchOptions, navigateHome, answerViewportState, unexpectedDialog, withHeldPreview, stopFixtureProcess, finishFixture };
