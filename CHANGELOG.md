@@ -2,6 +2,16 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.16 - Safe diagnostics, subtitle retry and source context
+
+- Preview the exact allowlisted diagnostic bytes before explicit local save; share one report across Markdown, JSON and support archives, without automatic upload or sending. Keep unrecorded historical versions, request totals, usage and cost unknown.
+- Preserve saved-transcript text retries and bounded chunk diagnostics; fix narrow literal source-check false positives without treating heuristic matches as fact verification.
+- Label raw transcript samples explicitly and expose surrounding context; retain legacy outline artifacts and use genre-neutral summary guidance.
+- Repair tablet settings width and wrapped mobile action labels; preserve progressive reader continuity and admitted tasks during stale-list refreshes.
+- Retain explicit data-directory migration with stopped-source copy, validation and config-last activation. Existing unsigned macOS arm64 evidence is bounded; snapshot restoration is not newer-schema downgrade or credential transfer.
+- Release/install boundary: source changes do not update existing installations. Packaging, installation/upgrade checks and downloaded-asset verification must pass before publication; install the corresponding release to receive these changes.
+- Known limits: no claim that a particular real-video failure is fixed or that all open issues are complete. Real-model quality, four-hour real-video acceptance, Word/WPS layout and full platform acceptance remain incomplete. Windows unsigned builds and macOS preview/store boundaries remain unchanged.
+
 ## 0.2.15 - Progressive drafts, explicit review and clearer reading
 
 - Refine reading hierarchy and responsive controls, preserve sidebar state, and align the public website with the current workspace.

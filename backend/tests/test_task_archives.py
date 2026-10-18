@@ -158,6 +158,9 @@ def archive_case(kind, rich, annotations=False, *, claim_map=None):
         # ZipFile stores local timestamps. Freeze both generated and file-backed
         # entries so local before/after whole-archive byte comparison is exact.
         stack.enter_context(patch("zipfile.time.localtime", return_value=(2026, 10, 9, 0, 0, 0, 4, 282, 0)))
+        # Keep the reviewed diagnostic serializer bytes at their original runtime
+        # version; test_diagnostic_report separately checks the live APP_VERSION.
+        stack.enter_context(patch("app.diagnostic_report.APP_VERSION", "0.2.15"))
         exporter = {"bundle": main.api_export_bundle, "sanitized-bundle": main.api_export_sanitized_bundle,
                     "support-package": main.api_export_support_package}[kind]
         response = exporter(task.id, include_annotations=annotations) if kind == "bundle" else exporter(task.id)

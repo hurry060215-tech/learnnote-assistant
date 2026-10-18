@@ -9,7 +9,7 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
-from app import main, storage
+from app import APP_VERSION, main, storage
 from app.diagnostic_report import build_report, render_markdown, project_events
 from app.document_exports import _diagnostic_summary_markdown
 from app.models import TaskOptions, TaskRecord
@@ -47,7 +47,7 @@ class DiagnosticReportTests(unittest.TestCase):
     def test_legacy_unknowns_distinguish_current_version_and_never_write(self):
         before = self.state()
         result = build_report(self.task)
-        self.assertEqual(result["versions"]["current_app"], "0.2.15")
+        self.assertEqual(result["versions"]["current_app"], APP_VERSION)
         self.assertIsNone(result["versions"]["task_run_app"])
         self.assertIsNone(result["versions"]["build_revision"])
         self.assertEqual(result["timings"], {"availability": "not_recorded", "attempts": []})

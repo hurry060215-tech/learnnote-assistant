@@ -1,0 +1,460 @@
+// Existing owned installed WebView2 only. No browser launch, context replacement,
+// response mocks, source backend or persisted raw diagnostic/download contents.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createHash } = require('node:crypto');
+const { execFileSync, spawn } = require('node:child_process');
+const TIMEOUT = 15000, MAX_BYTES = 256 * 1024;
+const SYNTHETIC_TITLE = 'Synthetic rollback captions';
+const NATIVE_PHASES = ['ownership', 'destination', 'dialog-wait', 'filename-host', 'filename-edit', 'save-button', 'filename-set', 'save-invoke', 'save-completion', 'cancel-observation'];
+
+function parseArgs(args) {
+  assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
+  const [output, port, origin, taskId, pid] = args;
+  let startupOnly = false, expectedVersion;
+  for (let i = 5; i < args.length; i++) {
+    if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
+    else if (args[i] === '--expected-version' && !expectedVersion) expectedVersion = args[++i];
+    else throw new Error('Unknown or repeated acceptance option');
+  }
+  assert(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(expectedVersion || ''), 'Explicit expected version is required');
+  assert(/^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) < 65536, 'Invalid debug port');
+  assert(/^[1-9]\d{0,9}$/.test(pid) && Number(pid) <= 0xffffffff, 'Invalid owned app PID');
+  const url = new URL(origin);
+  assert.equal(url.protocol, 'http:'); assert.equal(url.hostname, '127.0.0.1');
+  assert.equal(url.origin, origin, 'API origin must not include credentials, path, query or fragment');
+  assert(url.port && Number(url.port) !== Number(port), 'API and debug ports must be distinct');
+  assert(/^[A-Za-z0-9_-]{1,128}$/.test(taskId), 'Invalid synthetic task ID');
+  assert(output && !output.startsWith('--'), 'Output directory is required');
+  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion };
+}
+
+async function bounded(promise, label, timeout = TIMEOUT) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out: ${label}`)), timeout); })]); }
+  finally { clearTimeout(timer); }
+}
+
+async function readInstalledJSON(origin, route, request = fetch) {
+  const response = await request(origin + route, { signal: AbortSignal.timeout(TIMEOUT), redirect: 'error' });
+  assert(response.ok, `Installed API ${route} failed: ${response.status}`);
+  return bounded(response.json(), 'installed API JSON');
+}
+
+// Query only the supplied port/process and its ancestor chain. No command lines,
+// environment variables, user profile paths or unrelated window contents leave it.
+function verifyOwned(config, execute = execFileSync) {
+  const script = `$ErrorActionPreference='Stop'; $ownedId=${config.ownedPid}; $port=${config.debugPort}; $apiPort=${config.apiPort};
+    $owned=Get-CimInstance Win32_Process -Filter "ProcessId = $ownedId";
+    if (!$owned -or $owned.Name -ne 'LearnNote.exe') { throw 'Owned LearnNote process is unavailable' }
+    $apiListeners=@(Get-NetTCPConnection -State Listen -LocalPort $apiPort -ErrorAction Stop);
+    if ($apiListeners.Count -eq 0 -or @($apiListeners | Where-Object {
+      $_.LocalAddress -notin @('127.0.0.1','::1') -or $_.OwningProcess -ne $ownedId
+    }).Count) { throw 'API listener must be loopback-only and owned by the supplied LearnNote process' }
+    $deadline=[DateTime]::UtcNow.AddSeconds(20); $listeners=@();
+    do { $listeners=@(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue);
+      if ($listeners.Count -eq 0) { Start-Sleep -Milliseconds 100 }
+    } while ($listeners.Count -eq 0 -and [DateTime]::UtcNow -lt $deadline);
+    if ($listeners.Count -eq 0) { throw 'Owned debug listener did not start' }
+    if (@($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1','::1') }).Count) { throw 'Debug listener is not loopback-only' }
+    $owners=@($listeners.OwningProcess | Select-Object -Unique);
+    if ($owners.Count -ne 1) { throw 'Debug listener ownership is ambiguous' }
+    $debug=Get-CimInstance Win32_Process -Filter "ProcessId = $($owners[0])";
+    if (!$debug -or $debug.Name -ne 'msedgewebview2.exe') { throw 'Expected owned WebView2 debug listener' }
+    $cursor=$debug; $matched=$false; $seen=@{};
+    for ($i=0; $i -lt 24 -and $cursor; $i++) {
+      if ($cursor.ProcessId -eq $ownedId) { $matched=$true; break }
+      if ($seen.ContainsKey([string]$cursor.ProcessId)) { break }; $seen[[string]$cursor.ProcessId]=$true;
+      $cursor=Get-CimInstance Win32_Process -Filter "ProcessId = $($cursor.ParentProcessId)";
+    }
+    if (!$matched) { throw 'Debug listener is not a descendant of the owned app' }
+    @{owned_pid=$ownedId;owned_start=$owned.CreationDate.ToUniversalTime().Ticks.ToString();api_port=$apiPort;api_pid=$ownedId;
+      debug_pid=[int]$debug.ProcessId;debug_start=$debug.CreationDate.ToUniversalTime().Ticks.ToString()} | ConvertTo-Json -Compress`;
+  return JSON.parse(execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+    { encoding: 'utf8', timeout: 30000, windowsHide: true, maxBuffer: 65536 }).trim());
+}
+
+function assertSyntheticTask(task, taskId) {
+  assert(task.id === taskId && task.title === SYNTHETIC_TITLE, 'Expected exact owned synthetic task identity');
+  assert(task.handoff_id === 'native-rollback-synthetic-caption', 'Expected synthetic handoff identity');
+  assert(task.page_url === 'https://example.com/synthetic-rollback', 'Expected synthetic source URL');
+  assert(task.status === 'success' && task.summary_source === 'subtitle-extract', 'Expected retained synthetic caption task');
+}
+
+function selectOwnedPage(browser, origin) {
+  const pages = browser.contexts().flatMap(context => context.pages()).filter(page => {
+    try { const url = new URL(page.url()); return url.origin === origin && ['/', '/web/index.html'].includes(url.pathname); }
+    catch { return false; }
+  });
+  assert(pages.length <= 1, 'More than one matching installed app page');
+  return pages[0];
+}
+
+function ownedRequest(url, origin) {
+  try { const target = new URL(url); return ['blob:', 'data:'].includes(target.protocol) || target.origin === origin; }
+  catch { return false; }
+}
+
+// Native common Save dialog only: no browser download override or global keys.
+function nativeDialogScript(config, binding, directory, destination, observeOnly = false) {
+  const payload = Buffer.from(JSON.stringify({ pid: config.ownedPid, start: binding.owned_start,
+    directory, destination, observeOnly })).toString('base64');
+  return String.raw`$ErrorActionPreference='Stop';
+$c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json;
+Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes;
+Add-Type @'
+using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
+public static class OwnedSave {
+ public delegate bool Callback(IntPtr h, IntPtr p);
+ [DllImport("user32.dll")] static extern bool EnumWindows(Callback cb, IntPtr p);
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+ [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint kind);
+ [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr h);
+ [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder b, int n);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder b, int n);
+ public static uint Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h,out p); return p; }
+ public static string Class(IntPtr h) { var b=new StringBuilder(256); GetClassName(h,b,256); return b.ToString(); }
+ public static string Title(IntPtr h) { var b=new StringBuilder(256); GetWindowText(h,b,256); return b.ToString(); }
+ public static IntPtr[] Visible(uint pid) { var list=new List<IntPtr>(); EnumWindows((h,p)=>{if(Pid(h)==pid && IsWindowVisible(h)) list.Add(h);return true;},IntPtr.Zero); return list.ToArray(); }
+}
+'@;
+function Stage([string]$name) { [Console]::Out.WriteLine('PHASE:'+$name); [Console]::Out.Flush() }
+Stage 'ownership';
+function Assert-Process {
+ $p=Get-CimInstance Win32_Process -Filter "ProcessId = $($c.pid)";
+ if (!$p -or $p.Name -ne 'LearnNote.exe' -or $p.CreationDate.ToUniversalTime().Ticks.ToString() -cne $c.start) { throw 'Owned app identity changed' }
+}
+function Assert-Destination {
+ $dir=[IO.Path]::GetFullPath($c.directory); $file=[IO.Path]::GetFullPath($c.destination);
+ if ($dir -notmatch '^[A-Za-z]:\\' -or [IO.Path]::GetFileName($dir) -notlike 'local-native-exports-*' -or
+   [IO.Path]::GetFileName($file) -cnotin @('learnnote-diagnostics.md','learnnote-diagnostics.json') -or
+   $dir -cne $c.directory -or $file -cne $c.destination -or [IO.Path]::GetDirectoryName($file) -cne $dir -or
+   !(Test-Path -LiteralPath $dir -PathType Container) -or ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+   (Test-Path -LiteralPath $file)) { throw 'Native save destination must be fresh and directly contained in the owned directory' }
+}
+Assert-Process;
+$windows=@([OwnedSave]::Visible($c.pid));
+$roots=@($windows | Where-Object { [OwnedSave]::GetWindow($_,4) -eq [IntPtr]::Zero });
+if ($roots.Count -ne 1 -or $windows.Count -ne 1) { throw 'Expected exactly one owned app root and no preexisting popup' }
+$root=[IntPtr]$roots[0]; $rootClass=[OwnedSave]::Class($root);
+if ([OwnedSave]::Title($root) -cne 'LearnNote - Video Learning Notes' -or ![OwnedSave]::Class($root).StartsWith('WindowsForms10.Window.')) { throw 'Unexpected owned app root' }
+function Assert-Root {
+ Assert-Process;
+ if (![OwnedSave]::IsWindow($root) -or ![OwnedSave]::IsWindowVisible($root) -or [OwnedSave]::Pid($root) -ne $c.pid -or
+  [OwnedSave]::GetWindow($root,4) -ne [IntPtr]::Zero -or [OwnedSave]::Class($root) -cne $rootClass -or [OwnedSave]::Title($root) -cne 'LearnNote - Video Learning Notes') { throw 'Owned app root changed' }
+}
+function Assert-Dialog([IntPtr]$dialog) {
+ Assert-Root;
+ if ([OwnedSave]::GetForegroundWindow() -ne $dialog) { throw 'Owned Save dialog is not foreground; no native input' }
+ if (![OwnedSave]::IsWindow($dialog) -or ![OwnedSave]::IsWindowVisible($dialog) -or [OwnedSave]::Pid($dialog) -ne $c.pid -or [OwnedSave]::Class($dialog) -cne '#32770') { throw 'Owned Save dialog changed' }
+ $cursor=[OwnedSave]::GetWindow($dialog,4); $reached=$false;
+ for ($i=0; $i -lt 16 -and $cursor -ne [IntPtr]::Zero; $i++) {
+  if ([OwnedSave]::Pid($cursor) -ne $c.pid) { throw 'Save owner chain left the owned process' }
+  if ($cursor -eq $root) { $reached=$true; break }; $cursor=[OwnedSave]::GetWindow($cursor,4);
+ }
+ if (!$reached) { throw 'Save dialog is not owned by the exact app root' }
+ $visible=@([OwnedSave]::Visible($c.pid));
+ if ($visible.Count -ne 2 -or @($visible | Where-Object { $_ -ne $root -and $_ -ne $dialog }).Count) { throw 'Unexpected owned popup; no native input' }
+}
+function Assert-Control($node,$dialogElement) {
+ if ($node.Current.ProcessId -ne $c.pid -or !$node.Current.IsEnabled -or $node.Current.IsOffscreen) { throw 'Native control ownership or visibility changed' }
+ $cursor=$node; $reached=$false;
+ for ($i=0; $i -lt 32 -and $cursor; $i++) {
+  if ($cursor.Current.ProcessId -ne $c.pid -or $cursor.Current.ControlType -eq [Windows.Automation.ControlType]::Document) { throw 'Native control left owned dialog' }
+  if ([Windows.Automation.Automation]::Compare($cursor,$dialogElement)) { $reached=$true; break }
+  $cursor=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($cursor);
+ }
+ if (!$reached) { throw 'Native control ancestry is invalid' }
+}
+if (!$c.observeOnly) { Stage 'destination'; Assert-Destination }
+[Console]::Out.WriteLine('READY'); [Console]::Out.Flush();
+Stage $(if ($c.observeOnly) { 'cancel-observation' } else { 'dialog-wait' });
+if ($c.observeOnly -and [Console]::In.ReadLine() -cne 'ACTION_COMPLETE') { throw 'Native observation action was interrupted' }
+$deadline=[DateTime]::UtcNow.AddSeconds($(if ($c.observeOnly) { 1 } else { 15 })); $dialog=[IntPtr]::Zero;
+do {
+ Assert-Root; $popups=@([OwnedSave]::Visible($c.pid) | Where-Object { $_ -ne $root });
+ if ($c.observeOnly -and $popups.Count) { throw 'Cancellation opened a native popup' }
+ if (!$c.observeOnly -and $popups.Count) {
+  if ($popups.Count -ne 1) { throw 'Ambiguous owned native popups' }; $dialog=[IntPtr]$popups[0]; Assert-Dialog $dialog; break;
+ }
+ Start-Sleep -Milliseconds 50;
+} while ([DateTime]::UtcNow -lt $deadline);
+if ($c.observeOnly) { @{native_popup_absent=$true} | ConvertTo-Json -Compress; exit 0 }
+if ($dialog -eq [IntPtr]::Zero) { throw 'Owned Save dialog did not appear' }
+$element=[Windows.Automation.AutomationElement]::FromHandle($dialog);
+$all=[Windows.Automation.Condition]::TrueCondition; $desc=[Windows.Automation.TreeScope]::Descendants;
+Stage 'filename-host';
+$hosts=@($element.FindAll($desc,$all) | Where-Object {
+ $_.Current.ControlType -eq [Windows.Automation.ControlType]::ComboBox -and $_.Current.AutomationId -ceq 'FileNameControlHost' -and $_.Current.ClassName -ceq 'AppControlHost'
+});
+if ($hosts.Count -ne 1) { throw 'Unsupported or ambiguous native filename host' }; $hostControl=$hosts[0]; Assert-Control $hostControl $element;
+$ancestor=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($hostControl); $modern=$false;
+for ($i=0; $i -lt 16 -and $ancestor -and ![Windows.Automation.Automation]::Compare($ancestor,$element); $i++) {
+ if ($ancestor.Current.ClassName -ceq 'DUIViewWndClassName') { $modern=$true; break }; $ancestor=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($ancestor);
+}
+if (!$modern) { throw 'Unsupported native Save dialog layout' }
+Stage 'filename-edit';
+$edits=@($hostControl.FindAll($desc,$all) | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit -and $_.Current.ClassName -ceq 'Edit' -and $_.Current.AutomationId -ceq '1001' });
+if ($edits.Count -ne 1) { throw 'Ambiguous native filename edit' }; $edit=$edits[0]; Assert-Control $edit $element;
+$value=$edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern);
+if ($value.Current.IsReadOnly -or $value.Current.Value -cne [IO.Path]::GetFileName($c.destination)) { throw 'Expected writable synthetic export filename' }
+Stage 'save-button';
+$buttonHandle=[OwnedSave]::GetDlgItem($dialog,1);
+if ($buttonHandle -eq [IntPtr]::Zero -or [OwnedSave]::GetParent($buttonHandle) -ne $dialog) { throw 'Expected direct native Save button' }
+$button=[Windows.Automation.AutomationElement]::FromHandle($buttonHandle); Assert-Control $button $element;
+if ($button.Current.ControlType -ne [Windows.Automation.ControlType]::Button -or $button.Current.ClassName -cne 'Button' -or $button.Current.AutomationId -cne '1') { throw 'Unexpected native Save control' }
+$invoke=$button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern);
+$editRuntime=$edit.GetRuntimeId() -join ','; $buttonRuntime=$button.GetRuntimeId() -join ',';
+function Assert-BoundControls {
+ Assert-Control $edit $element; Assert-Control $button $element;
+ if (($edit.GetRuntimeId() -join ',') -cne $editRuntime -or ($button.GetRuntimeId() -join ',') -cne $buttonRuntime -or
+  [OwnedSave]::GetDlgItem($dialog,1) -ne $buttonHandle -or [OwnedSave]::GetParent($buttonHandle) -ne $dialog) { throw 'Bound native controls changed' }
+}
+Stage 'filename-set';
+Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
+$value.SetValue($c.destination);
+if ($value.Current.Value -cne $c.destination) { throw 'Native filename readback differs' }
+Stage 'save-invoke';
+Assert-Dialog $dialog; Assert-BoundControls; Assert-Destination;
+$invoke.Invoke();
+Stage 'save-completion';
+$deadline=[DateTime]::UtcNow.AddSeconds(10);
+do {
+ Assert-Root; $popups=@([OwnedSave]::Visible($c.pid) | Where-Object { $_ -ne $root });
+ if (@($popups | Where-Object { $_ -ne $dialog }).Count) { throw 'Unexpected confirmation or security popup; no further input' }
+ if ($popups.Count -eq 0) { @{native_dialog=$true;saved=$true} | ConvertTo-Json -Compress; exit 0 }
+ Start-Sleep -Milliseconds 50;
+} while ([DateTime]::UtcNow -lt $deadline);
+throw 'Native Save did not finish';`;
+}
+
+async function withNativeHelper(child, action, timeouts = {}) {
+  let readyResolve, readyReject, doneResolve, doneReject, closedResolve, output = '', result, ready = false, failure, nativeFailure, nativePhase;
+  const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const done = new Promise((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
+  const closed = new Promise(resolve => { closedResolve = resolve; });
+  const fail = error => { if (nativePhase) error.native_stage = nativePhase; nativeFailure ||= error; readyReject(error); doneReject(error); };
+  // Observe failures from launch onward, including while the real DOM click waits.
+  readyPromise.catch(() => {}); done.catch(() => {});
+  child.stdout.on('data', chunk => {
+    output += chunk.toString('utf8');
+    if (output.length > 65536) { fail(new Error('Owned native helper output exceeded its limit')); return; }
+    let index;
+    while ((index = output.indexOf('\n')) >= 0) {
+      const line = output.slice(0, index).trim(); output = output.slice(index + 1);
+      if (line.startsWith('PHASE:')) {
+        const phase = line.slice(6); if (NATIVE_PHASES.includes(phase)) nativePhase = phase; else fail(new Error('Unknown native helper phase'));
+      } else if (line === 'READY' && !ready) { ready = true; readyResolve(); }
+      else if (line) { try { assert(ready && !result); result = JSON.parse(line); } catch { fail(new Error('Unexpected owned native helper output')); } }
+    }
+  });
+  child.stdin?.on('error', () => {});
+  child.stderr.on('data', () => {}); // Never persist native UI/path error contents.
+  child.once('error', () => { const error = new Error('Owned native helper could not start'); fail(error); });
+  child.once('close', code => {
+    closedResolve();
+    if (code === 0 && ready && result) doneResolve(result);
+    else { const error = new Error('Owned native Save helper failed'); fail(error); }
+  });
+  try {
+    await bounded(Promise.race([readyPromise, done]), 'native helper readiness', timeouts.ready ?? TIMEOUT);
+    const [value] = await bounded(Promise.all([done, Promise.resolve().then(() => { if (nativeFailure) throw nativeFailure; return action(); }).then(value => { child.stdin?.write('ACTION_COMPLETE\n', () => {}); return value; })]), 'native Save action', timeouts.action ?? 30000);
+    return value;
+  } catch (error) { failure = error; if (nativePhase) error.native_stage = nativePhase; throw error; }
+  finally {
+    try {
+      if (child.exitCode === null) child.kill();
+      await bounded(closed, 'owned helper exit', timeouts.exit ?? 5000);
+    } catch (error) { if (!failure) throw error; failure.native_helper_cleanup_failed = true; }
+  }
+}
+
+function nativeDialog(config, binding, directory, destination, action, observeOnly = false) {
+  const script = nativeDialogScript(config, binding, directory, destination, observeOnly);
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], timeout: 35000 });
+  return withNativeHelper(child, action);
+}
+
+async function assertSavedBytes(file, expected, timeout = 10000) {
+  assert(Buffer.isBuffer(expected) && expected.length > 0 && expected.length <= MAX_BYTES);
+  const deadline = Date.now() + timeout; let previous;
+  do {
+    try {
+      const stat = fs.lstatSync(file);
+      assert(stat.isFile() && !stat.isSymbolicLink(), 'Native saved output must be a regular file');
+      assert(stat.size <= expected.length, 'Native saved file exceeded reviewed byte length');
+      const stamp = `${stat.size}:${stat.mtimeMs}`;
+      if (stat.size === expected.length && previous === stamp) {
+        assert(fs.readFileSync(file).equals(expected), 'Native saved bytes differ from the reviewed API response');
+        return { bytes: expected.length, sha256: createHash('sha256').update(expected).digest('hex'), byte_equality: true, native_saved_file: true };
+      }
+      previous = stamp;
+    } catch (error) { if (!['ENOENT', 'EBUSY', 'EACCES'].includes(error.code)) throw error; }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  throw new Error('Native saved file did not stabilize at the reviewed byte length');
+}
+
+async function noDownloadDuring(page, action) {
+  const observed = page.waitForEvent('download', { timeout: 1000 }).then(() => true, error => {
+    if (error.name === 'TimeoutError') return false; throw error;
+  });
+  const [downloaded] = await Promise.all([observed, action()]);
+  assert.equal(downloaded, false, 'Cancellation initiated a download');
+}
+
+async function finish(report, failure, { disconnect, alive, write }) {
+  for (const [label, work] of [['disconnect', disconnect], ['owned_app_alive', alive]]) {
+    try { report.cleanup[label] = (await bounded(Promise.resolve().then(work), label, 35000)) !== false; }
+    catch (error) { report.cleanup.errors.push(label); report.passed = false; failure ||= error; }
+  }
+  try { write(); } catch (error) { report.passed = false; failure ||= error; }
+  if (failure) throw failure;
+}
+
+async function main(args) {
+  const config = parseArgs(args), { expectedVersion } = config;
+  assert.equal(process.platform, 'win32', 'Installed WebView2 acceptance requires Windows');
+  const { chromium } = require('playwright');
+  // CDP close is transport-only in this pinned implementation:
+  // https://github.com/microsoft/playwright/blob/v1.64.0/packages/playwright-core/src/server/chromium/chromium.ts
+  assert.equal(require('playwright/package.json').version, '1.64.0');
+  fs.mkdirSync(config.output, { recursive: true });
+  const report = { passed: false, synthetic_only: true, installed_ui: true, installed_api: true,
+    api_mocked: false, browser_launched: false, native_app_closed: false, expected_version: expectedVersion,
+    surface: 'owned installed WebView2 viewport', focus_scope: 'DOM focus within the owned app',
+    screenshots: [], checks: [], downloads: [], diagnostic_requests: 0, page_errors: 0, external_requests: 0,
+    blocked_external_requests: 0, network_observation_scope: 'After attachment, before test navigation',
+    cleanup: { disconnect: false, owned_app_alive: false, errors: [] } };
+  let browser, page, binding, failure, syntheticVerified = false, nativeDirectory;
+  const read = route => readInstalledJSON(config.origin, route);
+  const capture = async filename => {
+    assert(syntheticVerified, 'No screenshot before exact synthetic task verification');
+    assert.equal(new URL(page.url()).origin, config.origin, 'No screenshot outside the owned installed origin');
+    await page.screenshot({ path: path.join(config.output, filename), timeout: TIMEOUT }); report.screenshots.push(filename);
+  };
+  try {
+    report.phase = 'owned-attachment'; binding = verifyOwned(config); report.ownership = binding;
+    const health = await read('/health'); assert.equal(health.app_version, expectedVersion);
+    const task = (await read(`/api/tasks/${config.taskId}`)).task; assertSyntheticTask(task, config.taskId);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${config.debugPort}`, { timeout: 30000, noDefaults: true });
+    report.webview_version = browser.version();
+    const deadline = Date.now() + TIMEOUT;
+    while (!(page = selectOwnedPage(browser, config.origin))) {
+      assert(Date.now() < deadline, 'Installed page did not become available');
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    page.setDefaultTimeout(TIMEOUT); page.setDefaultNavigationTimeout(TIMEOUT);
+    // Only reject outside-origin traffic. Actual installed API/assets are never
+    // routed, replaced or mocked; blob/data downloads retain their native path.
+    await page.route(url => !ownedRequest(url, config.origin), async route => {
+      report.blocked_external_requests++; await route.abort('blockedbyclient');
+    });
+    let downloads = 0;
+    page.on('download', () => downloads++);
+    page.on('pageerror', () => report.page_errors++);
+    page.on('request', request => {
+      const url = new URL(request.url());
+      if (!ownedRequest(url, config.origin)) report.external_requests++;
+      if (url.origin === config.origin && url.pathname === `/api/tasks/${config.taskId}/exports/diagnostics`) report.diagnostic_requests++;
+    });
+    report.phase = 'installed-document';
+    await page.goto(`${config.origin}/web/index.html?task=${encodeURIComponent(config.taskId)}`);
+    const reader = page.locator('#document'); await reader.getByRole('heading', { name: task.title, exact: true }).waitFor();
+    assert.equal(await page.locator('#breadcrumb').innerText(), task.title);
+    assert.match(await reader.innerText(), /SYNTHETIC_ONE/); syntheticVerified = true;
+    await capture(config.startupOnly ? 'previous-startup.png' : 'installed-current-startup.png');
+    report.checks.push('Installed bundled task reader displays the retained synthetic title and captions');
+    if (!config.startupOnly) {
+      report.phase = 'visible-diagnostic-disclosure';
+      await page.locator('#taskStatus [data-task-action="diagnostics"]').click();
+      const processing = page.locator('#toolsDialog[open]');
+      await processing.getByText('诊断详情与安全报告', { exact: true }).click();
+      const opener = processing.getByRole('button', { name: '预览安全诊断报告', exact: true });
+      await opener.waitFor({ state: 'visible' }); assert(await opener.isEnabled());
+      const dialog = page.locator('.task-diagnostic-export'), consent = dialog.locator('input[type=checkbox]');
+      const save = dialog.getByRole('button', { name: '保存已预览报告', exact: true });
+      async function preview(format, action) {
+        const url = `${config.origin}/api/tasks/${config.taskId}/exports/diagnostics${format === 'json' ? '?format=json' : ''}`;
+        const [response] = await Promise.all([page.waitForResponse(item => item.url() === url && item.request().method() === 'GET'), action()]);
+        assert(response.ok()); const bytes = await bounded(response.body(), 'actual preview response');
+        assert(bytes.length > 0 && bytes.length <= MAX_BYTES);
+        const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+        await page.waitForFunction(expected => document.querySelector('.task-diagnostic-export pre')?.textContent === expected, text);
+        assert.equal(await dialog.locator('select').inputValue(), format);
+        assert.equal(await consent.isChecked(), false); assert.equal(await consent.isEnabled(), true); assert.equal(await save.isDisabled(), true);
+        assert(!text.includes(config.taskId) && !text.includes(task.title) && !text.includes(task.page_url) && !text.includes('SYNTHETIC_ONE'));
+        assert.equal(await dialog.locator('img').count(), 0);
+        if (format === 'json') {
+          const parsed = JSON.parse(text); assert.equal(parsed.versions.current_app, expectedVersion);
+          assert.equal(parsed.versions.task_run_app, null); assert.equal(parsed.model.total_tokens, null); assert.equal(parsed.model.cost, null);
+          report.versions = parsed.versions;
+        } else { assert(text.includes(`当前运行版本：${expectedVersion}`)); assert.match(text, /任务运行版本：未知/); }
+        return bytes;
+      }
+      nativeDirectory = fs.mkdtempSync(path.join(config.output, 'local-native-exports-'));
+      report.native_exports_retained_locally = true;
+      let expected = await preview('md', () => opener.click());
+      assert.equal(downloads, 0); assert(await dialog.evaluate(node => node.contains(document.activeElement)));
+      for (const format of ['md', 'json']) {
+        report.phase = `preview-${format}`;
+        if (format === 'json') expected = await preview(format, () => dialog.locator('select').selectOption('json'));
+        assert.equal(report.diagnostic_requests, format === 'md' ? 1 : 2);
+        await capture(`installed-current-${format}-preview.png`);
+        await consent.check(); await save.scrollIntoViewIfNeeded(); await save.focus();
+        await capture(`installed-current-${format}-save-focused.png`);
+        const gets = report.diagnostic_requests;
+        const destination = path.join(nativeDirectory, `learnnote-diagnostics.${format}`);
+        assert.equal(fs.existsSync(destination), false);
+        const native = await nativeDialog(config, binding, nativeDirectory, destination, () => save.click());
+        assert.equal(native.native_dialog, true); assert.equal(native.saved, true);
+        report.downloads.push({ format, ...await assertSavedBytes(destination, expected) });
+        assert.equal(report.diagnostic_requests, gets, 'Save must reuse the exact cached preview bytes');
+        assert.equal(await save.isDisabled(), true);
+      }
+      assert.equal(report.downloads.length, 2);
+      report.browser_download_events = downloads;
+      report.phase = 'cancel-and-focus';
+      await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' });
+      assert(await opener.evaluate(node => document.activeElement === node), 'Escape restores the visible opener');
+      await preview('md', () => opener.click());
+      const beforeCancel = downloads, filesBefore = fs.readdirSync(nativeDirectory).sort();
+      const canceled = await nativeDialog(config, binding, nativeDirectory, '',
+        () => noDownloadDuring(page, () => dialog.getByRole('button', { name: '取消导出', exact: true }).click()), true);
+      assert.equal(canceled.native_popup_absent, true);
+      await dialog.waitFor({ state: 'detached' }); assert.equal(downloads, beforeCancel);
+      assert.deepEqual(fs.readdirSync(nativeDirectory).sort(), filesBefore);
+      assert(await opener.evaluate(node => document.activeElement === node), 'Cancel restores the visible opener');
+      assert.equal(report.diagnostic_requests, 3); report.cancel_no_download_observation_ms = 1000;
+      await capture('installed-current-cancel-focus.png');
+      report.checks.push('Visible disclosure; MD/JSON consent reset; exact cached API/native-saved-file byte equality; Cancel has no download; focus returns to opener');
+    }
+    assert.equal(report.page_errors, 0); assert.equal(report.external_requests, 0); assert.equal(report.blocked_external_requests, 0);
+    report.passed = true; report.phase = 'complete';
+  } catch (error) {
+    failure = error; report.failure = error.message;
+    if (error.native_stage) report.native_failure_stage = error.native_stage;
+    if (error.native_helper_cleanup_failed) report.native_helper_cleanup_failed = true;
+    if (page && syntheticVerified) {
+      try { await capture(config.startupOnly ? 'previous-startup-failure.png' : 'installed-current-diagnostic-failure.png'); }
+      catch { report.failure_capture_unavailable = true; }
+    }
+  } finally {
+    await finish(report, failure, {
+      // connectOverCDP close disconnects only; never close the default context,
+      // its pages, or issue Browser.close through CDP. Python owns normal WM_CLOSE.
+      disconnect: async () => { if (!browser) return false; await browser.close(); },
+      alive: async () => { if (!binding) return false; assert.deepEqual(verifyOwned(config), binding, 'Owned app/debug process changed during CDP attachment'); },
+      write: () => fs.writeFileSync(path.join(config.output, config.startupOnly ? 'previous-startup-report.json' : 'installed-current-diagnostic-report.json'), JSON.stringify(report, null, 2) + '\n'),
+    });
+  }
+}
+
+module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, nativeDialogScript, withNativeHelper, assertSavedBytes, noDownloadDuring, finish };
+if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

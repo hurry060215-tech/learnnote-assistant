@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +17,24 @@ class ReleasePublishingTests(unittest.TestCase):
         self.assertIn('--notes-file $releaseNotes', source)
         self.assertIn('--generate-notes', source)
         self.assertIn('--draft --verify-tag --notes-file', source)
+
+    def test_current_release_has_complete_packaged_and_published_notes(self):
+        notes = json.loads((ROOT / "web/release-notes.json").read_text(encoding="utf-8"))
+        current = notes["current"]
+        versions = [release["version"] for release in notes["releases"]]
+        self.assertEqual(versions[0], current)
+        self.assertEqual(len(versions), len(set(versions)))
+        release = notes["releases"][0]
+        for field in ("title", "summary", "date"):
+            self.assertTrue(release[field].strip(), field)
+        self.assertGreater(len(release["highlights"]), 0)
+        for highlight in release["highlights"]:
+            self.assertTrue(highlight["title"].strip())
+            self.assertTrue(highlight["description"].strip())
+        published = ROOT / "docs" / ("RELEASE_" + current.replace(".", "") + ".md")
+        self.assertTrue(published.is_file(), "Publishing must use reviewed current-version notes")
+        self.assertTrue(published.read_text(encoding="utf-8").startswith(f"# LearnNote v{current}\n"))
+        self.assertIn(f"## {current} - ", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
 
     def test_validation_checks_real_assets_and_never_invokes_github(self):
         pwsh = shutil.which("pwsh")

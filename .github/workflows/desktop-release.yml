@@ -72,6 +72,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned Windows dependency installation failed" }
           python -c "import faster_whisper, ctranslate2, av, rapidocr_onnxruntime, webview"
           if ($LASTEXITCODE -ne 0) { throw "Desktop ASR/OCR runtime import failed" }
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "Pinned installed-UI dependencies failed" }
           winget install --id JRSoftware.InnoSetup.7 -e --version 7.1.0 --scope machine --architecture x64 --source winget --accept-source-agreements --accept-package-agreements
           if ($LASTEXITCODE -ne 0) { throw "Pinned Inno Setup installation failed" }
           $compiler = @(
@@ -175,19 +177,44 @@ jobs:
             Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
             Sort-Object publishedAt -Descending |
             Select-Object -First 1
-          if (-not $previous) {
-            Write-Host "No previous stable release is available; skipping cover-upgrade smoke."
-            exit 0
-          }
+          if ($LASTEXITCODE -ne 0) { throw "Previous stable release lookup failed" }
+          if (-not $previous) { throw "Previous stable release is required for installed upgrade acceptance" }
+          if ($currentTag -eq 'v0.2.16' -and $previous.tagName -ne 'v0.2.15') { throw "0.2.16 acceptance requires the immutable 0.2.15 installer" }
           $previousDir = Join-Path $env:RUNNER_TEMP "previous-release"
           New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
           gh release download $previous.tagName `
             --repo "${{ github.repository }}" `
             --pattern "LearnNote-Setup-x64.exe" `
             --dir $previousDir
+          if ($LASTEXITCODE -ne 0) { throw "Previous stable installer download failed" }
+          $previousMetadata = gh api "repos/${{ github.repository }}/releases/tags/$($previous.tagName)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Previous stable release metadata failed" }
+          $previousAssets = @($previousMetadata.assets | Where-Object { $_.name -eq "LearnNote-Setup-x64.exe" })
+          if ($previousAssets.Count -ne 1 -or $previousAssets[0].digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Previous installer has no unique SHA256 identity" }
+          $previousInstaller = Join-Path $previousDir "LearnNote-Setup-x64.exe"
+          $previousHash = (Get-FileHash -LiteralPath $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ("sha256:$previousHash" -ne $previousAssets[0].digest) { throw "Previous installer digest mismatch" }
           ./scripts/test-upgrade-installer.ps1 `
-            -PreviousInstallerPath (Join-Path $previousDir "LearnNote-Setup-x64.exe") `
+            -PreviousInstallerPath $previousInstaller `
             -CurrentInstallerPath "$PWD/LearnNote-Setup-x64.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Cover-upgrade smoke failed" }
+          python scripts/installed-upgrade-acceptance.py `
+            --previous-installer "$previousInstaller" `
+            --current-installer "$PWD/LearnNote-Setup-x64.exe" `
+            --expected-previous-version "$($previous.tagName.TrimStart('v'))" `
+            --expected-current-version "$($currentTag.TrimStart('v'))" `
+            --output-dir build/release/installed-upgrade
+          if ($LASTEXITCODE -ne 0) { throw "Installed diagnostic and saved-subtitle acceptance failed" }
+      - name: Retain installed upgrade acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installed-upgrade-${{ github.run_id }}
+          path: |
+            build/release/installed-upgrade/*.json
+            build/release/installed-upgrade/*.log
+            build/release/installed-upgrade/*.png
+          if-no-files-found: warn
       - name: Package browser extension
         shell: pwsh
         run: |
