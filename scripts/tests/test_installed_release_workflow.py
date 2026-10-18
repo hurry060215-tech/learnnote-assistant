@@ -71,6 +71,27 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertNotIn('continue-on-error', step)
             self.assertNotIn('gh release', step)
 
+    def test_acceptance_only_keeps_gates_and_forbids_publication(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            option = normalized.split('      acceptance_only:', 1)[1].split('      release_tag:', 1)[0]
+            self.assertIn('default: false', option)
+            self.assertIn('type: boolean', option)
+            self.assertIn("ACCEPTANCE_ONLY: ${{ inputs.acceptance_only && 'true' || 'false' }}", normalized)
+            for name in ('Attest release build provenance', 'Publish GitHub Release'):
+                self.assertIn(f"- name: {name}\n        if: env.RELEASE_TAG != '' && env.ACCEPTANCE_ONLY != 'true'", normalized)
+            publish = normalized.split('- name: Publish GitHub Release', 1)[1]
+            refusal = publish.index('Acceptance-only runs cannot create tags or publish releases')
+            self.assertLess(refusal, publish.index('scripts/ensure-release-tag.py'))
+            self.assertLess(refusal, publish.index('scripts/publish-release.ps1'))
+            self.assertEqual(normalized.count('scripts/ensure-release-tag.py'), 1)
+            self.assertEqual(normalized.count('scripts/publish-release.ps1'), 1)
+            gates = normalized.split('- name: Run release gate', 1)[1].split('- name: Attest release build provenance', 1)[0]
+            self.assertNotIn('ACCEPTANCE_ONLY', gates)
+            self.assertIn('python scripts/installed-upgrade-acceptance.py', gates)
+            self.assertIn('throw "Installed diagnostic and saved-subtitle acceptance failed"', gates)
+
     def test_retention_is_always_top_level_synthetic_evidence_only(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         step = source.split('- name: Retain installed upgrade acceptance evidence', 1)[1].split('- name: Package browser extension', 1)[0]
