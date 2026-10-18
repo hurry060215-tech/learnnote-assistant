@@ -137,6 +137,32 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('build/release/retained-candidate/*.json', source)
         self.assertNotIn('continue-on-error', source)
 
+    def test_calibration_runs_once_and_retains_only_fixed_evidence_without_precreating_installed_output(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        test = (ROOT / 'web/tests/installed_diagnostic_acceptance.test.mjs').read_text(encoding='utf-8')
+        installed = (ROOT / 'scripts/installed-upgrade-acceptance.py').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            checks = normalized.split('- name: Check current retained diagnostic harness', 1)[1].split('- name: Provision', 1)[0]
+            release = normalized.split('- name: Run release gate', 1)[1].split('- name: Preserve reliability evidence', 1)[0]
+            self.assertIn("if: env.CANDIDATE_ARTIFACT_ID != ''", checks)
+            self.assertIn("if: env.CANDIDATE_ARTIFACT_ID == ''", release)
+            self.assertEqual(checks.count('node web/tests/installed_diagnostic_acceptance.test.mjs'), 1)
+            self.assertEqual(release.count('Get-ChildItem web/tests/*.test.mjs'), 1)
+            retention = normalized.split('- name: Preserve reliability evidence', 1)[1].split('- name: Build portable desktop client', 1)[0]
+            self.assertIn('if: always()', retention)
+            self.assertEqual([line.strip() for line in retention.splitlines() if '/native-save-calibration/' in line], [
+                'build/release/native-save-calibration/native-save-calibration-report.json',
+                'build/release/native-save-calibration/native-save-calibration-md-dialog.png',
+                'build/release/native-save-calibration/native-save-calibration-json-dialog.png',
+            ])
+            self.assertNotIn('continue-on-error', normalized)
+        self.assertEqual(test.count("calibration.runCalibration(path.resolve('build/release/native-save-calibration'))"), 1)
+        self.assertIn('args.output_dir.mkdir(parents=True, exist_ok=False)', installed)
+        ci = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
+        self.assertEqual(ci.count('Get-ChildItem web/tests/*.test.mjs'), 1)
+        self.assertNotIn('node web/tests/installed_diagnostic_acceptance.test.mjs', ci)
+
     def test_retention_is_always_top_level_synthetic_evidence_only(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         step = source.split('- name: Retain installed upgrade acceptance evidence', 1)[1].split('- name: Package browser extension', 1)[0]

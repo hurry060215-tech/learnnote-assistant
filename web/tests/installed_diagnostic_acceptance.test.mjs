@@ -1116,3 +1116,102 @@ test('download and native phase receipts use one bounded monotonic timeline with
   const rejected = withNativeHelper(failed, () => { throw primary; }, {}, () => { throw new Error('secondary'); });
   failed.line('READY'); await assert.rejects(rejected, error => error === primary);
 });
+
+const calibration = (await import('../../scripts/installed-save-calibration.cjs')).default;
+test('calibration reports only exact returned-path categories and rejects ambiguous or private metadata', () => {
+  for (const format of ['md', 'json']) for (const returned_path of ['requested', 'initial', 'unexpected', 'cancelled']) {
+    const item = { format, returned_path, dialog_ok: returned_path !== 'cancelled', created: ['requested', 'initial'].includes(returned_path) };
+    assert.deepEqual(calibration.validateCase(item, format), item);
+    for (const changed of [{ ...item, path: 'private-path' }, { ...item, returned_path: 'C:\\private' }, { ...item, created: !item.created }, { ...item, format: 'other' }]) assert.throws(() => calibration.validateCase(changed, format));
+  }
+  assert(calibration.payload('md').length > 0); assert(calibration.payload('json').length > 0);
+});
+
+test('calibration evidence output refuses existing directories, files and links without overwriting', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-output-'));
+  try {
+    const fresh = path.join(root, 'fresh'); calibration.prepareOutput(fresh);
+    const marker = path.join(fresh, 'marker'); fs.writeFileSync(marker, 'prior evidence');
+    assert.throws(() => calibration.prepareOutput(fresh)); assert.equal(fs.readFileSync(marker, 'utf8'), 'prior evidence');
+    const file = path.join(root, 'file'); fs.writeFileSync(file, 'owned'); assert.throws(() => calibration.prepareOutput(file));
+    const link = path.join(root, 'link'); fs.symlinkSync(fresh, link, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => calibration.prepareOutput(link)); assert.throws(() => calibration.prepareOutput(path.join(link, 'child')));
+    assert(!fs.existsSync(path.join(fresh, 'child')));
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+test('calibration compile and exact process binding fail closed without raw errors or unrelated process queries', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-compile-'));
+  try {
+    assert.throws(() => calibration.compileHost(root, (file, args, options) => {
+      assert.equal(file, 'powershell.exe'); assert.match(args[3], /-OutputType WindowsApplication/);
+      assert.equal(options.timeout, 30000); throw new Error('private compile content');
+    }), error => error.message === 'Synthetic calibration compilation failed');
+    assert.throws(() => calibration.bindHost(123, 'D:\\owned\\LearnNote.exe', () => { throw new Error('private path'); }), error => error.message === 'Synthetic calibration process binding failed');
+    assert.deepEqual(calibration.bindHost(123, 'D:\\owned\\LearnNote.exe', (file, args) => {
+      assert.match(args[3], /-Filter 'ProcessId = 123'/); assert.match(args[3], /ExecutablePath -cne 'D:\\owned\\LearnNote.exe'/);
+      assert.doesNotMatch(args[3], /CommandLine|Stop-Process/); return '639278948132580890\r\n';
+    }), { owned_start: '639278948132580890' });
+    assert.throws(() => calibration.bindHost(123, 'D:\\owned\\LearnNote.exe', () => 'private-path'));
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+test('calibration host startup, bounded protocol and cleanup retain the original error', async () => {
+  const make = () => { const child = fakeChild(); child.stdin.end = text => { assert.equal(text, 'close\n'); child.line('CLOSED'); child.end(0); }; return child; };
+  const child = make(), protocol = calibration.hostProtocol(child), ready = protocol.ready(); child.line('READY'); await ready;
+  protocol.command('md'); child.line(JSON.stringify({ format: 'md', dialog_ok: true, returned_path: 'requested', created: true }));
+  assert.equal((await protocol.result('md')).returned_path, 'requested'); await protocol.close();
+  const failed = make(), bad = calibration.hostProtocol(failed), waiting = bad.ready(); failed.emit('error', new Error('private startup path'));
+  await assert.rejects(waiting, error => error.message === 'Synthetic calibration host failed');
+  assert.throws(() => bad.command('md')); await assert.rejects(bad.close());
+  const oversized = make(), limited = calibration.hostProtocol(oversized), limitReady = limited.ready(); oversized.line('x'.repeat(4097));
+  await assert.rejects(limitReady, /Synthetic calibration host failed/); await assert.rejects(limited.close());
+  for (const failing of ['close', 'retain', 'cleanup', 'write']) {
+    const primary = new Error('primary native failure'), secondary = new Error('secondary'), report = {}, order = [];
+    const actions = Object.fromEntries(['close', 'retain', 'cleanup', 'write'].map(name => [name, () => { order.push(name); if (name === failing) throw secondary; }]));
+    await assert.rejects(calibration.finishCalibration(report, primary, actions), error => error === primary);
+    assert.deepEqual(order, ['close', 'retain', 'cleanup', 'write']); assert.equal(report.passed, false);
+    await assert.rejects(calibration.finishCalibration({}, null, actions), error => error === secondary);
+  }
+});
+
+test('Windows calibration path classification and CreateNew reject unsafe return values and overwrites', { skip: process.platform !== 'win32' }, () => {
+  const source = Buffer.from(calibration.HOST_SOURCE).toString('base64');
+  const script = `$ErrorActionPreference='Stop';
+Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${source}')));
+$root=Join-Path ([IO.Path]::GetTempPath()) ('calibration-paths-'+[Guid]::NewGuid().ToString('N')); [void][IO.Directory]::CreateDirectory($root);
+try {
+ $initial=[CalibrationHost]::Target($root,'md'); $requested=[CalibrationHost]::Target($root,'json');
+ if ([CalibrationHost]::Classify($requested,$initial,$requested) -cne 'requested' -or [CalibrationHost]::Classify($initial,$initial,$requested) -cne 'initial') { throw 'Exact paths rejected' }
+ foreach ($bad in @('learnnote-diagnostics.md',($requested+'.other'),($root+'\\..\\private'),'')) { if ([CalibrationHost]::Classify($bad,$initial,$requested) -cne 'unexpected') { throw 'Unexpected path accepted' } }
+ $rejected=$false; try { [CalibrationHost]::WriteKnown('unexpected',$initial,$requested,[byte[]]@(1)) } catch { $rejected=$true }; if (!$rejected -or [IO.File]::Exists($initial) -or [IO.File]::Exists($requested)) { throw 'Unknown path wrote bytes' }
+ [CalibrationHost]::WriteKnown('requested',$initial,$requested,[byte[]]@(1,2,3));
+ $rejected=$false; try { [CalibrationHost]::WriteKnown('requested',$initial,$requested,[byte[]]@(4)) } catch { $rejected=$true }; if (!$rejected -or [Convert]::ToBase64String([IO.File]::ReadAllBytes($requested)) -cne 'AQID') { throw 'Overwrite not rejected' }
+ 'PASS'
+} finally { [IO.Directory]::Delete($root,$true) }`;
+  // This source-only negative fixture never displays or acts on any dialog.
+  assert.equal(execFileSync('powershell.exe', nativeDialogCommand(script), { encoding: 'utf8', windowsHide: true, timeout: 30000 }).trim(), 'PASS');
+});
+
+test('calibration reuses exact native input and existing failure artifact retention', () => {
+  const source = fs.readFileSync(new URL('../../scripts/installed-save-calibration.cjs', import.meta.url), 'utf8');
+  assert.match(source, /nativeDialogScript\(\{ ownedPid: host.pid, captureNativeDialog: true \}, binding, directory, destination\)/);
+  assert.match(source, /withNativeHelper\(helper, \(\) => protocol.command\(format\)\)/);
+  assert.match(calibration.HOST_SOURCE, /dialog.Filter="All files \(\*\.\*\)\|\*\.\*"; dialog.RestoreDirectory=true/);
+  assert.match(calibration.HOST_SOURCE, /dialog.FileName=Path.GetFileName\(initial\)/);
+  assert.match(calibration.HOST_SOURCE, /Classify\(dialog.FileName,initial,requested\)/);
+  assert.match(calibration.HOST_SOURCE, /FileMode.CreateNew/);
+  assert.doesNotMatch(calibration.HOST_SOURCE, /SendKeys|SetForegroundWindow|\.Activate\(|WM_SETTEXT|BM_CLICK|WebView|DownloadStarting/);
+  const workflow = fs.readFileSync(new URL('../../.github/workflows/desktop-release.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(workflow, /Preserve reliability evidence\n        if: always\(\)/);
+  for (const filename of ['native-save-calibration-report.json', 'native-save-calibration-md-dialog.png', 'native-save-calibration-json-dialog.png']) assert(workflow.includes('build/release/native-save-calibration/' + filename));
+  assert(!source.includes("path.resolve('build/release/installed-upgrade')"));
+});
+
+test('Windows standalone SaveFileDialog returns the exact full UIA destination and writes both fixture payloads there', { skip: process.platform !== 'win32', timeout: 120000 }, async () => {
+  const report = await calibration.runCalibration(path.resolve('build/release/native-save-calibration'));
+  assert.equal(report.passed, true); assert.equal(report.cases.length, 2);
+  for (const item of report.cases) {
+    assert.equal(item.returned_path, 'requested'); assert.equal(item.sha256, createHash('sha256').update(calibration.payload(item.format)).digest('hex'));
+  }
+});

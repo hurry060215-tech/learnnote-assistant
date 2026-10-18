@@ -154,6 +154,9 @@ jobs:
           path: |
             build/release/freshness.json
             build/release/retained-candidate/*.json
+            build/release/native-save-calibration/native-save-calibration-report.json
+            build/release/native-save-calibration/native-save-calibration-md-dialog.png
+            build/release/native-save-calibration/native-save-calibration-json-dialog.png
             build/release/visual-media-tools/media-tools.json
             build/release/reliability/**/report.json
             build/release/reliability/*.log
