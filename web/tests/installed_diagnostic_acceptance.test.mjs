@@ -474,6 +474,34 @@ foreach($bad in @('',('x'*1025),[string][char]0,[string][char]10,[string][char]2
   }
 });
 
+test('synthetic popup extraction replaces only the observer clock in LF and CRLF source', () => {
+  const raw = fs.readFileSync(new URL('../../scripts/installed-native-save-controls.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const fixture = fs.readFileSync(new URL('../../scripts/tests/native-save-control-faults.ps1', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const clockSource = fixture.match(/\$clockSource='([^']+)'/)?.[1];
+  const clockFixture = fixture.match(/\$clockFixture='([^']+)'/)?.[1];
+  assert.equal(clockSource, '$clock=[Diagnostics.Stopwatch]::StartNew()');
+  assert.equal(clockFixture, '$clock=[SyntheticPopupClock]::new()');
+  assert.match(fixture, /\[regex\]::Matches\(\$evidence,\[regex\]::Escape\(\$clockSource\)\)\)\.Count -ne 1/);
+  assert.match(fixture, /return \$evidence\.Replace\(\$clockSource,\$clockFixture\)/);
+  assert.equal((fixture.match(/Invoke-Expression \(Get-SyntheticPopupEvidenceSource \$newline\)/g) || []).length, 2);
+  assert.match(fixture, /PopupElapsedMilliseconds=0; Failure\.Data\.Clear\(\)/);
+  assert.match(fixture, /long ElapsedMilliseconds \{ get \{ return SyntheticState\.PopupElapsedMilliseconds;/);
+  assert.match(fixture, /Mode=="popup-before-budget" && SyntheticState\.ClassCalls==1\) SyntheticState\.PopupElapsedMilliseconds=499;/);
+  assert.match(fixture, /Mode=="popup-budget" && SyntheticState\.ClassCalls==1\) SyntheticState\.PopupElapsedMilliseconds=500;/);
+  assert.match(fixture, /Mode=="popup-last-budget" && SyntheticState\.PopupClassCalls==1\) SyntheticState\.PopupElapsedMilliseconds=500;/);
+  assert.doesNotMatch(fixture, /Thread\.Sleep\(510\)/);
+  assert.doesNotMatch(raw, /SyntheticPopupClock|PopupElapsedMilliseconds/);
+  for (const text of [raw, raw.replace(/\n/g, '\r\n')]) {
+    const start = text.indexOf('function Set-InputPredicate('), end = text.indexOf('# The editable ComboBox provider', start);
+    assert(start >= 0 && end > start); const evidence = text.slice(start, end);
+    assert.equal(evidence.split(clockSource).length - 1, 1);
+    const controlled = evidence.replaceAll(clockSource, clockFixture);
+    assert.equal(controlled.replaceAll(clockFixture, clockSource), evidence);
+    assert.equal((controlled.match(/ElapsedMilliseconds -ge 500/g) || []).length, 2);
+    assert(!controlled.includes('[Diagnostics.Stopwatch]::StartNew()'));
+  }
+});
+
 test('Windows extracted control validation accepts only exact initial names and retains both targets through faults', { skip: process.platform !== 'win32' }, () => {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.resolve('scripts/tests/native-save-control-faults.ps1')],
     { encoding: 'utf8', timeout: 15000, windowsHide: true });
@@ -552,9 +580,15 @@ test('Windows extracted control validation accepts only exact initial names and 
       assert.equal(row.metadata.action.edit_matches, row.mode === 'action-edit-readback' ? false : null);
     }
   }
-  assert.equal(parsed.popups.length, 48);
+  assert.equal(parsed.popups.length, 52);
+  for (const newline of ['lf', 'crlf']) {
+    const modes = parsed.popups.filter(row => row.newline === newline).map(row => row.mode);
+    assert.equal(modes.length, 26); assert.equal(new Set(modes).size, 26);
+    for (const mode of ['popup-success', 'popup-before-budget', 'popup-budget', 'popup-last-budget']) assert(modes.includes(mode), `${newline}: ${mode}`);
+  }
   for (const row of parsed.popups) {
     const o = validateInputPopups(row.observation);
+    assert.equal(o.elapsed_ms, ['popup-budget', 'popup-last-budget'].includes(row.mode) ? 500 : row.mode === 'popup-before-budget' ? 499 : 0, `${row.newline}: ${row.mode}`);
     const unavailable = ['popup-limit', 'popup-process-race'].includes(row.mode);
     assert.equal(o.status, unavailable ? 'unavailable' : ['popup-budget', 'popup-last-budget', 'popup-set-race'].includes(row.mode) ? 'partial' : 'complete', row.mode);
     if (unavailable) { assert.deepEqual(o.nodes, []); assert.equal(row.proof_count, 0); continue; }
@@ -571,7 +605,9 @@ test('Windows extracted control validation accepts only exact initial names and 
       assert.equal(node.owner_category, owners[row.mode] || 'root');
       assert.equal(node.pixel_eligible, !owners[row.mode]);
     }
-    if (row.mode === 'popup-last-budget') { assert.equal(o.reason, 'budget'); assert(o.elapsed_ms >= 500); assert(o.nodes.every(node => node.reason === 'verified')); assert.equal(row.proof_count, 1); }
+    if (row.mode === 'popup-before-budget') { assert.equal(o.reason, 'complete'); assert(o.nodes.every(node => node.reason === 'verified')); assert.equal(row.proof_count, 1); }
+    if (row.mode === 'popup-budget') { assert.equal(o.reason, 'budget'); assert.deepEqual(o.nodes.map(node => node.reason), ['verified', 'budget', 'budget']); assert.equal(row.proof_count, 0); }
+    if (row.mode === 'popup-last-budget') { assert.equal(o.reason, 'budget'); assert.equal(o.elapsed_ms, 500); assert(o.nodes.every(node => node.reason === 'verified')); assert.equal(row.proof_count, 1); }
     if (row.mode === 'popup-mixed') { assert.equal(row.proof_count, 1); assert.equal(o.nodes[3].pixel_eligible, true); }
     if (row.mode === 'popup-foreign') assert.equal(row.class_calls, 4, 'Foreign popup class is never read');
     if (row.mode === 'popup-set-race') { assert.equal(o.set_stable, false); assert.equal(o.nodes[2].cls, 'Auto-Suggest'); }
@@ -580,6 +616,7 @@ test('Windows extracted control validation accepts only exact initial names and 
   assert.equal(parsed.captures.length, 14);
   for (const row of parsed.captures) {
     validateInputPopups(row.topology);
+    assert.equal(row.topology.status, 'complete', `${row.newline}: ${row.mode}`); assert.equal(row.topology.elapsed_ms, 0);
     assert.equal(row.captures.length, row.mode === 'popup-truncated' ? 3 : 1);
     assert.equal(row.capture_calls, row.captures.length);
     for (const entry of row.captures) {

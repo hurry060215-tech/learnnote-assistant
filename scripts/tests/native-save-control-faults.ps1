@@ -15,15 +15,20 @@ namespace System.Windows.Automation {
  public class AutomationElement { public static SyntheticNode FocusedElement { get { if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-fault") throw SyntheticState.Failure; if(SyntheticState.UnicodeSends>0 && SyntheticState.Mode=="action-after-focused-element") return SyntheticState.Save; return SyntheticState.Mode=="action-focus-element" ? SyntheticState.Save : SyntheticState.Focus==3 ? SyntheticState.Edit : SyntheticState.Save; } } public static SyntheticNode FromHandle(IntPtr h) { return h.ToInt32()==4 ? SyntheticState.Combo : SyntheticState.Save; } }
 }
 public static class SyntheticState {
+ public static long PopupElapsedMilliseconds;
  public static string Mode; public static int ReadbackGuards; public static bool Diagnostic; public static int ValueReads, SavePatterns, HostSets, EditSets, SaveInvokes, UnicodeSends, Focus, Selections, FocusChecks, SelectionChecks, VisibleCalls, ClassCalls, PopupClassCalls;
  public static readonly Exception Failure=new InvalidOperationException("PRIVATE_original");
  public static SyntheticNode Host, Combo, Edit, Save;
  public static void Reset(string mode, string value) {
-  Failure.Data.Clear(); ReadbackGuards=0; Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0; PopupClassCalls=0;
+  PopupElapsedMilliseconds=0; Failure.Data.Clear(); ReadbackGuards=0; Mode=mode; Diagnostic=false; ValueReads=0; SavePatterns=0; HostSets=0; EditSets=0; SaveInvokes=0; UnicodeSends=0; Focus=0; Selections=0; FocusChecks=0; SelectionChecks=0; VisibleCalls=0; ClassCalls=0; PopupClassCalls=0;
   Host=new SyntheticNode(5); Combo=new SyntheticNode(4); Edit=new SyntheticNode(3); Save=new SyntheticNode(2);
   Edit.Pattern.Info.Value=value; Edit.Pattern.Info.IsReadOnly=mode=="readonly";
   Combo.Pattern.Info.Value=mode=="host-name" ? "wrong.md" : value; Combo.Pattern.Info.IsReadOnly=mode=="host-readonly";
  }
+}
+// Only the extracted popup observer uses this clock; no production/action clocks change.
+public class SyntheticPopupClock {
+ public long ElapsedMilliseconds { get { return SyntheticState.PopupElapsedMilliseconds; } }
 }
 public class SyntheticProperties {
  public int ProcessId { get { return 111; } }
@@ -142,10 +147,11 @@ public static class OwnedSave {
   }
   if(SyntheticState.Mode.StartsWith("popup-")) {
    SyntheticState.ClassCalls++;
-   if(SyntheticState.Mode=="popup-budget" && SyntheticState.ClassCalls==1) Thread.Sleep(510);
+   if(SyntheticState.Mode=="popup-before-budget" && SyntheticState.ClassCalls==1) SyntheticState.PopupElapsedMilliseconds=499;
+   if(SyntheticState.Mode=="popup-budget" && SyntheticState.ClassCalls==1) SyntheticState.PopupElapsedMilliseconds=500;
    if(h.ToInt32()==10) return "WindowsForms10.Window.1"; if(h.ToInt32()==1) return "#32770";
    SyntheticState.PopupClassCalls++;
-   if(SyntheticState.Mode=="popup-last-budget" && SyntheticState.PopupClassCalls==1) Thread.Sleep(510);
+   if(SyntheticState.Mode=="popup-last-budget" && SyntheticState.PopupClassCalls==1) SyntheticState.PopupElapsedMilliseconds=500;
    if(SyntheticState.Mode=="popup-class-fault") throw SyntheticState.Failure;
    if(SyntheticState.Mode=="popup-spaced-class") return "Auto-Suggest Dropdown";
    if(SyntheticState.Mode=="popup-spaced-case") return "Auto-Suggest DropDown";
@@ -321,15 +327,23 @@ foreach ($newline in @('lf','crlf')) {
   }
 }
 if ($SettlingOnly) { @{actions=@($actionResults.ToArray())} | ConvertTo-Json -Depth 8 -Compress; exit 0 }
-$popupResults=[Collections.Generic.List[object]]::new()
-foreach ($newline in @('lf','crlf')) {
+# Replace the sole observer clock at extraction time, never its 500 ms predicates.
+# Advancing time at synthetic class reads makes both success and expiry independent of runner load.
+function Get-SyntheticPopupEvidenceSource([string]$Newline) {
   $raw=[IO.File]::ReadAllText((Join-Path $root 'installed-native-save-controls.ps1')).Replace("`r`n","`n")
   if ($newline -ceq 'crlf') { $raw=$raw.Replace("`n","`r`n") }
   $start=$raw.IndexOf('function Set-InputPredicate('); $end=$raw.IndexOf('# The editable ComboBox provider',$start)
   if ($start -lt 0 -or $end -le $start) { throw 'Missing evidence source boundaries' }
-  Invoke-Expression $raw.Substring($start,$end-$start)
-  foreach ($mode in @('popup-success','popup-truncated','popup-limit','popup-hidden','popup-foreign','popup-dead','popup-ownerless','popup-owner-foreign','popup-owner-dead','popup-owner-limit','popup-cycle','popup-mixed','popup-set-race','popup-owner-race','popup-class-race','popup-class-fault','popup-unsafe-class','popup-process-race','popup-budget','popup-last-budget','popup-spaced-class','popup-spaced-case','popup-spaced-prefix','popup-spaced-path','popup-spaced-newline')) {
-    if ($newline -ceq 'crlf' -and $mode -cin @('popup-budget','popup-last-budget')) { continue }
+  $evidence=$raw.Substring($start,$end-$start)
+  $clockSource='$clock=[Diagnostics.Stopwatch]::StartNew()'
+  $clockFixture='$clock=[SyntheticPopupClock]::new()'
+  if (([regex]::Matches($evidence,[regex]::Escape($clockSource))).Count -ne 1) { throw 'Expected exactly one popup observer clock' }
+  return $evidence.Replace($clockSource,$clockFixture)
+}
+$popupResults=[Collections.Generic.List[object]]::new()
+foreach ($newline in @('lf','crlf')) {
+  Invoke-Expression (Get-SyntheticPopupEvidenceSource $newline)
+  foreach ($mode in @('popup-success','popup-before-budget','popup-truncated','popup-limit','popup-hidden','popup-foreign','popup-dead','popup-ownerless','popup-owner-foreign','popup-owner-dead','popup-owner-limit','popup-cycle','popup-mixed','popup-set-race','popup-owner-race','popup-class-race','popup-class-fault','popup-unsafe-class','popup-process-race','popup-budget','popup-last-budget','popup-spaced-class','popup-spaced-case','popup-spaced-prefix','popup-spaced-path','popup-spaced-newline')) {
     [SyntheticState]::Reset($mode,'learnnote-diagnostics.md'); $script:rootCalls=0
     function Assert-Root { $script:rootCalls++; if ([SyntheticState]::Mode -ceq 'popup-process-race' -and $script:rootCalls -gt 1) { throw [SyntheticState]::Failure } }
     $bound=@{config=@{pid=111;start='123'};root=[IntPtr]10;rootClass='WindowsForms10.Window.1';dialog=[IntPtr]1}
@@ -340,11 +354,7 @@ foreach ($newline in @('lf','crlf')) {
 }
 $captureResults=[Collections.Generic.List[object]]::new()
 foreach ($newline in @('lf','crlf')) {
-  $raw=[IO.File]::ReadAllText((Join-Path $root 'installed-native-save-controls.ps1')).Replace("`r`n","`n")
-  if ($newline -ceq 'crlf') { $raw=$raw.Replace("`n","`r`n") }
-  $start=$raw.IndexOf('function Set-InputPredicate('); $end=$raw.IndexOf('# The editable ComboBox provider',$start)
-  if ($start -lt 0 -or $end -le $start) { throw 'Missing evidence source boundaries' }
-  Invoke-Expression $raw.Substring($start,$end-$start)
+  Invoke-Expression (Get-SyntheticPopupEvidenceSource $newline)
 foreach ($mode in @('popup-success','popup-mixed','popup-truncated','popup-capture-owner-race','popup-capture-root-race','popup-capture-foreground-race','popup-capture-render-fault')) {
   [SyntheticState]::Reset($mode,'learnnote-diagnostics.md'); $script:captureCalls=0; $script:rootRace=$false; $script:foregroundRace=$false
   function Assert-Root { if ($script:rootRace) { throw [SyntheticState]::Failure } }
