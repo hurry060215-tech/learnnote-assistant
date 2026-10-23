@@ -290,8 +290,11 @@ function stageNavigationDom() {
     capture: (scroll = false) => vm.runInContext(`(${fixture.captureStageNavigation.toString()})`, context)({ ...expected, scroll }) };
 }
 
-test("actual status repaint detaches a transported timeline; current one-shot stage navigation stays visible", () => {
+test("unchanged status keeps its timeline; changed metadata replaces it and one-shot navigation uses the current node", () => {
   const h = stageNavigationDom(), stale = h.current();
+  h.context.renderStatus(false);
+  assert.equal(h.current(), stale); assert.equal(stale.isConnected, true); assert.equal(h.writes(), 1);
+  h.context.state.selected.updated_at = "new-status";
   h.context.renderStatus(false);
   stale.scrollIntoView({ block: "center", behavior: "instant" });
   assert.equal(stale.isConnected, false); assert.equal(h.scroller.scrollTop, 2300);
@@ -303,7 +306,7 @@ test("actual status repaint detaches a transported timeline; current one-shot st
   assert.equal(h.scrolls.length, 1); assert.equal(h.scrolls[0].connected, true);
   h.context.renderStatus(false); // A later history repaint must respect the explicit new position.
   const final = h.capture(); fixture.visibleStageStates(final.rows);
-  assert.equal(h.scroller.scrollTop, 200); assert.notEqual(final.after.node_id, placed.after.node_id);
+  assert.equal(h.scroller.scrollTop, 200); assert.equal(final.after.node_id, placed.after.node_id);
   assert.equal(h.scrolls.length, 1, "The pre-capture observation does not scroll again");
 });
 

@@ -49,6 +49,12 @@ def member_content(content):
 
 def public_contract():
     schema = copy.deepcopy(main.app.openapi())
+    # The library read model adds only one summary route and opt-in document
+    # paging. Freeze the original full task/detail/export and default list API.
+    schema["paths"].pop("/api/tasks/catalog")
+    material_list = schema["paths"]["/api/library/materials"]["get"]
+    material_list["parameters"] = [p for p in material_list["parameters"]
+                                   if p["name"] not in {"standalone", "q", "cursor"}]
     # #158 adds one independently tested read-only bounded paging endpoint.
     # Preserve every legacy operation and all stored/exported schema bytes.
     schema["paths"].pop("/api/tasks/{task_id}/community-context/page")

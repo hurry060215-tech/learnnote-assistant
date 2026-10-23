@@ -340,7 +340,9 @@ class OwnedGenerationCleanupTests(unittest.TestCase):
             return process
         with tempfile.TemporaryDirectory(prefix="visual-generation-cleanup-") as directory:
             marker = Path(directory) / "owned-child.pid"
-            command = [sys.executable, "-c", "import os, pathlib, sys, time; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)", str(marker)]
+            # No packages are required by this fixture. Launch the interpreter
+            # directly so the asserted PID is not a Windows venv redirector.
+            command = [sys._base_executable, "-c", "import os, pathlib, sys, time; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)", str(marker)]
             def stop_when_started():
                 deadline = time.monotonic() + 5
                 while not marker.exists() and time.monotonic() < deadline:

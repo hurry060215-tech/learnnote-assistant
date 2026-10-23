@@ -210,10 +210,14 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
                 'build/release/native-save-calibration/native-save-calibration-json-dialog.png',
             ])
             self.assertNotIn('continue-on-error', normalized)
-        self.assertEqual(test.count("calibration.runCalibration(path.resolve('build/release/native-save-calibration'))"), 1)
+        self.assertEqual(test.count("calibration.runCalibration(output)"), 1)
+        self.assertIn("let output = path.resolve('build/release/native-save-calibration')", test)
+        self.assertIn("fs.mkdtempSync(path.join(parent, 'native-save-calibration-rerun-'))", test)
         self.assertIn('args.output_dir.mkdir(parents=True, exist_ok=False)', installed)
         ci = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
-        self.assertEqual(ci.count('Get-ChildItem web/tests/*.test.mjs'), 1)
+        self.assertEqual(ci.count('          npm test\n'), 1)
+        self.assertEqual(ci.count('          npm run test:native\n'), 1)
+        self.assertIn('throw "Native dialog checks failed"', ci)
         self.assertNotIn('node web/tests/installed_diagnostic_acceptance.test.mjs', ci)
 
     def test_retention_is_always_top_level_synthetic_evidence_only(self):

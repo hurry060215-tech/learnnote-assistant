@@ -94,7 +94,7 @@ class ReleasePublishingTests(unittest.TestCase):
                 (root / name).write_bytes(b"")
             digest = hashlib.sha256(b"").hexdigest()
             (root / "SHA256SUMS.txt").write_text("\n".join(f"{digest}  {name}" for name in names), encoding="ascii")
-            result = subprocess.run([pwsh, "-NoProfile", "-File", str(ROOT / "scripts/publish-release.ps1"), "-Tag", "v0.0.0", "-Repository", "fixture/example", "-ValidateOnly"], cwd=root, capture_output=True, text=True, timeout=30)
+            result = subprocess.run([pwsh, "-NoProfile", "-File", str(ROOT / "scripts/publish-release.ps1"), "-Tag", "v0.0.0", "-Repository", "fixture/example", "-ValidateOnly"], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=30)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Empty release asset", result.stderr)
 

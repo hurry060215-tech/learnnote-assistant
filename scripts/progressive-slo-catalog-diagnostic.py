@@ -139,7 +139,7 @@ class NativeCalls:
 def source_callers():
     from app import library, knowledge, catalog_guard
     groups = ((library, ("index_task", "_connect", "_ensure_schema")),
-              (knowledge, ("replace_task_evidence", "_connect", "ensure_evidence_schema",
+              (knowledge, ("replace_task_evidence", "replace_task_evidence_in_transaction", "_connect", "ensure_evidence_schema",
                            "_write_evidence", "_fts_available")),
               (catalog_guard, ("connect_catalog", "validate_catalog_version")))
     result = {inspect.unwrap(getattr(module, name)).__code__: module.__name__.split(".")[-1] + "." + name

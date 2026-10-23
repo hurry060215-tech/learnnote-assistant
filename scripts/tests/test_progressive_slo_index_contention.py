@@ -189,10 +189,10 @@ class ProgressiveSloIndexFixtureTests(unittest.TestCase):
         self.run_isolated(r'''
 import inspect
 labels = {
-    '_read_text': 'index_artifact_text', '_connect': 'index_connect_schema',
+    'read_canonical_text': 'index_artifact_text', '_connect': 'index_connect_schema',
     'record_to_evidence': 'index_note_evidence',
     'transcript_evidence': 'index_transcript_evidence',
-    'replace_task_evidence': 'index_replace_evidence',
+    'replace_task_evidence_in_transaction': 'index_replace_evidence',
 }
 connection = sqlite3.connect(':memory:')
 results = {name: object() for name in labels}
@@ -287,7 +287,7 @@ transcript.write_text(json.dumps({'segments': [{'start': 0, 'end': 1, 'text': 'S
 record.note_path = str(note)
 record.transcript_path = str(transcript)
 originals = {name: getattr(library, name) for name in (
-    '_read_text', '_connect', 'record_to_evidence', 'transcript_evidence', 'replace_task_evidence')}
+    'read_canonical_text', '_connect', 'record_to_evidence', 'transcript_evidence', 'replace_task_evidence_in_transaction')}
 original_index = storage.index_task
 with ExitStack() as profile_stack:
     collector = diagnostics.install(app, profile_stack)
@@ -331,7 +331,7 @@ def read_text(value, limit=1000000):
 
 def original_index(record, *, task_root=None):
     assert diagnostics._index_active.get() is True
-    library._read_text(record)
+    library.read_canonical_text(record)
     if record == 'inner':
         raise failure
     if record == 'outer':
@@ -343,9 +343,9 @@ def original_index(record, *, task_root=None):
             raise AssertionError('Nested exception was swallowed')
         assert diagnostics._index_active.get() is True
         assert diagnostics._section.get() == 'library_index_sqlite'
-        library._read_text('after-inner')
+        library.read_canonical_text('after-inner')
         def unrelated_thread():
-            child_results.put(library._read_text('other-thread'))
+            child_results.put(library.read_canonical_text('other-thread'))
         thread = threading.Thread(target=unrelated_thread)
         thread.start()
         thread.join(2)
@@ -353,14 +353,14 @@ def original_index(record, *, task_root=None):
         assert child_results.get_nowait() == 'other-thread'
     return result
 
-with patch.object(library, '_read_text', read_text), patch.object(storage, 'index_task', original_index):
+with patch.object(library, 'read_canonical_text', read_text), patch.object(storage, 'index_task', original_index):
     with ExitStack() as profile_stack:
         collector = diagnostics.install(app, profile_stack)
         assert diagnostics._index_active.get() is False
         assert storage.index_task('outer') is result
         assert diagnostics._index_active.get() is False
         assert diagnostics._section.get() == 'unlabelled'
-        library._read_text('outside')
+        library.read_canonical_text('outside')
         assert collector.snapshot()['totals']['index_artifact_text']['count'] == 3
         try:
             storage.index_task('inner')
@@ -409,8 +409,8 @@ route_keys = {
     ('GET', '/_fixture/tasks/{task_id}'),
     ('POST', '/_fixture/tasks/{task_id}/visible'),
 }
-targets = [(library, name) for name in ('_read_text', '_connect', 'record_to_evidence',
-                                      'transcript_evidence', 'replace_task_evidence')]
+targets = [(library, name) for name in ('read_canonical_text', '_connect', 'record_to_evidence',
+                                      'transcript_evidence', 'replace_task_evidence_in_transaction')]
 targets.append((storage, 'index_task'))
 targets.extend((route.dependant, 'call') for route in fixture_routes()
                if any((method, getattr(route, 'path', '')) in route_keys
@@ -692,13 +692,13 @@ def task(task_id: str, generation: str = ""):
     assert storage.index_task(task_id) == 'synthetic artifact'
     return {'task_id': task_id}
 def index(record, *, task_root=None):
-    return library._read_text(record)
+    return library.read_canonical_text(record)
 def read_text(value, limit=1000000):
     return 'synthetic artifact'
 
 with ExitStack() as doubles:
     doubles.enter_context(patch.object(storage, 'index_task', index))
-    doubles.enter_context(patch.object(library, '_read_text', read_text))
+    doubles.enter_context(patch.object(library, 'read_canonical_text', read_text))
     for route, key, label in readers:
         doubles.enter_context(patch.object(route.dependant, 'call', edition if 'editions' in route.path else task))
     with ExitStack() as profile_stack:

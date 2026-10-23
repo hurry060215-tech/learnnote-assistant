@@ -81,7 +81,7 @@ class SourceInputTests(unittest.TestCase):
 
 
 class StaleTaskTests(unittest.TestCase):
-    def test_list_tasks_closes_stale_running_task_without_deleting_artifacts(self) -> None:
+    def test_list_tasks_only_normalizes_display_without_mutating_stale_task(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch("app.storage.TASK_DIR", Path(tmp)):
             task = create_task("current_page", "stale course", "https://example.com/video")
             task.status = "running"
@@ -90,13 +90,15 @@ class StaleTaskTests(unittest.TestCase):
             task.updated_at = (datetime.now(timezone.utc) - timedelta(hours=7)).isoformat()
             task_path = Path(tmp) / task.id / "task.json"
             task_path.write_text(task.model_dump_json(indent=2), encoding="utf-8")
+            before = task_path.read_bytes(), task_path.stat().st_mtime_ns
 
             [record] = list_tasks()
 
-            self.assertEqual(record.status, "failed")
-            self.assertEqual(record.error_code, "task_interrupted")
+            self.assertEqual(record.status, "running")
+            self.assertEqual(record.error_code, "")
             self.assertEqual(record.title, "学习视频 · example.com")
             self.assertTrue(task_path.is_file())
+            self.assertEqual((task_path.read_bytes(), task_path.stat().st_mtime_ns), before)
 
     def test_recent_running_task_is_left_untouched(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch("app.storage.TASK_DIR", Path(tmp)):

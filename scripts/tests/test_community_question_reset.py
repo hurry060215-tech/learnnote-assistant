@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location('opinion_fixture', root / 'scripts
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
 with tempfile.TemporaryDirectory(prefix='learnnote-opinion-reset-') as temporary, ExitStack() as stack:
-    data = Path(temporary)
+    data = Path(temporary).resolve()
     app, metadata = fixture.configure_fixture(root, data, stack)
     from app import storage, main, community, model_connections, selected_opinion_qa
     endpoints = {route.path: route.endpoint for route in app.routes if getattr(route, 'path', '').startswith('/_fixture/')}
@@ -66,7 +66,7 @@ async function check(representation) {
   const selected = { ...input.before, kind: 'task' }, events = [], hashes = [];
   const context = {
     state: { selected, items: [selected], epoch: 7, selectedRevision: 0, editing: false, reading: {} },
-    api: async route => route === '/api/tasks' ? input.tasks : route.startsWith('/api/library/') ? { materials: [] } : {},
+    api: async route => route === '/api/tasks/catalog' ? input.tasks : route.startsWith('/api/library/') ? { materials: [] } : {},
     $: id => elements[id], syncStatus: { hidden: true },
     claimMapVersion: () => 'unchanged-current-version', localMediaSource: () => null, editionRequest: 0,
     syncTaskEventStreams() {}, drawList() {}, closeSource() {}, renderStatus() {}, guard: () => true,
@@ -78,7 +78,7 @@ async function check(representation) {
   };
   vm.runInNewContext([
     block('function showHome(', 'async function navigateBack('),
-    block('async function refreshLibrary(', 'function selectedSnapshot('),
+    block('async function loadPinnedMaterials(', 'function selectedSnapshot('),
     block('function selectedSnapshot(', 'function refreshSelectedTask('),
   ].join('\n'), context);
   assert.equal(context.selectedSnapshotCurrent(context.selectedSnapshot()), true);

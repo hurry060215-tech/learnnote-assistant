@@ -92,12 +92,13 @@ jobs:
       - name: Extension and web checks
         shell: pwsh
         run: |
-          @("extension/background.js", "extension/content.js", "extension/content-study-evidence.js", "extension/page_hook.js", "extension/sidepanel.js", "extension/sidepanel-progress.js", "web/app.js") | ForEach-Object {
-            node --check $_
-            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $_" }
-          }
-          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension test failed: $($_.Name)" } }
-          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web test failed: $($_.Name)" } }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw "JavaScript checks failed" }
+      - name: Native Windows dialog contracts
+        shell: pwsh
+        run: |
+          npm run test:native
+          if ($LASTEXITCODE -ne 0) { throw "Native dialog checks failed" }
       - name: Provision pinned media tools for real fixture contracts
         timeout-minutes: 5
         shell: pwsh
@@ -108,10 +109,8 @@ jobs:
         run: |
           python -m unittest discover scripts/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Script tests failed" }
-          python -m unittest desktop.tests.test_desktop_launcher
+          python -m unittest discover desktop/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Desktop tests failed" }
-          python -m unittest desktop.tests.test_data_migration_mapping desktop.tests.test_data_migration desktop.tests.test_macos_lifecycle
-          if ($LASTEXITCODE -ne 0) { throw "Desktop migration tests failed" }
       - name: Release packaging smoke
         shell: pwsh
         run: |

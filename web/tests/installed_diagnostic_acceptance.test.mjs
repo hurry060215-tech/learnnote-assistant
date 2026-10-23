@@ -1342,7 +1342,11 @@ test('extracted action guards preserve the exact original predicates and evaluat
   const ci = fs.readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const release = fs.readFileSync(new URL('../../.github/workflows/desktop-release.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(ci.slice(0, ci.indexOf('permissions:')), /paths(?:-ignore)?:/);
-  assert(ci.includes('Get-ChildItem web/tests/*.test.mjs'));
+  assert(ci.includes('npm test'));
+  assert(ci.includes('npm run test:native'));
+  assert(ci.includes('throw "Native dialog checks failed"'));
+  const scripts = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).scripts;
+  assert.equal(scripts['test:native'], 'node scripts/check-javascript.cjs --native');
   assert(release.includes('node web/tests/installed_diagnostic_acceptance.test.mjs'));
 });
 
@@ -1513,16 +1517,22 @@ test('Windows calibration temporary-base proof rejects reparse ancestors and fai
 
 test('calibration evidence output refuses existing directories, files and links without overwriting', () => {
   const root = fs.mkdtempSync(path.join(calibration.canonicalTempDirectory(), 'calibration-output-'));
+  const link = path.join(root, 'link');
   try {
     const fresh = path.join(root, 'fresh'); calibration.prepareOutput(fresh);
     const marker = path.join(fresh, 'marker'); fs.writeFileSync(marker, 'prior evidence');
     assert.throws(() => calibration.prepareOutput(fresh)); assert.equal(fs.readFileSync(marker, 'utf8'), 'prior evidence');
     const file = path.join(root, 'file'); fs.writeFileSync(file, 'owned'); assert.throws(() => calibration.prepareOutput(file));
-    const link = path.join(root, 'link'); fs.symlinkSync(fresh, link, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.symlinkSync(fresh, link, process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => calibration.prepareOutput(link)); assert.throws(() => calibration.prepareOutput(path.join(link, 'child')));
     assert(!fs.existsSync(path.join(fresh, 'child')));
     assert.throws(() => calibration.canonicalTempDirectory(link));
-  } finally { fs.rmSync(root, { recursive: true }); }
+  } finally {
+    // Remove this test's junction before its target; Windows recursive cleanup
+    // can otherwise leave the dangling entry behind and hide the assertions.
+    if (fs.lstatSync(link, { throwIfNoEntry: false })) fs.unlinkSync(link);
+    fs.rmSync(root, { recursive: true });
+  }
 });
 
 test('calibration compile and exact process binding fail closed without raw errors or unrelated process queries', () => {
@@ -1594,7 +1604,13 @@ test('calibration reuses exact native input and existing failure artifact retent
 });
 
 test('Windows standalone SaveFileDialog returns the exact full UIA destination and writes both fixture payloads there', { skip: process.platform !== 'win32', timeout: 120000 }, async () => {
-  const report = await calibration.runCalibration(path.resolve('build/release/native-save-calibration'));
+  let output = path.resolve('build/release/native-save-calibration');
+  if (fs.lstatSync(output, { throwIfNoEntry: false })) {
+    const parent = calibration.canonicalTempDirectory(path.dirname(output));
+    output = path.join(fs.mkdtempSync(path.join(parent, 'native-save-calibration-rerun-')), 'evidence');
+  }
+  console.log(`Native Save dialog evidence: ${output}`);
+  const report = await calibration.runCalibration(output);
   assert.equal(report.passed, true); assert.equal(report.cases.length, 2);
   for (const item of report.cases) {
     assert.equal(item.returned_path, 'requested'); assert.equal(item.sha256, createHash('sha256').update(calibration.payload(item.format)).digest('hex'));

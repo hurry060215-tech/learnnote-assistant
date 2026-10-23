@@ -457,12 +457,14 @@ print(json.dumps({'id':task.id}))
         self.prepare()
         self.apply()
         self.assert_source()
+        self.assertFalse((self.target / ".queue-owners").exists())
         reopened = """
 import sys
 from fastapi.testclient import TestClient
 from app.main import app
 from app.storage import get_task
 from app.queue_journal import read_queue_entries
+from app.queue_ownership import owner_is_alive
 from pathlib import Path
 client=TestClient(app,raise_server_exceptions=False)
 for endpoint in ('note','transcript','exports/markdown','exports/subtitles','exports/bundle'):
@@ -471,12 +473,49 @@ for endpoint in ('note','transcript','exports/markdown','exports/subtitles','exp
 assert 'A real synthetic caption pipeline.' in client.get('/api/tasks/'+sys.argv[1]+'/note').text
 rows,_=read_queue_entries(Path(sys.argv[2]))
 assert rows[0]['state']=='done' and rows[0]['callback_finished']==1
+assert rows[0]['owner_id'] and not owner_is_alive(Path(sys.argv[2]), rows[0]['owner_id'])
 assert get_task(sys.argv[1]).status=='success'
 """
         run = subprocess.run([sys.executable, "-c", reopened, task_id, str(self.target)], cwd=ROOT, env={**env, "LEARNNOTE_DATA_DIR": str(self.target)}, capture_output=True, text=True, encoding="utf-8", timeout=30)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assert_source()
         self.assertEqual(selected.read_text(encoding="utf-8"), "1\n00:00:00,000 --> 00:00:03,000\nA real synthetic caption pipeline.\n")
+
+    def test_stale_queue_ownership_is_excluded_and_unknown_entries_are_rejected(self):
+        directory = self.source / ".queue-owners"
+        directory.mkdir()
+        lease = directory / ("a" * 32 + ".lock")
+        lease.write_bytes(b"residual coordination bytes")
+        self.prepare()
+        self.assertTrue(any(item["path"] == ".queue-owners" for item in self.plan["snapshot"]["excluded"]))
+        self.apply()
+        self.assertFalse((self.target / ".queue-owners").exists())
+        self.assertEqual(lease.read_bytes(), b"residual coordination bytes")
+        self.assert_source()
+        (directory / "unknown.json").write_bytes(b"must not silently discard")
+        with self.assertRaises(MigrationError) as caught:
+            inventory(self.source)
+        self.assertEqual(caught.exception.code, "pending_recovery")
+
+    def test_live_queue_owner_blocks_stopped_copy_even_without_an_occupied_worker_slot(self):
+        (self.source / ".queue-owners").mkdir()
+        self.prepare()
+        script = "from pathlib import Path; import sys; from app.queue_ownership import QueueOwner; owner=QueueOwner(Path(sys.argv[1])); print('held',flush=True); sys.stdin.readline(); owner.close()"
+        process = subprocess.Popen([sys.executable, "-c", script, str(self.source)], cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "backend")},
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace")
+        try:
+            self.assertEqual(process.stdout.readline().strip(), "held")
+            with self.assertRaises(MigrationError) as caught:
+                self.apply()
+            self.assertEqual(caught.exception.code, "source_busy")
+            self.assert_old_config()
+            self.assert_source()
+        finally:
+            _out, error = process.communicate("release\n", timeout=10)
+            self.assertEqual(process.returncode, 0, error)
+        self.assertEqual(list(self.target.iterdir()), [])
 
     def test_receipt_reconciliation_reports_only_verified_config_commit(self):
         self.assertEqual(migration.migration_status(self.app)["status"], "none")

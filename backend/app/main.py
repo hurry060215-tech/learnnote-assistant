@@ -3065,6 +3065,13 @@ def api_list_tasks() -> dict:
     return {"tasks": [task_payload(task, queue_snapshot=snapshot) for task in records if task is not None]}
 
 
+@app.get("/api/tasks/catalog")
+def api_task_catalog() -> dict:
+    from .task_catalog import task_catalog_entry
+    records = list_tasks()
+    return {"schema_version": 1, "tasks": [task_catalog_entry(task) for task in records], "total": len(records)}
+
+
 @app.get("/api/storage")
 def api_storage_summary() -> dict:
     return {**storage_summary(), "upload_policy": upload_policy_snapshot()}

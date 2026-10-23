@@ -99,6 +99,23 @@ def fingerprint(path):
 COORDINATION_ROOTS = ("personal-state", "course-state-locks", ".task-state")
 
 
+def queue_owner_files(root):
+    """Validate coordination names/types without reading callback lease bytes."""
+    directory = root / ".queue-owners"
+    try:
+        directory.lstat()
+    except FileNotFoundError:
+        return []
+    checked(directory, directory=True)
+    names = []
+    for entry in directory.iterdir():
+        if not re.fullmatch(r"[a-f0-9]{32}\.lock", entry.name):
+            fail("pending_recovery", "任务队列协调目录包含未知内容，请先核对。")
+        checked(entry)
+        names.append(".queue-owners/" + entry.name)
+    return sorted(names)
+
+
 def _exclusion(parts):
     first, name = parts[0], parts[-1]
     if first in EXCLUDED_ROOTS:
@@ -133,6 +150,12 @@ def inventory(root: Path, *, strict_stage=False):
             folded.add(name.casefold())
             relative = (*parts, name)
             key = "/".join(relative)
+            if len(relative) == 1 and name == ".queue-owners":
+                queue_owner_files(root)
+                if strict_stage:
+                    fail("stage_changed", "暂存目录出现未批准的队列协调文件。")
+                excluded.append({"path": name, "reason": "队列进程所有权不会复制，目标目录重新建立"})
+                continue
             if len(relative) == 1 and name in COORDINATION_ROOTS:
                 checked(path, directory=True)
                 # Ordinary annotation writes create this coordination directory.

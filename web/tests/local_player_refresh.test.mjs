@@ -14,11 +14,11 @@ function harness({ready=false, changedDigest=false}={}) {
   const nodes={sourcePanel:{hidden:false,dataset:{sourceTaskId:"child"}}};
   const state={items:[old],selected:old,epoch:1,lastHealthAt:Date.now(),editing:false};
   const context=vm.createContext({state, localMediaSource, $:id=>nodes[id], syncStatus:{hidden:true},
-    api:async route=>route==="/api/tasks"?{tasks:[next]}:{materials:[]},
+    api:async route=>route==="/api/tasks/catalog"?{tasks:[next]}:{materials:[]},
     window:{dispatchEvent(){}},CustomEvent:class{},syncTaskEventStreams(){},drawList(){},renderStatus(){},
     claimMapVersion:item=>item.updated_at,claimTimeline:{reset(){}},
     loadEdition:async()=>{entered.resolve();await edition.promise;},openSource:async()=>calls.push(localMediaSource(state.selected))});
-  const start=desk.indexOf("async function refreshLibrary()"), end=desk.indexOf("async function openItem(",start);
+  const start=desk.indexOf("async function loadPinnedMaterials("), end=desk.indexOf("async function openItem(",start);
   vm.runInContext(desk.slice(start,end),context);
   return {context,state,nodes,edition,entered,calls};
 }

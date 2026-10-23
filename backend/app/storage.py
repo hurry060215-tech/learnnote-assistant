@@ -492,20 +492,9 @@ def list_tasks_snapshot(*, strict: bool = False) -> list[TaskRecord]:
 
 
 def list_tasks() -> list[TaskRecord]:
-    ensure_dirs()
-    records = reconcile_stale_tasks(list_tasks_snapshot())
-    repaired = []
-    for snapshot in records:
-        with task_state_transaction():
-            try:
-                record = get_task(snapshot.id)
-            except (OSError, ValueError, TypeError):
-                continue
-            title = clean_task_title(record.title, record.page_url)
-            if title != record.title:
-                record = update_task(record.id, title=title)
-            repaired.append(record)
-    return sorted(repaired, key=lambda item: item.created_at, reverse=True)
+    """Read once; display normalization never repairs or completes a task."""
+    return [record.model_copy(update={"title": clean_task_title(record.title, record.page_url)})
+            for record in list_tasks_snapshot()]
 
 
 def _parse_iso_datetime(value: str) -> datetime | None:
@@ -525,30 +514,16 @@ def reconcile_stale_tasks(
     max_age: timedelta = STALE_TASK_AFTER,
     cancelling_max_age: timedelta = STALE_CANCELLING_AFTER,
 ) -> list[TaskRecord]:
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    """Compatibility refresh; only queue recovery may decide a worker has stopped.
+
+    A paused or queued job may legitimately have no progress for any duration.
+    The retained age arguments no longer authorize state transitions.
+    """
     result = []
     for snapshot in records:
-        with task_state_transaction():
-            try:
-                record = get_task(snapshot.id)
-            except (OSError, ValueError, TypeError):
-                continue
-            updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
-            # Elapsed time cannot prove that a worker observed cancellation.
-            if record.status in {"queued", "running"} and not record.cancel_requested and updated and current - updated > max_age:
-                from .task_media_guard import require_current_media_provenance, available_current_media
-                try:
-                    require_current_media_provenance(record, TASK_DIR / record.id)
-                except TaskArtifactUnavailable:
-                    result.append(record)
-                    continue  # A read/list cannot apply an uncertain migration or rewrite its state.
-                try:
-                    has_media = available_current_media(record, TASK_DIR / record.id) is not None
-                except TaskArtifactUnavailable:
-                    has_media = False
-                detail = ("任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
-                          if has_media else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。")
-                record = update_task(record.id, status="failed", phase="failed", error_code="task_interrupted",
-                                     error_detail=detail, message=detail)
+        try:
+            record = get_task(snapshot.id)
             result.append(record)
+        except (OSError, ValueError, TypeError):
+            continue
     return result

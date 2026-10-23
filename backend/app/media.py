@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import BACKEND_ORIGIN
 from .models import FrameGrid, FrameSample, MediaIntegrity, MediaTrackInfo
+from .media_process import owned_media_process
 from .runtime import ffmpeg_bin, ffprobe_bin, text_subprocess_kwargs
 from .text_cleanup import TextDecodingError, read_canonical_text
 
@@ -51,19 +52,14 @@ def _run(cmd: list[str], message: str) -> None:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, **text_subprocess_kwargs())
     else:
         check()
-        with subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **text_subprocess_kwargs()) as process:
-            try:
-                while True:
-                    check()
-                    try:
-                        stdout, stderr = process.communicate(timeout=.1)
-                        break
-                    except subprocess.TimeoutExpired:
-                        continue
-            except BaseException:
-                process.kill()
-                process.communicate()
-                raise
+        with owned_media_process(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **text_subprocess_kwargs()) as process:
+            while True:
+                check()
+                try:
+                    stdout, stderr = process.communicate(timeout=.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
             result = subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
     if result.returncode != 0:
         raise MediaProcessingError(f"{message}: {result.stderr[:500]}")

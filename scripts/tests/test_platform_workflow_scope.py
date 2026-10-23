@@ -40,6 +40,8 @@ class PlatformWorkflowScopeTests(unittest.TestCase):
         self.assertEqual(native["env"]["PYTHONPATH"], "backend")
         self.assertNotIn("continue-on-error", native)
         ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
-        windows = next(step for step in ci["jobs"]["checks"]["steps"] if command in step.get("run", ""))
+        discovery = 'python -m unittest discover desktop/tests -p "test_*.py"'
+        windows = next(step for step in ci["jobs"]["checks"]["steps"] if discovery in step.get("run", ""))
         self.assertEqual(windows["env"]["PYTHONPATH"], "backend")
-        self.assertIn('if ($LASTEXITCODE -ne 0) { throw "Desktop migration tests failed" }', windows["run"])
+        self.assertIn('if ($LASTEXITCODE -ne 0) { throw "Desktop tests failed" }', windows["run"])
+        self.assertIn(discovery, (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"))

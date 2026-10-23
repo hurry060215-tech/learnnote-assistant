@@ -76,6 +76,12 @@ CREATE TABLE source_evidence (
 );
 CREATE INDEX source_evidence_task_idx ON source_evidence(task_id);
 """
+PROJECTION_REVISION_SQL = """
+CREATE TABLE task_projection_revisions (
+  task_id TEXT PRIMARY KEY,
+  signature TEXT NOT NULL
+);
+"""
 _FTS = {
     "library_tasks_fts": "CREATE VIRTUAL TABLE library_tasks_fts USING fts5(task_id UNINDEXED, title, source, content)",
     "source_evidence_fts": "CREATE VIRTUAL TABLE source_evidence_fts USING fts5(evidence_id UNINDEXED, title, source_uri, locator, text)",
@@ -106,6 +112,8 @@ def _validate_schema(db):
         trusted.executescript(CATALOG_SCHEMA_SQL)
         if "source_evidence" in actual:
             trusted.executescript(EVIDENCE_SCHEMA_SQL)
+        if "task_projection_revisions" in actual:
+            trusted.executescript(PROJECTION_REVISION_SQL)
         for name, sql in _FTS.items():
             if name in actual:
                 if name == "source_evidence_fts" and "source_evidence" not in actual:

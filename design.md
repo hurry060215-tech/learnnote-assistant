@@ -127,6 +127,10 @@ component rather than making a new general spacing scale from every literal.
 
 - Sidebar: 232px default, user resizable between 200px and 420px where room
   permits. At <=760px it is a 264px overlay. A closed mobile sidebar has no shadow.
+- The library loads standalone documents in pages of 100, with one existing-style
+  44px "加载更多资料" action below the list. Title search covers the full catalog;
+  total counts include unloaded documents. Unchanged refreshes preserve list focus,
+  status disclosures and the number of pages already opened.
 - Sidebar padding: 22px top, 14px inline, 12px bottom. Footer controls size to their
   content and can wrap; the theme control sits at the trailing edge. Hidden
   controls must not leave fixed empty grid tracks.

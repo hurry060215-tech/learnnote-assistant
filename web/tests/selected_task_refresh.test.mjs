@@ -53,7 +53,7 @@ function harness({ holdEdition = false, reading = {}, ignoreAbort = false, proje
     },
     api: (path, options = {}) => {
       requests.push({ path, options });
-      if (path === "/api/tasks") return defer(path, options, lists);
+      if (path === "/api/tasks/catalog") return defer(path, options, lists);
       if (path.startsWith("/api/library/materials")) return Promise.resolve({ materials: [] });
       if (path === "/health") return Promise.resolve({});
       if (path === "/api/study/activity") return Promise.resolve({});
@@ -89,7 +89,7 @@ function harness({ holdEdition = false, reading = {}, ignoreAbort = false, proje
   let eventId = 0;
   return { context, state, old, $, requests, targets, lists, editions, controls, events, renders, sources, notices, notifications,
     maxActive: () => maxActive, active: () => active, setEdition: value => { currentEdition = value; },
-    emit: name => { const stream = streams.findLast(item => !item.closed); assert(stream, "current stream"); stream.listeners.get(name)?.({ lastEventId: String(++eventId) }); },
+    emit: (name, id = "selected") => { const stream = streams.findLast(item => !item.closed && item.url.includes(`/api/tasks/${id}/`)); assert(stream, "current stream"); stream.listeners.get(name)?.({ lastEventId: String(++eventId) }); },
     control: action => $("taskStatus").onclick({ target: { closest: () => ({ dataset: { taskAction: action } }) } }),
   };
 }
@@ -100,10 +100,35 @@ test("one native draft event bypasses a joined stale periodic list and its late 
   h.setEdition({ text: "Draft is readable", revision: "draft" });
   h.targets[0].resolve({ task: task({ updated_at: "two" }) }); await flush();
   assert.equal(h.state.text, "Draft is readable"); assert.equal(h.state.selected.updated_at, "two");
-  assert.equal(h.state.items[0].updated_at, "one", "fast reads do not own the retained library");
+  assert.equal(h.state.items[0].updated_at, "two", "the event updates its own library row without another full-list read");
+  assert.equal(h.lists.length, 1);
   h.lists[0].resolve({ tasks: [h.old] }); await periodic; await flush();
   assert.equal(h.state.selected.updated_at, "two"); assert.equal(h.state.text, "Draft is readable");
   assert.equal(h.state.items[0].updated_at, "two"); assert.equal(h.targets.length, 1);
+});
+
+test("unselected events update only their task and an older catalog cannot repeat completion notifications", async () => {
+  const h = harness({ reading: { notify: true } }), other = task({ id: "other" });
+  h.state.items.push(other); h.context.syncTaskEventStreams();
+  const periodic = h.context.refresh(); h.emit("task_terminal", "other");
+  assert.equal(h.lists.length, 1); assert.equal(h.targets.length, 1); assert.equal(h.targets[0].path, "/api/tasks/other");
+  const completed = { ...other, status: "success", updated_at: "done" };
+  h.targets[0].resolve({ task: completed }); await flush();
+  assert.equal(h.state.items.find(item => item.id === "other").status, "success"); assert.equal(h.notifications.length, 1);
+  h.lists[0].resolve({ tasks: [h.old, other] }); await periodic;
+  assert.equal(h.state.items.find(item => item.id === "other").status, "success"); assert.equal(h.notifications.length, 1);
+  const fresh = h.context.refresh(); h.lists[1].resolve({ tasks: [h.old, completed] }); await fresh;
+  assert.equal(h.notifications.length, 1); assert.equal(h.targets.length, 1);
+});
+
+test("catalog rows never replace the complete selected task; only its detail read updates the reader", async () => {
+  const h = harness(), periodic = h.context.refresh();
+  h.lists[0].resolve({ tasks: [{ id: h.old.id, title: "Selected", status: "success", updated_at: "done", catalog: true }] }); await periodic;
+  assert.equal(h.state.selected.catalog, undefined); assert.equal(h.state.selected.transcript_path, "transcript.json");
+  assert.equal(h.targets.length, 1);
+  const lane = h.state.selectedRefresh.promise;
+  h.targets[0].resolve({ task: task({ status: "success", updated_at: "done" }) }); await lane;
+  assert.equal(h.state.selected.status, "success"); assert.equal(h.state.selected.catalog, undefined);
 });
 
 test("newer library adoption fences an older targeted generation and permits one fresh replay", async () => {

@@ -360,11 +360,11 @@ def _install(app, stack):
                 return function(*args, **kwargs)
         return call
     for name, label in (
-        ("_read_text", "index_artifact_text"),
+        ("read_canonical_text", "index_artifact_text"),
         ("_connect", "index_connect_schema"),
         ("record_to_evidence", "index_note_evidence"),
         ("transcript_evidence", "index_transcript_evidence"),
-        ("replace_task_evidence", "index_replace_evidence"),
+        ("replace_task_evidence_in_transaction", "index_replace_evidence"),
     ):
         original = getattr(library, name)
         require_sync(original)

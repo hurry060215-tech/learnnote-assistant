@@ -95,7 +95,9 @@ export function installTools(ctx) {
     return { ...state.selected };
   }
   function selectItems(selected = []) {
-    return state.items
+    const choices = [...state.items, ...selected.filter(source => ["task", "material"].includes(source.kind)
+      && !state.items.some(item => item.kind === source.kind && item.id === source.id))];
+    return choices
       .map(
         (item) =>
           `<label class="tool-choice"><input type="checkbox" data-source="${esc(item.id)}" data-kind="${item.kind}" ${selected.some((s) => s.kind === item.kind && s.id === item.id) ? "checked" : ""}><span>${esc(item.title)}<small>${item.kind === "task" ? "视频笔记" : "学习资料"}</small></span></label>`,
@@ -1143,7 +1145,7 @@ export function installTools(ctx) {
         const sourceId = source.kind === "url" ? episode?.task_id : source.id;
         const sourceKind = source.kind === "url" ? "task" : source.kind;
         if (!sourceId) { status("点击“整理待处理链接”开始生成笔记。"); return; }
-        const item = state.items.find(i => i.id === sourceId && i.kind === sourceKind);
+        const item = state.items.find(i => i.id === sourceId && i.kind === sourceKind) || await ctx.resolveSource(sourceKind, sourceId);
         if (!item) throw new Error("来源已被删除或不在当前资料库。");
         dialog.close();
         await openItem(item);
@@ -1161,7 +1163,8 @@ export function installTools(ctx) {
           (i) =>
             i.id === dialog.dataset.sourceId &&
             i.kind === dialog.dataset.sourceKind,
-        );
+        ) || await ctx.resolveSource(dialog.dataset.sourceKind, dialog.dataset.sourceId);
+        if (!s) throw new Error("来源已被删除或无法读取。");
         await saveCourse({
           ...course,
           sources: [
@@ -1221,7 +1224,7 @@ export function installTools(ctx) {
       } else if (form.id === "courseForm") {
         const checked = [...form.querySelectorAll("[data-source]:checked")]
           .map((el) =>
-            state.items.find(
+            [...state.items, ...(course?.sources || [])].find(
               (i) => i.id === el.dataset.source && i.kind === el.dataset.kind,
             ),
           )

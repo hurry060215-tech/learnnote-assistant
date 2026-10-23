@@ -61,7 +61,7 @@ class SubtitleProbeTests(unittest.TestCase):
             result = main.create_from_current_page(request, BackgroundTasks(), defer=True)
             task_id = result["task_id"]
             try:
-                saved = json.loads((storage.task_dir(task_id) / "deferred_preflight.json").read_text())
+                saved = json.loads((storage.task_dir(task_id) / "deferred_preflight.json").read_text(encoding="utf-8"))
                 self.assertEqual(saved["subtitle_probe"]["status"], "not_found")
                 self.assertNotIn("dummy-private-url", json.dumps(saved))
                 main._deferred_handoffs.pop(task_id, None)
@@ -96,7 +96,7 @@ class SubtitleProbeTests(unittest.TestCase):
                 task = storage.get_task(task_id)
                 self.assertEqual(task.subtitle_probe, request.subtitle_probe)
                 self.assertEqual(task.extension_version, "0.2.14")
-                saved = json.loads((storage.task_dir(task_id) / "deferred_preflight.json").read_text())
+                saved = json.loads((storage.task_dir(task_id) / "deferred_preflight.json").read_text(encoding="utf-8"))
                 self.assertEqual(saved["subtitle_probe"], request.subtitle_probe.model_dump())
                 storage.update_task(task_id, awaiting_confirmation=False)
                 stale_request = request.model_copy(update={"subtitle_probe": None, "extension_version": ""})
