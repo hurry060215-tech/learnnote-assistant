@@ -9,6 +9,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 - Publish search, evidence and revision receipts atomically, skipping content reads and reindexing for progress-only updates. Preserve backed-up schema migrations and rebuild missing FTS projections from stored content.
 - Recover queues using per-process ownership leases and execution lanes, preserving paused callbacks and preventing orphaned queue heads from starving subsequent tasks.
 - Contain Windows media processes in an owned Job before execution and reap the whole process tree on completion, cancellation, timeout and failure.
+- Update affected image/PDF parsing, certificate, file-lock and build dependencies to patched releases: Pillow 13.0.0, pypdf 6.21.2, certifi 2026.10.19, filelock 4.2.1 and setuptools 84.1.0; synchronize source installation floors and Windows build pins.
 - Browse saved audience opinions beyond the first 500 items with bounded paging; retain filtering, selection and clear boundaries without automatically fetching more comments or sending them to a model.
 - Keep outline h2/h3/h4 jump targets below the measured sticky toolbar and utility strip while preserving the existing reading appearance.
 - Make opt-in playback follow use the unobscured reading region; leave visible claims in place and handle oversized targets without hiding the start beneath fixed controls.

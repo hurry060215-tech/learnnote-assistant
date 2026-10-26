@@ -2,6 +2,7 @@
 // Run only against the isolated fixture backend used by .github/workflows/ui-visual.yml.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
@@ -49,8 +50,9 @@ async function main() {
       }
       if (route.request().method() !== "GET") return route.continue();
       if (url.pathname === "/api/tasks") return route.fulfill({ json: { tasks: [] } });
+      if (url.pathname === "/api/tasks/catalog") return route.fulfill({ json: fixtureTaskCatalog([]) });
       if (url.pathname === "/api/library/materials")
-        return route.fulfill({ json: { materials: showFixture ? [material] : [] } });
+        return route.fulfill({ json: fixtureMaterialPage(showFixture ? [material] : [], url.search) });
       if (url.pathname === "/api/assistant/history") return route.fulfill({ json: { items: [] } });
       return route.continue();
     });

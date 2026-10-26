@@ -14,7 +14,7 @@ function fixtureTransportAllowed(method, url) {
   if (method !== 'GET') return method === 'POST' && !query && ['/api/study/activity', '/api/study/plan/initialize'].includes(name);
   if (name === `/api/tasks/${TASK_ID}/exports/diagnostics`) return ['', '?format=json'].includes(query);
   if (name === `/api/tasks/${TASK_ID}/events`) return query === '?limit=500';
-  if (name === '/api/library/materials') return ['', '?limit=500', '?limit=1000'].includes(query);
+  if (name === '/api/library/materials') return ['', '?limit=500', '?limit=1000', '?standalone=true&limit=100&q='].includes(query);
   if (name === '/api/study/due') return query === '?limit=20';
   if (name === '/api/model/route') return query === '?transcriber=faster-whisper&whisper_model=small&visual_understanding=true';
   return !query;

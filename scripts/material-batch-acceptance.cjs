@@ -3,6 +3,7 @@
 // external media, model provider, or genuine user file is contacted or uploaded.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -208,7 +209,8 @@ async function multipart(request) {
         report.requests.push(`${request.method()} ${pathname}`);
         if (pathname === "/health") return json(health);
         if (pathname === "/api/tasks" && request.method() === "GET") return json({ tasks: [...tasks.values()] });
-        if (pathname === "/api/library/materials" && request.method() === "GET") return json({ materials: [...materials.values()] });
+        if (pathname === "/api/tasks/catalog" && request.method() === "GET") return json(fixtureTaskCatalog([...tasks.values()]));
+        if (pathname === "/api/library/materials" && request.method() === "GET") return json(fixtureMaterialPage([...materials.values()], url.search));
         if (pathname === "/api/preferences" && request.method() === "GET") return json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
         if (pathname === "/api/model/connection" && request.method() === "GET") return json({ model: null, configured: false });
         if (pathname === "/api/model/route" && request.method() === "GET") return json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });

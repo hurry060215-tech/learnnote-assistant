@@ -2,6 +2,7 @@
 // No provider, real video, external website or backend mutation leaves this fixture.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
@@ -46,7 +47,8 @@ const result = () => ({ status: ocr.status === "success" ? "ready" : "cancelled"
         if (name === "/health") return json({ ok: true, service: "learnnote", app_version: "0.2.14", llm_model_configured: false,
           local_asr_available: false, default_llm_base_url: "", default_llm_model: "", model_provider_presets: [], assistant_capabilities: {} });
         if (name === "/api/tasks") return json({ tasks });
-        if (name === "/api/library/materials") return json({ materials: [] });
+        if (name === "/api/tasks/catalog") return json(fixtureTaskCatalog(tasks));
+        if (name === "/api/library/materials") return json(fixtureMaterialPage([], url.search));
         if (name === "/api/preferences") return json({ task_options: {} });
         if (name === "/api/model/connection") return json({ configured: false, model: null, storage: "none" });
         if (name === "/api/model/route") return json({ routes: [], estimates: {}, capability_catalog: {}, data_leaving_device: [] });

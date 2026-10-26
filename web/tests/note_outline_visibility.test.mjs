@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
+const fixtureRequire = createRequire(new URL("../../scripts/note-controls-visual-acceptance.cjs", import.meta.url));
 const { assertOutlineHeadingVisible } = require("../../scripts/note-controls-visual-acceptance.cjs");
 const css = readFileSync(new URL("../desk.css", import.meta.url), "utf8");
 const fixture = readFileSync(new URL("../../scripts/note-controls-visual-acceptance.cjs", import.meta.url), "utf8");
@@ -76,7 +77,7 @@ test("fixture keeps the primary failure and attempts bounded screenshot, report 
       : name === "node:fs" ? { mkdirSync() {}, writeFileSync(file, value) {
         calls.push(["report"]); saved = JSON.parse(value);
         if (reportWriteFails) throw new Error("synthetic report failure");
-      } } : require(name);
+      } } : fixtureRequire(name);
     const context = vm.createContext({ require: fakeRequire, module: { exports: {} }, URL,
       process: { argv: ["node", "fixture", "http://127.0.0.1:8765", "/not-written"] },
       console: { error() {}, log() {} } });

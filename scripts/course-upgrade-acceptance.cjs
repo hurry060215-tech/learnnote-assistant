@@ -1,6 +1,7 @@
 // Production frontend with synthetic HTTP fixtures. No backend, platform or model
 // is contacted. Use the separate API/offline tests for backend behavior.
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -92,7 +93,8 @@ async function main() {
           if (stream) return route.fulfill(stream);
           if (pathname === "/health") return json(health);
           if (pathname === "/api/tasks") return json({ tasks });
-          if (pathname === "/api/library/materials") return json({ materials });
+          if (pathname === "/api/tasks/catalog") return json(fixtureTaskCatalog(tasks));
+          if (pathname === "/api/library/materials") return json(fixtureMaterialPage(materials, url.search));
           if (pathname === "/api/preferences") return json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
           if (pathname === "/api/model/connection") return json({ model: selectedModel, configured: true });
           if (pathname === "/api/model/route") return json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });

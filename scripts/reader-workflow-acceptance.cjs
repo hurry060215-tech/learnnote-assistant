@@ -1,6 +1,7 @@
 // Deterministic UI regression: generated summaries, honest progress, and sidebar navigation.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -92,10 +93,11 @@ const os = require("node:os");
   let retryCalls = 0;
   await p.route("**/api/tasks", (r) => r.fulfill({ json: { tasks } }));
   await p.route("**/api/library/materials?*", (r) =>
-    r.fulfill({ json: { materials: [] } }),
+    r.fulfill({ json: fixtureMaterialPage([], new URL(r.request().url()).search) }),
   );
   await p.route("**/api/tasks/*", (r) => {
     const id = new URL(r.request().url()).pathname.split("/").at(-1);
+    if (id === "catalog") return r.fulfill({ json: fixtureTaskCatalog(tasks) });
     return tasks.some((t) => t.id === id)
       ? r.fulfill({ json: { task: tasks.find((t) => t.id === id) } })
       : r.continue();

@@ -30,6 +30,41 @@ function validateCatalog(value) {
   for (const row of value.tasks) { assert.equal(row.catalog, true); assert.deepEqual(Object.keys(row).sort(), fields); }
 }
 
+function installedRequest(origin, request = fetch) {
+  const base = new URL(origin);
+  assert.equal(base.protocol, 'http:'); assert.equal(base.hostname, '127.0.0.1');
+  assert(base.port && Number(base.port) > 0 && Number(base.port) < 65536);
+  assert.equal(base.origin, origin, 'Installed origin must be an exact loopback origin without credentials, path or fragment');
+  return (route, { method = 'GET', body } = {}) => {
+    const source = /^\/api\/(?:library\/materials\/[A-Za-z0-9_-]{1,128}\/source|tasks\/[A-Za-z0-9_-]{1,128}\/transcript)$/.test(route);
+    assert((method === 'GET' && source && body === undefined)
+      || (method === 'POST' && route === '/api/library/materials/import' && body instanceof FormData), 'Unreviewed installed fixture request');
+    const url = new URL(route, base);
+    assert.equal(url.origin, origin); assert.equal(url.pathname, route); assert(!url.search && !url.hash);
+    return request(url.href, { method, ...(body ? { body } : {}), signal: AbortSignal.timeout(15000), redirect: 'error' });
+  };
+}
+
+async function installedSourceIds(read, fixture, catalog, first) {
+  const task = catalog.tasks.find(row => row.id === fixture.retry.task_id);
+  assert(task && task.title === fixture.retry.title, 'Retry must exist in the owned installed catalog');
+  let current = first, material;
+  const seen = new Set();
+  for (let page = 0; page < 100; page++) {
+    material = current.materials.find(row => row.material_id === fixture.target.id);
+    if (material || !current.has_more) break;
+    assert(typeof current.next_cursor === 'string' && current.next_cursor.length > 0 && current.next_cursor.length <= 1024
+      && !seen.has(current.next_cursor), 'Installed material cursor did not advance');
+    seen.add(current.next_cursor);
+    current = await read('/api/library/materials?standalone=true&limit=100&cursor=' + encodeURIComponent(current.next_cursor));
+  }
+  assert(material && material.title === fixture.target.title, 'Source must exist in the owned installed catalog');
+  // The manifest is a comparison oracle. Only IDs returned by the installed
+  // application become network paths; no manifest bytes are sent to a server.
+  for (const id of [material.material_id, task.id]) assert(typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id));
+  return { materialId: material.material_id, taskId: task.id };
+}
+
 // Hold an authentic response after the installed server has handled the POST.
 // continueResponse forwards it untouched; this helper never creates a response.
 async function holdResponse(session, url, work, timeout = 15000) {
@@ -62,6 +97,7 @@ async function holdResponse(session, url, work, timeout = 15000) {
 
 async function runInstalledArchitecture(page, { origin, fixture, read, capture, out, report, request = fetch }) {
   validateFixture(fixture);
+  const requestInstalled = installedRequest(origin, request);
   const state = { passed: false, installed_bundled_assets: true, api_mocked: false, native_viewport_preserved: true,
     cases: [], writes: [], api_mutations: [], race: null };
   report.architecture = state;
@@ -79,7 +115,7 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
   };
   const errors = error => failures.push(error.message);
   const bytes = async route => {
-    const response = await request(origin + route, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+    const response = await requestInstalled(route);
     assert(response.ok); const value = Buffer.from(await response.arrayBuffer()); assert(value.length <= 256 * 1024); return value;
   };
   async function freshHome() {
@@ -119,9 +155,10 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     const first = await read('/api/library/materials?standalone=true&limit=100');
     assert(first.has_more); assert.equal(first.materials.length, 100); assert(first.total >= fixture.material_count);
     assert(!first.materials.some(row => row.material_id === target.id));
+    const sourceIds = await installedSourceIds(read, fixture, catalog, first);
     const connection = await read('/api/model/connection');
     assert.equal(connection.model.base_url, fixture.model_endpoint);
-    assert.equal(sha256(await bytes(`/api/library/materials/${target.id}/source`)), target.source_sha256);
+    assert.equal(sha256(await bytes(`/api/library/materials/${sourceIds.materialId}/source`)), target.source_sha256);
     await freshHome();
     await page.waitForFunction(() => document.querySelectorAll('#notes [data-kind="material"]').length === 100);
     assert.equal(await page.locator('#homeLibraryCount').textContent(), `${first.total + catalog.total} 份内容`);
@@ -133,9 +170,9 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     await loadMaterialPages();
     assert.equal(await page.locator('#notes [data-kind="material"]').count(), first.total);
     state.cases.push('catalog uses the exact summary contract; first-page count, complete total, polling focus and subsequent pages');
-    const form = new FormData(), title = fixture.prefix + ' 105';
+    const form = new FormData(), title = 'Synthetic architecture imported source';
     form.append('file', new Blob([`# ${title}\n\nSynthetic installed catalog evidence 105.\n`], { type: 'text/markdown' }), title + '.md');
-    const imported = await request(origin + '/api/library/materials/import', { method: 'POST', body: form, signal: AbortSignal.timeout(15000), redirect: 'error' });
+    const imported = await requestInstalled('/api/library/materials/import', { method: 'POST', body: form });
     assert(imported.ok);
     const added = (await imported.json()).material; assert.equal(added.title, title);
     state.api_mutations.push({ method: 'POST', route: '/api/library/materials/import', synthetic_count: 1, material_id: added.material_id });
@@ -171,7 +208,7 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     state.cases.push('out-of-page hash, original source and saved course membership resolve the canonical ID');
 
     await freshHome(); await openTask(fixture.retry.task_id, fixture.retry.title);
-    assert.equal(sha256(await bytes(`/api/tasks/${fixture.retry.task_id}/transcript`)), fixture.retry.transcript_sha256);
+    assert.equal(sha256(await bytes(`/api/tasks/${sourceIds.taskId}/transcript`)), fixture.retry.transcript_sha256);
     cdp = await page.context().newCDPSession(page);
     const retryUrl = `${origin}/api/tasks/${fixture.retry.task_id}/retry-summary`;
     const response = page.waitForResponse(item => item.url() === retryUrl && item.request().method() === 'POST');
@@ -202,7 +239,7 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
       assert(Date.now() < deadline, 'Real loopback retry did not finish'); await page.waitForTimeout(200);
     } while (true);
     assert.equal(task.status, 'success'); assert.equal(task.summary_source, 'text-llm');
-    assert.equal(sha256(await bytes(`/api/tasks/${fixture.retry.task_id}/transcript`)), fixture.retry.transcript_sha256);
+    assert.equal(sha256(await bytes(`/api/tasks/${sourceIds.taskId}/transcript`)), fixture.retry.transcript_sha256);
     assert(await page.locator('#welcome').isVisible());
     state.race.task_status = task.status; state.race.summary_source = task.summary_source;
     state.cases.push('real retry response is delivered after explicit Home navigation; exactly one accepted retry completes through loopback without stealing navigation');
@@ -223,4 +260,4 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
   if (failure) throw failure;
   return state;
 }
-module.exports = { validateFixture, validateCatalog, holdResponse, runInstalledArchitecture };
+module.exports = { validateFixture, validateCatalog, installedRequest, installedSourceIds, holdResponse, runInstalledArchitecture };

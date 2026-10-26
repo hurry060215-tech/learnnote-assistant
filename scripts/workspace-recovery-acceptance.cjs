@@ -2,6 +2,7 @@
 // Flow: write a scoped draft -> reload/retry -> inspect an earlier generation,
 // while preserving current note content and avoiding all real model calls.
 const { chromium } = require("playwright");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const assert = require("node:assert/strict"),
   fs = require("node:fs"),
   os = require("node:os"),
@@ -86,7 +87,9 @@ const assert = require("node:assert/strict"),
           "\n\n",
       });
     if (p === "/api/tasks") return syncFails ? json({detail: "模拟同步中断"}, 503) : json({ tasks: [note] });
-    if (p === "/api/library/materials") return json({ materials: [] });
+    if (p === "/api/tasks/catalog") return syncFails ? json({detail: "模拟同步中断"}, 503) : json(fixtureTaskCatalog([note]));
+    if (p === `/api/tasks/${id}`) return json({ task: note });
+    if (p === "/api/library/materials") return json(fixtureMaterialPage([], new URL(route.request().url()).search));
     if (p === `/api/tasks/editions/task/${id}`)
       return json({ text: current, revision: 2, edited: true });
     if (p === `/api/personal/task/${id}`) return json({ annotations: [] });
