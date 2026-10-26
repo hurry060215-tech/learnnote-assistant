@@ -238,6 +238,7 @@ const os = require("node:os");
     await p.locator('[data-task-action="retry-summary"]').click();
     assert.equal(retryCalls, 1);
     await p.locator('#notes [data-id="waiting"]').click();
+    await p.locator('[data-task-progress="waiting"]').waitFor();
     assert.match(await p.locator("#taskStatus").innerText(), /还没有开始处理/);
     assert.equal(
       await p.locator('#taskStatus [data-stage][data-state="done"]').count(),

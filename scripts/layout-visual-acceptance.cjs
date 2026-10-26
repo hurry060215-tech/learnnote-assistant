@@ -1,7 +1,7 @@
 // Regression: a source stays readable while the assistant and library resize.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
-const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
+const { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -303,6 +303,7 @@ const { execFileSync } = require("node:child_process");
     assert.equal(await p.locator("#sourcePanel").isVisible(), false);
     await p.locator("#closeAssistant").click();
     await p.locator('#notes [data-id="layout-captions"]').click();
+    await waitForTaskReader(p, "layout-captions");
     await p.locator("#source").click();
     await p.waitForSelector("#sourceTranscript[open] .cue");
     assert.equal(await p.locator("#player").isVisible(), false);
