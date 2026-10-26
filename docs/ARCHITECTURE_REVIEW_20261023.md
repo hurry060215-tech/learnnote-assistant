@@ -98,6 +98,40 @@ npm run test:native
 - 真实 Windows 子孙进程在取消、超时、成功和失败时均退出；POSIX 本地仅有控制契约检查，实际运行由 Linux CI 验证。
 - 原生 Save 对话框校准保留旧证据，在独立新输出目录完成；它不代替安装后应用的完整验收。
 
-本机原有依赖与锁文件不一致：`tokenizers` 为 0.23.2，锁定为 0.23.3，截断 overflow 契约在基线与改动后均失败。
-本机也没有测试要求的配套 FFmpeg/FFprobe，3 个真实媒体脚本测试因此未能完成。
-未放宽这些断言、假装跳过成功或擅自安装软件。真实模型质量、长视频和新安装包端到端验收也不由本次合成回归代替。
+首轮检查结束时，`tokenizers` 仍为 0.23.2（锁定 0.23.3），且缺少 FFmpeg/FFprobe；当时这两项是未通过的实际限制。后续完成情况见下方追踪记录。
+
+## 安装验收完成（2026-10-26）
+
+用户授权补齐缺失依赖、编译客户端并执行真实安装升级测试。构建使用独立目录中的 Python 3.12.10 环境，按 `requirements.windows-py312.lock.txt` 安装；`pip check` 无冲突。单独安装 `scripts/requirements.benchmark.txt` 的 `psutil` 仅用于过程树观察测试，不属于应用依赖。
+
+- `tokenizers` 现为锁定的 0.23.3；截断 overflow 测试通过。
+- FFmpeg/FFprobe 8.1.0 放在 `build/tools/ffmpeg-8.1.0/`，没有修改系统 PATH；原先因找不到媒体工具失败的测试通过。
+- Inno Setup 7.1.0 以 Windows x64 编译器构建本地 0.2.17 候选，发行目录的许可、扩展文件和禁带内容检查通过。候选没有代码签名，没有创建 GitHub Release 或上传商店。
+- 官方不可变 `v0.2.16` 安装包先按 GitHub asset digest 核验，再用于 0.2.16→0.2.17 覆盖升级。配置与外部数据快照在安装、升级、卸载后均保持不变；两个版本都正常关闭。
+- 实际安装版 WebView2 使用真实 API 和本地确定性模型，完成诊断文件精确保存、旧资料阅读功能、105 份资料分页与搜索、页外来源和课程关系，以及“生成请求延迟期间返回首页”的导航竞态。最后任务成功；浏览器报告的 API mock、外部请求、页面错误均为 0。报告及 19 张受限截图位于 `build/acceptance-20261024/installed-upgrade-final5/`。
+- 原生 `learnnote` 协议注册和快捷方式完成快照对照与恢复；验收数据只含合成字幕、合成资料和合成任务。
+
+最终验证结果：
+
+| 检查 | 结果 |
+| --- | --- |
+| 锁定 Python 环境后端离线全量 | **1,997 项通过，1 项按预期跳过** |
+| 锁定 Python 环境 Scripts 全量（含媒体工具） | **565 项通过** |
+| Desktop 全量 | **137 项通过** |
+| JavaScript / Node 测试 | **689 项通过，0 失败，0 跳过**；293 个 JS 文件语法检查通过 |
+| Windows 原生对话框门禁 | **81 项通过**；Markdown/JSON 保存字节与 SHA-256 均符合预期 |
+| 可靠性套件 | **11/11 任务通过**，包含最长 10,800 秒合成媒体场景；源码提交 `f240349`，测试期间源码保持干净 |
+| Architecture、workflow shell、i18n、发行树审计 | **全部通过**；发行目录 1,525 个文件，无缺失扩展、禁带文件或许可错误 |
+| 实际安装升级及架构验收 | **v0.2.16→v0.2.17 通过**，页面错误和外部请求均为 0 |
+
+本地候选产物与 SHA-256：
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `build/acceptance-20261024/LearnNote-Setup-x64.exe` | 174,653,117 | `955f0da94f26db7dec16c49656e45c8c84f6605426117de59045839d36a2fc69` |
+| `build/acceptance-20261024/LearnNote-Windows-x64.zip` | 243,734,271 | `1cf78a8fadf836fc33e5cb00478b14f8254190176c8cb16a8db1a2a82a0bb7d0` |
+| `build/acceptance-20261024/LearnNote-Browser-Extension-v0.2.17.zip` | 198,825 | `6e2d14976614bf2593587c4acf3d65840f8cbf58e741e9cd1491405d2a4a94f2` |
+
+可重跑的合成验收入口是 `scripts/installed-upgrade-acceptance.py --architecture`；指定本地旧、新安装包、全新输出目录，并通过 `NODE_OPTIONS` 让该验收进程使用仓库锁定的 Playwright 1.64。完整产物、日志、报告和预览截图保存在忽略的 `build/acceptance-20261024/`，不是发行内容。
+
+应用构建来自干净提交 `f240349`。随后提交 `6498009` 只更新验收脚本与测试，未改变已打包的应用/网页运行时代码；安装版验收又按当前源码核验了五个新增架构 JavaScript 文件的哈希。
