@@ -6,6 +6,7 @@ All notable changes to LearnNote are documented here. The project follows semant
 
 - Load standalone materials in pages of 100 with full-library title search, preserving focus and loaded pages across refreshes; resolve source links and learning-space members even outside the loaded page.
 - Read task summaries once without mutating tasks on listing. Fetch full details on demand and refresh only affected views; late retry responses no longer redirect a user who has moved elsewhere.
+- Keep catalog and subtitle manifest reads responsive during another task's index update, while retaining Windows read/replace/delete exclusion and serialized task mutations.
 - Publish search, evidence and revision receipts atomically, skipping content reads and reindexing for progress-only updates. Preserve backed-up schema migrations and rebuild missing FTS projections from stored content.
 - Recover queues using per-process ownership leases and execution lanes, preserving paused callbacks and preventing orphaned queue heads from starving subsequent tasks.
 - Contain Windows media processes in an owned Job before execution and reap the whole process tree on completion, cancellation, timeout and failure.

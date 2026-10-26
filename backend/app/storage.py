@@ -25,6 +25,9 @@ from .worker_lease import worker_lease
 from .task_paths import TaskArtifactUnavailable, task_manifest_path, validate_task_directory
 
 _lock = threading.RLock()
+# Keep ordinary Windows read handles closed before replacing/deleting their
+# manifest, without making readers wait for task transitions or search indexing.
+_manifest_io_lock = threading.RLock()
 _state_depth = threading.local()
 
 
@@ -136,23 +139,31 @@ def save_task(record: TaskRecord) -> None:
         record.control_retry_count = record.retry_count
         record = migrate_task_record(record)
         record.updated_at = now_iso()
-        atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
+        payload = record.model_dump_json(indent=2)
+        with _manifest_io_lock:
+            atomic_write_text(task_file(record.id), payload)
         index_task(record, task_root=TASK_DIR / record.id)
 
 
 def get_task(task_id: str) -> TaskRecord:
-    with _lock:
+    """Read one complete published manifest, independently of its search index.
+
+    Read/modify/write callers still own task_state_transaction(). The short I/O
+    lock only protects local file-handle lifetime; it is never held for indexing.
+    """
+    with _manifest_io_lock:
         try:
             path = task_manifest_path(TASK_DIR / task_id, task_id)
         except TaskArtifactUnavailable as exc:
             if exc.reason == "missing_destination":
                 raise FileNotFoundError(task_id) from exc
             raise
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        record = TaskRecord.model_validate(migrate_task_payload(payload))
-        if record.id != task_id:
-            raise TaskArtifactUnavailable("task_identity_mismatch")
-        return record
+        content = path.read_text(encoding="utf-8")
+    payload = json.loads(content)
+    record = TaskRecord.model_validate(migrate_task_payload(payload))
+    if record.id != task_id:
+        raise TaskArtifactUnavailable("task_identity_mismatch")
+    return record
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
@@ -381,8 +392,9 @@ def delete_task(task_id: str) -> dict[str, Any]:
             raise RuntimeError("task_index_cleanup_failed")
         edition_key = hashlib.sha256(f"task:{task_id}".encode()).hexdigest()
         (DATA_DIR / "user-editions" / f"{edition_key}.json").unlink(missing_ok=True)
-        if task_path.exists():
-            shutil.rmtree(task_path)
+        with _manifest_io_lock:
+            if task_path.exists():
+                shutil.rmtree(task_path)
         upload_bytes = 0
         if owned_upload:
             try:

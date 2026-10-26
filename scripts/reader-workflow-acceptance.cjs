@@ -1,7 +1,7 @@
 // Deterministic UI regression: generated summaries, honest progress, and sidebar navigation.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
-const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
+const { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -285,6 +285,7 @@ const os = require("node:os");
     await p.setViewportSize({ width: 390, height: 844 });
     await p.locator("#menu").click();
     await p.locator('#notes [data-id="summary-good"]').click();
+    await waitForTaskReader(p, "summary-good");
     assert.equal(await p.locator("#sidebar").evaluate((el) => el.inert), true);
     assert(
       await p.evaluate(
