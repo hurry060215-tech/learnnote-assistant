@@ -6,7 +6,7 @@ import time
 import uuid
 
 
-def seed_architecture(api, cues, model_endpoint):
+def seed_architecture(api, cues, model_endpoint, *, retry_title='Synthetic installed reading'):
     prefix = 'Synthetic architecture ' + uuid.uuid4().hex[:12]
     materials = []
     for index in range(105):
@@ -23,7 +23,10 @@ def seed_architecture(api, cues, model_endpoint):
     source = api.call('GET', f'/api/library/materials/{target["material_id"]}/source').content
     course = api.call('POST', '/api/courses', json={'title': prefix + ' course', 'sources': [
         {'kind': 'material', 'id': target['material_id'], 'title': target['title']}]}).json()['course']
-    title = prefix + ' retry'
+    # The deterministic loopback model uses features.NOTE as its response. Give
+    # this task the same title as that grounded note so the real summary gate
+    # tests evidence handling rather than rejecting unrelated synthetic names.
+    title = str(retry_title)
     task_id = api.call('POST', '/api/tasks/from-current-page', json={
         'page_url': 'https://example.com/synthetic-architecture', 'title': title,
         'handoff_id': 'installed-architecture-' + uuid.uuid4().hex, 'mode': 'subtitle_only',

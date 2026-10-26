@@ -6,7 +6,7 @@ import diagnostic from '../../scripts/installed-diagnostic-acceptance.cjs';
 const fixture = () => ({ schema_version: 1, prefix: 'Synthetic architecture abcdef123456', material_count: 105,
   material_ids: Array.from({ length: 105 }, (_, index) => `material-${index}`),
   target: { id: 'material-104', title: 'Synthetic architecture abcdef123456 104', source_sha256: 'a'.repeat(64) },
-  course_id: 'owned-course', retry: { task_id: 'owned-retry', title: 'Synthetic architecture abcdef123456 retry', transcript_sha256: 'b'.repeat(64) },
+  course_id: 'owned-course', retry: { task_id: 'owned-retry', title: 'Synthetic installed reading', transcript_sha256: 'b'.repeat(64) },
   model_endpoint: 'http://127.0.0.1:12345/v1' });
 class Session extends EventEmitter { calls = []; async send(method, payload) { this.calls.push({ method, payload }); } }
 const url = 'http://127.0.0.1:1234/api/tasks/owned/retry-summary';

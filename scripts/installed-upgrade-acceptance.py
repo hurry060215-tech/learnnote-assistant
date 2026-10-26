@@ -431,7 +431,8 @@ def exercise(args, output):
             if require_features:
                 assert features.retained_features(api, reading, ids['task_id']) == feature_before
             if require_architecture:
-                architecture_seed = architecture.seed_architecture(api, features.CUES, endpoint)
+                architecture_seed = architecture.seed_architecture(api, features.CUES, endpoint,
+                    retry_title=features.TITLE)
                 architecture_fixture = run / 'architecture-fixture.json'
                 write_json(architecture_fixture, architecture_seed)
                 architecture_calls = calls

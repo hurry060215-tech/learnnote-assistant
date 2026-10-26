@@ -14,7 +14,9 @@ function validateFixture(value) {
   assert(value.material_ids.every(id => /^[A-Za-z0-9_-]{1,128}$/.test(id)) && value.material_ids.includes(value.target?.id));
   for (const id of [value.target?.id, value.course_id, value.retry?.task_id]) assert(/^[A-Za-z0-9_-]{1,128}$/.test(id));
   assert(new RegExp('^' + value.prefix + ' \\d{3}$').test(value.target.title));
-  assert.equal(value.retry.title, value.prefix + ' retry');
+  // This retry uses the deterministic reading-model fixture, whose title must
+  // match the title carried by its transcript source for grounding validation.
+  assert.equal(value.retry.title, 'Synthetic installed reading');
   for (const digest of [value.target.source_sha256, value.retry.transcript_sha256]) assert(/^[a-f0-9]{64}$/.test(digest));
   const endpoint = new URL(value.model_endpoint);
   assert.equal(endpoint.protocol, 'http:'); assert.equal(endpoint.hostname, '127.0.0.1');
@@ -81,13 +83,30 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     assert(response.ok); const value = Buffer.from(await response.arrayBuffer()); assert(value.length <= 256 * 1024); return value;
   };
   async function freshHome() {
-    await page.goto(origin + '/web/index.html'); await page.reload();
+    if (!await page.locator('#welcome').isVisible()) {
+      await page.locator('.brand').click();
+      await page.locator('#welcome').waitFor({ state: 'visible' });
+    }
+    if (await page.locator('#search').inputValue()) await page.locator('#search').fill('');
     await page.waitForFunction(() => document.querySelector('#homeLibraryCount')?.textContent.includes('份内容'));
+    await page.waitForFunction(() => document.querySelectorAll('#notes [data-kind="material"]').length >= 100);
     if (await page.locator('#menu').getAttribute('aria-expanded') !== 'true') await page.locator('#menu').click();
   }
+  async function loadMaterialPages() {
+    while (await page.locator('#moreMaterials').isVisible()) {
+      const before = await page.locator('#notes [data-kind="material"]').count();
+      await page.locator('#moreMaterials').click();
+      await page.waitForFunction(count => document.querySelectorAll('#notes [data-kind="material"]').length > count, before);
+    }
+  }
+  async function openTask(taskId, title) {
+    await loadMaterialPages();
+    const task = page.locator(`#notes [data-kind="task"][data-id="${taskId}"]`);
+    await task.waitFor({ state: 'visible' }); await task.click();
+    await page.locator('#breadcrumb').filter({ hasText: title }).waitFor();
+  }
   async function openCourse() {
-    await page.goto(`${origin}/web/index.html#task/${fixture.retry.task_id}`);
-    await page.locator('#breadcrumb').filter({ hasText: fixture.retry.title }).waitFor();
+    await openTask(fixture.retry.task_id, fixture.retry.title);
     await page.locator('#readerOptions > summary').click(); await page.locator('#moreTools').click();
     await page.locator('[data-action="courses"]').click();
     await page.locator(`[data-course="${fixture.course_id}"]`).click();
@@ -111,11 +130,7 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     await page.waitForTimeout(5600);
     assert(await focused.evaluate(node => node.isConnected && document.activeElement === node));
     await capture('installed-architecture-first-page.png');
-    while (await page.locator('#moreMaterials').isVisible()) {
-      const before = await page.locator('#notes [data-kind="material"]').count();
-      await page.locator('#moreMaterials').click();
-      await page.waitForFunction(count => document.querySelectorAll('#notes [data-kind="material"]').length > count, before);
-    }
+    await loadMaterialPages();
     assert.equal(await page.locator('#notes [data-kind="material"]').count(), first.total);
     state.cases.push('catalog uses the exact summary contract; first-page count, complete total, polling focus and subsequent pages');
     const form = new FormData(), title = fixture.prefix + ' 105';
@@ -137,6 +152,10 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     await page.locator('#document h1').filter({ hasText: target.title }).waitFor();
     assert(reads.includes(`/api/library/materials/${target.id}`));
     await page.locator('#source').click(); await page.locator('#sourcePanel').waitFor({ state: 'visible' });
+    // Opening the native source panel is synchronous, its ID-addressed content
+    // read is asynchronous. Do not mistake the loading placeholder for a failed
+    // outside-page lookup when measuring the real installed API response.
+    await page.waitForFunction(title => document.querySelector('#sourceContent')?.textContent?.includes(title), target.title);
     assert((await page.locator('#sourceContent').textContent()).includes(target.title));
     await capture('installed-architecture-outside-source.png');
     await page.locator('#closeSource').click();
@@ -151,8 +170,7 @@ async function runInstalledArchitecture(page, { origin, fixture, read, capture, 
     await page.locator('#document h1').filter({ hasText: target.title }).waitFor();
     state.cases.push('out-of-page hash, original source and saved course membership resolve the canonical ID');
 
-    await page.goto(`${origin}/web/index.html#task/${fixture.retry.task_id}`);
-    await page.locator('#breadcrumb').filter({ hasText: fixture.retry.title }).waitFor();
+    await freshHome(); await openTask(fixture.retry.task_id, fixture.retry.title);
     assert.equal(sha256(await bytes(`/api/tasks/${fixture.retry.task_id}/transcript`)), fixture.retry.transcript_sha256);
     cdp = await page.context().newCDPSession(page);
     const retryUrl = `${origin}/api/tasks/${fixture.retry.task_id}/retry-summary`;
