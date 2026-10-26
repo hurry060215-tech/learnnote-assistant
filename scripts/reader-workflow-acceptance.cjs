@@ -1,6 +1,7 @@
 // Deterministic UI regression: generated summaries, honest progress, and sidebar navigation.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -92,10 +93,11 @@ const os = require("node:os");
   let retryCalls = 0;
   await p.route("**/api/tasks", (r) => r.fulfill({ json: { tasks } }));
   await p.route("**/api/library/materials?*", (r) =>
-    r.fulfill({ json: { materials: [] } }),
+    r.fulfill({ json: fixtureMaterialPage([], new URL(r.request().url()).search) }),
   );
   await p.route("**/api/tasks/*", (r) => {
     const id = new URL(r.request().url()).pathname.split("/").at(-1);
+    if (id === "catalog") return r.fulfill({ json: fixtureTaskCatalog(tasks) });
     return tasks.some((t) => t.id === id)
       ? r.fulfill({ json: { task: tasks.find((t) => t.id === id) } })
       : r.continue();
@@ -236,6 +238,7 @@ const os = require("node:os");
     await p.locator('[data-task-action="retry-summary"]').click();
     assert.equal(retryCalls, 1);
     await p.locator('#notes [data-id="waiting"]').click();
+    await p.locator('[data-task-progress="waiting"]').waitFor();
     assert.match(await p.locator("#taskStatus").innerText(), /还没有开始处理/);
     assert.equal(
       await p.locator('#taskStatus [data-stage][data-state="done"]').count(),
@@ -282,6 +285,7 @@ const os = require("node:os");
     await p.setViewportSize({ width: 390, height: 844 });
     await p.locator("#menu").click();
     await p.locator('#notes [data-id="summary-good"]').click();
+    await waitForTaskReader(p, "summary-good");
     assert.equal(await p.locator("#sidebar").evaluate((el) => el.inert), true);
     assert(
       await p.evaluate(

@@ -156,16 +156,26 @@ def ensure_evidence_schema(connection: sqlite3.Connection) -> None:
           created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS source_evidence_task_idx ON source_evidence(task_id);
+        CREATE TABLE IF NOT EXISTS task_projection_revisions (
+          task_id TEXT PRIMARY KEY,
+          signature TEXT NOT NULL
+        );
         """
     )
+    existed = _fts_available(connection)
+    connection.execute("SAVEPOINT evidence_fts_initialization")
     try:
         connection.execute(
             """CREATE VIRTUAL TABLE IF NOT EXISTS source_evidence_fts USING fts5(
                evidence_id UNINDEXED, title, source_uri, locator, text
             )"""
         )
+        if not existed:
+            connection.execute("INSERT INTO source_evidence_fts(evidence_id,title,source_uri,locator,text) SELECT evidence_id,title,source_uri,locator,text FROM source_evidence")
+        connection.execute("RELEASE evidence_fts_initialization")
     except sqlite3.OperationalError:
-        pass
+        connection.execute("ROLLBACK TO evidence_fts_initialization")
+        connection.execute("RELEASE evidence_fts_initialization")
 
 
 def _fts_available(connection: sqlite3.Connection) -> bool:
@@ -226,33 +236,43 @@ def add_evidence(evidence: SourceEvidence) -> SourceEvidence:
     item = _prepare_evidence(evidence)
     connection = _connect()
     try:
+        connection.execute("BEGIN IMMEDIATE")
+        previous = connection.execute("SELECT task_id FROM source_evidence WHERE evidence_id=?", (item.evidence_id,)).fetchone()
         _write_evidence(connection, item, _fts_available(connection))
+        connection.execute("DELETE FROM task_projection_revisions WHERE task_id IN (?, ?)",
+                           (item.task_id, previous[0] if previous else item.task_id))
         connection.commit()
     finally:
         connection.close()
     return item
 
 
-def replace_task_evidence(task_id: str, evidence: list[SourceEvidence]) -> None:
-    """Replace one task projection atomically with one connection/commit."""
+def replace_task_evidence_in_transaction(connection, task_id: str, evidence: list[SourceEvidence]) -> None:
+    """Publish evidence inside the caller's transaction; never commit it here."""
     if not task_id or len(task_id) > 128:
         raise ValueError("invalid_evidence_task")
     items = [_prepare_evidence(item) for item in evidence]
     if any(item.task_id != task_id for item in items) or len({item.evidence_id for item in items}) != len(items):
         raise ValueError("evidence_task_mismatch")
+    for item in items:
+        owner = connection.execute("SELECT task_id FROM source_evidence WHERE evidence_id=?", (item.evidence_id,)).fetchone()
+        if owner is not None and owner[0] != task_id:
+            raise ValueError("evidence_id_owned_by_another_source")
+    fts = _fts_available(connection)
+    if fts:
+        connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id IN (SELECT evidence_id FROM source_evidence WHERE task_id=?)", (task_id,))
+    connection.execute("DELETE FROM source_evidence WHERE task_id=?", (task_id,))
+    connection.execute("DELETE FROM task_projection_revisions WHERE task_id=?", (task_id,))
+    for item in items:
+        _write_evidence(connection, item, fts, replace_existing=False)
+
+
+def replace_task_evidence(task_id: str, evidence: list[SourceEvidence]) -> None:
+    """Replace one task projection atomically with one connection/commit."""
     connection = _connect()
     try:
         connection.execute("BEGIN IMMEDIATE")
-        for item in items:
-            owner = connection.execute("SELECT task_id FROM source_evidence WHERE evidence_id=?", (item.evidence_id,)).fetchone()
-            if owner is not None and owner[0] != task_id:
-                raise ValueError("evidence_id_owned_by_another_source")
-        fts = _fts_available(connection)
-        if fts:
-            connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id IN (SELECT evidence_id FROM source_evidence WHERE task_id=?)", (task_id,))
-        connection.execute("DELETE FROM source_evidence WHERE task_id=?", (task_id,))
-        for item in items:
-            _write_evidence(connection, item, fts, replace_existing=False)
+        replace_task_evidence_in_transaction(connection, task_id, evidence)
         connection.commit()
     except Exception:
         connection.rollback()
@@ -268,6 +288,7 @@ def remove_task_evidence(task_id: str) -> None:
     try:
         ids = [row[0] for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id = ?", (task_id,))]
         connection.execute("DELETE FROM source_evidence WHERE task_id = ?", (task_id,))
+        connection.execute("DELETE FROM task_projection_revisions WHERE task_id=?", (task_id,))
         if _fts_available(connection):
             for evidence_id in ids:
                 connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
@@ -281,6 +302,7 @@ def clear_task_evidence() -> None:
     try:
         ids = [row[0] for row in connection.execute("SELECT evidence_id FROM source_evidence WHERE task_id != ''")]
         connection.execute("DELETE FROM source_evidence WHERE task_id != ''")
+        connection.execute("DELETE FROM task_projection_revisions")
         if _fts_available(connection):
             for evidence_id in ids:
                 connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (evidence_id,))
@@ -292,10 +314,11 @@ def clear_task_evidence() -> None:
 def remove_evidence(evidence_id: str) -> bool:
     connection = _connect()
     try:
-        row = connection.execute("SELECT evidence_id FROM source_evidence WHERE evidence_id = ?", (str(evidence_id or "")[:128],)).fetchone()
+        row = connection.execute("SELECT evidence_id, task_id FROM source_evidence WHERE evidence_id = ?", (str(evidence_id or "")[:128],)).fetchone()
         if row is None:
             return False
         connection.execute("DELETE FROM source_evidence WHERE evidence_id = ?", (row[0],))
+        connection.execute("DELETE FROM task_projection_revisions WHERE task_id=?", (row[1],))
         if _fts_available(connection):
             connection.execute("DELETE FROM source_evidence_fts WHERE evidence_id = ?", (row[0],))
         connection.commit()

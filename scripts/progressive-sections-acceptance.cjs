@@ -2,6 +2,7 @@
 // Task APIs and EventSource are synthetic fixtures. No model, media, source-file,
 // or real artifact-publication behavior is exercised by this UI-only check.
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
@@ -371,6 +372,7 @@ async function runScenario(scenario, out) {
         if (request.method() === "GET") {
           if (url.pathname === "/health") return await json({ ok: true, service: "learnnote", llm_model_configured: false, local_asr_available: false, model_provider_presets: [] });
           if (url.pathname === "/api/tasks") return await json({ tasks: [fixture.task] });
+          if (url.pathname === "/api/tasks/catalog") return await json(fixtureTaskCatalog([fixture.task]));
           if (url.pathname === taskRoot) return await json({ task: fixture.task });
           if (url.pathname === `${taskRoot}/events`) return await json({ events: fixture.events });
           if (url.pathname === `${taskRoot}/qa`) return await json({ items: [] });
@@ -385,7 +387,7 @@ async function runScenario(scenario, out) {
             return await json({ status: "unmarked", context_revision: null, note_revision: fixture.edition.revision, review_revision: "0".repeat(64),
               can_mark: false, source_scope: "reading_only", scope_detail: "此合成场景不执行个人核对操作。", checked_at: null, source_labels: [] });
           if (url.pathname === `/api/personal/task/${TASK_ID}`) return await json({ annotations: [] });
-          if (url.pathname === "/api/library/materials") return await json({ materials: [] });
+          if (url.pathname === "/api/library/materials") return await json(fixtureMaterialPage([], url.search));
           if (url.pathname === "/api/preferences") return await json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
           if (url.pathname === "/api/model/connection") return await json({ model: null, configured: false });
           if (url.pathname === "/api/model/route") return await json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });
@@ -435,7 +437,7 @@ async function runScenario(scenario, out) {
       assert.equal(await page.locator('[data-reader-section]').count(), 0, "Unsupported specialized topic layout must fall back completely, not hide model chapters behind an outline");
       report.checks.push("Topic drafts use the current text-mode or visual-request Markdown fallback and stay explicitly unverified; no specialized outline hides the topic text");
     }
-    const initialRefresh = page.waitForResponse(response => new URL(response.url()).pathname === "/api/tasks");
+    const initialRefresh = page.waitForResponse(response => new URL(response.url()).pathname === `/api/tasks/${TASK_ID}`);
     await emit(fixture.initialEvent);
     await initialRefresh;
     await settle();

@@ -2,6 +2,8 @@
   "name": "learnnote-assistant-release-tools",
   "private": true,
   "scripts": {
+    "test": "node scripts/check-javascript.cjs",
+    "test:native": "node scripts/check-javascript.cjs --native",
     "test:site": "node scripts/site-visual-acceptance.cjs"
   },
   "devDependencies": {

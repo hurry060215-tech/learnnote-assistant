@@ -76,25 +76,32 @@ test("latest card reference wins even when an older lookup replies first", async
   await abandoned; assert.equal(calls.length, 2);
 });
 
-test("API-seeded material references need a synchronized reader list before navigation", async () => {
-  const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8"), calls = [];
+test("canonical material references outside loaded pages resolve by ID without title guesses", async () => {
+  const desk = readFileSync(new URL("../desk.js", import.meta.url), "utf8"), calls = [], reads = [];
   const original = { kind: "material", id: "original", title: "Same title" };
   const seeded = { kind: "material", id: "api-seeded", title: "Same title" };
   const state = { epoch: 1, selected: original, items: [original] };
+  let missing = true;
   const context = vm.createContext({ state, evidenceAnchor, guard: () => true,
-    api: async () => ({ evidence: { evidence_id: "seeded-quote", locator: "paragraph 2", metadata: { material_id: seeded.id } } }),
+    api: async path => {
+      reads.push(path);
+      if (path === "/api/knowledge/evidence/seeded-quote") return { evidence: { evidence_id: "seeded-quote", locator: "paragraph 2", metadata: { material_id: seeded.id } } };
+      assert.equal(path, "/api/library/materials/api-seeded");
+      if (missing) throw Object.assign(new Error("missing"), { status: 404 });
+      return { material: { ...seeded, material_id: seeded.id } };
+    },
     openItem: async item => { calls.push(["item", item.id]); state.selected = item; state.epoch++; },
     openSource: async (seconds, item, target) => { calls.push(["source", item.id, target.evidenceId]); },
   });
   vm.runInContext(desk.slice(desk.indexOf("let evidenceRequest = 0;"), desk.indexOf("async function drawReview()")), context);
-  // A valid server-side citation is not enough: title matching must not select
-  // another document, and polling later cannot replay the rejected click.
+  // Only the exact server identity can satisfy a source absent from this page.
   await assert.rejects(context.openEvidence("seeded-quote"), /引用来源已不在当前资料库/);
   assert.deepEqual(calls, []);
-  state.items.push(seeded);
+  missing = false;
   assert.deepEqual(calls, []);
   await context.openEvidence("seeded-quote");
   assert.deepEqual(calls, [["item", "api-seeded"], ["source", "api-seeded", "seeded-quote"]]);
+  assert.equal(state.items.length, 1); assert.equal(reads.filter(path => path === "/api/library/materials/api-seeded").length, 2);
 });
 
 test("mistake backlinks use the same canonical resolver and explain a missing source", async () => {

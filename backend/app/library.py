@@ -16,12 +16,14 @@ from uuid import uuid4
 
 from .config import DATA_DIR, TASK_DIR, TEMP_DIR, ensure_dirs
 from .models import SourceEvidence, TaskRecord
-from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence, replace_task_evidence
+from .knowledge import add_evidence, clear_task_evidence, ensure_evidence_schema, evidence_for_task, extract_import_text, extract_import_text_with_metadata, preserve_raw_import, remove_evidence, remove_task_evidence
 from .text_cleanup import TextDecodingError, read_canonical_text
 from .text_indices import original_casefold_offset
 from . import assistant_operation_store as assistant_records
 from .catalog_guard import CatalogUnavailable, catalog_guard, connect_catalog
 from .catalog_health import catalog_status
+from .task_index_revision import task_index_revision
+from .knowledge import replace_task_evidence_in_transaction
 
 
 LIBRARY_SCHEMA_VERSION = 3
@@ -147,12 +149,19 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
     if "fingerprint" not in columns:
         connection.execute("ALTER TABLE library_tasks ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
         connection.commit()
+    existed = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_tasks_fts'").fetchone()
+    connection.execute("SAVEPOINT task_fts_initialization")
     try:
         connection.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS library_tasks_fts USING fts5(task_id UNINDEXED, title, source, content)"
         )
+        if not existed:
+            connection.execute("INSERT INTO library_tasks_fts(task_id,title,source,content) SELECT task_id,title,source,content FROM library_tasks")
+        connection.execute("RELEASE task_fts_initialization")
         return True
     except sqlite3.OperationalError:
+        connection.execute("ROLLBACK TO task_fts_initialization")
+        connection.execute("RELEASE task_fts_initialization")
         return False
 
 
@@ -170,25 +179,42 @@ def _connect(*, allow_missing: bool = False) -> tuple[sqlite3.Connection, bool]:
 
 
 def index_task(record: TaskRecord, *, task_root: Path | None = None) -> bool:
-    """Best-effort indexing; task JSON remains the source of truth if SQLite is unavailable."""
-    # Incomplete generated batches must not become search or assistant evidence.
-    from .task_paths import TaskArtifactUnavailable, artifact_name, resolve_task_artifact
-    def owned_text(field):
-        try:
-            path = resolve_task_artifact(task_root or TASK_DIR / record.id, record.id, getattr(record, field), field=field)
-            return _read_text(str(path)) if path else ""
-        except TaskArtifactUnavailable:
-            # Search indexing is best effort; direct readers expose the recovery
-            # diagnostic and must never index a foreign/outside location.
-            return ""
-    note = "" if artifact_name(record.note_path) == "draft.partial.md" else owned_text("note_path")
-    transcript = owned_text("transcript_path")
-    source = _safe_url(record.page_url)
-    content = "\n".join(part for part in (record.title, source, note, transcript) if part)
+    """Publish changed content once; progress only updates the small catalog row.
+
+    The durable receipt, task FTS and evidence commit together. A failed write
+    leaves the previous receipt intact, so the next save retries publication.
+    Task JSON and owned artifacts remain authoritative throughout.
+    """
     try:
         with _lock:
             connection, fts_available = _connect()
             try:
+                ensure_evidence_schema(connection)
+                connection.execute("BEGIN IMMEDIATE")
+                root = task_root or TASK_DIR / record.id
+                source = _safe_url(record.page_url)
+                signature, artifacts = task_index_revision(record, root, source)
+                previous = connection.execute(
+                    "SELECT r.signature FROM task_projection_revisions r JOIN library_tasks t USING(task_id) WHERE r.task_id=?",
+                    (record.id,),
+                ).fetchone()
+                if previous is not None and previous[0] == signature:
+                    connection.execute(
+                        """UPDATE library_tasks SET source_type=?, mode=?, status=?, created_at=?, updated_at=?,
+                           note_path=?, media_path=?, fingerprint=? WHERE task_id=?""",
+                        (record.source_type, record.mode, record.status, record.created_at, record.updated_at,
+                         record.note_path, record.media_path or record.source_media_path,
+                         record.source_identity.media_sha256, record.id),
+                    )
+                    connection.commit()
+                    return True
+                texts = {field: read_canonical_text(path).text[:1_000_000] if path else ""
+                         for field, path in artifacts.items()}
+                if task_index_revision(record, root, source)[0] != signature:
+                    connection.rollback()
+                    return False  # Concurrent artifact publication: retry on the next task save.
+                note, transcript = texts["note_path"], texts["transcript_path"]
+                content = "\n".join(part for part in (record.title, source, note, transcript) if part)
                 connection.execute(
                     """
                     INSERT INTO library_tasks(task_id, title, source, source_type, mode, status, checkpoint,
@@ -223,19 +249,20 @@ def index_task(record: TaskRecord, *, task_root: Path | None = None) -> bool:
                         "INSERT INTO library_tasks_fts(task_id, title, source, content) VALUES (?, ?, ?, ?)",
                         (record.id, record.title, source, content),
                     )
+                evidence = [record_to_evidence(record, note, "note")] if note else []
+                if transcript:
+                    evidence.extend(transcript_evidence(record, transcript))
+                replace_task_evidence_in_transaction(connection, record.id, evidence)
+                connection.execute("INSERT OR REPLACE INTO task_projection_revisions VALUES (?, ?)",
+                                   (record.id, signature))
                 connection.commit()
-                indexed = True
+            except Exception:
+                connection.rollback()
+                raise
             finally:
                 connection.close()
-        if indexed:
-            # Keep the task directory as the source of truth while exposing a
-            # citation-ready projection for local retrieval.
-            evidence = [record_to_evidence(record, note, "note")] if note else []
-            if transcript:
-                evidence.extend(transcript_evidence(record, transcript))
-            replace_task_evidence(record.id, evidence)
-        return indexed
-    except (OSError, sqlite3.Error):
+        return True
+    except (OSError, sqlite3.Error, ValueError):
         return False
 
 
@@ -586,6 +613,8 @@ def restore_library(backup_path: Path) -> dict[str, object]:
                 live_fts = _ensure_schema(live)
                 live.execute("BEGIN IMMEDIATE")
                 live.execute("DELETE FROM library_tasks")
+                if live.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_projection_revisions'").fetchone():
+                    live.execute("DELETE FROM task_projection_revisions")
                 if live_fts:
                     live.execute("DELETE FROM library_tasks_fts")
                 for row in sanitized.execute("SELECT task_id, title, source, source_type, mode, status, checkpoint, created_at, updated_at, note_path, media_path, fingerprint, content FROM library_tasks"):

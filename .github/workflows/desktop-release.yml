@@ -111,7 +111,7 @@ jobs:
         if: env.CANDIDATE_ARTIFACT_ID != ''
         shell: pwsh
         run: |
-          python -m pip install requests==2.34.2 certifi==2026.7.22 charset-normalizer==3.5.2 idna==3.20 urllib3==2.8.0
+          python -m pip install requests==2.34.2 certifi==2026.10.19 charset-normalizer==3.5.2 idna==3.20 urllib3==2.8.0
           if ($LASTEXITCODE -ne 0) { throw "Installed harness dependency installation failed" }
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "Pinned installed-UI dependencies failed" }
@@ -138,14 +138,16 @@ jobs:
           python scripts/reliability-suite.py --output-dir build/release/reliability
           if ($LASTEXITCODE -ne 0) { throw "Commit-bound reliability gate failed" }
           $env:PYTHONPATH = "backend"
-          python -m unittest discover backend/tests
+          python scripts/test-backend-offline.py
           if ($LASTEXITCODE -ne 0) { throw "Backend release gate failed" }
           python -m unittest discover scripts/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Release script gate failed" }
           python -m unittest discover desktop/tests -p "test_*.py"
           if ($LASTEXITCODE -ne 0) { throw "Desktop release gate failed" }
-          Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension release gate failed" } }
-          Get-ChildItem web/tests/*.test.mjs | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Web release gate failed" } }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw "JavaScript release gate failed" }
+          npm run test:native
+          if ($LASTEXITCODE -ne 0) { throw "Native dialog release gate failed" }
       - name: Preserve reliability evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -292,12 +294,17 @@ jobs:
             -PreviousInstallerPath $previousInstaller `
             -CurrentInstallerPath "$PWD/LearnNote-Setup-x64.exe"
           if ($LASTEXITCODE -ne 0) { throw "Cover-upgrade smoke failed" }
+          # Retained candidates are diagnostic-only and can predate these source-bound assets.
+          $architectureArgs = @()
+          if ($currentTag -eq 'v0.2.17' -and -not $env:CANDIDATE_ARTIFACT_ID) {
+            $architectureArgs = @('--architecture')
+          }
           python scripts/installed-upgrade-acceptance.py `
             --previous-installer "$previousInstaller" `
             --current-installer "$PWD/LearnNote-Setup-x64.exe" `
             --expected-previous-version "$($previous.tagName.TrimStart('v'))" `
             --expected-current-version "$($currentTag.TrimStart('v'))" `
-            --output-dir build/release/installed-upgrade
+            --output-dir build/release/installed-upgrade @architectureArgs
           if ($LASTEXITCODE -ne 0) { throw "Installed diagnostic and saved-subtitle acceptance failed" }
       - name: Retain installed upgrade acceptance evidence
         if: always()

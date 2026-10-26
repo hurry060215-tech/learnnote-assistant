@@ -225,9 +225,11 @@ assert catalog_guard._mutex is real_catalog_lock
 assert_restored()
 ''')
 
-    def test_index_owner_preserves_index_section_and_fixed_knowledge_origin(self):
+    def test_index_owner_preserves_single_transaction_library_origin(self):
         self.run_isolated(r'''
 record = storage.create_task('page_text', 'Synthetic ownership contract', mode='page_text')
+note = storage.TASK_DIR / record.id / 'note.md'
+note.write_text('Changed synthetic evidence', encoding='utf-8')
 real_catalog_lock = catalog_guard._mutex
 owners = []
 original = knowledge._fts_available
@@ -237,10 +239,10 @@ def inspect_owner(connection):
 with ExitStack() as profile_stack:
     collector = diagnostics.install(app, profile_stack)
     with patch.object(knowledge, '_fts_available', side_effect=inspect_owner):
-        storage.update_task(record.id, phase='summarizing')
+        storage.update_task(record.id, phase='summarizing', note_path=str(note))
     owner = owners[-1]
-    assert owner['catalog_origin'] == 'knowledge.replace_task_evidence'
-    assert owner['section'] == 'index_replace_evidence'
+    assert owner['catalog_origin'] == 'library.index_task'
+    assert owner['section'] == 'index_connect_schema'
     assert owner['operation']['name'] == 'update_task'
     assert owner['operation']['task_id'] == record.id
     assert owner['task_owner']['lock_name'] == 'task_lock'

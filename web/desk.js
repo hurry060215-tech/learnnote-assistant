@@ -11,8 +11,9 @@ import { timelineHtml, taskExplanation } from "/web/desk-progress.js?v=source-pr
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
 import { installNoteEditor } from "/web/desk-note-controls.js?v=reader-standard-20261018";
-import { installProfile } from "/web/desk-profile.js";
+import { installProfile } from "/web/desk-profile.js?v=architecture-0217-20261026";
 import { createTaskEventHub } from "/web/desk-events.js";
+import { createMaterialListing } from "/web/material-listing.js?v=architecture-0217-20261026";
 import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=timeline-navigation-20261016";
 import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-focus-20261016";
@@ -20,8 +21,8 @@ import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/eviden
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js?v=claim-follow-visible-20261018";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
-import { installProductWorkspace } from "/web/desk-product.js?v=reader-standard-20261018";
-import { installTools } from "/web/desk-tools.js?v=reader-standard-20261018";
+import { installProductWorkspace } from "/web/desk-product.js?v=architecture-0217-20261026";
+import { installTools } from "/web/desk-tools.js?v=architecture-0217-20261026";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";
@@ -62,6 +63,20 @@ const state = {
   key: "",
   model: {},
   health: {},
+};
+state.materialBrowser = createMaterialListing({ api });
+const moreMaterials = document.createElement("button");
+moreMaterials.id = "moreMaterials";
+moreMaterials.type = "button";
+moreMaterials.textContent = "加载更多资料";
+moreMaterials.hidden = true;
+moreMaterials.style.minHeight = "44px";
+$("notes").after(moreMaterials);
+moreMaterials.onclick = async () => {
+  moreMaterials.disabled = true;
+  try { await state.materialBrowser.more(); await refresh(); }
+  catch (error) { failure(error); }
+  finally { moreMaterials.disabled = false; }
 };
 const claimContainer = document.createElement("section");
 claimContainer.id = "sourceClaims";
@@ -216,9 +231,10 @@ function sourcePath(s = state.selected) {
   return `/api/tasks/editions/${s.kind}/${encodeURIComponent(s.id)}`;
 }
 function drawList() {
-  const query = $("search").value.trim().toLowerCase();
+  const query = $("search").value.trim().slice(0, 200).toLowerCase();
   const rows = state.items
-    .filter((item) => item.title.toLowerCase().includes(query))
+    .filter((item) => item.kind === "material" && state.materialBrowser
+      ? Boolean(state.materialBrowser.value) : item.title.toLowerCase().includes(query))
     .sort((a, b) => {
       const pin = (item) =>
         state.pinned?.has(item.kind + ":" + item.id) ? 1 : 0;
@@ -236,7 +252,7 @@ function drawList() {
     });
   if ($("libraryVisibleCount"))
     $("libraryVisibleCount").textContent = rows.length + " 项";
-  $("notes").innerHTML = rows.length
+  const markup = rows.length
     ? rows
         .map(
           (item) =>
@@ -244,6 +260,15 @@ function drawList() {
         )
         .join("")
     : `<p class="muted" style="padding:12px">${query ? "没有匹配的笔记" : "添加内容后，笔记会出现在这里。"}</p>`;
+  const list = $("notes");
+  if (list.dataset.renderedList !== markup) {
+    const focused = list.contains(document.activeElement) ? document.activeElement : null;
+    const identity = focused?.dataset.id ? ["id", focused.dataset.id, focused.dataset.kind] : focused?.dataset.pin ? ["pin", focused.dataset.pin] : null;
+    list.innerHTML = markup;
+    list.dataset.renderedList = markup;
+    if (identity) [...list.querySelectorAll("button")].find(button => button.dataset[identity[0]] === identity[1] && (!identity[2] || button.dataset.kind === identity[2]))?.focus({ preventScroll: true });
+  }
+  if ($("moreMaterials")) $("moreMaterials").hidden = !state.materialBrowser?.value?.has_more;
 }
 function showHome({ remember = true, check = true } = {}) {
   if (check && !guard()) return;
@@ -272,9 +297,11 @@ async function navigateBack() {
   if (!guard()) return;
   const previous = (state.navigation || []).pop();
   if (previous) {
+    const navigationEpoch = state.epoch;
     const item = state.items.find(
       (i) => i.kind === previous.kind && i.id === previous.id,
-    );
+    ) || await resolveSource(previous.kind, previous.id);
+    if (navigationEpoch !== state.epoch) return;
     if (item) await openItem(item, { remember: false, check: false });
     else showHome({ remember: false, check: false });
   } else showHome({ remember: false, check: false });
@@ -301,18 +328,49 @@ function refresh() {
     });
   return state.refreshPromise;
 }
+async function refreshMaterials() {
+  state.materialBrowser?.invalidate();
+  state.pinnedMaterialCache?.clear();
+  if (state.refreshPromise) await state.refreshPromise.catch(() => {});
+  return refresh();
+}
+async function loadPinnedMaterials(materials) {
+  const missing = [...(state.pinned || [])].filter(key => key.startsWith("material:") && !materials.some(item => key === `material:${item.material_id}`));
+  state.pinnedMaterialCache ||= new Map();
+  const rows = await Promise.all(missing.map(async key => {
+    const cached = state.pinnedMaterialCache.get(key);
+    if (cached && Date.now() - cached.checked < 30000) return cached.row;
+    try {
+      const result = await api(`/api/library/materials/${encodeURIComponent(key.slice(9))}`);
+      const row = result.material?.material_id === key.slice(9) ? result.material : null;
+      state.pinnedMaterialCache.set(key, { row, checked: Date.now() }); return row;
+    } catch (error) {
+      if (error.status === 404) state.pinnedMaterialCache.set(key, { row: null, checked: Date.now() });
+      return cached?.row || null;
+    }
+  }));
+  const query = state.materialBrowser?.query?.toLowerCase() || "";
+  return rows.filter(row => row && !row.linked_task_id && row.title.toLowerCase().includes(query));
+}
 async function refreshLibrary() {
   if (state.refreshing) return;
   state.refreshing = true;
   const snapshot = selectedSnapshot();
+  const librarySnapshot = new Map(state.items.map(item => [`${item.kind}:${item.id}`, item]));
   try {
     const [tasks, materials, health] = await Promise.all([
-      api("/api/tasks"),
-      api("/api/library/materials?limit=1000"),
+      api("/api/tasks/catalog"),
+      state.materialBrowser ? state.materialBrowser.refresh() : api("/api/library/materials?standalone=true&limit=100"),
       Date.now() - (state.lastHealthAt || 0) > 15000
         ? api("/health")
         : Promise.resolve(null),
     ]);
+    if (!materials) return; // A newer search owns the material-list response.
+    const materialQuery = state.materialBrowser?.query;
+    const pinned = await loadPinnedMaterials(materials.materials);
+    if (state.materialBrowser?.query !== materialQuery) return;
+    state.materialTotal = materials.total ?? materials.materials.length;
+    if (!state.materialBrowser?.query) state.recentMaterials = materials.materials.filter(item => !item.linked_task_id).map(item => ({ ...item, kind: "material", id: item.material_id }));
     if (health) {
       state.health = health;
       state.lastHealthAt = Date.now();
@@ -322,9 +380,10 @@ async function refreshLibrary() {
     const previousStatuses = new Map(
       state.items.map((item) => [item.id, item.status]),
     );
+    const currentItems = state.items;
     state.items = [
       ...tasks.tasks.map((t) => ({ ...t, kind: "task" })),
-      ...materials.materials
+      ...[...materials.materials, ...pinned]
         .filter((m) => !m.linked_task_id)
         .map((m) => ({ ...m, kind: "material", id: m.material_id })),
     ].sort((a, b) =>
@@ -332,6 +391,13 @@ async function refreshLibrary() {
         a.updated_at || a.created_at || "",
       ),
     );
+    // Task events received after this catalog request retain their newer row,
+    // including unselected tasks and their exactly-once completion transition.
+    for (const current of currentItems) {
+      if (current.kind !== "task" || librarySnapshot.get(`task:${current.id}`) === current) continue;
+      const index = state.items.findIndex(item => item.kind === "task" && item.id === current.id);
+      if (index < 0) state.items.push(current); else state.items[index] = current;
+    }
     // A list requested before a selected read/navigation cannot roll it back.
     if (state.selected && !selectedSnapshotCurrent(snapshot)) {
       const current = state.selected;
@@ -346,9 +412,15 @@ async function refreshLibrary() {
         (i) => i.kind === state.selected.kind && i.id === state.selected.id,
       );
     if (selected) {
-      const conflict = await adoptSelectedSnapshot(selected, snapshot);
-      if (conflict === "projection_conflict" && selectedSourceCurrent(snapshot))
-        refreshSelectedTask(selected.id, true).catch(failure);
+      if (selected.catalog) {
+        const changed = ["updated_at", "status", "control_generation"].some(key => selected[key] !== state.selected[key]);
+        if (selectedSourceCurrent(snapshot) && (changed || ["queued", "running", "cancelling"].includes(selected.status)))
+          refreshSelectedTask(selected.id).catch(failure);
+      } else {
+        const conflict = await adoptSelectedSnapshot(selected, snapshot);
+        if (conflict === "projection_conflict" && selectedSourceCurrent(snapshot))
+          refreshSelectedTask(selected.id, true).catch(failure);
+      }
     } else if (state.selected && !state.editing) {
       if (state.selected.kind === "task" && selectedSnapshotCurrent(snapshot)) showHome({ remember: false, check: false });
       else state.personalReview?.load();
@@ -360,6 +432,17 @@ async function refreshLibrary() {
         previousStatuses.has(item.id) &&
         previousStatuses.get(item.id) !== "success",
     );
+    await publishCompletions(completed, snapshot);
+  } catch (error) {
+    state.connectionError = true;
+    syncStatus.hidden = false;
+    window.dispatchEvent(new CustomEvent("learnnote:library"));
+    throw error;
+  } finally {
+    state.refreshing = false;
+  }
+}
+async function publishCompletions(completed, snapshot) {
     if (
       state.reading?.notify &&
       window.Notification &&
@@ -370,18 +453,11 @@ async function refreshLibrary() {
     if (
       completed.length &&
       state.reading?.autoOpen &&
+      (!snapshot ? !state.selected : selectedSourceCurrent(snapshot)) &&
       !state.editing &&
       !document.querySelector("dialog[open]")
     )
       await openItem(completed[0]);
-  } catch (error) {
-    state.connectionError = true;
-    syncStatus.hidden = false;
-    window.dispatchEvent(new CustomEvent("learnnote:library"));
-    throw error;
-  } finally {
-    state.refreshing = false;
-  }
 }
 function selectedSnapshot() {
   const selected = state.selected;
@@ -469,6 +545,13 @@ function refreshSelectedTask(taskId = state.selected?.id, reconciliation = false
 }
 async function openItem(item, { remember = true, check = true, openMedia = true } = {}) {
   if (check && !guard()) return;
+  const intent = state.openIntent = (state.openIntent || 0) + 1, previousEpoch = state.epoch, previousRoute = state.routeEpoch;
+  if (item.catalog) {
+    const result = await api(`/api/tasks/${encodeURIComponent(item.id)}`);
+    if (intent !== state.openIntent || previousEpoch !== state.epoch || previousRoute !== state.routeEpoch) return false;
+    if (!result.task || result.task.id !== item.id) throw new Error("来源读取失败，请刷新后重试。");
+    item = { ...result.task, kind: "task" };
+  }
   invalidateSelectedReads();
   state.navigation ||= [];
   if (
@@ -533,6 +616,7 @@ async function openItem(item, { remember = true, check = true, openMedia = true 
     (item.media_path || item.source_media_path)
   )
     await openSource();
+  return epoch === state.epoch;
 }
 let editionRequest = 0;
 const sectionReader = createSectionReader({
@@ -634,7 +718,7 @@ function renderNote() {
   mountMaterialOcr($("document"), {
     material: ocrSelection, api,
     isCurrent: () => ocrEpoch === state.epoch && !state.editing && state.selected?.id === ocrSelection.id && state.selected?.kind === ocrSelection.kind,
-    onUpdated: async () => { await refresh(); },
+    onUpdated: async () => { await refreshMaterials(); },
   });
   $("reviewNoteSources")?.addEventListener("click", () => openSource().catch(failure));
   collapseSourceReviews($("document"));
@@ -695,14 +779,50 @@ function decorateSourceTimes(root) {
   }
 }
 const taskEvents = new Map();
+const changedTasks = new Set();
+async function refreshChangedTasks() {
+  const ids = [...changedTasks];
+  changedTasks.clear();
+  await Promise.all(ids.map(async id => {
+    const prior = state.items.find(item => item.kind === "task" && item.id === id);
+    const snapshot = selectedSnapshot();
+    const lane = state.selected?.id === id && state.selected?.kind === "task" ? state.selectedRefresh : null;
+    let next;
+    try {
+      if (lane?.promise) {
+        await lane.promise;
+        if (!selectedSourceCurrent(snapshot)) return;
+        next = state.selected;
+      } else {
+        const result = await api(`/api/tasks/${encodeURIComponent(id)}`);
+        if (result.task?.id !== id) return;
+        next = { ...result.task, kind: "task" };
+      }
+    } catch (error) {
+      if (error.status !== 404) return; // Polling retains the recovery path.
+    }
+    if (state.items.find(item => item.kind === "task" && item.id === id) !== prior) return;
+    if (next?.id !== id) {
+      state.items = state.items.filter(item => item.kind !== "task" || item.id !== id);
+    } else if (prior) {
+      state.items = state.items.map(item => item === prior ? next : item);
+    } else state.items.push(next);
+    state.items.sort((a, b) => (b.updated_at || b.created_at || "").localeCompare(a.updated_at || a.created_at || ""));
+    syncTaskEventStreams(); drawList();
+    window.dispatchEvent(new CustomEvent("learnnote:library"));
+    if (prior && prior.status !== "success" && next?.status === "success") await publishCompletions([next], snapshot);
+  }));
+}
 const taskEventHub = createTaskEventHub({
   connect: url => new EventSource(url),
-  onUpdate: () => refresh(),
-  onInvalidate: taskId => { taskEvents.delete(taskId); refreshSelectedTask(taskId); },
+  onUpdate: refreshChangedTasks,
+  onInvalidate: taskId => { taskEvents.delete(taskId); changedTasks.add(taskId); refreshSelectedTask(taskId); },
 });
 function syncTaskEventStreams(items = state.items) {
   if (typeof EventSource !== "function") return;
-  taskEventHub.sync(items, document.hidden);
+  const selected = state.selected;
+  const subscriptions = selected?.kind === "task" && !items.some(item => item.kind === "task" && item.id === selected.id) ? [selected, ...items] : items;
+  taskEventHub.sync(subscriptions, document.hidden);
 }
 window.addEventListener("visibilitychange", () => {
   if (document.hidden) taskEventHub.disconnect();
@@ -746,6 +866,9 @@ function renderTaskStatus(reload) {
   panel.hidden = t.kind !== "task";
   if (panel.hidden) return;
   if (reload) loadTaskEvents(t);
+  const statusKey = JSON.stringify([t, taskEvents.get(t.id)?.events, state.taskAction?.id === t.id, state.revision, state.model.model, state.health.default_llm_model]);
+  if (panel.dataset.renderedStatus === statusKey) return;
+  panel.dataset.renderedStatus = statusKey;
   const stopped = ["failed", "cancelled"].includes(t.status);
   const needsSummary = Boolean(
     t.transcript_path &&
@@ -904,7 +1027,9 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
   let source = sourceOverride || state.selected;
   if (!source) return;
   if (!state.selected || source.id !== state.selected.id || source.kind !== state.selected.kind) {
-    const item = state.items.find((candidate) => candidate.id === source.id && candidate.kind === source.kind);
+    const item = state.items.find((candidate) => candidate.id === source.id && candidate.kind === source.kind)
+      || await resolveSource(source.kind, source.id);
+    if (request !== inlineSourceRequest) return;
     if (!item) {
       notice("引用来源已不在当前资料库，无法可靠定位。");
       return;
@@ -1184,11 +1309,23 @@ $("notes").onclick = (e) => {
       ),
     ).catch(failure);
 };
-$("search").oninput = drawList;
+let searchTimer;
+$("search").oninput = () => {
+  const changed = state.materialBrowser.setQuery($("search").value);
+  drawList();
+  if (!changed) return;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    try {
+      if (state.refreshPromise) await state.refreshPromise.catch(() => {});
+      await refresh();
+    } catch (error) { failure(error); }
+  }, 180);
+};
 $("refresh").onclick = () => {
   globalThis.LearnNoteDiagnosticExport?.invalidate();
   state.lastHealthAt = 0;
-  refresh().catch(failure);
+  refreshMaterials().catch(failure);
 };
 $("source").onclick = () =>
   $("sourcePanel").hidden ? openSource().catch(failure) : closeSource();
@@ -1318,7 +1455,7 @@ function updateCreateInputPresentation() {
   }
   materialBatch.render();
 }
-const materialBatch = installMaterialBatch({ state, options, updatePresentation: updateCreateInputPresentation, refresh,
+const materialBatch = installMaterialBatch({ state, options, updatePresentation: updateCreateInputPresentation, refresh: refreshMaterials,
   openResult: async ({ kind, result }) => {
     const id = result.task_id || result.material?.material_id;
     const item = state.items.find(item => item.id === id && item.kind === kind)
@@ -1359,7 +1496,7 @@ $("createForm").onsubmit = async (e) => {
         }),
       });
     }
-    await refresh();
+    await refreshMaterials();
     const id = result.task_id || result.material?.material_id;
     const item =
       state.items.find((i) => i.id === id && i.kind === kind) ||
@@ -1545,6 +1682,17 @@ $("reviewDialog").addEventListener("close", () => {
   reviewSession++; reviewRender++; reviewQuiz?.dispose(); reviewQuiz = null;
 });
 let evidenceRequest = 0;
+async function resolveSource(kind, id) {
+  if (!["task", "material"].includes(kind) || typeof id !== "string" || !id) return null;
+  const matches = state.items.filter(item => item.kind === kind && item.id === id);
+  if (matches.length) return matches.length === 1 ? matches[0] : null;
+  if (state.selected?.kind === kind && state.selected.id === id) return state.selected;
+  try {
+    const result = await api(kind === "task" ? `/api/tasks/${encodeURIComponent(id)}` : `/api/library/materials/${encodeURIComponent(id)}`);
+    const record = kind === "task" ? result.task : result.material;
+    return record && (record.material_id || record.id) === id ? { ...record, kind, id } : null;
+  } catch (error) { if (error.status === 404) return null; throw error; }
+}
 async function openEvidenceSource(source, seconds, target = {}, request = ++evidenceRequest) {
   const same = state.selected?.kind === source.kind && state.selected?.id === source.id;
   let epoch = state.epoch;
@@ -1552,10 +1700,11 @@ async function openEvidenceSource(source, seconds, target = {}, request = ++evid
     if (!guard()) return;
     const loading = openItem(source, { check: false, openMedia: false });
     epoch = state.epoch;
-    await loading;
+    if (await loading === false) return;
+    if (source.catalog) epoch = state.epoch;
   }
   if (epoch !== state.epoch || request !== evidenceRequest || state.selected?.kind !== source.kind || state.selected?.id !== source.id) return;
-  await openSource(seconds, source, target);
+  await openSource(seconds, state.selected, target);
 }
 async function openEvidence(evidenceId) {
   const request = ++evidenceRequest;
@@ -1565,20 +1714,38 @@ async function openEvidence(evidenceId) {
   catch (error) { if (epoch !== state.epoch || request !== evidenceRequest) return; throw error; }
   if (epoch !== state.epoch || request !== evidenceRequest) return;
   if (result.evidence?.evidence_id !== evidenceId) throw new Error("出处索引不一致，无法可靠定位。");
-  const anchor = evidenceAnchor(result.evidence, state.items);
+  let anchor = evidenceAnchor(result.evidence, state.items);
+  if (!anchor && !(result.evidence.task_id && result.evidence.metadata?.material_id)) {
+    const source = await resolveSource(result.evidence.task_id ? "task" : "material", result.evidence.task_id || result.evidence.metadata?.material_id);
+    if (epoch !== state.epoch || request !== evidenceRequest) return;
+    if (source) anchor = evidenceAnchor(result.evidence, [source]);
+  }
   if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
   await openEvidenceSource(anchor.source, anchor.start, { evidenceId, windowId: result.evidence.metadata?.window_id || "" }, request);
 }
 async function openClaimEvidence(evidence, taskId) {
-  const anchor = claimEvidenceAnchor(evidence, taskId, state.items);
+  const request = ++evidenceRequest, epoch = state.epoch;
+  let anchor = claimEvidenceAnchor(evidence, taskId, state.items);
+  if (!anchor) {
+    const source = await resolveSource(evidence.kind === "document" ? "material" : "task", evidence.kind === "document" ? evidence.material_id : taskId);
+    if (epoch !== state.epoch || request !== evidenceRequest) return;
+    if (source) anchor = claimEvidenceAnchor(evidence, taskId, [source]);
+  }
   if (!anchor) throw new Error("引用来源已不在当前资料库，无法可靠定位。");
-  await openEvidenceSource(anchor.source, anchor.start, { evidenceId: evidence.evidence_id, windowId: evidence.window_id || "" });
+  await openEvidenceSource(anchor.source, anchor.start, { evidenceId: evidence.evidence_id, windowId: evidence.window_id || "" }, request);
 }
 async function openCitation(citation, messageSource) {
   if (citation.evidence_id) return openEvidence(citation.evidence_id);
-  const anchor = citationAnchor(citation, messageSource, state.items);
+  const request = ++evidenceRequest, epoch = state.epoch;
+  let anchor = citationAnchor(citation, messageSource, state.items);
+  if (!anchor) {
+    const identified = citation?.source_kind != null || citation?.source_id != null;
+    const source = await resolveSource(identified ? citation.source_kind : messageSource?.kind, identified ? citation.source_id : messageSource?.id);
+    if (epoch !== state.epoch || request !== evidenceRequest) return;
+    if (source) anchor = citationAnchor(citation, messageSource, [source]);
+  }
   if (!anchor) throw new Error("这条回答没有可靠的来源定位，未猜测高亮位置。");
-  await openEvidenceSource(anchor.source, anchor.start, { windowId: citation.window_id || "" });
+  await openEvidenceSource(anchor.source, anchor.start, { windowId: citation.window_id || "" }, request);
 }
 
 async function drawReview() {
@@ -1759,6 +1926,7 @@ async function initialize() {
 initialize();
 
 $("regenerate").onclick = async () => {
+  const source = state.selected, epoch = state.epoch, routeEpoch = state.routeEpoch;
   const reuseTranscript =
     state.selected?.transcript_path &&
     !state.selected?.media_path &&
@@ -1775,10 +1943,12 @@ $("regenerate").onclick = async () => {
   $("regenerate").disabled = true;
   try {
     const result = await api(
-      `/api/tasks/${state.selected.id}/${reuseTranscript ? "retry-summary" : "rerun-from-media"}`,
+      `/api/tasks/${source.id}/${reuseTranscript ? "retry-summary" : "rerun-from-media"}`,
       { method: "POST", body: JSON.stringify(options()) },
     );
-    await openItem({ ...result.task, id: result.task_id, kind: "task" });
+    if (epoch === state.epoch && routeEpoch === state.routeEpoch && source.id === state.selected?.id && source.kind === state.selected?.kind)
+      await openItem({ ...result.task, id: result.task_id, kind: "task" });
+    else notice("重新整理的任务已创建，可从笔记列表打开。");
     await refresh();
   } catch (error) {
     failure(error);
@@ -1826,18 +1996,20 @@ async function applyRoute({ initial = false } = {}) {
   const routeSearch = location.search;
   const current = () => epoch === state.routeEpoch && selectionEpoch === state.epoch
     && routeHash === location.hash && routeSearch === location.search;
-  const findItem = () => route.id && state.items.find((i) => i.kind === route.kind && i.id === route.id);
+  const findItem = () => route.id && (state.items.find((i) => i.kind === route.kind && i.id === route.id)
+    || (state.selected?.kind === route.kind && state.selected?.id === route.id ? state.selected : null));
   let item = findItem();
-  if (route.id && !item && !initial) {
-    const joinedRefresh = Boolean(state.refreshPromise);
-    await refresh();
-    if (!current()) return;
-    item = findItem();
-    // A joined request may predate creation of the explicitly requested item.
-    if (!item && joinedRefresh) {
-      await refresh();
+  if (route.id && !item) {
+    try {
+      const result = await api(route.kind === "material"
+        ? `/api/library/materials/${encodeURIComponent(route.id)}` : `/api/tasks/${encodeURIComponent(route.id)}`);
       if (!current()) return;
-      item = findItem();
+      const record = route.kind === "material" ? result.material : result.task;
+      if (!record || (record.material_id || record.id) !== route.id) throw new Error("来源读取失败，请刷新后重试。");
+      item = { ...record, kind: route.kind, id: route.id };
+    } catch (error) {
+      if (!current()) return;
+      if (error.status !== 404) throw error;
     }
   }
   if (!current()) return;
@@ -1848,7 +2020,8 @@ async function applyRoute({ initial = false } = {}) {
     const opening = openItem(item, { remember: !initial, check: false });
     selectionEpoch = state.epoch;
     routeHash = location.hash;
-    await opening;
+    if (await opening === false) return;
+    if (item.catalog) { selectionEpoch = state.epoch; routeHash = location.hash; }
   } else if (route.id && !item) {
     notice("这份内容不存在或已被删除，请从左侧重新选择。");
     return;
@@ -1875,10 +2048,11 @@ async function applyRoute({ initial = false } = {}) {
 window.addEventListener("hashchange", () => applyRoute().catch(failure));
 
 const workspaceTools = installTools({
+  resolveSource,
   state,
   options,
   openItem,
-  refresh,
+  refresh: refreshMaterials,
   notice,
   guard,
   showHome,
@@ -1896,7 +2070,7 @@ installProductWorkspace({
   openSource,
   openInlineSource,
   openCitation,
-  refresh,
+  refresh: refreshMaterials,
   notice,
   guard,
   loadKey,

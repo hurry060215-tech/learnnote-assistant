@@ -18,11 +18,14 @@ const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-val
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
   const [output, port, origin, taskId, pid] = args;
-  let startupOnly = false, expectedVersion, featureFixture, privateLocationEvidence = false;
+  let startupOnly = false, expectedVersion, featureFixture, architectureFixture, privateLocationEvidence = false;
   for (let i = 5; i < args.length; i++) {
     if (args[i] === '--private-location-evidence' && !privateLocationEvidence) privateLocationEvidence = true;
     else if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
     else if (args[i] === '--feature-fixture' && !featureFixture) featureFixture = args[++i];
+    else if (args[i] === '--architecture-fixture' && !architectureFixture) {
+      architectureFixture = args[++i]; assert(architectureFixture && !architectureFixture.startsWith('--'), 'Architecture fixture path is required');
+    }
     else if (args[i] === '--expected-version' && !expectedVersion) expectedVersion = args[++i];
     else throw new Error('Unknown or repeated acceptance option');
   }
@@ -37,7 +40,38 @@ function parseArgs(args) {
   assert(output && !output.startsWith('--'), 'Output directory is required');
   if (!startupOnly && expectedVersion === '0.2.17') assert(featureFixture && !featureFixture.startsWith('--'), '0.2.17 requires the old-installed feature fixture');
   if (featureFixture) assert(expectedVersion === '0.2.17' && !startupOnly, 'Feature fixture is only for current 0.2.17 acceptance');
-  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
+  if (architectureFixture) assert(featureFixture && expectedVersion === '0.2.17' && !startupOnly && !architectureFixture.startsWith('--'), 'Architecture fixture requires the current full installed feature gate');
+  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(architectureFixture ? { architectureFixture: path.resolve(architectureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
+}
+
+function readFixtureManifest(file, io = fs) {
+  assert(typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file
+    && !file.startsWith('\\\\') && !file.slice(path.parse(file).root.length).includes(':'), 'Expected a canonical local fixture path');
+  assert(['feature-fixture.json', 'architecture-fixture.json'].includes(path.basename(file)), 'Unknown synthetic fixture file');
+  // Open once, then inspect and read that descriptor. Neither a size check on a
+  // path nor a later unbounded read can race the descriptor's byte limit.
+  const fd = io.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+  try {
+    const before = io.fstatSync(fd), named = io.lstatSync(file);
+    assert(before.isFile() && named.isFile() && !named.isSymbolicLink(), 'Fixture must be an ordinary file');
+    assert.equal(before.dev, named.dev); assert.equal(before.ino, named.ino, 'Fixture path changed during open');
+    const canonical = value => process.platform === 'win32' ? value.toLowerCase() : value;
+    assert.equal(canonical(io.realpathSync(file)), canonical(file), 'Fixture path must not traverse links');
+    const buffer = Buffer.alloc(8193);
+    let length = 0;
+    while (length < buffer.length) {
+      const count = io.readSync(fd, buffer, length, buffer.length - length, length);
+      if (!count) break;
+      length += count;
+    }
+    assert(length <= 8192, 'Bounded synthetic fixture manifest');
+    const after = io.fstatSync(fd);
+    assert.equal(after.size, length, 'Fixture changed while reading');
+    assert.equal(after.size, before.size, 'Fixture changed while reading');
+    assert.equal(after.mtimeMs, before.mtimeMs, 'Fixture changed while reading');
+    assert.equal(after.ctimeMs, before.ctimeMs, 'Fixture changed while reading');
+    return JSON.parse(buffer.subarray(0, length).toString('utf8'));
+  } finally { io.closeSync(fd); }
 }
 
 async function bounded(promise, label, timeout = TIMEOUT) {
@@ -859,10 +893,15 @@ async function main(args) {
     if (config.featureFixture) {
       report.phase = 'installed-reading-and-paging';
       const { runInstalledFeatures } = require('./installed-reading-paging-acceptance.cjs');
-      assert(fs.statSync(config.featureFixture).size <= 8192, 'Bounded synthetic feature manifest');
-      const fixture = JSON.parse(fs.readFileSync(config.featureFixture, 'utf8'));
+      const fixture = readFixtureManifest(config.featureFixture);
       await runInstalledFeatures(page, { origin: config.origin, taskId: config.taskId, fixture, read, capture, out: config.output, report });
       report.checks.push('Old-installed 501 opinions remain bounded and selectable; local preview budgets and consent reset; bundled h4 and follow geometry clear actual sticky chrome');
+    }
+    if (config.architectureFixture) {
+      report.phase = 'installed-workspace-architecture';
+      const { runInstalledArchitecture } = require('./installed-architecture-acceptance.cjs');
+      await runInstalledArchitecture(page, { origin: config.origin, fixture: readFixtureManifest(config.architectureFixture), read, capture, out: config.output, report });
+      report.checks.push('Installed task catalog, standalone material pagination, canonical course source and authentic delayed-response navigation');
     }
     assert.equal(report.page_errors, 0); assert.equal(report.external_requests, 0); assert.equal(report.blocked_external_requests, 0);
     report.passed = true; report.phase = 'complete';
@@ -898,5 +937,5 @@ async function main(args) {
   }
 }
 
-module.exports = { parseArgs, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateInputPopupCapture, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
+module.exports = { parseArgs, readFixtureManifest, bounded, readInstalledJSON, verifyOwned, assertSyntheticTask, selectOwnedPage, ownedRequest, validateHostFailure, validateControlFailure, validateInputFailure, validateInputPopups, validateInputPopupCapture, validateHostObservation, validateWin32Observation, validateNativeCapture, validateForegroundEvidence, nativeDialogScript, nativeDialogCommand, withNativeHelper, assertSavedBytes, noDownloadDuring, finish, emitLocationEvidence };
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });

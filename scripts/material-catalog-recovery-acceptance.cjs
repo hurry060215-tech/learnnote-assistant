@@ -4,6 +4,7 @@
 // Run only in an authorized Windows Edge environment:
 // node scripts/material-catalog-recovery-acceptance.cjs [loopback-origin] [output]
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const { openDataManagement } = require("./settings-management-fixture.cjs");
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const { createHash } = require("node:crypto");
@@ -107,7 +108,8 @@ async function main() {
         }
         if (p === "/health" && method === "GET") return await json({ ok: true, service: "learnnote", app_version: "0.2.14", protocol_version: 1, llm_model_configured: false, model_provider_presets: [], assistant_capabilities: {} });
         if (p === "/api/tasks" && method === "GET") return await json({ tasks: [] });
-        if (p === "/api/library/materials" && method === "GET") return await json({ materials: restored ? [material] : [] });
+        if (p === "/api/tasks/catalog" && method === "GET") return await json(fixtureTaskCatalog([]));
+        if (p === "/api/library/materials" && method === "GET") return await json(fixtureMaterialPage(restored ? [material] : [], url.search));
         if (p === "/api/preferences" && method === "GET") return await json({ task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } });
         if (p === "/api/model/connection" && method === "GET") return await json({ model: null, configured: false });
         if (p === "/api/model/route" && method === "GET") return await json({ routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true });

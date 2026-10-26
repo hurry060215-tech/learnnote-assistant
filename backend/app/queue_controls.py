@@ -10,7 +10,7 @@ AGE_INTERVAL_SECONDS = 60
 
 def _backup_legacy_queue(db):
     columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
-    if not columns or {"priority", "generation", "cancel_operation_id", "callback_finished"}.issubset(columns):
+    if not columns or {"priority", "generation", "cancel_operation_id", "callback_finished", "owner_id"}.issubset(columns):
         return
     filename = next((row[2] for row in db.execute("PRAGMA database_list") if row[1] == "main"), "")
     if not filename:
@@ -41,7 +41,8 @@ def initialize_queue_schema(db):
         for name, definition in (("priority", "INTEGER NOT NULL DEFAULT 0"),
                                  ("generation", "TEXT NOT NULL DEFAULT ''"),
                                  ("cancel_operation_id", "TEXT NOT NULL DEFAULT ''"),
-                                 ("callback_finished", "INTEGER")):
+                                 ("callback_finished", "INTEGER"),
+                                 ("owner_id", "TEXT NOT NULL DEFAULT ''")):
             if name not in columns:
                 db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
         db.execute("CREATE TABLE IF NOT EXISTS queue_settings (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL)")

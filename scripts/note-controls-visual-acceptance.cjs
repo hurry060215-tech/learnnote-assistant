@@ -1,5 +1,6 @@
 // Synthetic generated summary only. Model/provider requests are never needed.
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -74,7 +75,8 @@ async function main() {
     const original = "# 合成总结\n\n" + Array.from({ length: 28 }, (_, i) => `## 第 ${i + 1} 节：这是用来验证自动换行和层级的合成章节标题\n\n合成内容，用于检查目录宽度、间距和编辑。\n\n### 核对步骤 ${i + 1}\n\n保留原始生成稿，另存个人修订。${i === 13 ? `\n\n#### ${deepHeading}\n\n第四级标题后保留足够正文，不借助文档底部限制掩盖导航遮挡。` : ""}`).join("\n\n");
     let edition = { text: original, revision: "r0", edited: false }, releaseSave, saveStarted, holdSave = false, failSave = false;
     await page.route("**/api/tasks", route => route.fulfill({ json: { tasks: [task] } }));
-    await page.route("**/api/library/materials?*", route => route.fulfill({ json: { materials: [] } }));
+    await page.route("**/api/tasks/catalog", route => route.fulfill({ json: fixtureTaskCatalog([task]) }));
+    await page.route("**/api/library/materials?*", route => route.fulfill({ json: fixtureMaterialPage([], new URL(route.request().url()).search) }));
     await page.route("**/api/tasks/note-controls-fixture", route => route.fulfill({ json: { task } }));
     await page.route("**/api/tasks/note-controls-fixture/events?*", route => route.fulfill({ json: { events: [] } }));
     await page.route("**/api/personal/task/note-controls-fixture", route => route.fulfill({ json: { annotations: [] } }));

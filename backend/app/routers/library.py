@@ -34,6 +34,7 @@ from ..library import (
 )
 from ..storage import get_task
 from ..catalog_health import catalog_status
+from ..library_listing import browse_materials
 from .catalog_recovery import catalog_recovery_router
 from ..document_exports import (
     DocumentExportUnavailable,
@@ -80,10 +81,15 @@ def api_library_material_capabilities() -> dict:
 
 
 @library_router.get("/materials")
-def api_library_materials(limit: int = 100, source_type: str = "") -> dict:
+def api_library_materials(limit: int = 100, source_type: str = "", standalone: bool = False, q: str = "", cursor: str = "") -> dict:
     catalog = catalog_status(DATA_DIR)
     if catalog["state"] in {"missing", "corrupt", "incompatible"} and catalog["recovery_required"]:
         return {"schema_version": 1, "materials": [], "catalog": catalog}
+    if standalone:
+        try:
+            return browse_materials(limit=limit, query=q, cursor=cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"code": str(exc), "message": "资料列表已变化，请重新搜索或刷新列表。"}) from exc
     return {"schema_version": 1, "materials": list_materials(limit, source_type)}
 
 

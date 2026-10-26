@@ -7,24 +7,30 @@ const refreshAndOpen = source.slice(source.indexOf("function refresh() {"), sour
 const home = source.slice(source.indexOf("function showHome("), source.indexOf("async function navigateBack("));
 const route = source.slice(source.indexOf("function readRoute() {"), source.indexOf('window.addEventListener("hashchange"'));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
-function harness({ holdEdition = false } = {}) {
+function harness({ holdEdition = false, holdLookup = false } = {}) {
   const old = { kind: "task", id: "previous", title: "Previous", status: "success", updated_at: "1" };
-  const next = { kind: "task", id: "newly-created", title: "New", status: "queued", awaiting_confirmation: true, updated_at: "2" };
-  const held = deferred(), edition = deferred(), enteredEdition = deferred(), requests = [], notices = [], streams = [], actions = [], nodes = new Map();
+  const next = { kind: "task", id: "newly-created", title: "New", status: "queued", updated_at: "2" };
+  const material = { kind: "material", id: "outside-page", material_id: "outside-page", title: "Old material", updated_at: "0" };
+  const held = deferred(), lookup = deferred(), edition = deferred(), enteredEdition = deferred(), requests = [], notices = [], actions = [], nodes = new Map();
   const $ = id => { if (!nodes.has(id)) nodes.set(id, { hidden: false, value: "", dataset: {}, replaceChildren() {} }); return nodes.get(id); };
   $("document").dataset.readerSource = "task:previous";
   const state = { items: [old], selected: old, epoch: 1, lastHealthAt: Date.now(), reading: { autoOpen: false } };
   const location = { hash: "#task/previous", search: "", pathname: "/" };
-  let tasks = [old], materials = [], first = true, allowed = true, taskError = null;
+  let allowed = true, lookupError = null;
+  const records = new Map([[next.id, next], [material.id, material], [old.id, old]]);
   const context = vm.createContext({ state, location, URLSearchParams, Date, $, syncStatus: {},
     api: async path => {
       requests.push(path);
-      if (path === "/api/tasks") { if (first) { first = false; return held.promise; } if (taskError) throw taskError; return { tasks }; }
-      if (path.startsWith("/api/library/materials")) return { materials };
+      if (path === "/api/tasks/catalog") return held.promise;
+      if (path.startsWith("/api/library/materials?")) return { materials: [] };
       if (path === "/api/study/activity") return {};
-      throw new Error("Unexpected API: " + path);
+      if (holdLookup) await lookup.promise;
+      if (lookupError) throw lookupError;
+      const record = records.get(decodeURIComponent(path.split("/").at(-1)));
+      if (!record) throw Object.assign(new Error("missing"), { status: 404 });
+      return record.kind === "material" ? { material: record } : { task: record };
     },
-    syncTaskEventStreams: items => streams.push(items.map(item => item.id)), drawList() {},
+    syncTaskEventStreams() {}, drawList() {},
     window: { dispatchEvent() {}, LearnNoteAssistant: { open: () => actions.push("qa:" + state.selected.id) } }, CustomEvent: class {}, Event: class {},
     claimMapVersion: item => item.updated_at, localMediaSource: () => null,
     renderStatus() {}, guard: () => allowed, notice: text => notices.push(text),
@@ -38,124 +44,99 @@ function harness({ holdEdition = false } = {}) {
   });
   $("settings").click = () => { actions.push("settings"); $("settingsDialog").open = true; };
   vm.runInContext("let editionRequest = 0;" + home + refreshAndOpen + route + ";globalThis.methods={refresh,applyRoute,openItem,showHome};", context);
-  return { state, location, requests, notices, streams, actions, $, held, edition, enteredEdition, old, next, methods: context.methods,
-    create: () => { tasks = [next, old]; }, setTasks: value => { tasks = value; }, setMaterials: value => { materials = value; },
-    setGuard: value => { allowed = value; }, failFreshTasks: error => { taskError = error; } };
+  return { state, location, requests, notices, actions, $, held, lookup, edition, enteredEdition, old, next, material, records, methods: context.methods,
+    setGuard: value => { allowed = value; }, failLookup: error => { lookupError = error; } };
 }
 
-test("a newly created task route cannot be declared missing from an older in-flight library snapshot", async () => {
+test("newly created routes bypass an old full-list request and stale lists cannot roll back navigation", async () => {
   const app = harness(), background = app.methods.refresh();
-  app.create(); app.location.hash = "#task/newly-created";
-  const navigation = app.methods.applyRoute();
-  app.held.resolve({ tasks: [app.old] }); await background; await navigation;
-  assert.equal(app.requests.filter(path => path === "/api/tasks").length, 2, "Exactly one fresh lookup after joining the older request");
-  await app.methods.refresh();
-  assert(app.streams.some(ids => ids.includes("newly-created")), "The actual library stream list knows the created task");
-  assert.equal(app.location.hash, "#task/newly-created");
-  assert.equal(app.state.selected.id, "newly-created");
-  assert.equal(app.$("document").dataset.readerSource, "task:newly-created");
+  app.location.hash = "#task/newly-created"; await app.methods.applyRoute();
+  assert.equal(app.state.selected.id, app.next.id);
+  app.held.resolve({ tasks: [app.old] }); await background;
+  assert.equal(app.state.selected.id, app.next.id); assert.equal(app.$("document").dataset.readerSource, "task:newly-created");
+  assert.equal(app.requests.filter(path => path === "/api/tasks/catalog").length, 1);
+  assert.equal(app.requests.filter(path => path === "/api/tasks/newly-created").length, 1);
   assert.deepEqual(app.notices, []);
 });
 
-
-test("rapid routes select only the newest task or material after shared stale refresh", async () => {
-  for (const kind of ["task", "material"]) {
-    const app = harness(), background = app.methods.refresh(); app.create();
-    app.location.hash = "#task/newly-created"; const first = app.methods.applyRoute();
-    const newest = { kind, id: "newest", material_id: "newest", title: "Newest", updated_at: "3" };
-    if (kind === "task") app.setTasks([newest, app.next, app.old]); else app.setMaterials([newest]);
-    app.location.hash = `#${kind}/newest`; const second = app.methods.applyRoute();
-    app.held.resolve({ tasks: [app.old] }); await Promise.all([background, first, second]);
-    assert.equal(app.state.selected.id, "newest"); assert.equal(app.state.selected.kind, kind);
-    assert.equal(app.$("document").dataset.readerSource, `${kind}:newest`); assert.deepEqual(app.notices, []);
-    assert.equal(app.requests.filter(path => path === "/api/tasks").length, 2);
+test("an existing material outside every loaded page opens directly, including startup", async () => {
+  for (const initial of [false, true]) {
+    const app = harness(); app.location.hash = "#material/outside-page";
+    await app.methods.applyRoute({ initial }); await app.methods.applyRoute();
+    assert.equal(app.state.selected.id, app.material.id);
+    assert.equal(app.requests.filter(path => path === "/api/library/materials/outside-page").length, 1);
+    assert.equal(app.requests.filter(path => path === "/api/tasks/catalog").length, 0);
+    assert.equal(app.requests.filter(path => path === "/api/study/activity").length, 1);
+    assert.deepEqual(app.notices, []);
   }
 });
 
-test("newer Home, direct item selection, settings or rejected navigation cancels an older pending lookup", async () => {
+test("rapid task and material routes select only the newest intent", async () => {
+  const app = harness({ holdLookup: true });
+  app.location.hash = "#task/newly-created"; const first = app.methods.applyRoute();
+  app.location.hash = "#material/outside-page"; const second = app.methods.applyRoute();
+  app.lookup.resolve(); await Promise.all([first, second]);
+  assert.equal(app.state.selected.id, "outside-page"); assert.deepEqual(app.notices, []);
+});
+
+test("catalog navigation hydrates the task and respects newer selections and settings routes", async () => {
+  for (const navigation of ["same", "other", "settings"]) {
+    const app = harness({ holdLookup: true });
+    const pending = app.methods.openItem({ ...app.next, catalog: true });
+    assert.equal(app.state.selected.id, app.old.id, "The summary is never published as a full task");
+    if (navigation === "other") await app.methods.openItem(app.material);
+    if (navigation === "settings") { app.location.hash = "#settings"; await app.methods.applyRoute(); }
+    app.lookup.resolve(); const opened = await pending;
+    assert.equal(app.state.selected.id, navigation === "same" ? app.next.id : navigation === "other" ? app.material.id : app.old.id);
+    assert.equal(app.state.selected.catalog, undefined); assert.equal(opened, navigation === "same");
+  }
+});
+
+test("Home, selection, settings and rejected navigation cancel an older pending lookup", async () => {
   for (const action of ["home", "item", "settings", "rejected", "raw-hash"]) {
-    const app = harness(), background = app.methods.refresh(); app.create();
-    app.location.hash = "#task/newly-created"; const navigation = app.methods.applyRoute();
+    const app = harness({ holdLookup: true }); app.location.hash = "#task/newly-created";
+    const navigation = app.methods.applyRoute();
     if (action === "home") app.methods.showHome();
-    else if (action === "item") await app.methods.openItem({ kind: "material", id: "manual", title: "Manual" });
+    else if (action === "item") await app.methods.openItem(app.material);
     else if (action === "raw-hash") app.location.hash = "#task/another";
     else { app.location.hash = "#settings"; if (action === "rejected") app.setGuard(false); await app.methods.applyRoute(); }
-    app.held.resolve({ tasks: [app.old] }); await Promise.all([background, navigation]);
-    assert.equal(app.state.selected?.id ?? null, action === "home" ? null : action === "item" ? "manual" : "previous");
-    assert.equal(app.requests.filter(path => path === "/api/tasks").length, 1, "Cancelled route must not request another snapshot");
-    assert.deepEqual(app.actions, action === "settings" ? ["settings"] : []); assert.deepEqual(app.notices, []);
+    app.lookup.resolve(); await navigation;
+    assert.equal(app.state.selected?.id ?? null, action === "home" ? null : action === "item" ? app.material.id : app.old.id);
+    assert.deepEqual(app.notices, []);
   }
 });
 
-test("missing or deleted targets get a bounded absence result, and refresh failure is propagated", async () => {
-  for (const alreadyPending of [false, true]) {
-    const app = harness(), background = alreadyPending ? app.methods.refresh() : null;
-    app.location.hash = "#task/deleted"; const navigation = app.methods.applyRoute();
-    app.held.resolve({ tasks: [app.old] }); await background; await navigation;
-    assert.equal(app.requests.filter(path => path === "/api/tasks").length, alreadyPending ? 2 : 1);
-    assert.equal(app.state.selected.id, "previous"); assert.equal(app.notices.length, 1);
-    assert.match(app.notices[0], /不存在或已被删除/);
-  }
-  const app = harness(), background = app.methods.refresh(); app.location.hash = "#task/newly-created";
-  const navigation = app.methods.applyRoute(), failure = new Error("Library unavailable");
-  const checks = [assert.rejects(background, error => error === failure), assert.rejects(navigation, error => error === failure)];
-  app.held.reject(failure); await Promise.all(checks);
-  assert.equal(app.requests.filter(path => path === "/api/tasks").length, 1);
-  assert.equal(app.state.selected.id, "previous"); assert.deepEqual(app.notices, []);
+test("only an actual 404 reports missing; transient failures remain retryable errors", async () => {
+  const app = harness(); app.location.hash = "#material/deleted"; await app.methods.applyRoute();
+  assert.equal(app.notices.length, 1); assert.match(app.notices[0], /不存在或已被删除/);
+  assert.equal(app.state.selected.id, app.old.id);
+  const unavailable = harness(), error = new Error("offline"); unavailable.failLookup(error);
+  unavailable.location.hash = "#task/newly-created";
+  await assert.rejects(unavailable.methods.applyRoute(), candidate => candidate === error);
+  assert.deepEqual(unavailable.notices, []); assert.equal(unavailable.requests.length, 1);
 });
 
-test("route-specific source and QA follow-up cannot attach to a newer selection during reader loading", async () => {
+test("source and QA follow-up cannot attach to newer selection during reader loading", async () => {
   for (const tab of ["source", "qa"]) {
-    const app = harness({ holdEdition: true }); app.state.items.push(app.next);
-    app.location.hash = `#task/newly-created?tab=${tab}`; const navigation = app.methods.applyRoute();
-    await app.enteredEdition.promise;
+    const app = harness({ holdEdition: true }); app.location.hash = `#task/newly-created?tab=${tab}`;
+    const navigation = app.methods.applyRoute(); await app.enteredEdition.promise;
     await app.methods.openItem(app.old); app.edition.resolve(); await navigation;
-    assert.equal(app.state.selected.id, "previous"); assert.equal(app.location.hash, "#task/previous");
-    assert.deepEqual(app.actions, []);
+    assert.equal(app.state.selected.id, app.old.id); assert.deepEqual(app.actions, []);
   }
 });
 
-test("current route preserves source and QA follow-up after its own reader load", async () => {
+test("current route retains its source and QA follow-up after reader loading", async () => {
   for (const tab of ["source", "qa"]) {
-    const app = harness({ holdEdition: true }); app.state.items.push(app.next);
-    app.location.hash = `#task/newly-created?tab=${tab}`; const navigation = app.methods.applyRoute();
-    await app.enteredEdition.promise; app.edition.resolve(); await navigation;
+    const app = harness({ holdEdition: true }); app.location.hash = `#task/newly-created?tab=${tab}`;
+    const navigation = app.methods.applyRoute(); await app.enteredEdition.promise; app.edition.resolve(); await navigation;
     assert.deepEqual(app.actions, [`${tab}:newly-created`]);
-    assert.equal(app.$("document").dataset.readerSource, "task:newly-created");
   }
 });
 
-
-test("a rejected fresh lookup remains an error without another retry or false missing notice", async () => {
-  const app = harness(), background = app.methods.refresh(); app.create();
-  app.location.hash = "#task/newly-created"; const navigation = app.methods.applyRoute();
-  const failure = new Error("Fresh snapshot unavailable"); app.failFreshTasks(failure);
-  const rejected = assert.rejects(navigation, error => error === failure);
-  app.held.resolve({ tasks: [app.old] }); await background; await rejected;
-  assert.equal(app.requests.filter(path => path === "/api/tasks").length, 2);
-  assert.equal(app.state.selected.id, "previous"); assert.deepEqual(app.notices, []);
-});
-
-test("rejecting a newer navigation cancels pending route follow-up even when the restored hash matches", async () => {
-  const app = harness({ holdEdition: true }); app.state.items.push(app.next);
-  app.location.hash = "#task/newly-created?tab=qa"; const navigation = app.methods.applyRoute();
-  await app.enteredEdition.promise;
+test("rejecting later navigation cancels pending route follow-up even when the restored hash matches", async () => {
+  const app = harness({ holdEdition: true }); app.location.hash = "#task/newly-created?tab=qa";
+  const navigation = app.methods.applyRoute(); await app.enteredEdition.promise;
   app.setGuard(false); app.location.hash = "#settings"; await app.methods.applyRoute();
   assert.equal(app.location.hash, "#task/newly-created");
-  app.edition.resolve(); await navigation;
-  assert.equal(app.state.selected.id, "newly-created"); assert.deepEqual(app.actions, []);
-});
-
-test("existing items and repeated direct routes do not force an extra library fetch", async () => {
-  const known = harness(); known.state.items.push(known.next); known.location.hash = "#task/newly-created";
-  await known.methods.applyRoute(); await known.methods.applyRoute();
-  assert.equal(known.requests.filter(path => path === "/api/tasks").length, 0);
-  assert.equal(known.requests.filter(path => path === "/api/study/activity").length, 1);
-  assert.equal(known.state.selected.id, "newly-created");
-  const joined = harness(), background = joined.methods.refresh();
-  joined.location.hash = "#task/newly-created"; const navigation = joined.methods.applyRoute();
-  joined.held.resolve({ tasks: [joined.next, joined.old] }); await Promise.all([background, navigation]);
-  await joined.methods.applyRoute();
-  assert.equal(joined.requests.filter(path => path === "/api/tasks").length, 1);
-  assert.equal(joined.state.selected.id, "newly-created");
+  app.edition.resolve(); await navigation; assert.deepEqual(app.actions, []);
 });

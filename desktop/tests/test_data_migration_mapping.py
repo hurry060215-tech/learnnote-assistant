@@ -230,7 +230,13 @@ class MappingTests(unittest.TestCase):
         linked = self.snapshot / "tasks/task-a/note.md"
         linked.unlink()
         linked.symlink_to(self.source / "tasks/task-a/note.md")
-        self.assert_blocked("linked_snapshot")
+        try:
+            self.assert_blocked("linked_snapshot")
+        finally:
+            # Remove the exact test-owned link while its target still exists.
+            # Windows rmtree can otherwise leave a dangling link behind after
+            # deleting the original tree, obscuring the migration assertion.
+            linked.unlink(missing_ok=True)
 
     @unittest.skipUnless(hasattr(os, "link"), "hardlinks unavailable")
     def test_source_hardlinks_copy_to_independent_stage_files(self):

@@ -73,16 +73,19 @@ $env:PYTHONPATH = "backend"
 python -m compileall backend\app
 python scripts/test-backend-offline.py
 python -m unittest discover scripts\tests -p "test_*.py"
-python -m unittest desktop.tests.test_desktop_launcher
+python -m unittest discover desktop/tests -p "test_*.py"
 
-node --check extension\background.js
-node --check extension\content.js
-node --check extension\page_hook.js
-node --check extension\sidepanel.js
-node --check web\app.js
-Get-ChildItem extension\tests\*.test.mjs | ForEach-Object { node $_.FullName }
-node web\tests\markdown_render.test.mjs
+npm test
 ```
+
+`npm test` checks every extension/web JavaScript file and discovers their unit
+tests. Windows native dialog contracts are an explicit, mandatory CI step:
+run `npm run test:native` in an interactive Windows session. That gate opens
+synthetic Save dialogs and creates fresh evidence under
+`build/release/native-save-calibration`; it refuses to overwrite earlier evidence.
+When evidence already exists, the test prints a unique rerun directory and keeps
+earlier evidence intact.
+The website browser acceptance below remains a separate check.
 
 The backend runner rejects external DNS, HTTP, sockets and yt-dlp URLs locally
 while retaining loopback API fixtures. Missed mocks must not fetch real course

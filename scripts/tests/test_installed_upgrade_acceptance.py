@@ -23,6 +23,55 @@ spec.loader.exec_module(runner)
 class InstalledUpgradeTests(unittest.TestCase):
     """Installed harness contracts requiring only requests and the standard library."""
 
+    def test_architecture_gate_is_explicit_and_does_not_replace_the_existing_native_phase(self):
+        with patch.object(runner.subprocess, 'run') as child:
+            runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.17',
+                          feature_fixture=Path('/owned/features.json'), architecture_fixture=Path('/owned/architecture.json'))
+        command = child.call_args.args[0]
+        self.assertIn('--feature-fixture', command)
+        self.assertEqual(command[-2:], ['--architecture-fixture', str(Path('/owned/architecture.json'))])
+        self.assertEqual(child.call_args.kwargs['timeout'], 420)
+        with patch.object(runner.subprocess, 'run') as child, self.assertRaises(AssertionError):
+            runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.17',
+                          architecture_fixture=Path('/owned/architecture.json'))
+        child.assert_not_called()
+
+    def test_architecture_seed_records_exact_real_api_scope_and_a_source_outside_the_first_page(self):
+        api = Mock()
+        materials, writes = [], []
+        def request(method, route, **kwargs):
+            if method == 'POST':
+                writes.append((route, kwargs))
+            if route == '/api/library/materials/import':
+                name, content, media_type = kwargs['files']['file']
+                self.assertEqual(media_type, 'text/markdown'); self.assertTrue(content.startswith(b'# Synthetic architecture '))
+                value = {'material_id': f'material-{len(materials)}', 'title': name[:-3]}
+                materials.append(value)
+                return Mock(json=Mock(return_value={'material': value}))
+            if route.startswith('/api/library/materials?'):
+                return Mock(json=Mock(return_value={'has_more': True, 'materials': materials[:100]}))
+            if route.endswith('/source'):
+                return Mock(content=b'synthetic source')
+            if route == '/api/courses':
+                self.assertEqual(kwargs['json']['sources'][0]['id'], 'material-100')
+                return Mock(json=Mock(return_value={'course': {'id': 'course-owned'}}))
+            if route == '/api/tasks/from-current-page':
+                self.assertEqual(kwargs['json']['options']['content_mode'], 'subtitles')
+                return Mock(json=Mock(return_value={'task_id': 'retry-owned'}))
+            if route.endswith('/transcript'):
+                return Mock(content=b'synthetic transcript')
+            if route == '/api/tasks/retry-owned':
+                return Mock(json=Mock(return_value={'task': {'status': 'success', 'summary_source': 'subtitle-extract'}}))
+            self.fail('Unexpected fixture API: ' + route)
+        api.call.side_effect = request
+        value = runner.architecture.seed_architecture(api, [{'start': 0, 'end': 2, 'text': 'Synthetic'}], 'http://127.0.0.1:1234/v1')
+        self.assertEqual(len(writes), 107)
+        self.assertEqual([route for route, _ in writes].count('/api/library/materials/import'), 105)
+        self.assertEqual(len(value['material_ids']), 105)
+        self.assertEqual(value['target']['id'], 'material-100')
+        self.assertEqual(value['target']['source_sha256'], hashlib.sha256(b'synthetic source').hexdigest())
+        self.assertFalse(any('/model/' in route or '/retry-summary' in route for route, _ in writes))
+
     def test_feature_gate_is_exact_version_and_extends_only_the_ui_envelope(self):
         for fixture_path in (Path('/owned/feature-fixture.json'), PureWindowsPath('C:/owned/feature-fixture.json')):
             with self.subTest(fixture_path=str(fixture_path)), patch.object(runner.subprocess, 'run') as child:
@@ -146,9 +195,12 @@ class InstalledUpgradeTests(unittest.TestCase):
                 outside = root / 'outside'; outside.mkdir()
                 try: target.symlink_to(outside, target_is_directory=True)
                 except OSError: self.skipTest('Host does not permit synthetic symlink creation')
-                with self.assertRaisesRegex(AssertionError, 'real directory|reparse point|resolves elsewhere'):
-                    runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
-                self.assertEqual(list(outside.iterdir()), [])
+                try:
+                    with self.assertRaisesRegex(AssertionError, 'real directory|reparse point|resolves elsewhere'):
+                        runner.prepare_installed_profile(data, runner.installed_environment(data, 8765))
+                    self.assertEqual(list(outside.iterdir()), [])
+                finally:
+                    target.unlink()  # Remove only our link before recursive fixture cleanup.
 
     def test_profile_rejects_reparse_attribute_before_traversal(self):
         for target_name in ('home', 'desktop'):

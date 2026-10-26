@@ -2,6 +2,7 @@
 // source website, model probe or backend mutation can leave this fixture.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
@@ -45,7 +46,8 @@ const routeReport = {
         if (name === "/api/preferences") return json({ task_options: { transcriber: "groq", whisper_model: "whisper-large-v3", visual_understanding: true } });
         if (name === "/api/model/route") return json(routeReport);
         if (name === "/api/tasks") return json({ tasks: [] });
-        if (name === "/api/library/materials") return json({ materials: [] });
+        if (name === "/api/tasks/catalog") return json(fixtureTaskCatalog([]));
+        if (name === "/api/library/materials") return json(fixtureMaterialPage([], url.search));
         if (name === "/api/connections") return json({ openrouter: { connected: false } });
         if (name === "/api/assistant/skills") return json({ skills: [], features: [] });
         if (name === "/api/assistant/history") return json({ items: [] });

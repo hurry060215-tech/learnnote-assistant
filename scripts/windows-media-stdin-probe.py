@@ -107,69 +107,6 @@ def worker(source, directory, stdin_mode):
             raise RuntimeError("Owned diagnostic control reader did not drain")
 
 
-class WindowsJob:
-    """Unnamed containment for this probe's one owned, start-gated worker tree."""
-    def __init__(self, child):
-        import ctypes
-        from ctypes import wintypes as w
-        self.ctypes, self.pid, self.handle = ctypes, child.pid, None
-        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        signatures = {
-            "CreateJobObjectW": ([ctypes.c_void_p, w.LPCWSTR], w.HANDLE),
-            "SetInformationJobObject": ([w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD], w.BOOL),
-            "AssignProcessToJobObject": ([w.HANDLE, w.HANDLE], w.BOOL),
-            "QueryInformationJobObject": ([w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD, ctypes.c_void_p], w.BOOL),
-            "TerminateJobObject": ([w.HANDLE, w.UINT], w.BOOL),
-            "CloseHandle": ([w.HANDLE], w.BOOL),
-        }
-        for name, (arguments, result) in signatures.items():
-            function = getattr(self.kernel, name); function.argtypes, function.restype = arguments, result
-        class Limits(ctypes.Structure):
-            _fields_ = [("process_time", ctypes.c_int64), ("job_time", ctypes.c_int64), ("flags", w.DWORD),
-                ("min_working", ctypes.c_size_t), ("max_working", ctypes.c_size_t), ("active_limit", w.DWORD),
-                ("affinity", ctypes.c_size_t), ("priority", w.DWORD), ("scheduling", w.DWORD)]
-        class Extended(ctypes.Structure):
-            _fields_ = [("basic", Limits), ("io", ctypes.c_uint64 * 6),
-                ("process_memory", ctypes.c_size_t), ("job_memory", ctypes.c_size_t),
-                ("peak_process_memory", ctypes.c_size_t), ("peak_job_memory", ctypes.c_size_t)]
-        try:
-            self.handle = self.kernel.CreateJobObjectW(None, None)
-            if not self.handle: raise ctypes.WinError(ctypes.get_last_error())
-            limits = Extended(); limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-            if not self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
-                raise ctypes.WinError(ctypes.get_last_error())
-            if not self.kernel.AssignProcessToJobObject(self.handle, int(child._handle)):
-                raise ctypes.WinError(ctypes.get_last_error())
-        except BaseException as error:
-            try: self.close()
-            except BaseException as cleanup: error.add_note(f"Job close also failed: {cleanup}")
-            raise
-
-    def active(self):
-        c = self.ctypes
-        class Accounting(c.Structure):
-            _fields_ = [("times", c.c_int64 * 4), ("faults", c.c_uint32), ("total", c.c_uint32),
-                        ("active", c.c_uint32), ("terminated", c.c_uint32)]
-        value = Accounting()
-        if not self.kernel.QueryInformationJobObject(self.handle, 1, c.byref(value), c.sizeof(value), None):
-            raise c.WinError(c.get_last_error())
-        return value.active
-
-    def terminate(self):
-        if not self.kernel.TerminateJobObject(self.handle, 1):
-            raise self.ctypes.WinError(self.ctypes.get_last_error())
-        deadline = time.monotonic() + 5
-        while self.active():
-            if time.monotonic() >= deadline: raise TimeoutError("Owned job descendants did not exit")
-            time.sleep(.01)
-
-    def close(self):
-        if self.handle:
-            handle, self.handle = self.handle, None
-            if not self.kernel.CloseHandle(handle):
-                raise self.ctypes.WinError(self.ctypes.get_last_error())
-
-
 def stop_owned(child, expected_command, cooperative_seconds=5, job=None):
     if list(child.args) != expected_command or expected_command[0] != sys.executable:
         raise AssertionError("Cleanup requires the exact owned Python launch")
@@ -201,8 +138,23 @@ def stop_owned(child, expected_command, cooperative_seconds=5, job=None):
     return outcome
 
 
+def worker_process_options():
+    if os.name == "nt":
+        return {"creationflags": 0x4 | subprocess.CREATE_NO_WINDOW}
+    return {"start_new_session": True}
+
+
 def create_owned_job(child):
-    return WindowsJob(child) if os.name == "nt" else None
+    if os.name != "nt":
+        return None
+    from app.media_process import WindowsJob
+    job = WindowsJob(child)
+    try:
+        job.resume(child.pid)
+        return job
+    except BaseException:
+        job.close()
+        raise
 
 
 def run_case(source, directory, stdin_mode, *, command=None, deadline=WORKER_DEADLINE, tools=None):
@@ -216,7 +168,7 @@ def run_case(source, directory, stdin_mode, *, command=None, deadline=WORKER_DEA
     result = {"mode": stdin_mode, "outcome": "worker_timeout"}
     try:
         child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="replace", env=env, start_new_session=os.name != "nt")
+            text=True, encoding="utf-8", errors="replace", env=env, **worker_process_options())
     except Exception as error:
         return {**result, "outcome": "launch_error", "harness_error": f"{type(error).__name__}: {error}"[:300]}
     result["worker_pid"] = child.pid

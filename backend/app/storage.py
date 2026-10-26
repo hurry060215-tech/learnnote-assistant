@@ -25,6 +25,9 @@ from .worker_lease import worker_lease
 from .task_paths import TaskArtifactUnavailable, task_manifest_path, validate_task_directory
 
 _lock = threading.RLock()
+# Keep ordinary Windows read handles closed before replacing/deleting their
+# manifest, without making readers wait for task transitions or search indexing.
+_manifest_io_lock = threading.RLock()
 _state_depth = threading.local()
 
 
@@ -136,23 +139,31 @@ def save_task(record: TaskRecord) -> None:
         record.control_retry_count = record.retry_count
         record = migrate_task_record(record)
         record.updated_at = now_iso()
-        atomic_write_text(task_file(record.id), record.model_dump_json(indent=2))
+        payload = record.model_dump_json(indent=2)
+        with _manifest_io_lock:
+            atomic_write_text(task_file(record.id), payload)
         index_task(record, task_root=TASK_DIR / record.id)
 
 
 def get_task(task_id: str) -> TaskRecord:
-    with _lock:
+    """Read one complete published manifest, independently of its search index.
+
+    Read/modify/write callers still own task_state_transaction(). The short I/O
+    lock only protects local file-handle lifetime; it is never held for indexing.
+    """
+    with _manifest_io_lock:
         try:
             path = task_manifest_path(TASK_DIR / task_id, task_id)
         except TaskArtifactUnavailable as exc:
             if exc.reason == "missing_destination":
                 raise FileNotFoundError(task_id) from exc
             raise
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        record = TaskRecord.model_validate(migrate_task_payload(payload))
-        if record.id != task_id:
-            raise TaskArtifactUnavailable("task_identity_mismatch")
-        return record
+        content = path.read_text(encoding="utf-8")
+    payload = json.loads(content)
+    record = TaskRecord.model_validate(migrate_task_payload(payload))
+    if record.id != task_id:
+        raise TaskArtifactUnavailable("task_identity_mismatch")
+    return record
 
 
 def update_task(task_id: str, **changes: Any) -> TaskRecord:
@@ -381,8 +392,9 @@ def delete_task(task_id: str) -> dict[str, Any]:
             raise RuntimeError("task_index_cleanup_failed")
         edition_key = hashlib.sha256(f"task:{task_id}".encode()).hexdigest()
         (DATA_DIR / "user-editions" / f"{edition_key}.json").unlink(missing_ok=True)
-        if task_path.exists():
-            shutil.rmtree(task_path)
+        with _manifest_io_lock:
+            if task_path.exists():
+                shutil.rmtree(task_path)
         upload_bytes = 0
         if owned_upload:
             try:
@@ -492,20 +504,9 @@ def list_tasks_snapshot(*, strict: bool = False) -> list[TaskRecord]:
 
 
 def list_tasks() -> list[TaskRecord]:
-    ensure_dirs()
-    records = reconcile_stale_tasks(list_tasks_snapshot())
-    repaired = []
-    for snapshot in records:
-        with task_state_transaction():
-            try:
-                record = get_task(snapshot.id)
-            except (OSError, ValueError, TypeError):
-                continue
-            title = clean_task_title(record.title, record.page_url)
-            if title != record.title:
-                record = update_task(record.id, title=title)
-            repaired.append(record)
-    return sorted(repaired, key=lambda item: item.created_at, reverse=True)
+    """Read once; display normalization never repairs or completes a task."""
+    return [record.model_copy(update={"title": clean_task_title(record.title, record.page_url)})
+            for record in list_tasks_snapshot()]
 
 
 def _parse_iso_datetime(value: str) -> datetime | None:
@@ -525,30 +526,16 @@ def reconcile_stale_tasks(
     max_age: timedelta = STALE_TASK_AFTER,
     cancelling_max_age: timedelta = STALE_CANCELLING_AFTER,
 ) -> list[TaskRecord]:
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    """Compatibility refresh; only queue recovery may decide a worker has stopped.
+
+    A paused or queued job may legitimately have no progress for any duration.
+    The retained age arguments no longer authorize state transitions.
+    """
     result = []
     for snapshot in records:
-        with task_state_transaction():
-            try:
-                record = get_task(snapshot.id)
-            except (OSError, ValueError, TypeError):
-                continue
-            updated = _parse_iso_datetime(record.updated_at) or _parse_iso_datetime(record.created_at)
-            # Elapsed time cannot prove that a worker observed cancellation.
-            if record.status in {"queued", "running"} and not record.cancel_requested and updated and current - updated > max_age:
-                from .task_media_guard import require_current_media_provenance, available_current_media
-                try:
-                    require_current_media_provenance(record, TASK_DIR / record.id)
-                except TaskArtifactUnavailable:
-                    result.append(record)
-                    continue  # A read/list cannot apply an uncertain migration or rewrite its state.
-                try:
-                    has_media = available_current_media(record, TASK_DIR / record.id) is not None
-                except TaskArtifactUnavailable:
-                    has_media = False
-                detail = ("任务长时间没有进度，后端可能已退出。已下载的媒体仍保留，可从媒体继续切片总结。"
-                          if has_media else "任务长时间没有进度，后端可能已退出。请重新创建任务；旧任务记录已保留。")
-                record = update_task(record.id, status="failed", phase="failed", error_code="task_interrupted",
-                                     error_detail=detail, message=detail)
+        try:
+            record = get_task(snapshot.id)
             result.append(record)
+        except (OSError, ValueError, TypeError):
+            continue
     return result

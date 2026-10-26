@@ -967,22 +967,27 @@ export function installProductWorkspace(ctx) {
       state.items.filter((i) =>
         ["queued", "running", "cancelling"].includes(i.status),
       ).length + " 个任务";
-    $("homeLibraryCount").textContent = state.items.length + " 份内容";
-    $("homeRecentList").innerHTML =
-      state.items
-        .slice(0, 6)
+    $("homeLibraryCount").textContent = (state.items.filter(item => item.kind === "task").length + (state.materialTotal ?? state.items.filter(item => item.kind === "material").length)) + " 份内容";
+    const recentItems = [...state.items.filter(item => item.kind === "task"), ...(state.recentMaterials || state.items.filter(item => item.kind === "material"))]
+      .sort((a, b) => (b.updated_at || b.created_at || "").localeCompare(a.updated_at || a.created_at || "")).slice(0, 6);
+    const recentMarkup =
+      recentItems
         .map(
           (item, i) =>
             `<button class="recent-note" data-recent="${i}"><span><strong>${esc(item.title)}</strong><small>${esc(item.kind === "task" ? (item.summary_source === "subtitle-extract" ? "字幕已提取" : item.summary_source === "local-template" ? "字幕已保留 · 待生成总结" : { success: "笔记已完成", failed: "需要处理", cancelled: "已停止", running: "正在整理", queued: item.awaiting_confirmation ? "等待开始" : "排队中" }[item.status] || "正在整理") : "本地资料")} · ${esc((item.updated_at || "").slice(0, 10))}</small></span></button>`,
         )
         .join("") ||
       '<p class="muted">导入内容后，最近笔记和处理状态会显示在这里。</p>';
+    if ($("homeRecentList").dataset.renderedRecent !== recentMarkup) {
+      $("homeRecentList").innerHTML = recentMarkup;
+      $("homeRecentList").dataset.renderedRecent = recentMarkup;
+    }
     $("homeRecentList")
       .querySelectorAll("[data-recent]")
       .forEach(
         (b) =>
           (b.onclick = () =>
-            openItem(state.items[Number(b.dataset.recent)]).catch((e) =>
+            openItem(recentItems[Number(b.dataset.recent)]).catch((e) =>
               notice(e.message),
             )),
       );

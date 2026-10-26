@@ -1,6 +1,12 @@
 # LearnNote 架构边界
 
-LearnNote 当前采用“行为不变、逐步拆分”的策略。任务目录中的 JSON 是任务事实源，个人批注另存为版本化 JSON。资料原文件也属于需要保留的事实；索引是可重建投影。`task-queue.sqlite3` 是有界的执行意图日志，不保存 Cookie、API Key 或完整浏览器请求。
+LearnNote 保留数据与公开契约，按实际职责重构。任务目录中的 JSON 是任务事实源，个人批注另存为版本化 JSON。资料原文件也属于需要保留的事实；索引是可重建投影。`task-queue.sqlite3` 是有界的执行意图日志，不保存 Cookie、API Key 或完整浏览器请求。
+
+2026-10-23 的核心职责重构与实测见 [架构审查记录](ARCHITECTURE_REVIEW_20261023.md)。
+任务列表现在是只读快照；恢复服务结合 generation、分 lane worker lease 和独立 callback owner lease 裁决执行状态。
+状态保存与内容索引区分：未变正文只更新目录元数据，内容/FTS/证据/持久回执原子发布。
+实际工作台使用轻量 `/api/tasks/catalog`，选中内容按 ID 读取完整详情；独立资料先筛选再分页，列表不承担存在性判定。
+媒体子进程由完整进程树拥有者管理；本地与 CI 共用 JavaScript gate，并发现全部 desktop 测试。
 
 ## 执行与恢复
 

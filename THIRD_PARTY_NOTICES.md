@@ -39,6 +39,7 @@ binary or adding optional yt-dlp components.
 | faster-whisper | Optional local speech-to-text engine | <https://github.com/SYSTRAN/faster-whisper> | MIT |
 | CTranslate2 | Inference runtime used by faster-whisper | <https://github.com/OpenNMT/CTranslate2> | MIT |
 | OpenAI Python | OpenAI-compatible API client for transcription and note generation | <https://github.com/openai/openai-python> | Apache License 2.0 |
+| filelock | Model-cache file locking for local ASR and optional semantic retrieval | <https://github.com/tox-dev/filelock> | MIT |
 
 Models are separate works from these libraries. Whisper-compatible model
 weights and remote model services can have their own licenses, acceptable-use
@@ -74,6 +75,7 @@ runtime component. [Official release](https://pypi.org/project/psutil/7.2.2/),
 | Uvicorn | Local ASGI server | <https://github.com/Kludex/uvicorn> | BSD 3-Clause |
 | Pydantic | Request, settings, and task data validation | <https://github.com/pydantic/pydantic> | MIT |
 | Requests | HTTP client | <https://github.com/psf/requests> | Apache License 2.0 |
+| certifi | CA certificate bundle used by Python HTTPS clients | <https://github.com/certifi/python-certifi> | MPL 2.0 |
 | charset-normalizer | Strict local text-encoding detection for imported subtitles and documents | <https://github.com/jawah/charset_normalizer> | MIT |
 | python-multipart | Local video upload parsing | <https://github.com/Kludex/python-multipart> | Apache License 2.0 |
 | PyWebView | Windows desktop application shell | <https://github.com/r0x0r/pywebview> | BSD 3-Clause |
@@ -92,6 +94,7 @@ provided under Microsoft's terms and is not licensed by this repository.
 | Component | Use in LearnNote | Upstream | License |
 | --- | --- | --- | --- |
 | Playwright | Website visual acceptance tests | <https://github.com/microsoft/playwright> | Apache License 2.0 |
+| setuptools | Python packaging support in the locked Windows build environment | <https://github.com/pypa/setuptools> | MIT |
 
 The Windows build and installer can also use PyInstaller, Inno Setup, and
 platform tooling. Their licenses and any notices included with a generated

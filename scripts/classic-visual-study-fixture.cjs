@@ -1,5 +1,6 @@
 // Synthetic responses only; the shipped classic page owns rendering and actions.
 const assert = require('node:assert/strict');
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -44,7 +45,8 @@ function fixtureResponse(pathname, { method = 'GET', postData = null, contentTyp
   if (pathname === '/api/study/plan') return plan && !search ? { json: { plan: { ...plan } } } : null;
   if (pathname === '/health') return { json: { ffmpeg: true, extension_connected: false, llm_model_configured: false } };
   if (pathname === '/api/tasks') return { json: { tasks: [task, emptyTask] } };
-  if (pathname === '/api/library/materials') return { json: { materials: [] } };
+  if (pathname === '/api/tasks/catalog' && !search) return { json: fixtureTaskCatalog([task, emptyTask]) };
+  if (pathname === '/api/library/materials') return { json: fixtureMaterialPage([], search) };
   const image = /^\/data\/classic-visual-study\/(W00[134])\.svg$/.exec(pathname);
   if (image) return { contentType: 'image/svg+xml', body: grid(image[1]) };
   for (const record of [task, emptyTask]) {

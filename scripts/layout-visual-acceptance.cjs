@@ -1,6 +1,7 @@
 // Regression: a source stays readable while the assistant and library resize.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -82,10 +83,11 @@ const { execFileSync } = require("node:child_process");
     ).join("\n\n");
   await p.route("**/api/tasks", (r) => r.fulfill({ json: { tasks } }));
   await p.route("**/api/library/materials?*", (r) =>
-    r.fulfill({ json: { materials: [] } }),
+    r.fulfill({ json: fixtureMaterialPage([], new URL(r.request().url()).search) }),
   );
   await p.route("**/api/tasks/*", (r) => {
     const id = new URL(r.request().url()).pathname.split("/").at(-1);
+    if (id === "catalog") return r.fulfill({ json: fixtureTaskCatalog(tasks) });
     return tasks.some((t) => t.id === id)
       ? r.fulfill({ json: { task: tasks.find((t) => t.id === id) } })
       : r.continue();
@@ -301,6 +303,7 @@ const { execFileSync } = require("node:child_process");
     assert.equal(await p.locator("#sourcePanel").isVisible(), false);
     await p.locator("#closeAssistant").click();
     await p.locator('#notes [data-id="layout-captions"]').click();
+    await waitForTaskReader(p, "layout-captions");
     await p.locator("#source").click();
     await p.waitForSelector("#sourceTranscript[open] .cue");
     assert.equal(await p.locator("#player").isVisible(), false);

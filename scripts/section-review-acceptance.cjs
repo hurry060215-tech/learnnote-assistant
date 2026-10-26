@@ -1,6 +1,7 @@
 // Actual browser, isolated real backend, and one local synthetic provider.
 // LEARNNOTE_ACCEPTANCE_BROWSER selects an installed Chromium path; default is Edge.
 const assert = require("node:assert/strict");
+const { waitForTaskReader } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const { spawn } = require("node:child_process");
 const { createHash } = require("node:crypto");
@@ -90,7 +91,7 @@ async function until(check, label, timeout = 20000) {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.evaluate(() => document.body.classList.remove("dark"));
     }
-    await page.goto(`${base}/#task/${fixture.task_id}`); await page.locator("#document h1").waitFor();
+    await page.goto(`${base}/#task/${fixture.task_id}`); await waitForTaskReader(page, fixture.task_id);
     const noteBefore = await page.locator("#document").innerText();
     await open(); await capture("ready"); assert.equal((await readState()).calls, 0);
     await preview(); assert.equal((await readState()).calls, 0);
@@ -126,7 +127,7 @@ async function until(check, label, timeout = 20000) {
     await page.locator("#sectionReviewPrepare").waitFor(); await page.locator("[data-close-tool]").click();
     assert.equal(await page.locator("#document").innerText(), noteBefore); assert.deepEqual(hashes(), originals);
     report.checks.push("Rejected response has no retry; close/reopen suppresses stale results and unlocks; Escape/back/close work; original artifacts unchanged");
-    await page.goto(`${base}/#task/${fixture.partial_task_id}`); await page.locator("#document h1").waitFor();
+    await page.goto(`${base}/#task/${fixture.partial_task_id}`); await waitForTaskReader(page, fixture.partial_task_id);
     const partial = await page.locator("#document").innerText(); assert.match(partial, /字面匹配/); assert.doesNotMatch(partial, /【待核对/);
     assert.match(partial, /未完成最终校验/);
     await page.screenshot({ path: path.join(out, "partial-reading.png"), animations: "disabled" }); report.screenshots.push("partial-reading.png");

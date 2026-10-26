@@ -108,7 +108,7 @@ EXPECTED_SCHEMAS = {'activation.sqlite3': {'facts': ('table',
                                  'TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, requires_context INTEGER NOT '
                                  'NULL, state TEXT NOT NULL, updated_at REAL NOT NULL, priority INTEGER NOT '
                                  "NULL DEFAULT 0, generation TEXT NOT NULL DEFAULT '', cancel_operation_id "
-                                 "TEXT NOT NULL DEFAULT '', callback_finished INTEGER)"),
+                                 "TEXT NOT NULL DEFAULT '', callback_finished INTEGER, owner_id TEXT NOT NULL DEFAULT '')"),
                         'queue_settings': ('table',
                                            'queue_settings',
                                            'CREATE TABLE queue_settings (id INTEGER PRIMARY KEY CHECK(id=1), '

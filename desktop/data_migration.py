@@ -18,7 +18,7 @@ from uuid import uuid4
 
 from .data_migration_inventory import (
     MigrationError, absolute_directory, checked, copy_snapshot, destination_directory,
-    fail, fingerprint, inventory, same_snapshot, COORDINATION_ROOTS,
+    fail, fingerprint, inventory, same_snapshot, COORDINATION_ROOTS, queue_owner_files,
 )
 from .data_migration_paths import plan_reference_changes, apply_reference_changes
 from .data_migration_databases import plan_databases, apply_databases
@@ -179,7 +179,7 @@ def stopped_source_locks(source):
     """
     checked(source / ".desktop-session.lock")
     with ExitStack() as stack:
-        names = [".desktop-session.lock", ".library-access.lock"]
+        names = [".desktop-session.lock", ".library-access.lock", *queue_owner_files(source)]
         lease_roots = [source]
         for relative in (*COORDINATION_ROOTS, "assistant-operations"):
             candidate = source / relative

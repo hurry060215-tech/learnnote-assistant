@@ -2,6 +2,7 @@
 // bridge. No desktop exit/copy/config write, real user paths, server, or model.
 // Run in the authorized hosted Windows visual job; do not bypass local denials.
 const assert = require("node:assert/strict");
+const { fixtureTaskCatalog, fixtureMaterialPage } = require('./library-browser-fixture.cjs');
 const fs = require("node:fs"), path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { cleanupFixture } = require("./course-upgrade-fixture-helpers.cjs");
@@ -42,10 +43,11 @@ function installBridge(plan) {
     restart_application: async () => { control.calls.push({ method: "legacy-restart" }); throw Error("Legacy restart is forbidden"); },
   } };
 }
-function syntheticResponse(pathname) {
+function syntheticResponse(pathname, search = '') {
   return {
     "/health": { ok: true, service: "learnnote", app_version: "0.2.15", backend_version: "0.2.15", protocol_version: 1, llm_model_configured: false, local_asr_available: false, model_provider_presets: [], assistant_capabilities: {}, data_paths: { root: PLAN.source } },
-    "/api/tasks": { tasks: [] }, "/api/library/materials": { materials: [] },
+    "/api/tasks": { tasks: [] }, "/api/tasks/catalog": fixtureTaskCatalog([]),
+    "/api/library/materials": fixtureMaterialPage([], search),
     "/api/preferences": { task_options: { transcriber: "none", note_style: "study", note_template: "standard", summary_depth: "standard", local_ocr: false } },
     "/api/model/connection": { model: null, configured: false },
     "/api/model/route": { routes: [], blocking_reasons: [], data_leaving_device: [], offline_source_confirmed: true },
@@ -138,7 +140,7 @@ async function main() {
           assert(target.startsWith(path.join(ROOT, "web") + path.sep)); assert(fs.statSync(target).isFile());
           return await route.fulfill({ body: fs.readFileSync(target), contentType: ({ ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2" })[path.extname(target)] || "application/octet-stream" });
         }
-        const response = syntheticResponse(url.pathname); assert(response, `Unexpected route: ${url.pathname}`);
+        const response = syntheticResponse(url.pathname, url.search); assert(response, `Unexpected route: ${url.pathname}`);
         return await route.fulfill({ json: response });
       } catch (error) { report.unexpected_requests.push(`${request.method()} ${url.pathname}: ${error.message}`); await route.abort("blockedbyclient").catch(() => {}); }
     });

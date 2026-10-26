@@ -61,7 +61,9 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
         self.assertLessEqual(len(case["parser_errors"]), 4)
         self.assertTrue(case["reader_threads_drained"])
         self.assertEqual(case["worker_exit_code"], 0)
-        self.assertEqual(case["worker_cleanup"], "cooperative")
+        # A Windows venv redirector may exit before its contained interpreter;
+        # the latter is still explicitly reaped before the readers can drain.
+        self.assertIn(case["worker_cleanup"], ("cooperative", "owned_tree_after_cooperative_exit"))
 
     def test_missing_final_identity_is_not_backfilled_from_launch(self):
         record = {"mode": "inherited", "child_pid": 12, "command": ["ffmpeg"], "stdin": "inherited",
@@ -72,8 +74,11 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
                 "output_bytes=12,output_sha256='b'*64); del result['input_sha256']; "
                 "print(json.dumps({'probe_result':result}),flush=True); sys.stdin.readline()")
         tools = {name: {"executable": sys.executable} for name in ("ffmpeg", "ffprobe")}
-        case = probe.run_case(Path("source"), Path("output"), "inherited",
-                              command=[sys.executable, "-c", code], tools=tools)
+        # This synthetic worker uses only the standard library; its reported
+        # PID must identify the interpreter, not a Windows venv redirector.
+        with patch.object(probe.sys, "executable", sys._base_executable):
+            case = probe.run_case(Path("source"), Path("output"), "inherited",
+                                  command=[sys.executable, "-c", code], tools=tools)
         self.assertEqual(case["outcome"], "completed")
         self.assertNotIn("input_sha256", case)
         self.assertFalse(probe.case_complete(case))
@@ -103,7 +108,7 @@ class WindowsMediaStdinProbeTests(unittest.TestCase):
                         f"Path({str(marker) + '.tmp'!r}).replace({str(marker)!r}); " + ("sys.stdin.readline()" if exits_first == "cooperative" else "" if exits_first else "time.sleep(60)"))
                 command = [sys.executable, "-c", code]
                 child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                         text=True, start_new_session=os.name != "nt")
+                                         text=True, **probe.worker_process_options())
                 job = None
                 try:
                     job = probe.create_owned_job(child)
