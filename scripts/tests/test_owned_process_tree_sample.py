@@ -238,22 +238,29 @@ class ActualChildTests(unittest.TestCase):
     def test_owned_child_memory_cpu_and_reap(self):
         sampler = module.OwnedProcessTreeSampler().start()
         child = subprocess.Popen([sys.executable, "-c", """
-import sys, time
+import os, sys, time
 data = bytearray(b'x') * (32 * 1024 * 1024)
-print('ready', flush=True)
+print('ready', os.getpid(), flush=True)
 deadline = time.monotonic() + .4
 while time.monotonic() < deadline:
     sum(range(1000))
 sys.stdin.readline()
 """], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         try:
-            self.assertEqual(child.stdout.readline().strip(), "ready")
+            ready, worker = child.stdout.readline().strip().split()
+            self.assertEqual(ready, "ready")
+            worker_pid = int(worker)
             time.sleep(.55)
             child.communicate("done\n", timeout=5)
             time.sleep(module.INTERVAL_SECONDS * 3)
             report = sampler.stop()
             self.assertEqual(report["status"], "sampled", report["errors"])
-            rows = [row for row in report["processes"] if row["pid"] == child.pid]
+            # Windows venv python.exe can be a waiting redirector. Its child
+            # owns the allocation and CPU work, and must be sampled separately.
+            launch_rows = [row for row in report["processes"] if row["pid"] == child.pid]
+            self.assertEqual(len(launch_rows), 1)
+            self.assertTrue(launch_rows[0]["exited_observed"])
+            rows = [row for row in report["processes"] if row["pid"] == worker_pid]
             self.assertEqual(len(rows), 1)
             self.assertTrue(rows[0]["exited_observed"])
             self.assertGreater(rows[0]["last_cpu_s"] - rows[0]["baseline_cpu_s"], .05)
@@ -261,7 +268,7 @@ sys.stdin.readline()
             self.assertGreaterEqual(len(peak["processes"]), 2)
             self.assertEqual(peak["rss_observed_sum_bytes"], sum(r["rss_bytes"] for r in peak["processes"]))
             self.assertGreater(peak["rss_observed_sum_bytes"], max(r["rss_bytes"] for r in peak["processes"]))
-            self.assertGreater(next(r["rss_bytes"] for r in peak["processes"] if r["pid"] == child.pid), 32 * 1024 * 1024)
+            self.assertGreater(next(r["rss_bytes"] for r in peak["processes"] if r["pid"] == worker_pid), 32 * 1024 * 1024)
             self.assertEqual(child.returncode, 0)
         finally:
             if child.poll() is None:

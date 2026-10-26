@@ -20,6 +20,24 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def worker_executable(environment):
+    """Keep this venv while giving the parent the actual interpreter PID.
+
+    CPython's Windows venv redirector uses this same child-only variable when
+    launching the base interpreter. No user or machine environment is changed.
+    """
+    if os.name == 'nt' and sys.prefix != sys.base_prefix:
+        environment['__PYVENV_LAUNCHER__'] = sys.executable
+        return sys._base_executable
+    return sys.executable
+
+
+def owned_worker(command, **kwargs):
+    sys.path.insert(0, str(ROOT / 'backend'))
+    from app.media_process import owned_media_process
+    return owned_media_process(command, stdin=subprocess.DEVNULL, **kwargs)
+
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -118,6 +136,7 @@ def worker(output: Path, mode: str, duration: int):
     termination = json.loads((output / 'terminated.json').read_text(encoding='utf-8'))
     assert termination['pid'] == interrupted['worker_pid'] != os.getpid()
     assert termination['exit_code'] != 0
+    assert termination['process_tree_reaped'] is True
     gated_id = json.loads((output / 'ready.json').read_text(encoding='utf-8'))['gated_id']
     # Observe the actual FastAPI startup sequence without replacing its work.
     from fastapi.testclient import TestClient
@@ -218,24 +237,28 @@ def run_parent(args, output: Path):
     (data / 'synthetic.srt').write_text('\n\n'.join(
         f'{i + 1}\n{stamp(i * args.duration_seconds // 4)} --> {stamp((i + 1) * args.duration_seconds // 4)}\n'
         f'Synthetic lesson checkpoint {i + 1}: durable local evidence remains traceable.' for i in range(4)), encoding='utf-8')
-    command = [sys.executable, str(Path(__file__).resolve()), '--output-dir', str(output),
+    command = [worker_executable(env), str(Path(__file__).resolve()), '--output-dir', str(output),
                '--duration-seconds', str(args.duration_seconds), '--worker']
     with (output / 'start.log').open('w', encoding='utf-8') as log:
-        process = subprocess.Popen(command + ['start'], env=env, stdout=log, stderr=subprocess.STDOUT)
-        try:
-            deadline = time.monotonic() + 600
-            while not (output / 'ready.json').is_file():
-                if process.poll() is not None:
-                    raise RuntimeError('Initial pipeline exited before interruption; see start.log')
-                if time.monotonic() > deadline:
-                    raise TimeoutError('Timed out waiting for durable interruption checkpoint')
-                time.sleep(.1)
-        finally:
-            process.kill()
-            process.wait(timeout=30)
-            if process.returncode == 0:
-                raise AssertionError("Initial worker must terminate abnormally")
-            (output / "terminated.json").write_text(json.dumps({"pid": process.pid, "exit_code": process.returncode}), encoding="utf-8")
+        with owned_worker(command + ['start'], env=env, stdout=log, stderr=subprocess.STDOUT) as process:
+            try:
+                deadline = time.monotonic() + 600
+                while not (output / 'ready.json').is_file():
+                    if process.poll() is not None:
+                        raise RuntimeError('Initial pipeline exited before interruption; see start.log')
+                    if time.monotonic() > deadline:
+                        raise TimeoutError('Timed out waiting for durable interruption checkpoint')
+                    time.sleep(.1)
+                interrupted = json.loads((output / 'interrupted.json').read_text(encoding='utf-8'))
+                assert process.pid == interrupted['worker_pid'], 'Owned process must be the actual worker'
+            finally:
+                process.kill()
+                process.wait(timeout=30)
+                if process.returncode == 0:
+                    raise AssertionError("Initial worker must terminate abnormally")
+        # The owning context has now terminated and reaped all descendants.
+        (output / "terminated.json").write_text(json.dumps({"pid": process.pid, "exit_code": process.returncode,
+            "process_tree_reaped": True}), encoding="utf-8")
     with (output / 'recover.log').open('w', encoding='utf-8') as log:
         subprocess.run(command + ['recover'], env=env, stdout=log, stderr=subprocess.STDOUT,
                        timeout=660, check=True)

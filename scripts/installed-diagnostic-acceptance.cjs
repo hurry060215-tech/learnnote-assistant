@@ -18,11 +18,14 @@ const CONTROL_SUBPHASES = ['edit-query', 'edit-count', 'edit-control', 'edit-val
 function parseArgs(args) {
   assert(args.length >= 7, 'Expected output-dir debug-port api-origin task-id owned-app-pid --expected-version VERSION [--startup-only]');
   const [output, port, origin, taskId, pid] = args;
-  let startupOnly = false, expectedVersion, featureFixture, privateLocationEvidence = false;
+  let startupOnly = false, expectedVersion, featureFixture, architectureFixture, privateLocationEvidence = false;
   for (let i = 5; i < args.length; i++) {
     if (args[i] === '--private-location-evidence' && !privateLocationEvidence) privateLocationEvidence = true;
     else if (args[i] === '--startup-only' && !startupOnly) startupOnly = true;
     else if (args[i] === '--feature-fixture' && !featureFixture) featureFixture = args[++i];
+    else if (args[i] === '--architecture-fixture' && !architectureFixture) {
+      architectureFixture = args[++i]; assert(architectureFixture && !architectureFixture.startsWith('--'), 'Architecture fixture path is required');
+    }
     else if (args[i] === '--expected-version' && !expectedVersion) expectedVersion = args[++i];
     else throw new Error('Unknown or repeated acceptance option');
   }
@@ -37,7 +40,8 @@ function parseArgs(args) {
   assert(output && !output.startsWith('--'), 'Output directory is required');
   if (!startupOnly && expectedVersion === '0.2.17') assert(featureFixture && !featureFixture.startsWith('--'), '0.2.17 requires the old-installed feature fixture');
   if (featureFixture) assert(expectedVersion === '0.2.17' && !startupOnly, 'Feature fixture is only for current 0.2.17 acceptance');
-  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
+  if (architectureFixture) assert(featureFixture && expectedVersion === '0.2.17' && !startupOnly && !architectureFixture.startsWith('--'), 'Architecture fixture requires the current full installed feature gate');
+  return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(architectureFixture ? { architectureFixture: path.resolve(architectureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
 }
 
 async function bounded(promise, label, timeout = TIMEOUT) {
@@ -863,6 +867,13 @@ async function main(args) {
       const fixture = JSON.parse(fs.readFileSync(config.featureFixture, 'utf8'));
       await runInstalledFeatures(page, { origin: config.origin, taskId: config.taskId, fixture, read, capture, out: config.output, report });
       report.checks.push('Old-installed 501 opinions remain bounded and selectable; local preview budgets and consent reset; bundled h4 and follow geometry clear actual sticky chrome');
+    }
+    if (config.architectureFixture) {
+      report.phase = 'installed-workspace-architecture';
+      assert(fs.statSync(config.architectureFixture).size <= 8192, 'Bounded architecture fixture manifest');
+      const { runInstalledArchitecture } = require('./installed-architecture-acceptance.cjs');
+      await runInstalledArchitecture(page, { origin: config.origin, fixture: JSON.parse(fs.readFileSync(config.architectureFixture, 'utf8')), read, capture, out: config.output, report });
+      report.checks.push('Installed task catalog, standalone material pagination, canonical course source and authentic delayed-response navigation');
     }
     assert.equal(report.page_errors, 0); assert.equal(report.external_requests, 0); assert.equal(report.blocked_external_requests, 0);
     report.passed = true; report.phase = 'complete';

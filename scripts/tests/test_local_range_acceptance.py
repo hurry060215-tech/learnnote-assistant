@@ -30,6 +30,7 @@ class LocalRangeAcceptanceTests(unittest.TestCase):
             self.assertEqual([cue['text'] for cue in report['range_transcript_segments']], report['selected_evidence'])
             self.assertNotEqual(report['fresh_worker_pid'], report['terminated_worker']['pid'])
             self.assertNotEqual(report['terminated_worker']['exit_code'], 0)
+            self.assertTrue(report['terminated_worker']['process_tree_reaped'])
             self.assertEqual(report['whole_upgrade_mode'], 'subtitles (no model)')
             self.assertIn('native player seek', report['not_tested'])
             self.assertEqual(len(report['source_artifacts']['media_path']['sha256']), 64)

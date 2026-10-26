@@ -6,7 +6,7 @@ successful normal Close. No source backend is substituted for either executable.
 """
 from __future__ import annotations
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import ctypes
 from ctypes import wintypes
 import hashlib
@@ -33,6 +33,9 @@ location_spec.loader.exec_module(location)
 feature_spec = importlib.util.spec_from_file_location('installed_feature_fixture', ROOT / 'scripts/installed-feature-fixture.py')
 features = importlib.util.module_from_spec(feature_spec)
 feature_spec.loader.exec_module(features)
+architecture_spec = importlib.util.spec_from_file_location('installed_architecture_fixture', ROOT / 'scripts/installed-architecture-fixture.py')
+architecture = importlib.util.module_from_spec(architecture_spec)
+architecture_spec.loader.exec_module(architecture)
 
 
 def digest(path):
@@ -49,7 +52,7 @@ def install(installer, destination):
     return result.returncode
 
 
-def installed_files(directory, expected, *, diagnostic_assets=False):
+def installed_files(directory, expected, *, diagnostic_assets=False, architecture_assets=False):
     notes = directory / '_internal/web/release-notes.json'
     release = json.loads(notes.read_text(encoding='utf-8-sig'))
     extension = directory / 'extension/manifest.json'
@@ -60,6 +63,12 @@ def installed_files(directory, expected, *, diagnostic_assets=False):
     assets = ['index.html', 'desk.js', 'task-diagnostic-export.js', 'task-diagnostic-export.css']
     if expected == '0.2.17':
         assets += ['desk.css', 'claim-timeline.js', 'community-browser.js', 'community-question.js']
+    if architecture_assets:
+        assert expected == '0.2.17'
+        for name in ['desk.js', 'desk-product.js', 'desk-tools.js', 'desk-profile.js', 'material-listing.js']:
+            assert digest(directory / '_internal/web' / name) == digest(ROOT / 'web' / name), 'Installed architecture asset differs from the candidate source'
+            if name not in assets:
+                assets.append(name)
     for name in assets:
         path = directory / '_internal/web' / name
         if diagnostic_assets or path.exists():
@@ -317,7 +326,7 @@ def verify_snapshot(path, expected):
     assert seed.inventory(path) == expected, 'Original stopped snapshot changed'
 
 
-def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None, feature_fixture=None):
+def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None, feature_fixture=None, architecture_fixture=None):
     command = ['node', str(ROOT / 'scripts/installed-diagnostic-acceptance.cjs'),
                str(output), str(debug), origin, task_id, str(pid), '--expected-version', version,
                *(['--startup-only'] if startup_only else [])]
@@ -326,6 +335,10 @@ def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, 
         assert version == '0.2.17' and not startup_only
         command.extend(['--feature-fixture', str(feature_fixture)])
         timeout = 300  # Existing 180s native Save gate plus bounded reading/paging checks.
+    if architecture_fixture is not None:
+        assert feature_fixture is not None and version == '0.2.17' and not startup_only
+        command.extend(['--architecture-fixture', str(architecture_fixture)])
+        timeout = 420  # Separate catalog/navigation phase; native action clocks are unchanged.
     if location_evidence is None:
         subprocess.run(command, check=True, timeout=timeout, env=safe_environment(os.environ))
         return
@@ -360,7 +373,12 @@ def exercise(args, output):
     location_evidence = None
     lifecycle = {}
     feature_fixture = None
+    architecture_fixture = None
+    feature_lifetime = ExitStack()
+    require_architecture = bool(getattr(args, 'architecture', False))
     require_features = args.expected_current_version == '0.2.17'
+    if require_architecture:
+        assert require_features, 'Architecture acceptance requires the current 0.2.17 feature gate'
     if require_features:
         assert args.expected_previous_version == '0.2.16', '0.2.17 acceptance requires the actual 0.2.16 baseline'
     try:
@@ -379,12 +397,14 @@ def exercise(args, output):
             before = retained(api, ids)
             if require_features:
                 media = features.generate_media(run, safe_environment(os.environ))
-                with local_model(cues=features.CUES, note=features.NOTE) as (endpoint, calls):
+                with ExitStack() as seed_lifetime:
+                    owner = feature_lifetime if require_architecture else seed_lifetime
+                    endpoint, calls = owner.enter_context(local_model(cues=features.CUES, note=features.NOTE))
                     reading = features.seed_reading(api, media, endpoint)
                     assert len(calls) == 1, 'Synthetic reading seed must complete without a repair or retry'
                     community = features.seed_community(api, ids['task_id'], endpoint)
                 feature_before = features.retained_features(api, reading, ids['task_id'])
-                report['feature_seed'] = {'reading': reading, 'community': community, 'loopback_model_calls': calls,
+                report['feature_seed'] = {'reading': reading, 'community': community, 'loopback_model_calls': list(calls),
                     'retained_sha256': feature_before, 'intentional_mutations': [
                         'Old installed API local MP4 import and embedded-caption extraction',
                         'Old installed API saved-caption text retry and one synthetic annotation',
@@ -399,7 +419,7 @@ def exercise(args, output):
         report['current_install_exit'] = install(args.current_installer, directory)
         assert config.read_bytes() == config_before, 'Installer changed original config'
         assert seed.inventory(data) == report['pre_upgrade_inventory'], 'Installer changed old data bytes'
-        report['current_files'] = installed_files(directory, args.expected_current_version, diagnostic_assets=True)
+        report['current_files'] = installed_files(directory, args.expected_current_version, diagnostic_assets=True, architecture_assets=require_architecture)
         try:
             location_evidence = location.DownloadLocationEvidence(data, output)
         except Exception:
@@ -410,8 +430,18 @@ def exercise(args, output):
             transcript_before = (digest(transcript_path), transcript_path.stat().st_mtime_ns)
             if require_features:
                 assert features.retained_features(api, reading, ids['task_id']) == feature_before
+            if require_architecture:
+                architecture_seed = architecture.seed_architecture(api, features.CUES, endpoint)
+                architecture_fixture = run / 'architecture-fixture.json'
+                write_json(architecture_fixture, architecture_seed)
+                architecture_calls = calls
+                report['architecture_seed'] = {'fixture': architecture_seed, 'model_calls_before': len(architecture_calls),
+                    'intentional_mutations': ['105 independent synthetic documents', 'One course referencing a source outside the first page', 'One independent subtitle-only retry task']}
             # Native WebView2, actual installed UI/API, no API response mocks.
-            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version, location_evidence=location_evidence, feature_fixture=feature_fixture)
+            run_ui(output, debug, api.origin, ids['task_id'], pid, args.expected_current_version, location_evidence=location_evidence, feature_fixture=feature_fixture, architecture_fixture=architecture_fixture)
+            if require_architecture:
+                assert len(architecture_calls) == report['architecture_seed']['model_calls_before'] + 1, 'Architecture retry must call only the deterministic loopback model once'
+                report['architecture_loopback_calls'] = architecture_calls[report['architecture_seed']['model_calls_before']:]
             if require_features:
                 assert features.retained_features(api, reading, ids['task_id']) == feature_before, 'Feature UI altered retained evidence'
                 report['feature_retention_verified'] = True
@@ -466,6 +496,11 @@ def exercise(args, output):
                 report['download_location_evidence'] = {'status': 'unavailable'}
         # Preserve and recheck the stopped original snapshot even after a failed run.
         secondary = []
+        try:
+            feature_lifetime.close()
+        except BaseException as error:
+            report['passed'] = False
+            secondary.append(error)
         if 'pre_upgrade_inventory' in report:
             try:
                 verify_snapshot(run / 'pre-upgrade-snapshot', report['pre_upgrade_inventory'])
@@ -495,6 +530,7 @@ def main():
     parser.add_argument('--expected-previous-version', required=True)
     parser.add_argument('--expected-current-version', required=True)
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--architecture', action='store_true', help='Also validate the current catalog, material pages and delayed-response navigation in the owned WebView2')
     args = parser.parse_args()
     if sys.platform != 'win32':
         raise SystemExit('Actual installed acceptance requires Windows')

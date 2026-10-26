@@ -35,6 +35,7 @@ class InterruptedTaskReliabilityTests(unittest.TestCase):
             self.assertEqual(report['startup_order'], ['cleanup_completed', 'recovery_dispatched'])
             self.assertNotEqual(report['terminated_worker']['pid'], report['fresh_worker_pid'])
             self.assertNotEqual(report['terminated_worker']['exit_code'], 0)
+            self.assertTrue(report['terminated_worker']['process_tree_reaped'])
             self.assertIn('transcript_after', report['artifact_mtimes_ns'])
             self.assertEqual(report['repeat_recovery_dispatched'], 0)
             self.assertFalse(report['network_calls_allowed'])

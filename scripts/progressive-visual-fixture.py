@@ -233,8 +233,21 @@ def configure_fixture(root, data, stack, shutdown, start_control):
         for field in ("source_media_path", "media_path"):
             file = Path(getattr(task, field) or "")
             if file.is_file(): hashes[field] = hashlib.sha256(file.read_bytes()).hexdigest()
-        assets = {str(file.relative_to(work)): hashlib.sha256(file.read_bytes()).hexdigest()
-                  for folder in ("frames", "grids", "vision_cache") for file in (work / folder).glob("*") if file.is_file()}
+        assets = {}
+        for folder in ("frames", "grids", "vision_cache"):
+            for file in (work / folder).glob("*"):
+                # Artifact writers publish atomically using hidden `.tmp` files.
+                # The fixture checks durable payloads, never a staging file that
+                # can disappear between enumeration and its next poll.
+                if file.name.endswith(".tmp") or file.is_symlink() or not file.is_file():
+                    continue
+                try:
+                    content = file.read_bytes()
+                except FileNotFoundError:
+                    # A concurrent atomic replace may remove the selected name
+                    # after is_file() and before open; this snapshot can retry.
+                    continue
+                assets[str(file.relative_to(work))] = hashlib.sha256(content).hexdigest()
         partial = storage.read_json(task_id, "partial_note.json", {})
         outline = storage.read_json(task_id, "draft_sections.json", {})
         partial_identity = {key: partial.get(key) for key in ("attempt_id", "source_revision", "generation_revision", "revision", "verified")}

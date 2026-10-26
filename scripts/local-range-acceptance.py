@@ -132,6 +132,7 @@ def worker(output, mode):
     termination = json.loads((output / 'terminated.json').read_text(encoding='utf-8'))
     ready = json.loads((output / 'ready.json').read_text(encoding='utf-8'))
     assert termination['pid'] == ready['pid'] != os.getpid() and termination['exit_code'] != 0
+    assert termination['process_tree_reaped'] is True
     source_id, selected_id = marker['source_id'], marker['range_id']
     with TestClient(main.app) as client:
         selected = wait_task(selected_id)
@@ -207,20 +208,23 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith(('LEARNNOTE_', 'OPENAI_', 'ANTHROPIC_', 'DEEPSEEK_', 'GEMINI_'))}
     env.update(LEARNNOTE_DATA_DIR=str(output / 'data'), LEARNNOTE_DEPLOYMENT_MODE='desktop',
                LEARNNOTE_LLM_API_KEY='', PYTHONIOENCODING='utf-8', PYTHONUNBUFFERED='1')
-    command = [sys.executable, str(Path(__file__).resolve()), '--output-dir', str(output), '--worker']
+    command = [diagnostics.worker_executable(env), str(Path(__file__).resolve()), '--output-dir', str(output), '--worker']
     process = None
     try:
         with (output / 'start.log').open('w', encoding='utf-8') as log:
-            process = subprocess.Popen(command + ['start'], env=env, stdout=log, stderr=subprocess.STDOUT)
-            deadline = time.monotonic() + 120
-            while not (output / 'interrupted.json').exists():
-                assert process.poll() is None, 'Start worker exited; see start.log'
-                assert time.monotonic() < deadline, 'Range checkpoint timeout'
-                time.sleep(.05)
-            process.kill()
-            process.wait(timeout=10)
-            assert process.returncode != 0
-            write(output / 'terminated.json', {'pid': process.pid, 'exit_code': process.returncode})
+            with diagnostics.owned_worker(command + ['start'], env=env, stdout=log, stderr=subprocess.STDOUT) as process:
+                deadline = time.monotonic() + 120
+                while not (output / 'interrupted.json').exists():
+                    assert process.poll() is None, 'Start worker exited; see start.log'
+                    assert time.monotonic() < deadline, 'Range checkpoint timeout'
+                    time.sleep(.05)
+                ready = json.loads((output / 'ready.json').read_text(encoding='utf-8'))
+                assert process.pid == ready['pid'], 'Owned process must be the actual worker'
+                process.kill()
+                process.wait(timeout=10)
+                assert process.returncode != 0
+            write(output / 'terminated.json', {'pid': process.pid, 'exit_code': process.returncode,
+                'process_tree_reaped': True})
         with (output / 'recover.log').open('w', encoding='utf-8') as log:
             subprocess.run(command + ['recover'], env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
         print((output / 'report.json').read_text(encoding='utf-8'))
