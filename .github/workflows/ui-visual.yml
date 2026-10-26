@@ -555,11 +555,20 @@ jobs:
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "Reference acceptance JavaScript installation failed" }
       - name: Measure all reference cohorts and interrupted draft recovery
+        id: reference_slo
         shell: pwsh
         run: |
           $env:LEARNNOTE_ACCEPTANCE_PYTHON = (Get-Command python).Source
           node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-ui
           if ($LASTEXITCODE -ne 0) { throw "Reference caption-to-readable-draft acceptance failed" }
+      - name: Collect one contention matrix after the reference gate fails
+        if: ${{ !cancelled() && steps.reference_slo.outcome == 'failure' }}
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $env:LEARNNOTE_ACCEPTANCE_PYTHON = (Get-Command python).Source
+          node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-contention --contention-diagnostics
+          if ($LASTEXITCODE -ne 0) { throw "Additional contention diagnostic failed; the original reference gate remains failed" }
       - name: Provision pinned visual media tools
         id: visual_media_tools
         if: ${{ !cancelled() && steps.reference_dependencies.outcome == 'success' }}
@@ -585,6 +594,9 @@ jobs:
             build/progressive-slo-ui/*.json
             build/progressive-slo-ui/*.log
             build/progressive-slo-ui/*.png
+            build/progressive-slo-contention/*.json
+            build/progressive-slo-contention/*.log
+            build/progressive-slo-contention/*.png
             build/progressive-visual-ui/*.json
             build/progressive-visual-ui/*.log
             build/progressive-visual-ui/*.png

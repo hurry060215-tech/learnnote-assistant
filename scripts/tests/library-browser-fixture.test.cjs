@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { fixtureTaskCatalog, fixtureMaterialPage } = require('../library-browser-fixture.cjs');
+const { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader } = require('../library-browser-fixture.cjs');
 
 test('catalog omits task payloads while preserving identity, linked ownership and stable generation', () => {
   const detail = { id: 'child', source_task_id: 'parent', title: 'Synthetic source', status: 'running',
@@ -34,4 +34,18 @@ test('standalone pages retain totals, deterministic cursor order and full-librar
   assert.throws(() => fixtureMaterialPage(records, '?standalone=true&unknown=true'));
   assert.deepEqual(records, before);
   assert.deepEqual(fixtureMaterialPage(records, '?limit=500'), { materials: records });
+});
+
+test('same-document navigation cannot pass readiness on the previous reader heading', async () => {
+  let resolveTarget, completed = false;
+  const targetRendered = new Promise(resolve => { resolveTarget = resolve; });
+  const page = { locator(selector) {
+    // The previous document already has an h1; only the target owner is pending.
+    assert.equal(selector, '#document[data-reader-source="task:next-task"] h1');
+    return { waitFor: () => targetRendered };
+  } };
+  const wait = waitForTaskReader(page, 'next-task').then(() => { completed = true; });
+  await Promise.resolve(); assert.equal(completed, false);
+  resolveTarget(); await wait; assert.equal(completed, true);
+  await assert.rejects(waitForTaskReader(page, 'bad"selector'), /plain route identifier/);
 });

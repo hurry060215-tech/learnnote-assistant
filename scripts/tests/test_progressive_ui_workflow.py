@@ -27,13 +27,22 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         for step in job["steps"]:
             self.assertNotIn("continue-on-error", step)
         commands = [s for s in job["steps"] if "run" in s]
-        self.assertEqual(len(commands), 4)
+        self.assertEqual(len(commands), 5)
         self.assertIn("-c backend/requirements.windows-py312.lock.txt", commands[0]["run"])
         self.assertIn("python -m pip check", commands[0]["run"])
         self.assertIn("npm ci", commands[0]["run"])
         self.assertEqual(commands[0]["id"], "reference_dependencies")
         self.assertNotIn("if", commands[1])
-        media = commands[2]
+        self.assertEqual(commands[1]["id"], "reference_slo")
+        diagnostics = commands[2]
+        self.assertEqual(diagnostics["if"], "${{ !cancelled() && steps.reference_slo.outcome == 'failure' }}")
+        self.assertEqual(diagnostics["timeout-minutes"], "10")
+        self.assertIn("node scripts/progressive-slo-api-acceptance.cjs build/progressive-slo-contention --contention-diagnostics\n", diagnostics["run"])
+        self.assertEqual(diagnostics["run"].count("node scripts/progressive-slo-api-acceptance.cjs"), 1)
+        self.assertIn("the original reference gate remains failed", diagnostics["run"])
+        for retry_or_override in ("while", "until", "continue-on-error", "exit 0", "build/progressive-slo-ui"):
+            self.assertNotIn(retry_or_override, diagnostics["run"])
+        media = commands[3]
         self.assertEqual(media["id"], "visual_media_tools")
         self.assertEqual(media["if"], "${{ !cancelled() && steps.reference_dependencies.outcome == 'success' }}")
         self.assertEqual(media["run"].strip(), "./scripts/install-visual-media-tools.ps1 -OutputDirectory build/progressive-visual-ui")
@@ -51,7 +60,7 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", steps[provision])
         self.assertEqual(steps[provision]["run"], "./scripts/install-visual-media-tools.ps1 -OutputDirectory build/visual-media-tools")
         self.assertFalse(any("windows-media-stdin-probe.py" in step["run"] for step in commands))
-        visual = commands[3]
+        visual = commands[4]
         self.assertEqual(visual["if"], "${{ !cancelled() && steps.reference_dependencies.outcome == 'success' && steps.visual_media_tools.outcome == 'success' }}")
         self.assertEqual(visual["timeout-minutes"], "10")
         self.assertIn("Get-Command ffmpeg -ErrorAction Stop", visual["run"])
@@ -74,6 +83,8 @@ class ProgressiveUiWorkflowTests(unittest.TestCase):
         self.assertEqual(upload["with"]["path"].splitlines(), [
             "build/progressive-slo-ui/*.json", "build/progressive-slo-ui/*.log",
             "build/progressive-slo-ui/*.png",
+            "build/progressive-slo-contention/*.json", "build/progressive-slo-contention/*.log",
+            "build/progressive-slo-contention/*.png",
             "build/progressive-visual-ui/*.json", "build/progressive-visual-ui/*.log",
             "build/progressive-visual-ui/*.png",
         ])

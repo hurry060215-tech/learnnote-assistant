@@ -38,4 +38,11 @@ function fixtureMaterialPage(records, search = '') {
     next_cursor: has_more ? Buffer.from(JSON.stringify([query, last.updated_at, last.material_id])).toString('base64url') : '' };
 }
 
-module.exports = { fixtureTaskCatalog, fixtureMaterialPage };
+async function waitForTaskReader(page, taskId) {
+  assert(/^[a-zA-Z0-9_-]+$/.test(taskId), 'Synthetic task identity must be a plain route identifier');
+  // A hash navigation can leave the previous heading visible until the new
+  // detail/edition request finishes. Bind readiness to the rendered owner.
+  await page.locator(`#document[data-reader-source="task:${taskId}"] h1`).waitFor();
+}
+
+module.exports = { fixtureTaskCatalog, fixtureMaterialPage, waitForTaskReader };
