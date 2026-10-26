@@ -2,8 +2,13 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
-## 0.2.17 - Community paging and visible reading targets
+## 0.2.17 - Responsive libraries, reliable recovery and visible reading targets
 
+- Load standalone materials in pages of 100 with full-library title search, preserving focus and loaded pages across refreshes; resolve source links and learning-space members even outside the loaded page.
+- Read task summaries once without mutating tasks on listing. Fetch full details on demand and refresh only affected views; late retry responses no longer redirect a user who has moved elsewhere.
+- Publish search, evidence and revision receipts atomically, skipping content reads and reindexing for progress-only updates. Preserve backed-up schema migrations and rebuild missing FTS projections from stored content.
+- Recover queues using per-process ownership leases and execution lanes, preserving paused callbacks and preventing orphaned queue heads from starving subsequent tasks.
+- Contain Windows media processes in an owned Job before execution and reap the whole process tree on completion, cancellation, timeout and failure.
 - Browse saved audience opinions beyond the first 500 items with bounded paging; retain filtering, selection and clear boundaries without automatically fetching more comments or sending them to a model.
 - Keep outline h2/h3/h4 jump targets below the measured sticky toolbar and utility strip while preserving the existing reading appearance.
 - Make opt-in playback follow use the unobscured reading region; leave visible claims in place and handle oversized targets without hiding the start beneath fixed controls.

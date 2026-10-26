@@ -235,6 +235,45 @@ class QueueRecoveryTests(unittest.TestCase):
             self.assertTrue(reached.wait(5))
         self.assertEqual(storage.get_task(task.id).status, "success")
 
+    def test_duplicate_observer_becomes_local_owner_after_foreign_process_death(self):
+        task = self.task()
+        process, release_owner, executed = self.owner_process(task, False)
+        queue = queue_for(self.root)
+        generation = task_generation(task)
+        reached, release_callback = threading.Event(), threading.Event()
+        self.releases.append(release_callback)
+
+        def resume(*args, **kwargs):
+            reached.set()
+            if not release_callback.wait(10):
+                raise RuntimeError("recovered callback was not released")
+            self.complete(*args, **kwargs)
+
+        with patch("app.processor.process_local_video_task", side_effect=resume) as callback:
+            observer = queue.enqueue(task.id, "local", lambda: self.fail("duplicate callback executed"),
+                                     generation=generation)
+            self.assertIs(queue.enqueue(task.id, "local", lambda: None, generation=generation), observer)
+            self.assertNotIn(task.id, queue.jobs)
+            self.releases.remove(release_owner)
+            process.terminate()
+            process.join(5)
+            self.assertFalse(process.is_alive())
+            set_queue_paused(self.root, False)
+            # The observer must discover the dead owner without a new request.
+            self.assertTrue(reached.wait(5))
+            self.assertFalse(observer.done())
+            owned = queue.jobs[task.id][1]
+            self.assertIsNot(owned, observer)
+            self.assertIs(queue.enqueue(task.id, "local", lambda: self.fail("duplicate recovery executed"),
+                                        generation=generation), owned)
+            release_callback.set()
+            owned.result(5)
+            observer.result(5)
+            callback.assert_called_once()
+        self.assertFalse(executed.is_set())
+        self.assertEqual(storage.get_task(task.id).status, "success")
+        self.assertEqual(queue.entries()[0]["generation"], generation)
+
     def test_dead_credential_owner_requires_new_context_and_never_calls_processor(self):
         task = self.task()
         process, release, _ = self.owner_process(task, True)

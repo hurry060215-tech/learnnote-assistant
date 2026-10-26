@@ -6,6 +6,28 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class InstalledReleaseWorkflowTests(unittest.TestCase):
+    def test_release_uses_shared_offline_and_javascript_gates_before_building(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            release = normalized.split('- name: Run release gate', 1)[1].split('- name: Preserve reliability evidence', 1)[0]
+            order = [release.index(value) for value in (
+                'python scripts/test-backend-offline.py',
+                'throw "Backend release gate failed"',
+                'python -m unittest discover scripts/tests -p "test_*.py"',
+                'python -m unittest discover desktop/tests -p "test_*.py"',
+                'npm test\n', 'throw "JavaScript release gate failed"',
+                'npm run test:native\n', 'throw "Native dialog release gate failed"',
+            )]
+            self.assertEqual(order, sorted(order))
+            self.assertEqual(normalized.count('python scripts/test-backend-offline.py'), 1)
+            self.assertEqual(normalized.count('          npm test\n'), 1)
+            self.assertEqual(normalized.count('          npm run test:native\n'), 1)
+            self.assertNotIn('python -m unittest discover backend/tests', release)
+            self.assertNotIn('Get-ChildItem extension/tests', release)
+            self.assertNotIn('Get-ChildItem web/tests', release)
+            self.assertNotIn('continue-on-error', release)
+
     def test_release_provisions_existing_pinned_media_tools_before_real_fixtures(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         helper = (ROOT / 'scripts/install-visual-media-tools.ps1').read_text(encoding='utf-8')
@@ -98,7 +120,27 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("--expected-previous-version \"$($previous.tagName.TrimStart('v'))\"", upgrade)
             self.assertIn("--expected-current-version \"$($currentTag.TrimStart('v'))\"", upgrade)
             self.assertNotIn('ACCEPTANCE_ONLY', upgrade)
-            self.assertNotIn('CANDIDATE_ARTIFACT_ID', upgrade)
+            # Retained mode may affect only the extra source-bound architecture phase.
+            baseline = upgrade.split('$architectureArgs = @()', 1)[0]
+            self.assertNotIn('CANDIDATE_ARTIFACT_ID', baseline)
+
+    def test_fresh_0217_release_requires_architecture_while_retained_candidates_keep_prior_gates(self):
+        source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
+        for text in (source, source.replace('\n', '\r\n')):
+            normalized = text.replace('\r\n', '\n')
+            upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
+            option = upgrade.split('$architectureArgs = @()', 1)[1].split('python scripts/installed-upgrade-acceptance.py', 1)[0]
+            self.assertEqual([line.strip() for line in option.splitlines() if line.strip()], [
+                "if ($currentTag -eq 'v0.2.17' -and -not $env:CANDIDATE_ARTIFACT_ID) {",
+                "$architectureArgs = @('--architecture')", '}',
+            ])
+            invocation = upgrade.split('python scripts/installed-upgrade-acceptance.py', 1)[1]
+            self.assertIn('--output-dir build/release/installed-upgrade @architectureArgs', invocation)
+            self.assertEqual(upgrade.count('CANDIDATE_ARTIFACT_ID'), 1)
+            self.assertNotIn('ACCEPTANCE_ONLY', upgrade)
+            self.assertLess(upgrade.index('Cover-upgrade smoke failed'), upgrade.index('$architectureArgs = @()'))
+            self.assertLess(upgrade.index('@architectureArgs'), upgrade.index('Installed diagnostic and saved-subtitle acceptance failed'))
+            self.assertNotIn('continue-on-error', upgrade)
 
     def test_candidate_retention_is_source_bound_and_before_mandatory_tests(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
@@ -165,7 +207,7 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn('if:', fresh)
         upgrade = source.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed', 1)[0]
         self.assertIn("if: env.RELEASE_TAG != ''", upgrade)
-        self.assertNotIn('CANDIDATE_ARTIFACT_ID', upgrade)
+        self.assertNotIn('CANDIDATE_ARTIFACT_ID', upgrade.split('$architectureArgs = @()', 1)[0])
         self.assertLess(upgrade.index('$env:GH_TOKEN = ""'), upgrade.index('./scripts/test-upgrade-installer.ps1'))
         restore = source.split('- name: Verify and restore retained diagnostic candidate', 1)[1].split('- name: Install retained', 1)[0]
         self.assertIn('--source-commit "$env:RELEASE_COMMIT"', restore)
@@ -201,7 +243,8 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("if: env.CANDIDATE_ARTIFACT_ID != ''", checks)
             self.assertIn("if: env.CANDIDATE_ARTIFACT_ID == ''", release)
             self.assertEqual(checks.count('node web/tests/installed_diagnostic_acceptance.test.mjs'), 1)
-            self.assertEqual(release.count('Get-ChildItem web/tests/*.test.mjs'), 1)
+            self.assertEqual(release.count('          npm run test:native\n'), 1)
+            self.assertNotIn('node web/tests/installed_diagnostic_acceptance.test.mjs', release)
             retention = normalized.split('- name: Preserve reliability evidence', 1)[1].split('- name: Build portable desktop client', 1)[0]
             self.assertIn('if: always()', retention)
             self.assertEqual([line.strip() for line in retention.splitlines() if '/native-save-calibration/' in line], [

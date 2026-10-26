@@ -11,9 +11,9 @@ import { timelineHtml, taskExplanation } from "/web/desk-progress.js?v=source-pr
 import { installInteractions } from "/web/desk-interactions.js";
 import { installLayout } from "/web/desk-layout.js";
 import { installNoteEditor } from "/web/desk-note-controls.js?v=reader-standard-20261018";
-import { installProfile } from "/web/desk-profile.js";
+import { installProfile } from "/web/desk-profile.js?v=architecture-0217-20261026";
 import { createTaskEventHub } from "/web/desk-events.js";
-import { createMaterialListing } from "/web/material-listing.js";
+import { createMaterialListing } from "/web/material-listing.js?v=architecture-0217-20261026";
 import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=timeline-navigation-20261016";
 import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-focus-20261016";
@@ -21,8 +21,8 @@ import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/eviden
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js?v=claim-follow-visible-20261018";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
 import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
-import { installProductWorkspace } from "/web/desk-product.js?v=reader-standard-20261018";
-import { installTools } from "/web/desk-tools.js?v=reader-standard-20261018";
+import { installProductWorkspace } from "/web/desk-product.js?v=architecture-0217-20261026";
+import { installTools } from "/web/desk-tools.js?v=architecture-0217-20261026";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
 import { batchVideoRoute } from "/web/material-batch.js";
 import { reviewTaskModelData } from "/web/model-data-consent.js?v=initial-focus-20261016";

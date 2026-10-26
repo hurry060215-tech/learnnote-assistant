@@ -67,7 +67,11 @@ class LocalTaskQueue:
                 previous = self.jobs.pop(task_id)[1]
                 if not previous.running() and not previous.done():
                     previous.set_result(None)
-            if task_id in self.observers and self.observer_generations.get(task_id, "") == generation:
+            # Recovery must create an owned callback even when this process was
+            # already observing the same intent in another process. Keep that
+            # observer watching the journal; its running Future cannot be reused
+            # as the newly queued callback's Future.
+            if not recovery and task_id in self.observers and self.observer_generations.get(task_id, "") == generation:
                 return self.observers[task_id]
             with closing(self.connect()) as db:
                 db.execute("BEGIN IMMEDIATE")
