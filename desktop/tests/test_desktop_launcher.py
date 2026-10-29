@@ -386,7 +386,18 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(checksum, result["sha256"])
             self.assertEqual(content, Path(result["path"]).read_bytes())
 
-    def test_managed_extension_install_preserves_locales_and_uses_backup(self):
+    def test_extension_download_rejects_unbound_component_or_nonrelease_url(self):
+        base = "https://github.com/hurry060215-tech/learnnote-assistant/releases/download/"
+        good = base + "v9.8.8/LearnNote-Browser-Extension-v9.8.7.zip"
+        with tempfile.TemporaryDirectory(dir=ROOT / "data") as directory, patch.object(desktop.requests, "get") as request:
+            api = desktop.DesktopApi(Path(directory))
+            for url in (good.replace("Extension-v9.8.7", "Extension-v9.8.6"), good.replace("v9.8.8/", "latest/"),
+                        good.replace("github.com", "example.com"), good.replace("https:", "http:"), good + "?token=x", good + "#fragment"):
+                with self.subTest(url=url), self.assertRaisesRegex(ValueError, "Unsupported extension"):
+                    api.download_extension_update("9.8.7", url, "b" * 64)
+            request.assert_not_called()
+
+    def test_independently_versioned_extension_install_preserves_locales_and_uses_backup(self):
         archive = BytesIO()
         with desktop.ZipFile(archive, "w") as package:
             package.writestr("manifest.json", '{"manifest_version":3,"version":"9.8.7"}')
@@ -400,7 +411,7 @@ class DesktopLauncherTests(unittest.TestCase):
         checksum = hashlib.sha256(content).hexdigest()
         extension_url = (
             "https://github.com/hurry060215-tech/learnnote-assistant/"
-            "releases/download/v9.8.7/LearnNote-Browser-Extension-v9.8.7.zip"
+            "releases/download/v9.8.8/LearnNote-Browser-Extension-v9.8.7.zip"
         )
 
         class Response:

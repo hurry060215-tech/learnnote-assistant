@@ -494,7 +494,7 @@ def list_tasks_snapshot(*, strict: bool = False) -> list[TaskRecord]:
         try:
             record = get_task(path.parent.name)
             records.append(record)
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, OverflowError) as exc:
             if strict:
                 if isinstance(exc, TaskArtifactUnavailable) and exc.reason == "task_identity_mismatch":
                     raise ValueError("course_episode_identity_conflict") from exc

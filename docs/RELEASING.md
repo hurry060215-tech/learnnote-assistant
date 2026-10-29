@@ -18,6 +18,13 @@ This checklist is for maintainers publishing a desktop, extension, container, or
 6. Open a pull request. `main` requires the `checks` status and resolved review conversations.
 7. After merge, create an annotated `vX.Y.Z` tag. The Desktop Release workflow publishes the installer, portable ZIP, extension ZIP, and checksums.
 
+Installed acceptance capabilities are defined in `scripts/installed-acceptance-policy.json`.
+Fresh releases from 0.2.17 onward must run the retained reading/paging fixtures and
+the source-bound architecture checks; increasing the version must not remove these
+gates. Historical diagnostic releases retain their reviewed predecessor pins.
+New versions select the highest published stable version below the candidate as
+their upgrade baseline, with installer identity and SHA-256 verification retained.
+
 The desktop Update Center downloads complete official assets in the background.
 Applying an installed-client update is deferred until active tasks are gone;
 the updater snapshots only application files, runs `LearnNote.exe --health-check`

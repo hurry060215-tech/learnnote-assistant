@@ -48,16 +48,16 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('version verification failed', helper)
         self.assertIn('Pinned visual media tools installation failed', helper)
 
-    def test_retained_0217_reuses_pinned_media_without_expanding_older_diagnostics(self):
+    def test_retained_feature_versions_reuse_pinned_media_without_expanding_older_diagnostics(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         for text in (source, source.replace('\n', '\r\n')):
             normalized = text.replace('\r\n', '\n')
             name = '- name: Provision pinned media tools for real fixture contracts'
             step = normalized.split(name, 1)[1].split('- name: Run release gate', 1)[0]
             condition = next(line.strip() for line in step.splitlines() if line.strip().startswith('if:'))
-            # Exact Boolean scope: all fresh builds, plus retained 0.2.17 only.
-            # Retained 0.2.16 and unknown future versions keep their old behavior.
-            self.assertEqual(condition, "if: env.CANDIDATE_ARTIFACT_ID == '' || env.RELEASE_TAG == 'v0.2.17'")
+            # Fresh builds and retained feature-capable versions need media;
+            # retained pre-feature diagnostics retain their old scope.
+            self.assertEqual(condition, "if: env.CANDIDATE_ARTIFACT_ID == '' || env.INSTALLED_FEATURES == 'true'")
             self.assertEqual(normalized.count(condition), 1)
             self.assertLess(normalized.index('Retained installers require acceptance-only manual diagnostics'), normalized.index(name))
             self.assertLess(normalized.index('Retained candidate identity verification failed'), normalized.index(name))
@@ -92,16 +92,16 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
         for text in (source, source.replace('\n', '\r\n')):
             normalized = text.replace('\r\n', '\n')
             upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
-            selection = upgrade.split('$requiredPreviousTag = switch ($currentTag) {', 1)[1].split('          }', 1)[0]
-            self.assertEqual([line.strip() for line in selection.splitlines() if line.strip()], [
-                "'v0.2.17' { 'v0.2.16' }", "'v0.2.16' { 'v0.2.15' }", "default { '' }",
-            ])
+            self.assertIn('$requiredPreviousTag = $env:INSTALLED_PREVIOUS_TAG', upgrade)
             pinned, fallback = upgrade.split('if ($requiredPreviousTag) {', 1)[1].split('} else {', 1)
             self.assertIn('$previous = [pscustomobject]@{ tagName = $requiredPreviousTag }', pinned)
             self.assertNotIn('gh release list', pinned)
             self.assertIn('gh release list', fallback)
             self.assertIn('--limit 20 --json tagName,isDraft,isPrerelease,publishedAt', fallback)
-            self.assertIn('-not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag', fallback)
+            self.assertIn('-not $_.isDraft -and -not $_.isPrerelease', fallback)
+            self.assertIn("$_.tagName -match '^v[0-9]+\\.[0-9]+\\.[0-9]+$'", fallback)
+            self.assertIn("[version]$_.tagName.TrimStart('v') -lt [version]$currentTag.TrimStart('v')", fallback)
+            self.assertIn("Sort-Object { [version]$_.tagName.TrimStart('v') } -Descending", fallback)
             # Validate identity, stable publication, immutable pins and a unique
             # digest before downloading; downloaded bytes must then match it.
             for guard in (
@@ -124,14 +124,14 @@ class InstalledReleaseWorkflowTests(unittest.TestCase):
             baseline = upgrade.split('$architectureArgs = @()', 1)[0]
             self.assertNotIn('CANDIDATE_ARTIFACT_ID', baseline)
 
-    def test_fresh_0217_release_requires_architecture_while_retained_candidates_keep_prior_gates(self):
+    def test_fresh_feature_releases_require_architecture_while_retained_candidates_keep_prior_gates(self):
         source = (ROOT / '.github/workflows/desktop-release.yml').read_text(encoding='utf-8')
         for text in (source, source.replace('\n', '\r\n')):
             normalized = text.replace('\r\n', '\n')
             upgrade = normalized.split('- name: Smoke-test upgrade from previous release', 1)[1].split('- name: Retain installed upgrade acceptance evidence', 1)[0]
             option = upgrade.split('$architectureArgs = @()', 1)[1].split('python scripts/installed-upgrade-acceptance.py', 1)[0]
             self.assertEqual([line.strip() for line in option.splitlines() if line.strip()], [
-                "if ($currentTag -eq 'v0.2.17' -and -not $env:CANDIDATE_ARTIFACT_ID) {",
+                "if ($env:INSTALLED_FEATURES -eq 'true' -and -not $env:CANDIDATE_ARTIFACT_ID) {",
                 "$architectureArgs = @('--architecture')", '}',
             ])
             invocation = upgrade.split('python scripts/installed-upgrade-acceptance.py', 1)[1]

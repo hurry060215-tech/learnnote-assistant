@@ -196,8 +196,8 @@ class UiVisualContractTests(unittest.TestCase):
         html = (ROOT / "web/index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web/desk.js").read_text(encoding="utf-8")
         settings = (ROOT / "web/desk-settings.js").read_text(encoding="utf-8")
-        key = "update-coordination-20261017"
-        self.assertIn('src="/web/desk.js?v=architecture-0217-20261026"', html)
+        key = "post-release-20261029"
+        self.assertIn('src="/web/desk.js?v=post-release-20261029"', html)
         self.assertIn('href="/web/desk.css?v=claim-follow-visible-20261018"', html)
         self.assertIn(f'from "/web/desk-settings.js?v={key}"', entry)
         self.assertNotIn('from "/web/desk-settings.js"', entry)
@@ -207,7 +207,7 @@ class UiVisualContractTests(unittest.TestCase):
     def test_first_run_assets_use_a_fresh_browser_cache_key(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         entry = (ROOT / "web" / "desk.js").read_text(encoding="utf-8")
-        self.assertIn("desk.js?v=architecture-0217-20261026", html)
+        self.assertIn("desk.js?v=post-release-20261029", html)
         self.assertIn('from "/web/reader-progress.js?v=native-anchor-20261017"', entry)
         self.assertNotIn('from "/web/reader-progress.js"', entry)
         self.assertIn('from "/web/reader-sections.js?v=source-preview-20261017"', entry)
@@ -218,7 +218,8 @@ class UiVisualContractTests(unittest.TestCase):
         self.assertIn("desk-product.js?v=architecture-0217-20261026", entry)
 
         for module in ("desk-tools.js", "desk-product.js", "desk-profile.js", "material-listing.js"):
-            self.assertIn(f'from "/web/{module}?v=architecture-0217-20261026"', entry)
+            key = "post-release-20261029" if module == "material-listing.js" else "architecture-0217-20261026"
+            self.assertIn(f'from "/web/{module}?v={key}"', entry)
             self.assertNotIn(f'from "/web/{module}"', entry)
 
         product = (ROOT / "web/desk-product.js").read_text(encoding="utf-8")

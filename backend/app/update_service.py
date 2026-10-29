@@ -115,6 +115,7 @@ def _release_payload(payload: dict) -> dict:
     )
     extension_meta = {
         "name": extension_name,
+        "version": extension_name.removeprefix("LearnNote-Browser-Extension-v").removesuffix(".zip") if extension_trusted else "",
         "url": extension_url if extension_trusted else "",
         "sha256": extension_checksum if extension_trusted else "",
         "bytes": extension_size,
@@ -257,7 +258,7 @@ def status(*, force: bool = False) -> dict:
         "current": current,
         "latest": latest,
         "client_update_available": bool(latest and is_newer_version(latest["version"], APP_VERSION)),
-        "extension_update_available": bool(latest and latest["extension"]["available"] and is_newer_version(latest["version"], current["extension_version"])),
+        "extension_update_available": bool(latest and latest["extension"]["available"] and is_newer_version(latest["extension"].get("version", latest["version"]), current["extension_version"])),
         "capabilities": {
             "release_info": True,
             "download": client_supported,

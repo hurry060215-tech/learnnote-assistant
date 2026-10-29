@@ -7,17 +7,36 @@ const actual = source.slice(source.indexOf("  let updateStatus ="), source.index
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function status(preferences, extra = {}) { return { ok: true, preferences, capabilities: {}, ...extra }; }
 function harness({ bridge = false } = {}) {
-  const elements = new Map(), requests = [], downloads = [];
+  const elements = new Map(), requests = [], downloads = [], extensionDownloads = [], extensionApplies = [];
   const $ = id => { if (!elements.has(id)) elements.set(id, { textContent: "", hidden: false, checked: true, disabled: false }); return elements.get(id); };
   const request = target => { const pending = deferred(); requests.push({ target, ...pending }); return pending.promise; };
-  const context = vm.createContext({ $, window: bridge ? { pywebview: { api: { update_status: force => request(force), start_update_download: async (...args) => { downloads.push(args); return { phase: "downloading" }; } } } } : {},
+  const context = vm.createContext({ $, window: bridge ? { pywebview: { api: { update_status: force => request(force), start_update_download: async (...args) => { downloads.push(args); return { phase: "downloading" }; },
+    start_extension_update_download: async (...args) => { extensionDownloads.push(args); return { phase: "downloading" }; },
+    apply_extension_update: async (...args) => { extensionApplies.push(args); return { ok: true }; } } } } : {},
     state: { items: [], health: { app_version: "0.2.9" } }, ctx: { guard: () => true }, saved: () => {}, updateDirty: () => [], notice: () => {},
     api: target => request(target), setTimeout: () => 0, setInterval: () => 0, clearInterval: () => {}, Date });
   // Run the shipped functions and handler wiring. Only HTTP/bridge, timers and
   // DOM nodes are supplied by the fixture; no duplicated startup algorithm.
   vm.runInContext(actual + ";globalThis.methods={readUpdateStatus,refreshUpdates,pending:()=>updateRead,status:()=>updateStatus};", context);
-  return { $, requests, downloads, methods: context.methods, startup: context.window.LearnNoteUpdates.startupCheck };
+  return { $, requests, downloads, extensionDownloads, extensionApplies, methods: context.methods, startup: context.window.LearnNoteUpdates.startupCheck };
 }
+
+test("extension display, download and apply retain the component version instead of the client tag", async () => {
+  const app = harness({ bridge: true });
+  const asset = { version: "9.8.6", available: true, url: "https://github.com/owned-extension.zip", sha256: "b".repeat(64) };
+  const result = status({ auto_check: false, auto_download: false }, {
+    current: { client_version: "9.8.5", extension_version: "9.8.5" },
+    latest: { version: "9.8.7", client: {}, extension: asset }, extension_update_available: true,
+  });
+  const first = app.methods.readUpdateStatus(false); app.requests[0].resolve(result); await first;
+  assert.match(app.$("updateExtensionAvailability").textContent, /发现扩展 v9\.8\.6/);
+  await app.$("downloadExtensionUpdate").onclick();
+  assert.deepEqual(app.extensionDownloads, [["9.8.6", asset.url, asset.sha256]]);
+  const ready = app.methods.readUpdateStatus(false);
+  app.requests[1].resolve({ ...result, extension_download: { phase: "ready", version: "9.8.6", path: "owned-extension.zip" } }); await ready;
+  await app.$("applyExtensionUpdate").onclick();
+  assert.deepEqual(app.extensionApplies, [["9.8.6", "owned-extension.zip", asset.sha256]]);
+});
 
 test("overlapping initial read and startup await disabled real preferences on HTTP and desktop bridge", async () => {
   for (const bridge of [false, true]) {

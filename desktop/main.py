@@ -473,8 +473,12 @@ class DesktopApi:
     @staticmethod
     def _valid_extension_url(version: str, url: str) -> bool:
         parsed = urlparse(str(url or ""))
-        expected_path = f"/hurry060215-tech/learnnote-assistant/releases/download/v{version}/{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"
-        return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path == expected_path and not parsed.query and not parsed.fragment
+        # The release channel and the bundled extension can advance separately.
+        # Bind the filename to the requested component version and keep the tag
+        # and origin restricted to an official semantic-version release.
+        expected_path = (r"/hurry060215-tech/learnnote-assistant/releases/download/v\d+\.\d+\.\d+/"
+                         + re.escape(f"{EXTENSION_ASSET_PREFIX}{version}{EXTENSION_ASSET_SUFFIX}"))
+        return bool(parsed.scheme == "https" and parsed.netloc == "github.com" and re.fullmatch(expected_path, parsed.path) and not parsed.query and not parsed.fragment)
 
     def download_update(self, version: str, url: str, sha256: str) -> dict:
         result = self._download_update(version, url, sha256)

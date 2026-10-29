@@ -7,6 +7,12 @@ const { createHash } = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
 const { fileObservation, attachDownloadObservation } = require('./installed-download-observation.cjs');
 const TIMEOUT = 15000, MAX_BYTES = 256 * 1024;
+const INSTALLED_POLICY = require('./installed-acceptance-policy.json');
+function requiresFeatures(version) {
+  const current = version.split('.').map(Number), floor = INSTALLED_POLICY.features_since.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (current[i] !== floor[i]) return current[i] > floor[i];
+  return true;
+}
 const SYNTHETIC_TITLE = 'Synthetic rollback captions';
 const HOST_SUBPHASES = ['query', 'match-count', 'host-validation', 'modern-ancestor'];
 const OBSERVER_PHASES = ['initialization', 'guard-before', 'node-properties', 'first-child', 'next-sibling', 'guard-after', 'complete'];
@@ -38,9 +44,9 @@ function parseArgs(args) {
   assert(url.port && Number(url.port) !== Number(port), 'API and debug ports must be distinct');
   assert(/^[A-Za-z0-9_-]{1,128}$/.test(taskId), 'Invalid synthetic task ID');
   assert(output && !output.startsWith('--'), 'Output directory is required');
-  if (!startupOnly && expectedVersion === '0.2.17') assert(featureFixture && !featureFixture.startsWith('--'), '0.2.17 requires the old-installed feature fixture');
-  if (featureFixture) assert(expectedVersion === '0.2.17' && !startupOnly, 'Feature fixture is only for current 0.2.17 acceptance');
-  if (architectureFixture) assert(featureFixture && expectedVersion === '0.2.17' && !startupOnly && !architectureFixture.startsWith('--'), 'Architecture fixture requires the current full installed feature gate');
+  if (!startupOnly && requiresFeatures(expectedVersion)) assert(featureFixture && !featureFixture.startsWith('--'), 'Current installed acceptance requires the old-installed feature fixture');
+  if (featureFixture) assert(requiresFeatures(expectedVersion) && !startupOnly, 'Feature fixture requires a supported current installed version');
+  if (architectureFixture) assert(featureFixture && requiresFeatures(expectedVersion) && !startupOnly && !architectureFixture.startsWith('--'), 'Architecture fixture requires the current full installed feature gate');
   return { output: path.resolve(output), debugPort: Number(port), apiPort: Number(url.port), origin, taskId, ownedPid: Number(pid), startupOnly, expectedVersion, ...(featureFixture ? { featureFixture: path.resolve(featureFixture) } : {}), ...(architectureFixture ? { architectureFixture: path.resolve(architectureFixture) } : {}), ...(privateLocationEvidence ? { privateLocationEvidence: true } : {}) };
 }
 

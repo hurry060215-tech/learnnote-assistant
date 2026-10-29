@@ -5,6 +5,9 @@ import vm from "node:vm";
 const source = fs.readFileSync(new URL("../desk.js", import.meta.url), "utf8");
 const refreshAndOpen = source.slice(source.indexOf("function refresh() {"), source.indexOf("let editionRequest ="));
 const home = source.slice(source.indexOf("function showHome("), source.indexOf("async function navigateBack("));
+const back = source.slice(source.indexOf("async function navigateBack("), source.indexOf("function statusLabel("));
+const resolver = source.slice(source.indexOf("async function resolveSource("), source.indexOf("async function openEvidenceSource("));
+const inlineSource = source.slice(source.indexOf("let inlineSourceRequest ="), source.indexOf("async function openSource("));
 const route = source.slice(source.indexOf("function readRoute() {"), source.indexOf('window.addEventListener("hashchange"'));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function harness({ holdEdition = false, holdLookup = false } = {}) {
@@ -16,7 +19,7 @@ function harness({ holdEdition = false, holdLookup = false } = {}) {
   $("document").dataset.readerSource = "task:previous";
   const state = { items: [old], selected: old, epoch: 1, lastHealthAt: Date.now(), reading: { autoOpen: false } };
   const location = { hash: "#task/previous", search: "", pathname: "/" };
-  let allowed = true, lookupError = null;
+  let allowed = true, lookupError = null, guardCalls = 0;
   const records = new Map([[next.id, next], [material.id, material], [old.id, old]]);
   const context = vm.createContext({ state, location, URLSearchParams, Date, $, syncStatus: {},
     api: async path => {
@@ -33,7 +36,7 @@ function harness({ holdEdition = false, holdLookup = false } = {}) {
     syncTaskEventStreams() {}, drawList() {},
     window: { dispatchEvent() {}, LearnNoteAssistant: { open: () => actions.push("qa:" + state.selected.id) } }, CustomEvent: class {}, Event: class {},
     claimMapVersion: item => item.updated_at, localMediaSource: () => null,
-    renderStatus() {}, guard: () => allowed, notice: text => notices.push(text),
+    renderStatus() {}, guard: () => { guardCalls++; return allowed; }, notice: text => notices.push(text),
     claimTimeline: { reset() {} }, personalAnchorPicker: { reset() {} }, closeSource() {},
     history: { replaceState(_state, _title, url) { location.hash = url.startsWith("#") ? url : ""; } },
     loadEdition: async epoch => {
@@ -43,10 +46,68 @@ function harness({ holdEdition = false, holdLookup = false } = {}) {
     loadAnnotations: async () => {}, openSource: async () => actions.push("source:" + state.selected.id), document: { querySelector: () => null },
   });
   $("settings").click = () => { actions.push("settings"); $("settingsDialog").open = true; };
-  vm.runInContext("let editionRequest = 0;" + home + refreshAndOpen + route + ";globalThis.methods={refresh,applyRoute,openItem,showHome};", context);
+  vm.runInContext("let editionRequest = 0;" + home + back + resolver + refreshAndOpen + inlineSource + route + ";globalThis.methods={refresh,applyRoute,openItem,showHome,navigateBack,openInlineSource};", context);
   return { state, location, requests, notices, actions, $, held, lookup, edition, enteredEdition, old, next, material, records, methods: context.methods,
-    setGuard: value => { allowed = value; }, failLookup: error => { lookupError = error; } };
+    get guardCalls() { return guardCalls; }, setGuard: value => { allowed = value; }, failLookup: error => { lookupError = error; } };
 }
+
+test("new note edits and annotations survive a delayed catalog or outside-page route when discard is declined", async () => {
+  for (const via of ["catalog", "route", "catalog-route", "back", "catalog-back"]) for (const input of ["note", "annotation"]) {
+    const app = harness({ holdLookup: true });
+    const catalog = { ...app.next, catalog: true };
+    if (via.startsWith("catalog-")) app.state.items.push(catalog);
+    let pending;
+    if (via === "catalog") pending = app.methods.openItem(catalog);
+    else if (via.includes("back")) {
+      app.state.navigation = [{ kind: "task", id: app.next.id }]; pending = app.methods.navigateBack();
+    } else { app.location.hash = "#task/newly-created"; pending = app.methods.applyRoute(); }
+    if (input === "note") {
+      app.state.editing = true; app.$("editor").hidden = false; app.$("noteText").value = "New unsaved note";
+    } else app.$("annotationText").value = "New unsaved annotation";
+    app.setGuard(false); app.lookup.resolve(); await pending;
+    assert.equal(app.state.selected.id, app.old.id, `${via}/${input}`);
+    assert.equal(app.location.hash, "#task/previous", "Declined routes return to the still-selected source");
+    assert.equal(app.guardCalls, 2, "Only the new input requires fresh discard consent");
+    if (input === "note") {
+      assert.equal(app.state.editing, true); assert.equal(app.$("editor").hidden, false);
+      assert.equal(app.$("noteText").value, "New unsaved note");
+    } else assert.equal(app.$("annotationText").value, "New unsaved annotation");
+    if (via.includes("back")) assert.equal(app.state.navigation.at(-1).id, app.next.id);
+    assert.equal(app.requests.includes("/api/study/activity"), false);
+  }
+});
+
+test("unchanged approved edits do not prompt twice, while new inputs may be explicitly discarded", async () => {
+  for (const via of ["catalog", "route", "catalog-route"]) for (const changed of [false, "note", "annotation-whitespace"]) {
+    const app = harness({ holdLookup: true }), catalog = { ...app.next, catalog: true };
+    app.state.editing = true; app.$("noteText").value = "Already approved discard";
+    app.$("annotationText").value = "Already approved annotation";
+    if (via === "catalog-route") app.state.items.push(catalog);
+    const pending = via === "catalog" ? app.methods.openItem(catalog)
+      : (app.location.hash = "#task/newly-created", app.methods.applyRoute());
+    if (changed === "note") app.$("noteText").value = "New input after approval";
+    if (changed === "annotation-whitespace") app.$("annotationText").value += "  \n";
+    app.lookup.resolve(); await pending;
+    assert.equal(app.state.selected.id, app.next.id);
+    assert.equal(app.guardCalls, changed ? 2 : 1);
+    assert.equal(app.state.editing, false); assert.equal(app.$("annotationText").value, "");
+  }
+});
+
+test("cross-source inline reading cannot bypass unsaved-input consent", async () => {
+  for (const cached of [false, true]) {
+    const app = harness({ holdLookup: true });
+    if (cached) app.state.items.push({ ...app.next, catalog: true });
+    app.$("annotationText").value = "Retained personal input"; app.setGuard(false);
+    const pending = app.methods.openInlineSource(0, app.next);
+    app.lookup.resolve(); await pending;
+    assert.equal(app.state.selected.id, app.old.id);
+    assert.equal(app.$("annotationText").value, "Retained personal input");
+    assert.equal(app.guardCalls, 1);
+    assert.equal(app.requests.includes("/api/study/activity"), false);
+    assert.equal(app.requests.some(route => route.endsWith("/transcript")), false);
+  }
+});
 
 test("newly created routes bypass an old full-list request and stale lists cannot roll back navigation", async () => {
   const app = harness(), background = app.methods.refresh();

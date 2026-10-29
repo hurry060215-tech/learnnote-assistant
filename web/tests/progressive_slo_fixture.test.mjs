@@ -469,7 +469,7 @@ test("atomic scroll rejects missing or stale selected identity before touching t
 
 test("actual openItem supplies selected generation before initial edition without an adoption event", async () => {
   const listeners = new Map(), events = [], nodes = new Map(), generation = "a".repeat(64);
-  const $ = id => { if (!nodes.has(id)) nodes.set(id, { dataset: {}, replaceChildren() {}, hidden: true }); return nodes.get(id); };
+  const $ = id => { if (!nodes.has(id)) nodes.set(id, { dataset: {}, value: "", replaceChildren() {}, hidden: true }); return nodes.get(id); };
   class Event { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } }
   const state = { selected: { kind: "material", id: "previous" }, epoch: 4 };
   const context = vm.createContext({ state, $, Event, CustomEvent: Event, JSON, Promise,

@@ -19,7 +19,7 @@ test("active-claim margin is scoped, preserves heading clearance, and ships fres
   }
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const entry = readFileSync(new URL("../desk.js", import.meta.url), "utf8");
-  assert(html.includes('desk.js?v=architecture-0217-20261026'));
+  assert(html.includes('desk.js?v=post-release-20261029'));
   assert(html.includes('desk.css?v=claim-follow-visible-20261018'));
   assert(entry.includes('from "/web/claim-timeline.js?v=claim-follow-visible-20261018"'));
   assert(!entry.includes('from "/web/claim-timeline.js"'));
