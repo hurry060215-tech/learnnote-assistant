@@ -23,6 +23,26 @@ spec.loader.exec_module(runner)
 class InstalledUpgradeTests(unittest.TestCase):
     """Installed harness contracts requiring only requests and the standard library."""
 
+    def test_future_versions_keep_feature_gates_and_valid_baselines(self):
+        for current, previous in [('0.2.17', '0.2.16'), ('0.2.18', '0.2.17'), ('0.3.0', '0.2.18'), ('1.0.0', '0.3.0')]:
+            with self.subTest(current=current):
+                self.assertTrue(runner.validate_upgrade_versions(previous, current, architecture=True))
+                with patch.object(runner.subprocess, 'run') as child:
+                    runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, current,
+                                  feature_fixture=Path('/owned/feature-fixture.json'), architecture_fixture=Path('/owned/architecture-fixture.json'))
+                self.assertEqual(child.call_args.kwargs['timeout'], 420)
+                self.assertIn('--architecture-fixture', child.call_args.args[0])
+                with patch.object(runner.subprocess, 'run') as child, self.assertRaises(AssertionError):
+                    runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, current)
+                child.assert_not_called()
+        self.assertFalse(runner.validate_upgrade_versions('0.2.15', '0.2.16'))
+        self.assertFalse(runner.requires_features('0.2.9'))
+        for previous, current in [('0.2.15', '0.2.18'), ('0.2.17', '0.2.17'), ('0.2.19', '0.2.18'), ('0.2.14', '0.2.16')]:
+            with self.subTest(previous=previous, current=current), self.assertRaises(AssertionError):
+                runner.validate_upgrade_versions(previous, current)
+        with self.assertRaises(AssertionError):
+            runner.validate_upgrade_versions('0.2.15', '0.2.16', architecture=True)
+
     def test_architecture_gate_is_explicit_and_does_not_replace_the_existing_native_phase(self):
         with patch.object(runner.subprocess, 'run') as child:
             runner.run_ui(Path('/owned'), 123, 'http://127.0.0.1:456', 'synthetic', 789, '0.2.17',

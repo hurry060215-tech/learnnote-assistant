@@ -74,6 +74,13 @@ jobs:
           $version = (Get-Content web/release-notes.json -Raw -Encoding UTF8 | ConvertFrom-Json).current
           if (-not $env:CANDIDATE_ARTIFACT_ID -and $env:RELEASE_TAG -and "v$version" -ne $env:RELEASE_TAG) { throw "Release tag does not match client version" }
           "BUILD_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $installedPolicy = Get-Content scripts/installed-acceptance-policy.json -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
+          $acceptanceVersion = if ($env:CANDIDATE_ARTIFACT_ID) { $env:RELEASE_TAG.TrimStart('v') } else { $version }
+          $featuresRequired = [version]$acceptanceVersion -ge [version]$installedPolicy.features_since
+          "INSTALLED_FEATURES=$($featuresRequired.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $previousVersion = $installedPolicy.historical_baselines[$acceptanceVersion]
+          $previousTag = if ($previousVersion) { "v$previousVersion" } else { '' }
+          "INSTALLED_PREVIOUS_TAG=$previousTag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -124,7 +131,7 @@ jobs:
           node web/tests/installed_diagnostic_acceptance.test.mjs
           if ($LASTEXITCODE -ne 0) { throw "Current native diagnostic helper contracts failed" }
       - name: Provision pinned media tools for real fixture contracts
-        if: env.CANDIDATE_ARTIFACT_ID == '' || env.RELEASE_TAG == 'v0.2.17'
+        if: env.CANDIDATE_ARTIFACT_ID == '' || env.INSTALLED_FEATURES == 'true'
         timeout-minutes: 5
         shell: pwsh
         run: ./scripts/install-visual-media-tools.ps1 -OutputDirectory build/release/visual-media-tools
@@ -257,18 +264,14 @@ jobs:
         run: |
           $currentTag = $env:RELEASE_TAG
           # Pin reviewed upgrade paths independently of newer publications or retained diagnostics.
-          $requiredPreviousTag = switch ($currentTag) {
-            'v0.2.17' { 'v0.2.16' }
-            'v0.2.16' { 'v0.2.15' }
-            default { '' }
-          }
+          $requiredPreviousTag = $env:INSTALLED_PREVIOUS_TAG
           if ($requiredPreviousTag) {
             $previous = [pscustomobject]@{ tagName = $requiredPreviousTag }
           } else {
             $previous = gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isDraft,isPrerelease,publishedAt |
               ConvertFrom-Json |
-              Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne $currentTag } |
-              Sort-Object publishedAt -Descending |
+              Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and [version]$_.tagName.TrimStart('v') -lt [version]$currentTag.TrimStart('v') } |
+              Sort-Object { [version]$_.tagName.TrimStart('v') } -Descending |
               Select-Object -First 1
             if ($LASTEXITCODE -ne 0) { throw "Previous stable release lookup failed" }
           }
@@ -296,7 +299,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Cover-upgrade smoke failed" }
           # Retained candidates are diagnostic-only and can predate these source-bound assets.
           $architectureArgs = @()
-          if ($currentTag -eq 'v0.2.17' -and -not $env:CANDIDATE_ARTIFACT_ID) {
+          if ($env:INSTALLED_FEATURES -eq 'true' -and -not $env:CANDIDATE_ARTIFACT_ID) {
             $architectureArgs = @('--architecture')
           }
           python scripts/installed-upgrade-acceptance.py `

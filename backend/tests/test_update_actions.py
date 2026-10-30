@@ -9,6 +9,21 @@ from app.routers import system
 
 
 class UpdateActionTests(unittest.TestCase):
+    def test_extension_intents_bind_component_version_and_server_selected_asset(self):
+        with self.client() as (client, controller):
+            url = "https://github.com/hurry060215-tech/learnnote-assistant/releases/download/v9.8.7/LearnNote-Browser-Extension-v9.8.6.zip"
+            release = {"latest": {"version": "9.8.7", "extension": {"version": "9.8.6", "available": True, "url": url, "sha256": "b" * 64}}}
+            controller.start_extension_update_download = Mock(return_value={"ok": True})
+            controller.apply_extension_update = Mock(return_value={"ok": True})
+            controller._extension_update_state = {"phase": "ready", "version": "9.8.6", "path": "owned-extension.zip"}
+            with patch.object(system, "update_status", return_value=release):
+                for version, action, expected in (("9.8.7", "download", 409), ("9.8.6", "download", 200), ("9.8.6", "apply", 200)):
+                    body = {"component": "extension", "action": action, "version": version}
+                    token = client.post("/api/update/intent", json=body).json()["token"]
+                    self.assertEqual(client.post("/api/update/action", json=body, headers={"X-LearnNote-Update-Intent": token}).status_code, expected)
+            controller.start_extension_update_download.assert_called_once_with("9.8.6", url, "b" * 64)
+            controller.apply_extension_update.assert_called_once_with("9.8.6", "owned-extension.zip", "b" * 64)
+
     @contextmanager
     def client(self, mode="desktop", client_supported=True):
         app=FastAPI();app.include_router(system.system_router)

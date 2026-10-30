@@ -3,11 +3,28 @@
 Task JSON owns outcomes; SQLite owns dispatch intent; OS ownership protects
 live callbacks including paused jobs with credentials held only in memory.
 """
+import logging
 from pathlib import Path
 
 from .queue_journal import read_queue_job
 from .queue_policy import LANES, task_lane
 from .queue_ownership import owner_is_alive
+
+
+def _manifest_needs_attention(error):
+    # Do not log malformed contents, paths or validation errors containing input.
+    logging.getLogger(__name__).warning(
+        "A task needs recovery attention: its saved manifest is unreadable or invalid (%s). "
+        "Automatic processing was not started; retain the original files for repair.", type(error).__name__)
+
+
+def _defer_unreadable_intent(queue, row, error):
+    # Retain the durable task/generation/cancellation receipt for explicit repair.
+    # Journal failures here still propagate instead of being mistaken for one
+    # bad task file. No manifest is rewritten to manufacture a successful state.
+    queue.set_state(row["task_id"], "waiting_context", generation=row.get("generation", ""),
+                    callback_finished=False)
+    _manifest_needs_attention(error)
 
 
 def recover_intents(queue, *, lanes=LANES, reconcile_unjournaled=True, process_range_task, waiting_lanes=None):
@@ -46,6 +63,9 @@ def recover_intents(queue, *, lanes=LANES, reconcile_unjournaled=True, process_r
                                            operation_id=row["cancel_operation_id"])
                 except (FileNotFoundError, TaskControlConflict):
                     pass
+                except (ValueError, TypeError, OverflowError, OSError) as exc:
+                    _defer_unreadable_intent(queue, row, exc)
+                    waiting += 1
                 continue
             if row["state"] not in {"queued", "running", "recovering"}:
                 continue
@@ -53,6 +73,10 @@ def recover_intents(queue, *, lanes=LANES, reconcile_unjournaled=True, process_r
                 task = get_task(row["task_id"])
             except FileNotFoundError:
                 queue.set_state(row["task_id"], "cancelled", generation=row.get("generation", ""))
+                continue
+            except (ValueError, TypeError, OverflowError, OSError) as exc:
+                _defer_unreadable_intent(queue, row, exc)
+                waiting += 1
                 continue
             if row.get("generation") and row["generation"] != task_generation(task):
                 queue.set_state(task.id, "cancelled", generation=row["generation"])
@@ -121,7 +145,14 @@ def recover_intents(queue, *, lanes=LANES, reconcile_unjournaled=True, process_r
             if snapshot.status != "cancelling" or not snapshot.cancel_requested or snapshot.awaiting_confirmation:
                 continue
             with task_state_transaction():
-                task = get_task(snapshot.id)
+                try:
+                    task = get_task(snapshot.id)
+                except FileNotFoundError:
+                    continue
+                except (ValueError, TypeError, OverflowError, OSError) as exc:
+                    _manifest_needs_attention(exc)
+                    waiting += 1
+                    continue
                 if task.status == "cancelling" and task.cancel_requested and read_queue_job(root, task.id) is None:
                     # The worker leases prove stopped now; an absent journal row
                     # cannot establish whether an earlier callback ever returned.

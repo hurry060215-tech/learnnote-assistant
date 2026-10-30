@@ -144,8 +144,9 @@ test("actual desk same-task settings route invalidates a report without changing
   const context = { state: { routeEpoch: 0, epoch: 1, selected: { id: "task", kind: "task" }, items: [] },
     readRoute: () => ({ view: "settings" }), guard: () => true,
     location: { hash: "#settings", search: "" },
-    $: id => id === "settingsDialog" ? { open: false } : { click() { settings++; } },
+    $: id => id === "settingsDialog" ? { open: false } : { value: "", click() { settings++; } },
     LearnNoteDiagnosticExport: { invalidate() { invalidations++; } } };
-  vm.createContext(context); vm.runInContext(desk.slice(start, end), context); await context.applyRoute();
+  const draft = desk.slice(desk.indexOf("function navigationDraftSnapshot()"), desk.indexOf("let editionRequest ="));
+  vm.createContext(context); vm.runInContext(draft + desk.slice(start, end), context); await context.applyRoute();
   assert.equal(invalidations, 1); assert.equal(settings, 1); assert.equal(context.state.selected.id, "task");
 });

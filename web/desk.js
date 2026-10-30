@@ -13,14 +13,14 @@ import { installLayout } from "/web/desk-layout.js";
 import { installNoteEditor } from "/web/desk-note-controls.js?v=reader-standard-20261018";
 import { installProfile } from "/web/desk-profile.js?v=architecture-0217-20261026";
 import { createTaskEventHub } from "/web/desk-events.js";
-import { createMaterialListing } from "/web/material-listing.js?v=architecture-0217-20261026";
+import { createMaterialListing } from "/web/material-listing.js?v=post-release-20261029";
 import { sourceVideoEmbed, sourcePageNavigation } from "/web/source-video.js?v=timeline-navigation-20261016";
 import { createLocalPlayer, localMediaSource } from "/web/local-player.js?v=media-revision-20261016";
 import { createTranscriptWindow } from "/web/transcript-window.js?v=timeline-focus-20261016";
 import { evidenceAnchor, claimEvidenceAnchor, citationAnchor } from "/web/evidence-anchor.js";
 import { createClaimTimeline, claimTimelineModel, claimEvidenceStatus, claimSourceLabel, claimMapVersion } from "/web/claim-timeline.js?v=claim-follow-visible-20261018";
 import { createSourceWindowView, createSourcePageView, renderMaterialSource, highlightMaterialSource } from "/web/evidence-source-view.js?v=timeline-navigation-20261016";
-import { installSettings } from "/web/desk-settings.js?v=update-coordination-20261017";
+import { installSettings } from "/web/desk-settings.js?v=post-release-20261029";
 import { installProductWorkspace } from "/web/desk-product.js?v=architecture-0217-20261026";
 import { installTools } from "/web/desk-tools.js?v=architecture-0217-20261026";
 import { installMaterialBatch } from "/web/desk-material-batch.js";
@@ -74,7 +74,11 @@ moreMaterials.style.minHeight = "44px";
 $("notes").after(moreMaterials);
 moreMaterials.onclick = async () => {
   moreMaterials.disabled = true;
-  try { await state.materialBrowser.more(); await refresh(); }
+  try {
+    await state.materialBrowser.more();
+    if (state.refreshPromise) await state.refreshPromise.catch(() => {});
+    await refresh();
+  }
   catch (error) { failure(error); }
   finally { moreMaterials.disabled = false; }
 };
@@ -295,6 +299,7 @@ function showHome({ remember = true, check = true } = {}) {
 }
 async function navigateBack() {
   if (!guard()) return;
+  const approvedDraft = navigationDraftSnapshot();
   const previous = (state.navigation || []).pop();
   if (previous) {
     const navigationEpoch = state.epoch;
@@ -302,7 +307,14 @@ async function navigateBack() {
       (i) => i.kind === previous.kind && i.id === previous.id,
     ) || await resolveSource(previous.kind, previous.id);
     if (navigationEpoch !== state.epoch) return;
-    if (item) await openItem(item, { remember: false, check: false });
+    if (approvedDraft !== navigationDraftSnapshot() && !guard()) {
+      state.navigation.push(previous);
+      return;
+    }
+    if (item) {
+      if (await openItem(item, { remember: false, check: false }) === false && navigationEpoch === state.epoch)
+        state.navigation.push(previous);
+    }
     else showHome({ remember: false, check: false });
   } else showHome({ remember: false, check: false });
   window.dispatchEvent(new Event("learnnote:navigation"));
@@ -545,11 +557,15 @@ function refreshSelectedTask(taskId = state.selected?.id, reconciliation = false
 }
 async function openItem(item, { remember = true, check = true, openMedia = true } = {}) {
   if (check && !guard()) return;
+  const approvedDraft = navigationDraftSnapshot();
   const intent = state.openIntent = (state.openIntent || 0) + 1, previousEpoch = state.epoch, previousRoute = state.routeEpoch;
   if (item.catalog) {
     const result = await api(`/api/tasks/${encodeURIComponent(item.id)}`);
     if (intent !== state.openIntent || previousEpoch !== state.epoch || previousRoute !== state.routeEpoch) return false;
     if (!result.task || result.task.id !== item.id) throw new Error("来源读取失败，请刷新后重试。");
+    // A user can keep editing the current reader while this detail request waits.
+    // Earlier discard consent covers only the input that existed at that time.
+    if (approvedDraft !== navigationDraftSnapshot() && !guard()) return false;
     item = { ...result.task, kind: "task" };
   }
   invalidateSelectedReads();
@@ -617,6 +633,9 @@ async function openItem(item, { remember = true, check = true, openMedia = true 
   )
     await openSource();
   return epoch === state.epoch;
+}
+function navigationDraftSnapshot() {
+  return JSON.stringify([state.editing ? $("noteText").value : null, $("annotationText").value]);
 }
 let editionRequest = 0;
 const sectionReader = createSectionReader({
@@ -1034,7 +1053,7 @@ async function openInlineSource(seconds, sourceOverride = null, endSeconds = und
       notice("引用来源已不在当前资料库，无法可靠定位。");
       return;
     }
-    await openItem(item, { remember: true, check: false });
+    await openItem(item, { remember: true });
     if (request !== inlineSourceRequest || state.selected?.id !== item.id || state.selected?.kind !== item.kind) return;
     source = state.selected;
   }
@@ -1988,6 +2007,9 @@ async function applyRoute({ initial = false } = {}) {
     );
     return;
   }
+  const approvedDraft = navigationDraftSnapshot();
+  const restoreSelectedRoute = () => history.replaceState(null, "", state.selected
+    ? `#${state.selected.kind}/${encodeURIComponent(state.selected.id)}` : location.pathname);
   if (route.invalid) {
     notice("链接格式无效，请从左侧重新选择笔记。");
     return;
@@ -2013,6 +2035,10 @@ async function applyRoute({ initial = false } = {}) {
     }
   }
   if (!current()) return;
+  if (approvedDraft !== navigationDraftSnapshot() && !guard()) {
+    restoreSelectedRoute();
+    return;
+  }
   if (
     item &&
     (state.selected?.id !== item.id || state.selected?.kind !== item.kind)
@@ -2020,7 +2046,10 @@ async function applyRoute({ initial = false } = {}) {
     const opening = openItem(item, { remember: !initial, check: false });
     selectionEpoch = state.epoch;
     routeHash = location.hash;
-    if (await opening === false) return;
+    if (await opening === false) {
+      if (current()) restoreSelectedRoute();
+      return;
+    }
     if (item.catalog) { selectionEpoch = state.epoch; routeHash = location.hash; }
   } else if (route.id && !item) {
     notice("这份内容不存在或已被删除，请从左侧重新选择。");

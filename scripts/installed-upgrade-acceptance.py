@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -23,6 +24,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+INSTALLED_POLICY = json.loads((ROOT / 'scripts/installed-acceptance-policy.json').read_text(encoding='utf-8'))
 spec = importlib.util.spec_from_file_location('rollback_seed', ROOT / 'scripts/native-version-rollback.py')
 seed = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(seed)
@@ -36,6 +38,28 @@ feature_spec.loader.exec_module(features)
 architecture_spec = importlib.util.spec_from_file_location('installed_architecture_fixture', ROOT / 'scripts/installed-architecture-fixture.py')
 architecture = importlib.util.module_from_spec(architecture_spec)
 architecture_spec.loader.exec_module(architecture)
+
+
+def version_parts(version):
+    assert isinstance(version, str) and re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}', version), 'Invalid installed version'
+    return tuple(map(int, version.split('.')))
+
+
+def requires_features(version):
+    return version_parts(version) >= version_parts(INSTALLED_POLICY['features_since'])
+
+
+def validate_upgrade_versions(previous, current, *, architecture=False):
+    assert version_parts(previous) < version_parts(current), 'Installed acceptance requires an older published baseline'
+    pinned = INSTALLED_POLICY['historical_baselines'].get(current)
+    if pinned:
+        assert previous == pinned, 'Historical acceptance requires its reviewed baseline'
+    features_required = requires_features(current)
+    if features_required:
+        assert version_parts(previous) >= version_parts(INSTALLED_POLICY['minimum_feature_baseline']), 'Baseline does not support the retained feature fixture'
+    if architecture:
+        assert features_required, 'Architecture acceptance requires the full installed feature gate'
+    return features_required
 
 
 def digest(path):
@@ -61,10 +85,10 @@ def installed_files(directory, expected, *, diagnostic_assets=False, architectur
     assert manifest['version'] == release.get('component_versions', {}).get('extension', expected)
     files = [directory / 'LearnNote.exe', notes, extension]
     assets = ['index.html', 'desk.js', 'task-diagnostic-export.js', 'task-diagnostic-export.css']
-    if expected == '0.2.17':
+    if requires_features(expected):
         assets += ['desk.css', 'claim-timeline.js', 'community-browser.js', 'community-question.js']
     if architecture_assets:
-        assert expected == '0.2.17'
+        assert requires_features(expected)
         for name in ['desk.js', 'desk-product.js', 'desk-tools.js', 'desk-profile.js', 'material-listing.js']:
             assert digest(directory / '_internal/web' / name) == digest(ROOT / 'web' / name), 'Installed architecture asset differs from the candidate source'
             if name not in assets:
@@ -327,16 +351,18 @@ def verify_snapshot(path, expected):
 
 
 def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, location_evidence=None, feature_fixture=None, architecture_fixture=None):
+    if requires_features(version) and not startup_only:
+        assert feature_fixture is not None, 'Current installed acceptance requires the retained feature fixture'
     command = ['node', str(ROOT / 'scripts/installed-diagnostic-acceptance.cjs'),
                str(output), str(debug), origin, task_id, str(pid), '--expected-version', version,
                *(['--startup-only'] if startup_only else [])]
     timeout = 180
     if feature_fixture is not None:
-        assert version == '0.2.17' and not startup_only
+        assert requires_features(version) and not startup_only
         command.extend(['--feature-fixture', str(feature_fixture)])
         timeout = 300  # Existing 180s native Save gate plus bounded reading/paging checks.
     if architecture_fixture is not None:
-        assert feature_fixture is not None and version == '0.2.17' and not startup_only
+        assert feature_fixture is not None and requires_features(version) and not startup_only
         command.extend(['--architecture-fixture', str(architecture_fixture)])
         timeout = 420  # Separate catalog/navigation phase; native action clocks are unchanged.
     if location_evidence is None:
@@ -359,6 +385,9 @@ def run_ui(output, debug, origin, task_id, pid, version, *, startup_only=False, 
 
 
 def exercise(args, output):
+    require_architecture = bool(getattr(args, 'architecture', False))
+    require_features = validate_upgrade_versions(args.expected_previous_version, args.expected_current_version,
+                                                 architecture=require_architecture)
     run = Path('D:/LearnNoteUpgradeSmoke') / ('installed-' + uuid.uuid4().hex)
     directory, data = run / 'app', run / 'external-data'
     directory.mkdir(parents=True); data.mkdir()
@@ -375,12 +404,6 @@ def exercise(args, output):
     feature_fixture = None
     architecture_fixture = None
     feature_lifetime = ExitStack()
-    require_architecture = bool(getattr(args, 'architecture', False))
-    require_features = args.expected_current_version == '0.2.17'
-    if require_architecture:
-        assert require_features, 'Architecture acceptance requires the current 0.2.17 feature gate'
-    if require_features:
-        assert args.expected_previous_version == '0.2.16', '0.2.17 acceptance requires the actual 0.2.16 baseline'
     try:
         report['installers'] = {name: digest(path) for name, path in [('previous', args.previous_installer), ('current', args.current_installer)]}
         report['previous_install_exit'] = install(args.previous_installer, directory)

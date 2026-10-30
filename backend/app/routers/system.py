@@ -79,7 +79,8 @@ def api_update_action(request: Request, payload: UpdateAction):
         return controller.cancel_update_download() if payload.component == "client" else controller.cancel_extension_update_download()
     latest = update_status().get("latest") or {}
     asset = latest.get(payload.component) or {}
-    if latest.get("version") != payload.version or not asset.get("sha256") or not asset.get("url"):
+    component_version = asset.get("version", latest.get("version")) if payload.component == "extension" else latest.get("version")
+    if component_version != payload.version or not asset.get("sha256") or not asset.get("url"):
         raise HTTPException(409, "请重新检查官方版本后再更新。")
     try:
         if payload.action == "download":

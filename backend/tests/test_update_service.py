@@ -66,6 +66,15 @@ class UpdateServiceTests(unittest.TestCase):
         payload["assets"][1]["browser_download_url"] = update_service.RELEASE_BASE + "/download/v9.8.7/LearnNote-Browser-Extension-v9.8.6.zip"
         result = update_service._release_payload(payload)
         self.assertTrue(result["extension"]["available"], "independent extension versions must remain downloadable")
+        self.assertEqual(result["extension"]["version"], "9.8.6")
+        with tempfile.TemporaryDirectory() as directory, patch.object(update_service, "DATA_DIR", Path(directory)), \
+                patch.object(update_service, "_saved_release", return_value={**result, "checked_at": 4102444800}), \
+                patch.object(update_service, "_extension_version", return_value="9.8.6"), \
+                patch.object(update_service.requests, "get") as request:
+            self.assertFalse(update_service.status()["extension_update_available"], "A newer client tag alone is not an extension update")
+            with patch.object(update_service, "_extension_version", return_value="9.8.5"):
+                self.assertTrue(update_service.status()["extension_update_available"])
+            request.assert_not_called()
         payload["assets"][1]["browser_download_url"] = "https://example.com/extension.zip"
         self.assertFalse(update_service._release_payload(payload)["extension"]["available"])
 

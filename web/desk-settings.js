@@ -128,7 +128,7 @@ export function installSettings(ctx) {
     const extLatest = latest?.extension;
     const extAvailable = Boolean(result?.extension_update_available && extLatest?.available);
     $("updateExtensionAvailability").textContent = extAvailable
-      ? "发现扩展 v" + latest.version + "。商店版由 Chrome / Edge 自己更新；受管理解压版可下载到固定目录。"
+      ? "发现扩展 v" + (extLatest.version || latest.version) + "。商店版由 Chrome / Edge 自己更新；受管理解压版可下载到固定目录。"
       : ext.compatibility === "compatible"
         ? "协议兼容。商店版由 Chrome / Edge 自己更新；受管理解压版由客户端维护固定目录。"
         : ext.current_version ? "版本信息待扩展下一次心跳确认；客户端不会仅因补丁号不同阻断使用。" : "尚未连接扩展；安装方式和商店审核状态不会影响客户端更新。";
@@ -223,7 +223,7 @@ export function installSettings(ctx) {
     const latest = updateStatus?.latest, bridge = updateBridge(), asset = latest?.extension;
     if (!asset?.available || !asset.url || !asset.sha256 || !bridge?.start_extension_update_download) return;
     try {
-      extensionDownload = await bridge.start_extension_update_download(latest.version, asset.url, asset.sha256);
+      extensionDownload = await bridge.start_extension_update_download(asset.version || latest.version, asset.url, asset.sha256);
       renderUpdateCenter(updateStatus);
       clearInterval(updatePolling);
       updatePolling = setInterval(() => readUpdateStatus(false).catch(() => {}), 500);
@@ -242,7 +242,7 @@ export function installSettings(ctx) {
       return;
     }
     try {
-      const result = await bridge.apply_extension_update(latest.version, extensionDownload.path, asset.sha256);
+      const result = await bridge.apply_extension_update(asset.version || latest.version, extensionDownload.path, asset.sha256);
       if (!result?.ok) throw new Error(result?.message || "扩展更新未启动");
       $("updateExtensionAvailability").textContent = result.message || "解压扩展已更新，请在扩展管理页重新加载。";
       if (bridge.setup_browser_extension) await bridge.setup_browser_extension(state.health?.extension_version || "");

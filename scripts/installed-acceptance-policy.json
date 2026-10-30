@@ -1,0 +1,8 @@
+{
+  "features_since": "0.2.17",
+  "minimum_feature_baseline": "0.2.16",
+  "historical_baselines": {
+    "0.2.16": "0.2.15",
+    "0.2.17": "0.2.16"
+  }
+}

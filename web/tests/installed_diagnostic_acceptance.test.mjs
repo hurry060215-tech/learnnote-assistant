@@ -29,6 +29,21 @@ test('only the exact retained synthetic task permits screenshot setup', () => {
   for (const field of Object.keys(task)) assert.throws(() => assertSyntheticTask({ ...task, [field]: 'other' }, task.id));
 });
 
+test('new release versions retain full feature acceptance while historical startup remains supported', () => {
+  for (const version of ['0.2.17', '0.2.18', '0.3.0', '1.0.0']) {
+    const current = [...args.slice(0, 6), version];
+    assert.throws(() => parseArgs(current), /requires the old-installed feature fixture/);
+    const complete = parseArgs([...current, '--feature-fixture', 'feature-fixture.json', '--architecture-fixture', 'architecture-fixture.json']);
+    assert(complete.featureFixture && complete.architectureFixture);
+    assert.equal(complete.expectedVersion, version);
+    assert.equal(parseArgs([...current, '--startup-only']).startupOnly, true);
+    assert.throws(() => parseArgs([...current, '--architecture-fixture', 'architecture-fixture.json']));
+  }
+  const old = [...args.slice(0, 6), '0.2.9'];
+  assert.equal(parseArgs(old).expectedVersion, '0.2.9');
+  assert.throws(() => parseArgs([...old, '--feature-fixture', 'feature-fixture.json']));
+});
+
 test('Windows ownership query binds both exact loopback listeners to the supplied app without broad process collection', () => {
   const binding = { owned_pid: 123, owned_start: '123456', api_port: 8765, api_pid: 123, debug_pid: 456, debug_start: '123457' };
   assert.deepEqual(verifyOwned(parseArgs(args), (file, command, options) => {
