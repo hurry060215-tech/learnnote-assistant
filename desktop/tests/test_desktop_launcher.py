@@ -5,6 +5,7 @@ import hashlib
 from io import BytesIO
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -386,6 +387,36 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(checksum, result["sha256"])
             self.assertEqual(content, Path(result["path"]).read_bytes())
 
+    def test_actual_distribution_archive_is_accepted_and_extra_files_are_rejected(self):
+        source = (ROOT / 'extension')
+        version = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))['version']
+        packaging = (ROOT / 'scripts/package-extension.ps1').read_text(encoding='utf-8')
+        names = re.findall(r'"([^"]+)"', packaging.split('$files = @(', 1)[1].split(')', 1)[0])
+        files = [source / name for name in names]
+        files += [file for directory in ('icons', '_locales') for file in (source / directory).rglob('*') if file.is_file()]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            api = desktop.DesktopApi(root / 'data'); api.app_root = root / 'app'
+            target = api.app_root / 'extension'; target.mkdir(parents=True)
+            (target / 'manifest.json').write_text('{"version":"0.0.1"}')
+            archive = api.data_dir / 'extension-updates' / ('v' + version) / ('LearnNote-Browser-Extension-v' + version + '.zip')
+            archive.parent.mkdir(parents=True)
+            with desktop.ZipFile(archive, 'w') as package:
+                for file in files:
+                    package.write(file, file.relative_to(source).as_posix())
+            checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+            with patch.object(desktop.sys, 'frozen', True, create=True):
+                result = api.install_extension_update(version, str(archive), checksum)
+                self.assertTrue(result['ok'])
+                for file in files:
+                    self.assertEqual((target / file.relative_to(source)).read_bytes(), file.read_bytes())
+                before = {p.relative_to(target): p.read_bytes() for p in target.rglob('*') if p.is_file()}
+                with desktop.ZipFile(archive, 'a') as package:
+                    package.writestr('unreviewed.txt', 'must not install')
+                with self.assertRaisesRegex(ValueError, 'unsafe path'):
+                    api.install_extension_update(version, str(archive), hashlib.sha256(archive.read_bytes()).hexdigest())
+                self.assertEqual(before, {p.relative_to(target): p.read_bytes() for p in target.rglob('*') if p.is_file()})
+
     def test_extension_download_rejects_unbound_component_or_nonrelease_url(self):
         base = "https://github.com/hurry060215-tech/learnnote-assistant/releases/download/"
         good = base + "v9.8.8/LearnNote-Browser-Extension-v9.8.7.zip"
@@ -402,6 +433,8 @@ class DesktopLauncherTests(unittest.TestCase):
         with desktop.ZipFile(archive, "w") as package:
             package.writestr("manifest.json", '{"manifest_version":3,"version":"9.8.7"}')
             package.writestr("background.js", "/* updated */")
+            for helper in ("community-source.js", "background-community.js", "content-community.js", "sidepanel-community.js"):
+                package.writestr(helper, "/* reviewed runtime helper */")
             package.writestr("capture-classification.js", "/* pure classification */")
             package.writestr("capture-ranking.js", "/* pure ranking */")
             package.writestr("i18n.js", "/* localized */")
@@ -442,6 +475,8 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual("/* pure classification */", (target / "capture-classification.js").read_text(encoding="utf-8"))
             self.assertEqual("/* pure ranking */", (target / "capture-ranking.js").read_text(encoding="utf-8"))
             self.assertTrue((target / "_locales" / "en" / "messages.json").is_file())
+            for helper in ("community-source.js", "background-community.js", "content-community.js", "sidepanel-community.js"):
+                self.assertEqual((target / helper).read_text(encoding="utf-8"), "/* reviewed runtime helper */")
             backup = Path(result["backup"])
             self.assertEqual("0.2.8", json.loads((backup / "manifest.json").read_text(encoding="utf-8"))["version"])
 

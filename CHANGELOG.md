@@ -2,11 +2,13 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
-## 0.2.18 - Preserve edits and isolate recovery failures
+## 0.2.19 - Preserve edits and isolate recovery failures
 
 - Protect notes and annotations entered while asynchronous navigation is pending, retaining selection and history when leaving is declined.
 - Isolate malformed or unreadable task manifests during recovery without rewriting originals or hiding database errors.
 - Preserve one next-page request during background refresh and render it after older refreshes settle.
+- Accept every reviewed runtime file in the actual extension distribution; reject extra unreviewed files before changing the installed extension.
+- Repair macOS preview media-tool prerequisites, canonical path checks and extension asset completeness.
 - Use the extension component version for update status, download and installation independently of the client release.
 - Retain installed reading, paging and architecture acceptance in all future releases, with an applicable older stable upgrade baseline.
 
