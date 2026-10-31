@@ -49,6 +49,9 @@ def member_content(content):
 
 def public_contract():
     schema = copy.deepcopy(main.app.openapi())
+    # Release metadata changes independently of API structure. Keep the original
+    # snapshot's version while freezing every route, schema and other info field.
+    schema["info"]["version"] = "0.2.17"
     # The library read model adds only one summary route and opt-in document
     # paging. Freeze the original full task/detail/export and default list API.
     schema["paths"].pop("/api/tasks/catalog")
@@ -183,6 +186,8 @@ def archive_case(kind, rich, annotations=False, *, claim_map=None):
 
 class TaskArchiveContracts(unittest.TestCase):
     def test_complete_openapi_operation_order_and_task_schema_unchanged(self):
+        from app import APP_VERSION
+        self.assertEqual(main.app.openapi()["info"]["version"], APP_VERSION)
         self.assertEqual(public_contract(), json.loads(FIXTURE.read_text(encoding="utf-8"))["api"])
 
     def test_actual_member_bytes_order_headers_and_unchanged_source_backups(self):

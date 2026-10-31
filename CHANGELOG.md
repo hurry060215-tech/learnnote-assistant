@@ -2,6 +2,14 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.18 - Preserve edits and isolate recovery failures
+
+- Protect notes and annotations entered while asynchronous navigation is pending, retaining selection and history when leaving is declined.
+- Isolate malformed or unreadable task manifests during recovery without rewriting originals or hiding database errors.
+- Preserve one next-page request during background refresh and render it after older refreshes settle.
+- Use the extension component version for update status, download and installation independently of the client release.
+- Retain installed reading, paging and architecture acceptance in all future releases, with an applicable older stable upgrade baseline.
+
 ## 0.2.17 - Responsive libraries, reliable recovery and visible reading targets
 
 - Load standalone materials in pages of 100 with full-library title search, preserving focus and loaded pages across refreshes; resolve source links and learning-space members even outside the loaded page.
