@@ -538,7 +538,7 @@ class NativePlatformAcceptanceTests(unittest.TestCase):
                     hidden = evidence / (".learnnote-migration-" + receipt.parent.name)
                     self.assertEqual((evidence / "source/preferences.json").read_bytes(), (hidden / "preferences.json").read_bytes())
                     self.assertEqual((evidence / "app-root/learnnote-config.json").read_bytes(), previous)
-                    self.assertEqual(json.loads(receipt.read_bytes())["stage"], str(hidden))
+                    self.assertEqual(json.loads(receipt.read_bytes())["stage"], str(hidden.resolve()))
                 if outcome == "pass":
                     backend = json.loads((evidence / "restarted-backend.json").read_bytes())
                     self.assertEqual(backend["requested_origin"], "http://127.0.0.1:12345")

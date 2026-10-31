@@ -276,6 +276,7 @@ def exercise(executable, output):
 
 def packaged_application_root(executable):
     # Match desktop.main.application_root, without importing a source launcher.
+    executable = Path(executable).resolve()
     resources = executable.parent.parent / "Resources" / "LearnNote"
     return resources if resources.is_dir() else executable.parent
 
