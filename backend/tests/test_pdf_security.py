@@ -200,7 +200,7 @@ class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
 
     async def _assert_catalog_import_admission(self, filename, content_type):
         import anyio
-        import httpx
+        import httpx2 as httpx
         import threading
         from contextlib import ExitStack
         from app import library
