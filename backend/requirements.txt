@@ -10,7 +10,7 @@ yt-dlp>=2026.7.4
 Pillow>=13.0.0
 python-docx==1.2.0
 reportlab==5.0.1
-pypdf==6.21.2
+pypdf==6.21.4
 markdown-it-py==4.2.0
 mdurl==0.1.2
 openai>=1.40

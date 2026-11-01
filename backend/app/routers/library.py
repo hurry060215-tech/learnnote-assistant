@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 from pathlib import Path
 import re
 import sqlite3
@@ -101,7 +103,7 @@ async def api_library_material_preview(file: UploadFile = File(...), encoding: s
         if len(content) > MATERIAL_IMPORT_MAX_BYTES:
             raise HTTPException(status_code=413, detail="学习资料不能超过 32 MB。")
     try:
-        return preview_document_material(file.filename or "material", bytes(content), file.content_type or "", encoding.strip())
+        return await run_in_threadpool(preview_document_material, file.filename or "material", bytes(content), file.content_type or "", encoding.strip())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": str(exc), "message": "资料预检未通过，请检查文件格式、PDF 密码或文字编码；尚未保存原文。"}) from exc
 
@@ -121,7 +123,7 @@ async def api_library_material_import(file: UploadFile = File(...), encoding: st
                 detail={"code": "material_file_too_large", "message": "学习资料不能超过 32 MB。"},
             )
     try:
-        material = import_document_material(filename, bytes(content), file.content_type or "", encoding=encoding.strip())
+        material = await run_in_threadpool(import_document_material, filename, bytes(content), file.content_type or "", encoding=encoding.strip())
     except ValueError as exc:
         code = str(exc)
         messages = {

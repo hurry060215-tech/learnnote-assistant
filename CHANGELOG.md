@@ -2,6 +2,12 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.20 - Bound PDF parsing
+
+- Update pypdf to 6.21.4 for the xref trailer loop and shared page-tree resource exhaustion fixes.
+- Run PDF text extraction in a bounded child process, including preview and stored-source extraction; keep upload endpoints off the event loop.
+- Preserve existing data, password errors, page anchors and extraction limits. OCR remains a separate path.
+
 ## 0.2.19 - Preserve edits and isolate recovery failures
 
 - Protect notes and annotations entered while asynchronous navigation is pending, retaining selection and history when leaving is declined.

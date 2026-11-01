@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+# Frozen executables must divert before desktop imports, locks, or server startup.
+import sys
+if __name__ == "__main__" and sys.argv[1:2] == ["--pdf-worker"]:
+    from app.pdf_worker import main as pdf_worker_main
+    raise SystemExit(pdf_worker_main(sys.argv[2:]))
+
 import argparse
 import hashlib
 import json

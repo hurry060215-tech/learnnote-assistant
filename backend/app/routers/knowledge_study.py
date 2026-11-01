@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
@@ -159,7 +161,7 @@ async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str 
         if len(content) > 20 * 1024 * 1024:
             raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
     try:
-        text, source_type, decoding = extract_import_text_with_metadata(filename, bytes(content), file.content_type or "", encoding=encoding)
+        text, source_type, decoding = await run_in_threadpool(extract_import_text_with_metadata, filename, bytes(content), file.content_type or "", encoding=encoding)
         raw_info = preserve_raw_import(bytes(content), filename)
         import hashlib
         decoding.update({

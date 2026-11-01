@@ -11,7 +11,7 @@ import time
 class WindowsJob:
     """An unnamed job assigned before the suspended command can spawn children."""
 
-    def __init__(self, process):
+    def __init__(self, process, memory_limit_bytes=0):
         import ctypes
         from ctypes import wintypes as w
 
@@ -50,6 +50,9 @@ class WindowsJob:
         try:
             limits = Extended()
             limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            if memory_limit_bytes:
+                limits.basic.flags |= 0x100  # JOB_OBJECT_LIMIT_PROCESS_MEMORY
+                limits.process_memory = memory_limit_bytes
             if not self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
                 raise ctypes.WinError(ctypes.get_last_error())
             if not self.kernel.AssignProcessToJobObject(self.handle, int(process._handle)):
@@ -119,7 +122,7 @@ class WindowsJob:
 
 
 @contextmanager
-def owned_media_process(command, **kwargs):
+def owned_media_process(command, *, memory_limit_bytes=0, **kwargs):
     """Contain before execution; reap the tree without replacing a task failure."""
     if os.name == "nt":
         kwargs["creationflags"] = kwargs.get("creationflags", 0) | 0x4 | subprocess.CREATE_NO_WINDOW
@@ -130,7 +133,7 @@ def owned_media_process(command, **kwargs):
     failure = None
     try:
         if os.name == "nt":
-            job = WindowsJob(process)
+            job = WindowsJob(process, memory_limit_bytes) if memory_limit_bytes else WindowsJob(process)
             job.resume(process.pid)
         yield process
     except BaseException as error:
