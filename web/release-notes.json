@@ -1,7 +1,24 @@
 {
   "schema_version": 1,
-  "current": "0.2.19",
+  "current": "0.2.20",
   "releases": [
+    {
+      "version": "0.2.20",
+      "date": "2026-11-01",
+      "title": "PDF 安全更新",
+      "summary": "更新 PDF 解析组件并隔离解析进程，限制异常 PDF 的处理时间与内存，保留现有资料和配置。",
+      "highlights": [
+        {
+          "title": "有界 PDF 解析",
+          "description": "PDF 导入、预检和原文重建使用独立进程；异常或超限文件明确失败，后台仍可响应。"
+        }
+      ],
+      "fixes": [
+        "pypdf 更新至 6.21.4，修复交叉引用表死循环和重复页面资源放大。",
+        "保留密码提示、500 页和 500 万字上限；不改变已存资料。",
+        "扫描件 OCR 为独立处理路径，不包含在本次 PDF 文本解析隔离范围内。"
+      ]
+    },
     {
       "version": "0.2.19",
       "date": "2026-10-31",
@@ -620,8 +637,8 @@
     }
   ],
   "component_versions": {
-    "client": "0.2.19",
-    "extension": "0.2.19",
+    "client": "0.2.20",
+    "extension": "0.2.20",
     "protocol": 1
   }
 }

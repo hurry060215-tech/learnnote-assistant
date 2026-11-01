@@ -46,7 +46,7 @@ jobs:
           PYTHONPATH: backend
         run: |
           python -m compileall backend/app
-          python -m unittest backend/tests/test_migrations.py backend/tests/test_integrations.py backend/tests/test_knowledge.py
+          python -m unittest backend/tests/test_migrations.py backend/tests/test_integrations.py backend/tests/test_knowledge.py backend/tests/test_pdf_security.py
           python -c "from app.main import health_payload; print(health_payload()['assistant_capabilities']['media_adapter_contract_version'])"
       - name: Verify stopped desktop data migration contracts
         shell: bash

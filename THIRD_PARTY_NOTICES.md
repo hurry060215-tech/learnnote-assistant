@@ -81,7 +81,7 @@ runtime component. [Official release](https://pypi.org/project/psutil/7.2.2/),
 | PyWebView | Windows desktop application shell | <https://github.com/r0x0r/pywebview> | BSD 3-Clause |
 | python-docx | Editable Word `.docx` note export | <https://github.com/python-openxml/python-docx> | MIT |
 | ReportLab | Print-ready local PDF note export | <https://www.reportlab.com/opensource/> | BSD 3-Clause |
-| pypdf | Local text extraction from text-based PDF learning materials | <https://github.com/py-pdf/pypdf> | BSD 3-Clause |
+| pypdf 6.21.4 | Local text extraction from text-based PDF learning materials | <https://github.com/py-pdf/pypdf> | BSD 3-Clause |
 | markdown-it-py | CommonMark inline link parsing for local document exports | <https://github.com/executablebooks/markdown-it-py> | MIT; includes the upstream markdown-it MIT notice |
 | mdurl | Markdown parser URL utilities | <https://github.com/executablebooks/mdurl> | MIT; includes the upstream Node URL notice |
 | FSRS | Local spaced-repetition scheduling and review state | <https://github.com/open-spaced-repetition/py-fsrs> | MIT |

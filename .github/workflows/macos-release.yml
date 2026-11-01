@@ -65,6 +65,8 @@ jobs:
           cp extension/sidepanel-progress.js extension/community-source.js extension/background-community.js extension/content-community.js extension/sidepanel-community.js dist/LearnNote.app/Contents/Resources/LearnNote/extension/
           cp -R extension/icons dist/LearnNote.app/Contents/Resources/LearnNote/extension/icons
           cp -R extension/_locales/* dist/LearnNote.app/Contents/Resources/LearnNote/extension/_locales/
+      - name: Verify packaged PDF worker
+        run: python scripts/test-installed-pdf.py --executable dist/LearnNote.app/Contents/MacOS/LearnNote
       - name: Sign and notarize macOS bundle when credentials are configured
         if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
         run: |
@@ -103,4 +105,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_NOTARY_APPLE_ID != '' && env.APPLE_NOTARY_PASSWORD != '' && env.APPLE_TEAM_ID != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" LearnNote-macOS.zip --repo "${{ github.repository }}" --clobber
+        run: gh release upload "${{ github.ref_name }}" LearnNote-macOS.zip --repo "${{ github.repository }}"

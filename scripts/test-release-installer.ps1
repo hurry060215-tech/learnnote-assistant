@@ -59,6 +59,9 @@ try {
     throw "Installed LearnNote executable failed its startup check with code $($help.ExitCode)."
   }
 
+  python scripts/test-installed-pdf.py --executable "$executable"
+  if ($LASTEXITCODE -ne 0) { throw "Installed PDF security smoke failed" }
+
   $uninstall = Start-Process -FilePath $uninstaller `
     -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
     -WindowStyle Hidden -Wait -PassThru
