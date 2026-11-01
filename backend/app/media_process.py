@@ -141,18 +141,39 @@ def owned_media_process(command, *, memory_limit_bytes=0, **kwargs):
         raise
     finally:
         try:
-            if job:
-                job.terminate()
-            elif os.name == "nt":
-                # Failed containment leaves a suspended child that cannot spawn.
-                if process.poll() is None:
-                    process.kill()
-            else:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            process.communicate(timeout=5)
+            cleanup_failure = None
+            try:
+                if job:
+                    job.terminate()
+                elif os.name == "nt":
+                    # Failed containment leaves a suspended child that cannot spawn.
+                    if process.poll() is None:
+                        process.kill()
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError:
+                        # Darwin can retain an exiting, unsignalable process group
+                        # until the child is reaped. Retry after bounded exit proof;
+                        # still fail if a live/inaccessible group remains.
+                        process.wait(timeout=.1)
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+            except BaseException as error:
+                cleanup_failure = error
+            try:
+                process.communicate(timeout=5)
+            except BaseException as error:
+                if cleanup_failure is None:
+                    cleanup_failure = error
+                else:
+                    cleanup_failure.add_note(f"Child reap failed: {type(error).__name__}")
+            if cleanup_failure is not None:
+                raise cleanup_failure
         except BaseException as cleanup:
             if failure is None:
                 raise

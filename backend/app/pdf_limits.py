@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import os
+import errno
 import subprocess
 import sys
 import time
@@ -58,8 +59,16 @@ def wait_for_pdf_worker(process, *, timeout, memory_bytes):
     while process.poll() is None:
         try:
             _, resident = darwin_memory(process.pid)
-        except OSError:
+        except OSError as error:
             if process.poll() is not None:
+                break
+            if error.errno == errno.ESRCH:
+                # XNU can remove task counters before waitpid reports exit.
+                # Accept only a confirmed exit, never an unmonitored live worker.
+                try:
+                    process.wait(timeout=min(.1, max(0, deadline - time.monotonic())))
+                except subprocess.TimeoutExpired:
+                    raise error
                 break
             raise  # Never silently drop supervision.
         if resident > memory_bytes:
