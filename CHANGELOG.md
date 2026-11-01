@@ -2,6 +2,13 @@
 
 All notable changes to LearnNote are documented here. The project follows semantic versioning while the `0.x` series is under active development.
 
+## 0.2.21 - Confirm PDF worker exit and retain cleanup
+
+- Confirm macOS worker exit within a bounded grace period when process counters disappear before exit status becomes visible; live uninspectable workers still fail closed.
+- Attempt bounded child reaping even when process-group cleanup fails, retaining the original error.
+- Retain pypdf 6.21.4 and existing parser limits; preserve stored data and extension component version 0.2.20.
+- Pin installed upgrade acceptance to published v0.2.20. Give the local-range acceptance helper file-backed stdin without relaxing its timeout or assertions.
+
 ## 0.2.20 - Bound PDF parsing
 
 - Update pypdf to 6.21.4 for the xref trailer loop and shared page-tree resource exhaustion fixes.
