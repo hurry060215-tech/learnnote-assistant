@@ -81,10 +81,8 @@ class PdfSecurityTests(unittest.TestCase):
 
     def test_os_memory_limit_rejects_a_small_over_budget_allocation(self):
         script = """
-import os
-if os.name != 'nt':
- import resource
- resource.setrlimit(resource.RLIMIT_AS, (64*1024**2, 64*1024**2))
+from app.pdf_limits import install_worker_limits
+install_worker_limits(64*1024**2)
 try:
  bytearray(128*1024**2)
 except MemoryError:
@@ -96,6 +94,32 @@ else:
                                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) as child:
             _, stderr = child.communicate(timeout=10)
             self.assertEqual(child.returncode, 0, stderr)
+
+    def test_darwin_address_budget_accounts_for_startup_mappings(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from app import pdf_limits
+        resource = SimpleNamespace(RLIMIT_AS=1, RLIMIT_CPU=2, RLIMIT_FSIZE=3, setrlimit=Mock())
+        with patch.dict(sys.modules, {'resource': resource}), patch.object(pdf_limits.os, 'name', 'posix'), \
+                patch.object(pdf_limits.sys, 'platform', 'darwin'), \
+                patch.object(pdf_limits, 'darwin_memory', return_value=(400 * 1024**3, 20 * 1024**2)):
+            pdf_limits.install_worker_limits(1024**3)
+        expected = 400 * 1024**3 + 1024**3 - 20 * 1024**2
+        resource.setrlimit.assert_any_call(1, (expected, expected))
+        resource.setrlimit.assert_any_call(2, (25, 25))
+        resource.setrlimit.assert_any_call(3, (32 * 1024**2, 32 * 1024**2))
+
+    def test_darwin_memory_supervisor_fails_closed_and_reaps_on_budget_or_counter_failure(self):
+        from app import pdf_limits
+        for counter, error in ((lambda pid: (100, 10), MemoryError),
+                               (lambda pid: (_ for _ in ()).throw(OSError('counter failed')), OSError)):
+            with self.subTest(error=error), patch.object(pdf_limits.sys, 'platform', 'darwin'), \
+                    patch.object(pdf_limits, 'darwin_memory', side_effect=counter):
+                with self.assertRaises(error):
+                    with pdf_process.owned_media_process([sys.executable, '-c', 'import time; time.sleep(10)'],
+                                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as child:
+                        pdf_limits.wait_for_pdf_worker(child, timeout=1, memory_bytes=5)
+                self.assertIsNotNone(child.poll())
 
     def test_bad_pdf_api_paths_preserve_existing_material(self):
         from contextlib import ExitStack
@@ -134,9 +158,8 @@ else:
     def test_small_repeated_page_tree_hits_upstream_copy_budget(self):
         # Scaled-down py-pdf/pypdf#4290: four references, not the large stress input.
         script = r'''
-import resource
-resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
-resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
+from app.pdf_limits import install_worker_limits
+install_worker_limits(1024**3, cpu_seconds=5)
 from io import BytesIO
 from pypdf import PdfReader
 from pypdf._configuration import apply_configuration
@@ -157,8 +180,6 @@ with apply_configuration(page_tree_maximum_page_entries=6):
  except LimitReachedError: pass
  else: raise AssertionError('page-copy budget was not enforced')
 '''
-        if os.name == 'nt':
-            script = script.replace('import resource\nresource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))\nresource.setrlimit(resource.RLIMIT_CPU, (5, 5))', '')
         with pdf_process.owned_media_process([sys.executable, '-c', script], memory_limit_bytes=1024**3,
                                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) as child:
             _, stderr = child.communicate(timeout=10)

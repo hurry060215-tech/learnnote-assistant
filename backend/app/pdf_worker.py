@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import sys
 
@@ -14,11 +13,8 @@ def main(arguments=None):
     source, destination, max_pages, max_chars = arguments
     # Limits are set before importing the parser or loading any PDF bytes.
     from .pdf_process import MAX_PDF_BYTES, MAX_RESULT_BYTES, PDF_MEMORY_BYTES
-    if os.name != "nt":
-        import resource
-        resource.setrlimit(resource.RLIMIT_AS, (PDF_MEMORY_BYTES, PDF_MEMORY_BYTES))
-        resource.setrlimit(resource.RLIMIT_CPU, (25, 25))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_RESULT_BYTES, MAX_RESULT_BYTES))
+    from .pdf_limits import install_worker_limits
+    install_worker_limits(PDF_MEMORY_BYTES, output_bytes=MAX_RESULT_BYTES)
     try:
         from .pdf_text import extract_pdf
         with Path(source).open("rb") as stream:

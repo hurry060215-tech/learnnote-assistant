@@ -9,6 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from app.media_process import owned_media_process
+from app.pdf_limits import wait_for_pdf_worker
 
 
 def main():
@@ -36,7 +37,7 @@ def main():
             with owned_media_process([args.executable, '--pdf-worker', str(source), str(result), '500', '5000000'],
                                      memory_limit_bytes=1024**3, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as child:
-                child.wait(timeout=30)
+                wait_for_pdf_worker(child, timeout=30, memory_bytes=1024**3)
                 if child.returncode:
                     raise RuntimeError('Installed PDF worker failed')
             response = json.loads(result.read_bytes())
