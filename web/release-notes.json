@@ -638,6 +638,7 @@
   ],
   "component_versions": {
     "client": "0.2.20",
-    "extension": "0.2.20"
+    "extension": "0.2.20",
+    "protocol": 1
   }
 }

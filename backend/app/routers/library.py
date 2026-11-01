@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from starlette.concurrency import run_in_threadpool
+from .pdf_upload import admit_pdf_upload, run_upload_work
 
 from pathlib import Path
 import re
@@ -97,62 +97,64 @@ def api_library_materials(limit: int = 100, source_type: str = "", standalone: b
 
 @library_router.post("/materials/preview")
 async def api_library_material_preview(file: UploadFile = File(...), encoding: str = Form(default="", max_length=40)) -> dict:
-    content = bytearray()
-    while chunk := await file.read(1024 * 1024):
-        content.extend(chunk)
-        if len(content) > MATERIAL_IMPORT_MAX_BYTES:
-            raise HTTPException(status_code=413, detail="学习资料不能超过 32 MB。")
-    try:
-        return await run_in_threadpool(preview_document_material, file.filename or "material", bytes(content), file.content_type or "", encoding.strip())
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"code": str(exc), "message": "资料预检未通过，请检查文件格式、PDF 密码或文字编码；尚未保存原文。"}) from exc
+    with admit_pdf_upload(file.filename or "", file.content_type or "") as admission:
+        content = bytearray()
+        while chunk := await file.read(1024 * 1024):
+            content.extend(chunk)
+            if len(content) > MATERIAL_IMPORT_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="学习资料不能超过 32 MB。")
+        try:
+            return await run_upload_work(admission, preview_document_material, file.filename or "material", bytes(content), file.content_type or "", encoding.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"code": str(exc), "message": "资料预检未通过，请检查文件格式、PDF 密码或文字编码；尚未保存原文。"}) from exc
 
 
 @library_router.post("/materials/import")
 async def api_library_material_import(file: UploadFile = File(...), encoding: str = Form(default="", max_length=40)) -> dict:
-    filename = Path(file.filename or "material").name
-    content = bytearray()
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        content.extend(chunk)
-        if len(content) > MATERIAL_IMPORT_MAX_BYTES:
+    with admit_pdf_upload(file.filename or "", file.content_type or "") as admission:
+        filename = Path(file.filename or "material").name
+        content = bytearray()
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            content.extend(chunk)
+            if len(content) > MATERIAL_IMPORT_MAX_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail={"code": "material_file_too_large", "message": "学习资料不能超过 32 MB。"},
+                )
+        try:
+            material = await run_upload_work(admission, import_document_material, filename, bytes(content), file.content_type or "", encoding=encoding.strip())
+        except ValueError as exc:
+            code = str(exc)
+            messages = {
+                "local_video_use_task_upload": "本地视频请使用现有本地视频任务入口，任务建立后再登记到资料库，避免复制媒体。",
+                "material_type_unsupported": "仅支持 PDF、Markdown、HTML 和 TXT 学习资料。",
+                "material_file_empty": "学习资料文件为空。",
+                "material_file_too_large": "学习资料不能超过 32 MB。",
+                "material_no_extractable_text": "资料中没有可提取文本；扫描 PDF 需要先完成本地 OCR。",
+                "pdf_text_extraction_unavailable": "PDF 文本提取组件不可用，请安装后端完整依赖。",
+                "pdf_password_required": "PDF 需要密码。请先在本机解锁并另存为不加密的副本，再导入。",
+                "pdf_file_invalid": "PDF 文件损坏或无法读取，请重新导出或选择有效的 PDF 文件。",
+                "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
+                "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
+                "material_anchor_limit_exceeded": "资料章节过多，请拆分为较小文件后导入。",
+                "text_encoding_unsupported": "无法可靠识别资料编码；请选择文字编码后重试。",
+                "text_mojibake_detected": "检测到高置信度乱码；请选择原文编码后重试。",
+                "material_storage_failed": "无法安全保存本地资料，请检查磁盘空间和数据目录权限。",
+            }
+            status = 409 if code == "local_video_use_task_upload" else 422
+            recovery = None
+            if code == "local_video_use_task_upload":
+                recovery = {"action": "upload_local_video", "endpoint": "/api/tasks/local"}
+            elif code == "pdf_text_extraction_unavailable":
+                recovery = {"action": "install_backend_requirements", "command": "python -m pip install -r backend/requirements.txt"}
             raise HTTPException(
-                status_code=413,
-                detail={"code": "material_file_too_large", "message": "学习资料不能超过 32 MB。"},
-            )
-    try:
-        material = await run_in_threadpool(import_document_material, filename, bytes(content), file.content_type or "", encoding=encoding.strip())
-    except ValueError as exc:
-        code = str(exc)
-        messages = {
-            "local_video_use_task_upload": "本地视频请使用现有本地视频任务入口，任务建立后再登记到资料库，避免复制媒体。",
-            "material_type_unsupported": "仅支持 PDF、Markdown、HTML 和 TXT 学习资料。",
-            "material_file_empty": "学习资料文件为空。",
-            "material_file_too_large": "学习资料不能超过 32 MB。",
-            "material_no_extractable_text": "资料中没有可提取文本；扫描 PDF 需要先完成本地 OCR。",
-            "pdf_text_extraction_unavailable": "PDF 文本提取组件不可用，请安装后端完整依赖。",
-            "pdf_password_required": "PDF 需要密码。请先在本机解锁并另存为不加密的副本，再导入。",
-            "pdf_file_invalid": "PDF 文件损坏或无法读取，请重新导出或选择有效的 PDF 文件。",
-            "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
-            "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
-            "material_anchor_limit_exceeded": "资料章节过多，请拆分为较小文件后导入。",
-            "text_encoding_unsupported": "无法可靠识别资料编码；请选择文字编码后重试。",
-            "text_mojibake_detected": "检测到高置信度乱码；请选择原文编码后重试。",
-            "material_storage_failed": "无法安全保存本地资料，请检查磁盘空间和数据目录权限。",
-        }
-        status = 409 if code == "local_video_use_task_upload" else 422
-        recovery = None
-        if code == "local_video_use_task_upload":
-            recovery = {"action": "upload_local_video", "endpoint": "/api/tasks/local"}
-        elif code == "pdf_text_extraction_unavailable":
-            recovery = {"action": "install_backend_requirements", "command": "python -m pip install -r backend/requirements.txt"}
-        raise HTTPException(
-            status_code=status,
-            detail={"code": code, "message": messages.get(code, "无法导入该学习资料。"), "recovery": recovery},
-        ) from exc
-    return {"ok": True, "material": material}
+                status_code=status,
+                detail={"code": code, "message": messages.get(code, "无法导入该学习资料。"), "recovery": recovery},
+            ) from exc
+        return {"ok": True, "material": material}
 
 
 def _material_ocr_error(exc: Exception) -> HTTPException:

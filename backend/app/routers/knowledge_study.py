@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from starlette.concurrency import run_in_threadpool
+from .pdf_upload import admit_pdf_upload, run_upload_work
 
 from pathlib import Path
 from urllib.parse import quote
@@ -151,45 +151,46 @@ def api_knowledge_evidence(evidence: SourceEvidence) -> dict:
 
 @knowledge_router.post("/import-file")
 async def api_knowledge_import_file(file: UploadFile = File(...), encoding: str = "") -> dict:
-    filename = Path(file.filename or "evidence.txt").name
-    content = bytearray()
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        content.extend(chunk)
-        if len(content) > 20 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
-    try:
-        text, source_type, decoding = await run_in_threadpool(extract_import_text_with_metadata, filename, bytes(content), file.content_type or "", encoding=encoding)
-        raw_info = preserve_raw_import(bytes(content), filename)
-        import hashlib
-        decoding.update({
-            "raw_sha256": raw_info["sha256"],
-            "raw_byte_count": raw_info["byte_count"],
-            "source_revision": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-            "filename": filename,
-            "content_type": file.content_type or "",
-            "decoding_hint": encoding.strip()[:40],
-        })
-        stored = add_evidence(SourceEvidence(
-            source_type=source_type,
-            title=Path(filename).stem[:500],
-            source_uri=f"local://{filename}",
-            locator="file",
-            text=text,
-            metadata=decoding,
-        ))
-    except ValueError as exc:
-        code = str(exc)
-        message = {
-            "text_encoding_unsupported": "无法可靠识别资料编码；请通过 encoding 参数选择文字编码后重试。",
-            "text_mojibake_detected": "检测到高置信度乱码；请检查或重新选择文字编码后重试。",
-            "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
-            "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
-        }.get(code, "无法从该文件提取可检索文本。")
-        raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
-    return {"ok": True, "evidence": stored.model_dump(mode="json")}
+    with admit_pdf_upload(file.filename or "", file.content_type or "") as admission:
+        filename = Path(file.filename or "evidence.txt").name
+        content = bytearray()
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            content.extend(chunk)
+            if len(content) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail={"code": "evidence_file_too_large", "message": "导入文件不能超过 20 MB。"})
+        try:
+            text, source_type, decoding = await run_upload_work(admission, extract_import_text_with_metadata, filename, bytes(content), file.content_type or "", encoding=encoding)
+            raw_info = preserve_raw_import(bytes(content), filename)
+            import hashlib
+            decoding.update({
+                "raw_sha256": raw_info["sha256"],
+                "raw_byte_count": raw_info["byte_count"],
+                "source_revision": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "filename": filename,
+                "content_type": file.content_type or "",
+                "decoding_hint": encoding.strip()[:40],
+            })
+            stored = add_evidence(SourceEvidence(
+                source_type=source_type,
+                title=Path(filename).stem[:500],
+                source_uri=f"local://{filename}",
+                locator="file",
+                text=text,
+                metadata=decoding,
+            ))
+        except ValueError as exc:
+            code = str(exc)
+            message = {
+                "text_encoding_unsupported": "无法可靠识别资料编码；请通过 encoding 参数选择文字编码后重试。",
+                "text_mojibake_detected": "检测到高置信度乱码；请检查或重新选择文字编码后重试。",
+                "extracted_text_too_large": "资料解压后的文本超过 500 万字，请拆分后再导入。",
+                "pdf_page_limit_exceeded": "PDF 页数超过 500 页，请拆分后再导入。",
+            }.get(code, "无法从该文件提取可检索文本。")
+            raise HTTPException(status_code=422, detail={"code": code, "message": message}) from exc
+        return {"ok": True, "evidence": stored.model_dump(mode="json")}
 
 
 @knowledge_router.get("/evidence/{evidence_id}")

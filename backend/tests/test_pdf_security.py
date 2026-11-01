@@ -187,3 +187,112 @@ class PdfAsyncTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 release.set()
             self.assertEqual(await request, {'bounded': True})
+
+
+class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_two_catalog_imports_reject_overload_and_leave_health_pool_available(self):
+        import anyio
+        import httpx
+        import threading
+        from contextlib import ExitStack
+        from app import library
+        from app.main import app
+        from app.routers import pdf_upload
+        entered, release = threading.Event(), threading.Event()
+        seen = []
+
+        @library._catalog_operation
+        def blocked_import(*args, **kwargs):
+            seen.append(args[0])
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test worker deadline')
+            return {'material_id': 'fixture'}
+
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        prior_tokens = limiter.total_tokens
+        limiter.total_tokens = 2
+        tasks = []
+        try:
+            with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                stack.enter_context(patch.object(library, 'DATA_DIR', Path(directory)))
+                stack.enter_context(patch('app.routers.library.import_document_material', blocked_import))
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://127.0.0.1') as client:
+                    for index in range(2):
+                        tasks.append(asyncio.create_task(client.post('/api/library/materials/import', files={'file': (f'{index}.pdf', b'tiny fixture', 'application/pdf')})))
+                    for _ in range(100):
+                        if entered.is_set() and pdf_upload._THREAD_LIMITER.borrowed_tokens == 2:
+                            break
+                        await asyncio.sleep(.01)
+                    self.assertTrue(entered.is_set())
+                    self.assertEqual(pdf_upload._THREAD_LIMITER.borrowed_tokens, 2)
+                    self.assertEqual(len(seen), 1)  # Second import is waiting on the actual catalog lock.
+                    self.assertEqual(limiter.borrowed_tokens, 0)
+                    for endpoint in ('/api/library/materials/import', '/api/library/materials/preview', '/api/knowledge/import-file'):
+                        rejected = await asyncio.wait_for(client.post(endpoint, files={'file': ('overload.pdf', b'tiny', 'application/pdf')}), 1)
+                        self.assertEqual(rejected.status_code, 429, rejected.text)
+                        self.assertEqual(rejected.json()['detail']['code'], 'pdf_import_busy')
+                    for endpoint in ('/health', '/api/health'):
+                        response = await asyncio.wait_for(client.get(endpoint), 1)
+                        self.assertEqual(response.status_code, 200, response.text)
+                    release.set()
+                    self.assertEqual([r.status_code for r in await asyncio.wait_for(asyncio.gather(*tasks), 2)], [200, 200])
+        finally:
+            release.set()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            limiter.total_tokens = prior_tokens
+
+    async def test_overload_does_not_read_upload_and_read_failure_releases_admission(self):
+        from fastapi import HTTPException, UploadFile
+        from unittest.mock import AsyncMock
+        from app.routers.library import api_library_material_import
+        from app.routers.pdf_upload import admit_pdf_upload
+        upload = UploadFile(BytesIO(b'tiny'), filename='x.pdf')
+        with admit_pdf_upload('one.pdf', ''), admit_pdf_upload('two.pdf', ''), patch.object(upload, 'read', new_callable=AsyncMock) as read:
+            with self.assertRaises(HTTPException) as rejected:
+                await api_library_material_import(upload, '')
+            self.assertEqual(rejected.exception.status_code, 429)
+            read.assert_not_awaited()
+        with patch.object(upload, 'read', new_callable=AsyncMock, side_effect=OSError('read failed')):
+            with self.assertRaises(OSError):
+                await api_library_material_import(upload, '')
+        with admit_pdf_upload('one.pdf', ''), admit_pdf_upload('two.pdf', ''):
+            pass
+
+    async def test_cancellation_retains_admission_until_worker_finishes_then_recovers(self):
+        import threading
+        from fastapi import HTTPException, UploadFile
+        from app.routers.library import api_library_material_import
+        from app.routers.pdf_upload import admit_pdf_upload
+        entered, release = threading.Event(), threading.Event()
+        def work(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test worker deadline')
+            raise ValueError('pdf_file_invalid')
+        with patch('app.routers.library.import_document_material', work):
+            request = asyncio.create_task(api_library_material_import(UploadFile(BytesIO(b'tiny'), filename='x.pdf'), ''))
+            try:
+                for _ in range(100):
+                    if entered.is_set():
+                        break
+                    await asyncio.sleep(.01)
+                self.assertTrue(entered.is_set())
+                request.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await request
+                with admit_pdf_upload('other.pdf', ''):
+                    with self.assertRaises(HTTPException):
+                        with admit_pdf_upload('overload.pdf', ''):
+                            pass
+            finally:
+                release.set()
+                from app.routers.pdf_upload import _TASKS
+                if _TASKS:
+                    await asyncio.wait_for(asyncio.gather(*tuple(_TASKS), return_exceptions=True), 2)
+        # Both slots are reusable, including after the abandoned worker's error.
+        with admit_pdf_upload('one.pdf', ''), admit_pdf_upload('two.pdf', ''):
+            pass
+        with patch('app.routers.library.import_document_material', return_value={'material_id': 'recovered'}):
+            result = await api_library_material_import(UploadFile(BytesIO(b'tiny'), filename='valid.pdf'), '')
+            self.assertEqual(result['material']['material_id'], 'recovered')
