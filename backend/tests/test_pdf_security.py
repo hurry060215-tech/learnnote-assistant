@@ -191,6 +191,14 @@ class PdfAsyncTests(unittest.IsolatedAsyncioTestCase):
 
 class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
     async def test_two_catalog_imports_reject_overload_and_leave_health_pool_available(self):
+        await self._assert_catalog_import_admission('lesson.pdf', 'application/pdf')
+
+    async def test_sanitized_pdf_names_use_admission_and_preserve_health_pool(self):
+        for filename in ('lesson.pdf ', 'lesson.pdf.', 'lesson.pdf_', 'lesson.PDF ._', 'lesson.pdf?'):
+            with self.subTest(filename=filename):
+                await self._assert_catalog_import_admission(filename, 'application/octet-stream')
+
+    async def _assert_catalog_import_admission(self, filename, content_type):
         import anyio
         import httpx
         import threading
@@ -219,7 +227,7 @@ class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
                 stack.enter_context(patch('app.routers.library.import_document_material', blocked_import))
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://127.0.0.1') as client:
                     for index in range(2):
-                        tasks.append(asyncio.create_task(client.post('/api/library/materials/import', files={'file': (f'{index}.pdf', b'tiny fixture', 'application/pdf')})))
+                        tasks.append(asyncio.create_task(client.post('/api/library/materials/import', files={'file': (f'{index}-{filename}', b'tiny fixture', content_type)})))
                     for _ in range(100):
                         if entered.is_set() and pdf_upload._THREAD_LIMITER.borrowed_tokens == 2:
                             break
@@ -229,7 +237,7 @@ class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(len(seen), 1)  # Second import is waiting on the actual catalog lock.
                     self.assertEqual(limiter.borrowed_tokens, 0)
                     for endpoint in ('/api/library/materials/import', '/api/library/materials/preview', '/api/knowledge/import-file'):
-                        rejected = await asyncio.wait_for(client.post(endpoint, files={'file': ('overload.pdf', b'tiny', 'application/pdf')}), 1)
+                        rejected = await asyncio.wait_for(client.post(endpoint, files={'file': (filename, b'tiny', content_type)}), 1)
                         self.assertEqual(rejected.status_code, 429, rejected.text)
                         self.assertEqual(rejected.json()['detail']['code'], 'pdf_import_busy')
                     for endpoint in ('/health', '/api/health'):
@@ -296,3 +304,46 @@ class PdfAdmissionTests(unittest.IsolatedAsyncioTestCase):
         with patch('app.routers.library.import_document_material', return_value={'material_id': 'recovered'}):
             result = await api_library_material_import(UploadFile(BytesIO(b'tiny'), filename='valid.pdf'), '')
             self.assertEqual(result['material']['material_id'], 'recovered')
+
+
+class PdfSanitizedFilenameTests(unittest.TestCase):
+    def test_normalized_pdf_names_reach_real_pdf_parser_with_generic_mime(self):
+        from contextlib import ExitStack
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.library import _safe_material_filename
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            root = Path(directory)
+            for module in ('app.library', 'app.knowledge', 'app.routers.library'):
+                stack.enter_context(patch(f'{module}.DATA_DIR', root))
+            client = TestClient(app)
+            for name in ('lesson.pdf ', 'lesson.pdf.', 'lesson.pdf_', 'lesson.PDF ._', 'lesson.pdf?'):
+                self.assertEqual(Path(_safe_material_filename(name)).suffix.lower(), '.pdf')
+                for endpoint in ('/api/library/materials/preview', '/api/library/materials/import'):
+                    with self.subTest(name=name, endpoint=endpoint):
+                        rejected = client.post(endpoint, files={'file': (name, TRUNCATED_XREF, 'application/octet-stream')})
+                        self.assertEqual(rejected.status_code, 422, rejected.text)
+                        self.assertEqual(rejected.json()['detail']['code'], 'pdf_file_invalid')
+                        valid = client.post(endpoint, files={'file': (name, blank_pdf(), 'application/octet-stream')})
+                        self.assertEqual(valid.status_code, 200, valid.text)
+
+    def test_sanitized_pdf_overload_rejects_before_reading_at_every_upload_endpoint(self):
+        import asyncio
+        from fastapi import HTTPException, UploadFile
+        from starlette.datastructures import Headers
+        from unittest.mock import AsyncMock
+        from app.routers.library import api_library_material_import, api_library_material_preview
+        from app.routers.knowledge_study import api_knowledge_import_file
+        from app.routers.pdf_upload import admit_pdf_upload
+
+        async def check():
+            with admit_pdf_upload('one.pdf', ''), admit_pdf_upload('two.pdf', ''):
+                for name in ('lesson.pdf ', 'lesson.pdf.', 'lesson.pdf_', 'lesson.pdf?'):
+                    for endpoint in (api_library_material_import, api_library_material_preview, api_knowledge_import_file):
+                        upload = UploadFile(BytesIO(b'tiny'), filename=name, headers=Headers({'content-type': 'application/octet-stream'}))
+                        with self.subTest(name=name, endpoint=endpoint.__name__), patch.object(upload, 'read', new_callable=AsyncMock) as read:
+                            with self.assertRaises(HTTPException) as rejected:
+                                await endpoint(upload, '')
+                            self.assertEqual(rejected.exception.status_code, 429)
+                            read.assert_not_awaited()
+        asyncio.run(check())

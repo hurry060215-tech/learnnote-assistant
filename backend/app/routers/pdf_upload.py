@@ -32,7 +32,13 @@ class _Admission:
 
 @contextmanager
 def admit_pdf_upload(filename: str, content_type: str):
-    if Path(filename or '').suffix.lower() != '.pdf' and 'pdf' not in content_type.lower():
+    # Library preview/import sanitize before choosing the parser. Reuse that
+    # exact normalizer, while retaining raw-name detection for evidence uploads.
+    # This deliberately also admits evidence names that only the library would
+    # treat as PDF. Import lazily to avoid a router/library import cycle.
+    from ..library import _safe_material_filename
+    names = (filename or '', _safe_material_filename(filename))
+    if not any(Path(name).suffix.lower() == '.pdf' for name in names) and 'pdf' not in content_type.lower():
         yield None
         return
     if not _UPLOAD_SLOTS.acquire(blocking=False):
