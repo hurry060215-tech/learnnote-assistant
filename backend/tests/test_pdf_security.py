@@ -121,6 +121,63 @@ else:
                         pdf_limits.wait_for_pdf_worker(child, timeout=1, memory_bytes=5)
                 self.assertIsNotNone(child.poll())
 
+    def test_darwin_missing_counters_require_confirmed_bounded_exit(self):
+        import errno
+        from unittest.mock import Mock
+        from app import pdf_limits
+        for exits in (True, False):
+            child = Mock(pid=123, args=['worker'], returncode=0)
+            child.poll.return_value = None
+            if not exits:
+                child.wait.side_effect = subprocess.TimeoutExpired(child.args, .1)
+            error = ProcessLookupError(errno.ESRCH, 'exiting task')
+            with self.subTest(exits=exits), patch.object(pdf_limits.sys, 'platform', 'darwin'), \
+                    patch.object(pdf_limits, 'darwin_memory', side_effect=error):
+                if exits:
+                    self.assertEqual(pdf_limits.wait_for_pdf_worker(child, timeout=1, memory_bytes=5), 0)
+                else:
+                    with self.assertRaises(ProcessLookupError):
+                        pdf_limits.wait_for_pdf_worker(child, timeout=1, memory_bytes=5)
+            child.wait.assert_called_once()
+            self.assertLessEqual(child.wait.call_args.kwargs['timeout'], .1)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX process-group cleanup')
+    def test_exiting_unsignalable_group_is_reaped_before_cleanup_retry(self):
+        from unittest.mock import Mock
+        from app import media_process
+        for retry_error in (ProcessLookupError(), PermissionError()):
+            child = Mock(pid=123, stdin=None, stdout=None, stderr=None)
+            with self.subTest(error=type(retry_error)), \
+                    patch.object(media_process.subprocess, 'Popen', return_value=child), \
+                    patch.object(media_process.os, 'killpg', side_effect=[PermissionError(), retry_error]) as kill:
+                if isinstance(retry_error, ProcessLookupError):
+                    with media_process.owned_media_process(['fixture']):
+                        pass
+                    child.communicate.assert_called_once_with(timeout=5)
+                else:
+                    with self.assertRaises(PermissionError):
+                        with media_process.owned_media_process(['fixture']):
+                            pass
+                child.wait.assert_called_once_with(timeout=.1)
+                self.assertEqual(kill.call_count, 2)
+                child.communicate.assert_called_once_with(timeout=5)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX process-group cleanup')
+    def test_group_cleanup_failure_still_reaps_and_preserves_original_failure(self):
+        from unittest.mock import Mock
+        from app import media_process
+        child = Mock(pid=123, stdin=None, stdout=None, stderr=None)
+        child.wait.side_effect = subprocess.TimeoutExpired(['fixture'], .1)
+        original = ValueError('original parser error')
+        with patch.object(media_process.subprocess, 'Popen', return_value=child), \
+                patch.object(media_process.os, 'killpg', side_effect=PermissionError()):
+            with self.assertRaises(ValueError) as caught:
+                with media_process.owned_media_process(['fixture']):
+                    raise original
+        self.assertIs(caught.exception, original)
+        self.assertIn('Owned media cleanup failed: TimeoutExpired', original.__notes__)
+        child.communicate.assert_called_once_with(timeout=5)
+
     def test_bad_pdf_api_paths_preserve_existing_material(self):
         from contextlib import ExitStack
         from fastapi.testclient import TestClient

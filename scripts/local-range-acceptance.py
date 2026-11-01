@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,9 +54,14 @@ def resolve_full_source(records, selected_id):
     """Keep task payloads off argv (Windows has a ~32K command-line limit)."""
     helper = (ROOT / 'web/range-source.js').read_text(encoding='utf-8')
     code = helper + "\nimport {readFileSync} from 'node:fs'; const records=JSON.parse(readFileSync(0,'utf8')); const source=await fullVideoSource(process.argv[1],async id=>records[id]); console.log(source.id);"
-    return subprocess.run(['node', '--input-type=module', '-e', code, selected_id],
-                          input=json.dumps(records), capture_output=True, text=True,
-                          encoding='utf-8', check=True, timeout=20).stdout.strip()
+    # A regular file has a definite EOF, independent of pipe handle lifetime
+    # while the recovery worker concurrently starts/stops media processes.
+    with tempfile.TemporaryFile(mode='w+b') as payload:
+        payload.write(json.dumps(records).encode('utf-8'))
+        payload.seek(0)
+        return subprocess.run(['node', '--input-type=module', '-e', code, selected_id],
+                              stdin=payload, capture_output=True, text=True,
+                              encoding='utf-8', check=True, timeout=20).stdout.strip()
 
 
 def worker(output, mode):

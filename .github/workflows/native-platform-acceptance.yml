@@ -6,6 +6,10 @@ on:
     paths:
       - LearnNote.macos.spec
       - desktop/**
+      - backend/app/pdf_*.py
+      - backend/app/media_process.py
+      - backend/tests/test_pdf_security.py
+      - scripts/test-installed-pdf.py
       - scripts/native-platform-acceptance.py
       - scripts/native-migration-quit.swift
       - scripts/native-version-window.swift

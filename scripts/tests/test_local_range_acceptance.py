@@ -85,9 +85,39 @@ class FullSourceTransportTests(unittest.TestCase):
         records = {'whole': {'task': {'id': 'whole', 'learning_range': {}, 'title': '合成资料' * 20000}},
                    'range': {'task': {'id': 'range', 'learning_range': {'start': 5, 'end': 15}, 'source_task_id': 'whole'}}}
         run = subprocess.run
-        with patch.object(module.subprocess, 'run', wraps=run) as observed:
+        payloads = []
+        def inspect(*args, **kwargs):
+            import os
+            import stat
+            payload = kwargs['stdin']
+            self.assertTrue(stat.S_ISREG(os.fstat(payload.fileno()).st_mode))
+            data = payload.read()
+            self.assertGreater(len(data), 32768)
+            self.assertEqual(json.loads(data), records)
+            payload.seek(0)
+            payloads.append(payload)
+            self.assertEqual(kwargs['timeout'], 20)
+            return run(*args, **kwargs)
+        with patch.object(module.subprocess, 'run', side_effect=inspect) as observed:
             self.assertEqual(module.resolve_full_source(records, 'range'), 'whole')
         args, kwargs = observed.call_args
         self.assertLess(len(' '.join(args[0])), 4000)
-        self.assertGreater(len(kwargs['input']), 32768)
-        self.assertEqual(json.loads(kwargs['input']), records)
+        self.assertNotIn('input', kwargs)
+        self.assertTrue(payloads[0].closed)
+
+    def test_payload_closes_and_timeout_is_not_hidden(self):
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('range_transport_failure', ROOT / 'scripts/local-range-acceptance.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        payloads = []
+        failure = subprocess.TimeoutExpired(['node'], 20)
+        def fail(*args, **kwargs):
+            payloads.append(kwargs['stdin'])
+            raise failure
+        with patch.object(module.subprocess, 'run', side_effect=fail):
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                module.resolve_full_source({}, 'range')
+        self.assertIs(caught.exception, failure)
+        self.assertTrue(payloads[0].closed)
