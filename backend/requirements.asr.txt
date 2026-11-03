@@ -1,4 +1,4 @@
 # faster-whisper 1.x passes metadata_errors to av.open; PyAV 19 removed it.
 faster-whisper>=1.1.1
 filelock>=4.2.1
-av>=11,<19
+av>=11,<20
