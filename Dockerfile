@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     ORT_DISABLE_TELEMETRY=1 \
