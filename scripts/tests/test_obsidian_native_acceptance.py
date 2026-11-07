@@ -40,6 +40,10 @@ class ObsidianNativeAcceptanceTests(unittest.TestCase):
         self.assertIn("getByRole('link', {name: '带时间戳字幕'", text)
         self.assertIn("status: 'failed'", text)
         self.assertIn("report.status = 'pass'", text)
+        self.assertNotIn("require('obsidian')", text)
+        self.assertIn("'/usr/libexec/PlistBuddy'", text)
+        self.assertIn("'Print :CFBundleShortVersionString'", text)
+        self.assertIn('report.obsidian_installer_version', text)
 
 
 if __name__ == '__main__':

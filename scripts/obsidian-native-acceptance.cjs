@@ -91,7 +91,13 @@ async function main() {
       report.checks.push('native_trust_prompt_for_own_plugin_in_disposable_vault');
     }
     await page.waitForFunction(() => Boolean(window.app.plugins.plugins['learnnote-assistant']), undefined, {timeout: 60000});
-    report.obsidian_version = await page.evaluate(() => require('obsidian').apiVersion);
+    // The plugin API module is only available to Obsidian's plugin loader,
+    // not the renderer's Node require. Read the signed app bundle metadata.
+    report.obsidian_installer_version = execFileSync('/usr/libexec/PlistBuddy', [
+      '-c', 'Print :CFBundleShortVersionString',
+      path.resolve(path.dirname(executable), '..', 'Info.plist'),
+    ], {encoding: 'utf8'}).trim();
+    assert.ok(report.obsidian_installer_version, 'Official app bundle version required');
     report.checks.push('official_native_app_and_real_plugin_loaded');
     const imported = await page.evaluate(async taskId => {
       const plugin = app.plugins.plugins['learnnote-assistant'];
