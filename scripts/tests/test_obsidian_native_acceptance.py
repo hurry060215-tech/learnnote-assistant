@@ -44,6 +44,7 @@ class ObsidianNativeAcceptanceTests(unittest.TestCase):
         self.assertIn("'/usr/libexec/PlistBuddy'", text)
         self.assertIn("'Print :CFBundleShortVersionString'", text)
         self.assertIn('report.obsidian_installer_version', text)
+        self.assertLess(text.index('app.setting.close()'), text.index("getByRole('link', {name: '带时间戳字幕'"))
 
 
 if __name__ == '__main__':
