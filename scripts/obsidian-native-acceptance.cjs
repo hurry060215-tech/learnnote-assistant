@@ -91,7 +91,17 @@ async function main() {
       report.checks.push('native_trust_prompt_for_own_plugin_in_disposable_vault');
     }
     await page.waitForFunction(() => Boolean(window.app.plugins.plugins['learnnote-assistant']), undefined, {timeout: 60000});
-    report.obsidian_version = await page.evaluate(() => require('obsidian').apiVersion);
+    // Trusting the first plugin leaves Community plugins settings open.
+    // Return to the vault before exercising links in the rendered note.
+    await page.evaluate(() => app.setting.close());
+    await page.bringToFront();
+    // The plugin API module is only available to Obsidian's plugin loader,
+    // not the renderer's Node require. Read the signed app bundle metadata.
+    report.obsidian_installer_version = execFileSync('/usr/libexec/PlistBuddy', [
+      '-c', 'Print :CFBundleShortVersionString',
+      path.resolve(path.dirname(executable), '..', 'Info.plist'),
+    ], {encoding: 'utf8'}).trim();
+    assert.ok(report.obsidian_installer_version, 'Official app bundle version required');
     report.checks.push('official_native_app_and_real_plugin_loaded');
     const imported = await page.evaluate(async taskId => {
       const plugin = app.plugins.plugins['learnnote-assistant'];
@@ -129,7 +139,14 @@ async function main() {
       const leaf = app.workspace.getMostRecentLeaf();
       await leaf.setViewState({...leaf.getViewState(), state: {...leaf.getViewState().state, mode: 'preview'}});
     });
-    await page.getByRole('link', {name: '带时间戳字幕', exact: true}).click();
+    const preview = page.locator('.workspace-leaf.mod-active .markdown-preview-view');
+    // Obsidian virtualizes reading view sections; reveal the related-materials
+    // section before locating its internal link (which has no HTML href).
+    await preview.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const transcriptLink = preview.locator('a.internal-link').filter({hasText: /^带时间戳字幕$/});
+    await transcriptLink.waitFor({state: 'visible'});
+    await page.screenshot({path: path.join(output, 'native-note-before-source-link.png'), fullPage: true});
+    await transcriptLink.click();
     await page.waitForFunction(expected => app.workspace.getActiveFile()?.path === expected, `${imported.folderPath}/Transcript.md`);
     assert.match(await page.locator('.workspace-leaf.mod-active').innerText(), /First overlapping caption/);
     await page.screenshot({path: path.join(output, 'native-transcript-link.png'), fullPage: true});

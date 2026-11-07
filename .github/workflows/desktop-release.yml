@@ -81,7 +81,7 @@ jobs:
           $previousVersion = $installedPolicy.historical_baselines[$acceptanceVersion]
           $previousTag = if ($previousVersion) { "v$previousVersion" } else { '' }
           "INSTALLED_PREVIOUS_TAG=$previousTag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -118,7 +118,7 @@ jobs:
         if: env.CANDIDATE_ARTIFACT_ID != ''
         shell: pwsh
         run: |
-          python -m pip install requests==2.34.2 certifi==2026.10.19 charset-normalizer==3.5.2 idna==3.20 urllib3==2.8.0
+          python -m pip install requests==2.34.2 certifi==2026.10.23 charset-normalizer==3.5.2 idna==3.20 urllib3==2.8.0
           if ($LASTEXITCODE -ne 0) { throw "Installed harness dependency installation failed" }
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "Pinned installed-UI dependencies failed" }

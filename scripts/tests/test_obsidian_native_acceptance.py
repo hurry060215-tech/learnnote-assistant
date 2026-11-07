@@ -37,9 +37,16 @@ class ObsidianNativeAcceptanceTests(unittest.TestCase):
         self.assertNotIn('page.route(', text)
         self.assertNotIn('--no-sandbox', text)
         self.assertIn('assert.notEqual(secondMeta.annotation_snapshot, firstMeta.annotation_snapshot)', text)
-        self.assertIn("getByRole('link', {name: '带时间戳字幕'", text)
+        self.assertIn("preview.locator('a.internal-link').filter({hasText: /^带时间戳字幕$/})", text)
+        self.assertIn('await transcriptLink.click()', text)
+        self.assertIn('element.scrollTop = element.scrollHeight', text)
         self.assertIn("status: 'failed'", text)
         self.assertIn("report.status = 'pass'", text)
+        self.assertNotIn("require('obsidian')", text)
+        self.assertIn("'/usr/libexec/PlistBuddy'", text)
+        self.assertIn("'Print :CFBundleShortVersionString'", text)
+        self.assertIn('report.obsidian_installer_version', text)
+        self.assertLess(text.index('app.setting.close()'), text.index('await transcriptLink.click()'))
 
 
 if __name__ == '__main__':
