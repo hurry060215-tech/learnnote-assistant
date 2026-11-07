@@ -139,8 +139,14 @@ async function main() {
       const leaf = app.workspace.getMostRecentLeaf();
       await leaf.setViewState({...leaf.getViewState(), state: {...leaf.getViewState().state, mode: 'preview'}});
     });
+    const preview = page.locator('.workspace-leaf.mod-active .markdown-preview-view');
+    // Obsidian virtualizes reading view sections; reveal the related-materials
+    // section before locating its internal link (which has no HTML href).
+    await preview.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const transcriptLink = preview.locator('a.internal-link').filter({hasText: /^带时间戳字幕$/});
+    await transcriptLink.waitFor({state: 'visible'});
     await page.screenshot({path: path.join(output, 'native-note-before-source-link.png'), fullPage: true});
-    await page.getByRole('link', {name: '带时间戳字幕', exact: true}).click();
+    await transcriptLink.click();
     await page.waitForFunction(expected => app.workspace.getActiveFile()?.path === expected, `${imported.folderPath}/Transcript.md`);
     assert.match(await page.locator('.workspace-leaf.mod-active').innerText(), /First overlapping caption/);
     await page.screenshot({path: path.join(output, 'native-transcript-link.png'), fullPage: true});
