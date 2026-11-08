@@ -45,7 +45,7 @@ protobuf==7.36.2
 proxy_tools==0.1.0
 pyclipper==1.4.0
 pycparser==3.12
-pymupdf==1.28.2
+pymupdf==2.1
 pydantic==2.14.2
 pydantic_core==2.50.2
 pyinstaller==6.22.3
